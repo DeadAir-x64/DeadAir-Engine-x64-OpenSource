@@ -1,0 +1,24 @@
+# exclude all dot files except .git, appveyor and travis files
+.*
+!.git*
+!.appveyor*
+!.editorconfig
+!.vscode
+
+# exclude binaries and temporary files
+[Bb]in/
+[Bb]uild*/
+
+# User-specific files
+*.user
+*.user.props
+*.nvuser
+*.PVS-Studio.*
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+
+# exclude doxygen output
+doc/doxygen/html/*
