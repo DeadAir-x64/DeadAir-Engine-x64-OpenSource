@@ -7,9 +7,9 @@
 #include "game_sv_base_console_vars.h"
 #include "game_sv_event_queue.h"
 #include "game_sv_item_respawner.h"
-#if defined(XR_PLATFORM_WINDOWS)
+#if defined(XR_PLATFORM_WINDOWS) && !defined(__MINGW32__)
 #include "xrNetServer/NET_Server.h"
-#else // XXX: multiplayer on Linux
+#else // XXX: multiplayer on Linux / MinGW (no DirectPlay)
 #include "xrNetServer/empty/NET_Server.h"
 #endif
 

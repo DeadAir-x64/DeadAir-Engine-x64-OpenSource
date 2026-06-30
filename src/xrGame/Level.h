@@ -2,9 +2,9 @@
 
 #include "xrEngine/IGame_Level.h"
 #include "xrEngine/IGame_Persistent.h"
-#if defined(XR_PLATFORM_WINDOWS)
+#if defined(XR_PLATFORM_WINDOWS) && !defined(__MINGW32__)
 #include "xrNetServer/NET_Client.h"
-#else // XXX: multiplayer on Linux
+#else // XXX: multiplayer on Linux / MinGW (no DirectPlay)
 #include "xrNetServer/empty/NET_Client.h"
 #endif
 #include "xrEngine/StatGraph.h"

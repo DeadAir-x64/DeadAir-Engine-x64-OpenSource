@@ -63,49 +63,30 @@ void Lock::Enter()
     isLocked = true;
 }
 #else
-Lock::Lock() : impl(xr_new<LockImpl>()), lockCounter(0) {}
+// [DA_PORT] Lock out-of-line: GCC LTO was eliding the inline Lock() ctor for members
+// constructed across DLL boundaries (e.g. PlayersMonitor::csPlayers), leaving
+// CRITICAL_SECTION zeroed -> SIGSEGV in RtlEnterCriticalSection. Out-of-line forces
+// the ctor symbol to be imported and called.
+Lock::Lock() { InitializeCriticalSection(&cs); }
 
-Lock::~Lock() { xr_delete(impl); }
+Lock::~Lock() { DeleteCriticalSection(&cs); }
 
 Lock::Lock(Lock&& other) noexcept(false)
 {
-    xr_delete(impl);
-    impl = other.impl;
-    lockCounter.store(other.lockCounter.load(std::memory_order_acquire), std::memory_order_release);
-    other.impl = xr_new<LockImpl>();
-    other.lockCounter.store(0, std::memory_order_release);
+    (void)other;
+    InitializeCriticalSection(&cs);
 }
 
 Lock& Lock::operator=(Lock&& other) noexcept(false)
 {
-    xr_delete(impl);
-    impl = other.impl;
-    lockCounter.store(other.lockCounter.load(std::memory_order_acquire), std::memory_order_release);
-    other.impl = xr_new<LockImpl>();
-    other.lockCounter.store(0, std::memory_order_release);
+    (void)other;
     return *this;
 }
 
-void Lock::Enter()
-{
-    impl->Lock();
-    lockCounter.fetch_add(1, std::memory_order_acq_rel);
-}
+void Lock::Enter() { EnterCriticalSection(&cs); }
+bool Lock::TryEnter() { return !!TryEnterCriticalSection(&cs); }
+void Lock::Leave() { LeaveCriticalSection(&cs); }
 #endif // CONFIG_PROFILE_LOCKS
-
-bool Lock::TryEnter()
-{
-    const bool locked = impl->TryLock();
-    if (locked)
-        lockCounter.fetch_add(1, std::memory_order_acq_rel);
-    return locked;
-}
-
-void Lock::Leave()
-{
-    impl->Unlock();
-    lockCounter.fetch_sub(1, std::memory_order_acq_rel);
-}
 
 #ifdef DEBUG
 extern void OutputDebugStackTrace(const char* header);

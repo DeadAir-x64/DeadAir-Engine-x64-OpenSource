@@ -30,6 +30,255 @@ risky/behavioral ones are catalogued below as tasks.
 
 ---
 
+## PHASE A RESULT (2026-06-28) — BOOT REACHED, HANG ISOLATED
+
+The x64 build **boots and runs**. Using `-force_flushlog` (mandatory — the log is
+buffered; without it the last visible line lies about where execution stopped) we
+traced the entire startup. The following all WORK on x64 R4 DX11:
+
+- Filesystem, GPU (RTX 5070 Ti), OpenAL sound — full init.
+- **Entire R4 DX11 renderer**: `CRender::create()`, CRenderTarget, FluidManager,
+  ImGui — `CRenderDevice::Create()` returns cleanly.
+- "Version conflict in shader" (9x) and "Failed to find compiled constant buffer"
+  (20x) are **benign noise**, NOT the hang. (The constant-buffer error is the
+  `~dx11ConstantBuffer` dtor reclaiming all R__NUM_CONTEXTS contexts though the
+  buffer lives in one — dx11ConstantBuffer.cpp:10-13.)
+
+**The hang is in the Lua script engine init.** Exact call chain:
+
+```
+x_ray.cpp  CApplication ctor
+  -> xrGame.cpp:92         create_persistent()
+     -> object_factory()   (object_factory_inline.h)  -> g_object_factory->init()
+        -> object_factory.cpp:26  register_script_classes()
+           -> ai()  -> CAI_Space::init()  (ai_space.cpp:53-55)
+              GEnv.ScriptEngine = xr_new<CScriptEngine>(false,true);
+              RestartScriptEngine();        <-- HANG IS BELOW HERE
+                -> CAI_Space::SetupScriptEngine() (ai_space.cpp:143)
+                   -> CScriptEngine::init(node::export_all, true)  (script_engine.cpp:785)
+                      -> exporter(lua())  ==  script_export::node::export_all()
+                         -> node::sort()  (ScriptExporter.cpp)   topological sort of
+                            ALL luabind binding nodes by dependency, then runs each
+                            node->m_export_func(luaState).
+```
+
+`node::sort()` is the prime suspect: it does a recursive DFS over every `SCRIPT_EXPORT`
+node using static-init-order-dependent linked list + `m_deps_getter()`. Under GCC/x64
+the static init order across DLLs differs from MSVC, so a dependency can be **null** or
+form a **cycle** -> infinite recursion / hang.
+
+### Instrumentation already in place (built, NOT yet deployed/run)
+
+A diagnostic harness was added specifically to name the hang point:
+
+- `ScriptExporter.hpp` — added `m_name` (`__FILE__:__LINE__`) to every export node via
+  the `SCRIPT_EXPORT` macro.
+- `ScriptExporter.cpp` — `node::sort()` now logs map build, **cycle detection**
+  (`LOOP DETECTED` if >500 nodes / runaway DFS), and `export_all()` logs each node's
+  **name before and after** its `export_func`.
+- `script_engine.cpp` `CScriptEngine::init()` — step traces (reinit, luabind::open,
+  setup_callbacks, exporter, lua libs, `_G` load).
+- `ai_space.cpp` — step traces through `init()` and `SetupScriptEngine()`.
+
+> NOTE FOR ARCHITECTS: `bin/.../xrScriptEngine.dll` (built 27.06) is NEWER than the
+> copy deployed in `D:\Dead Air Test` (23.06). **These traces have never actually run.**
+> Deploy the fresh `xrScriptEngine.dll` + rebuilt `xrGame.dll`, launch with
+> `-force_flushlog`, and read `appdata\logs\openxray_*.log`. That output decides the
+> Phase B-0 task below.
+
+---
+
+## FORWARD PLAN FOR GLM (do these in order)
+
+### B-0 — RESOLVED (2026-06-28): script engine init works
+
+The harness was run. Result: **the "hang in RestartScriptEngine" was an ABI-mismatch
+artifact, not a real hang.** Deploying only `xrScriptEngine.dll` after changing the
+exported `node::node` ctor signature (added a 3rd param) made other DLLs import the old
+2-arg symbol -> `0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND` before `main` (confirmed via gdb).
+
+After a FULL rebuild + deploy of ALL dlls, the script engine initializes cleanly:
+`export_all: DONE, exported 248 nodes` -> `ScriptEngine::init: DONE` ->
+`create_persistent` -> `OnAppStart`. No binding cycle, no node hang. Log 174 -> 2327 lines.
+
+> HARD RULE learned: any change to an exported symbol's signature (`XRSCRIPTENGINE_API`,
+> `XRCORE_API`, etc.) requires a FULL rebuild and deploy of ALL 21 dlls — never a partial
+> deploy, or you get entrypoint-not-found at load.
+
+The boot now reaches a real, named **FATAL ERROR**. First concrete Phase B task below.
+
+### B-1 — CEnvAmbient empty section assert (DO THIS FIRST)
+
+**Symptom (from log):**
+```
+FATAL ERROR
+Expression : !m_sound_channels.empty() || !m_effects.empty()
+Function   : load
+File       : src/xrEngine/Environment_misc.cpp
+Line       : 246
+```
+
+**Cause:** Dead Air defines a weather `env_ambient` section that has neither sound
+channels nor effects. Vanilla OpenXRay `CEnvAmbient::load()` hard-asserts that at least
+one is present (line 246). DA expects the engine to tolerate an empty ambient.
+
+**Task:** In `src/xrEngine/Environment_misc.cpp`, function `CEnvAmbient::load()`, replace
+the hard `R_ASSERT(!m_sound_channels.empty() || !m_effects.empty());` at line 246 with a
+tolerant warning that names the offending section and continues:
+
+```cpp
+if (m_sound_channels.empty() && m_effects.empty())
+    Msg("! [DA_PORT] CEnvAmbient '%s': no sound channels and no effects, skipping", sect);
+```
+
+(`sect` is the section name in scope in `load()`. If `sect` is not the right identifier in
+this overload, use `m_load_section.c_str()`.) Do NOT touch any DA data files. Output only
+the changed block with line context.
+
+**Acceptance:** rebuild xrEngine, redeploy, launch with `-force_flushlog`; the FATAL is
+gone, the log shows at most a `[DA_PORT] CEnvAmbient ... skipping` warning, and boot
+advances past environment load (further into `OnAppStart` / main menu).
+
+### B (continuing) — next FATALs surface one at a time
+
+After B-1, relaunch. The architects capture the next `FATAL ERROR` / `[LUA] ... nil
+value` and hand GLM the file:line. Keep applying the same shape of fix:
+- engine assert too strict for DA data -> relax to a named warning (like B-1);
+- missing Lua method -> 3-touch binding (see Phase B main, below);
+- MSVC-ism in a touched function -> rule-3 rewrite.
+
+---
+
+## AUTONOMOUS PLAYBOOK FOR GLM (work solo; architects verify each batch)
+
+You (GLM) own the FIX step end-to-end. The architects own only LAUNCH + LOG capture
+(they run the game and paste you the next error). For every error they hand you, work the
+loop below ALONE — do not wait for hand-holding between sub-steps.
+
+### The per-error loop
+
+1. **Read the error.** You are given a block like:
+   ```
+   FATAL ERROR
+   Expression : <cond>
+   Function   : <fn>
+   File       : src/.../X.cpp
+   Line       : <n>
+   Description : assertion failed | <lua error> | <message>
+   ```
+   or a Lua error `attempt to call method 'NAME' (a nil value)` plus the script snippet.
+
+2. **Open the named file:line and read ~40 lines around it.** Understand WHY it fires
+   under DA data / x64, not just what. Classify into one of the four buckets in the table
+   below.
+
+3. **Apply the minimal fix** for that bucket (table). Touch only the named function.
+
+4. **Self-check before handing back** (you cannot launch the game, but you CAN reason):
+   - Does the change compile in your head? (types, namespaces, headers already included?)
+   - Did you preserve behavior for the NON-DA / normal case? (e.g. assert still meaningful
+     when data IS valid; binding returns the value the script expects.)
+   - Did you avoid the forbidden actions (no silent stub, no save/net packet change, no DA
+     data edit, no exported-symbol signature change)?
+
+5. **Hand back** ONLY the changed block(s) with `file:line` context + one sentence on why.
+   The architects rebuild the single affected target, redeploy, relaunch, and send you the
+   NEXT error. Repeat.
+
+### Fix-bucket table
+
+| Bucket | Signature in the log | Fix shape |
+|---|---|---|
+| **1. Over-strict engine assert on DA data** | `R_ASSERT...assertion failed` in an engine `load()`/parse fn, where DA data legitimately differs (empty section, extra field, out-of-range enum) | Replace hard `R_ASSERT` with a tolerant path: `if (bad) { Msg("! [DA_PORT] <ctx> '%s': <what>, skipping", name); <safe continue>; }`. Keep the assert's intent as a warning. Name the offending data. |
+| **2. Missing DA->engine Lua binding** | `attempt to call method 'X' (a nil value)` | 3-touch: declare in `script_game_object.h`; implement in a `script_game_object_*.cpp`; register in `script_game_object_script3.cpp` `.def("X", &CScriptGameObject::Cpp)`. Return what the DA script reads. Copy `get_addon_flags` exactly. |
+| **3. Missing free function / class binding** | `attempt to call global 'Y'` or `'Z' not found` | Find the vanilla export node for that subsystem (search `SCRIPT_EXPORT` near related code), add the missing `.def`/`function`. If the engine capability is truly absent, `[DA_PORT_STUB]` Msg + safe default — NEVER for save/net/load. |
+| **4. MSVC-ism in a touched function** | compile error OR wrong runtime value from a fn you just edited | Apply rule 3 of the system prompt: SEH -> `#ifdef XR_COMPILER_MSVC` + fallback; in-class explicit template spec -> `if constexpr`; `DWORD*` in exported sig -> `u32*`. |
+
+### HARD limits (never cross — these cause silent save corruption or load failures)
+
+- **Never** change the signature of an exported symbol (`*_API`) without telling the
+  architects it needs a FULL rebuild. Prefer fixes that don't touch exported signatures.
+- **Never** stub or approximate a `net_export` / `net_import` / `load` / `save` /
+  `STsaveGameState` byte layout. If unsure of the exact field order/size, STOP and ask.
+- **Never** edit Dead Air data files (`gamedata\...`). The fix is always engine-side.
+- **Never** add a stub without the `Msg("! [DA_PORT_STUB] ... %s", __FUNCTION__)` line.
+
+### When to STOP and ask the architects (do not guess)
+
+- The error is in a save/load/network packet path.
+- The fix would require changing an exported symbol's signature.
+- The same error recurs after your fix (your fix was wrong — say so, don't pile on).
+- The crash has NO file:line (raw access violation) — ask for a gdb backtrace instead.
+
+### What "done for now" looks like
+
+A level loads and is playable with no FATAL and no unresolved `[LUA]` error in the log.
+Then: strip all `[DA_PORT]` trace `Msg` scaffolding (keep behavioral fixes), and the
+architects do a final full rebuild + playtest.
+
+---
+
+### Earlier decision tree (kept for reference — sort/export now known-good)
+
+**Case A — log shows `! [DA_PORT] sort: LOOP DETECTED ...` or DFS count runs away**
+There is a dependency cycle (or self-dependency) among the luabind export nodes under
+GCC static-init order. Task:
+1. In `ScriptExporter.cpp` `node::sort()`, make the DFS cycle-tolerant: a node already in
+   `state::visiting` must be SKIPPED (treat back-edge as already-handled), not recursed
+   into. Replace the recursion guard so revisiting a `visiting` node returns immediately
+   instead of looping. Keep the existing `not_visited -> visiting -> visited` coloring;
+   only the back-edge handling changes.
+2. Do NOT change export order semantics for the acyclic case.
+3. Acceptance: `sort:` logs reach `dfs done` and `export_all` starts iterating nodes.
+
+**Case B — log stops after `export_all: node[N] before export_func name=FILE:LINE`**
+A specific binding's `script_register` hangs/crashes. The `name=FILE:LINE` IS the culprit
+`SCRIPT_EXPORT` (e.g. `script_game_object_script3.cpp:NNN`). Task:
+1. Open that file:line, read the `SCRIPT_EXPORT(...)` / `script_register` body.
+2. The usual GCC/x64 fault is a `.def(...)` binding a function whose signature uses a
+   MSVC-ism (DWORD vs u32, an explicit template specialization, or a smart_cast that
+   resolved wrong). Apply the rule-3 fixes from the system prompt. Output only the changed
+   `.def`/function block.
+3. Acceptance: `export_all: node[N] after export_func` appears; trace advances to the next
+   node.
+
+**Case C — log reaches `export_all: DONE` then stops in `process_file_if_exists(_G)` or
+`LoadCommonScripts`**
+Bindings are fine; a DA Lua script hangs/errors at load. Architects supply the Lua error
+line; GLM switches to the Phase B binding loop below.
+
+### B (main) — DA->engine Lua API surface (iterative, 3-touch pattern)
+
+Once script init completes, the game will hit `attempt to call method 'X' (a nil value)`
+errors one at a time as menus/levels load. For each, GLM implements the missing binding:
+
+1. **Declare** in `src/xrGame/script_game_object.h`.
+2. **Implement** in a `script_game_object_*.cpp` (match the return the DA script expects —
+   architects supply the calling snippet).
+3. **Register** in `src/xrGame/script_game_object_script3.cpp` with
+   `.def("lua_name", &CScriptGameObject::CppName)`.
+
+Reference already in tree: `get_addon_flags` (script_game_object.h + ..._inventory_owner.cpp
++ ..._script3.cpp). Copy that exact style. If the engine capability truly doesn't exist,
+emit `Msg("! [DA_PORT_STUB] ...")` and return a safe default — but NEVER stub a
+net/save/load packet function (rule 2).
+
+### C / D — as they surface (lower priority)
+
+- **C2** (`dx11HWCaps.cpp` GPU-count default = 1 on GCC) — verify when renderer is exercised.
+- **D1** `MAX_BLENDED 16->32` — already applied (KinematicAnimatedDefs.h:6). Verify no other
+  fixed-16 array assumes the literal.
+- **C1** stack-overflow probe, **C3** Ansel, **C4** crash-report richness — polish, last.
+
+### Cleanup before any "release" build
+
+All `[DA_PORT]` trace `Msg(...)+FlushLog()` lines (in ScriptExporter.cpp, script_engine.cpp,
+ai_space.cpp, r2.cpp, Device_create.cpp, x_ray.cpp, xrGame.cpp) are debug scaffolding —
+strip them once boot is stable. The behavioral fixes (smart_cast if-constexpr, MAX_BLENDED,
+GCC stubs, the binding fixes) STAY.
+
+---
+
 ## DIVISION OF LABOR (read this first)
 
 GLM **cannot** drive the boot-test loop alone — that requires launching the game and

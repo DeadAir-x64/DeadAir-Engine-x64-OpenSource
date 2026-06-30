@@ -134,6 +134,21 @@ void CLevel::IR_OnKeyboardPress(int key)
         g_actor->callback(GameObject::eKeyPress)(key);
     }
 
+    // [DA_PORT] ESC first closes any open UI dialog/inventory/PDA/talk,
+    // then opens the main menu when no UI is open.
+    if (key == SDL_SCANCODE_ESCAPE)
+    {
+        if (b_ui_exist && CurrentGameUI()->TopInputReceiver() && !Device.Paused())
+        {
+            if (CurrentGameUI()->IR_UIOnKeyboardPress(key))
+                return;
+            CurrentGameUI()->TopInputReceiver()->HideDialog();
+            return;
+        }
+        Console->Execute("main_menu");
+        return;
+    }
+
     if (_curr == kPAUSE)
     {
         if (Device.editor_mode())

@@ -48,6 +48,7 @@ CALifeSwitchManager::~CALifeSwitchManager() {}
 void CALifeSwitchManager::add_online(CSE_ALifeDynamicObject* object, bool update_registries)
 {
     START_PROFILE("ALife/switch/add_online")
+    Msg("! [DA_PORT] add_online: object=%p '%s' ID=%u", object, object->name_replace(), object->ID); FlushLog();
     VERIFY((ai().game_graph().vertex(object->m_tGraphID)->level_id() == graph().level().level_id()));
 
     object->m_bOnline = true;

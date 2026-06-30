@@ -246,6 +246,46 @@ float ps_r3_dyn_wet_surf_near = 5.f; // 10.0f
 float ps_r3_dyn_wet_surf_far = 20.f; // 30.0f
 int ps_r3_dyn_wet_surf_sm_res = 256; // 256
 
+// [DA_PORT] Dead Air compatibility stubs (x32 mod commands)
+u32 ps_r2_shadow_map_size = 2048;
+const xr_token qshadow_map_size_token[] = {
+    {"512", 512}, {"1024", 1024}, {"1536", 1536}, {"2048", 2048}, {"3072", 3072}, {"4096", 4096}, {nullptr, 0}};
+float ps_r2_sun_shafts_value = 0.5f;
+float ps_r2_aberration_val = 0.f;
+float ps_r2_dof_diff_far = 0.f;
+float ps_r2_dof_diff_near = 0.f;
+float ps_r2_dof_pickable = 0.f;
+float ps_r2_dof_time = 0.2f;
+float ps_r2_fxaa = 0.f;
+float ps_r2_lensdirt = 0.f;
+float ps_r2_lensdirt_val = 0.5f;
+float ps_r2_lenswater = 0.f;
+float ps_r2_lenswater_val = 0.5f;
+float ps_r2_lumasharpen = 0.f;
+float ps_r2_reflections = 0.f;
+float ps_r2_sss_blend = 0.3f;
+float ps_r2_sss_enable = 0.f;
+float ps_r2_sss_intensity = 0.5f;
+float ps_r2_sss_phase1 = 0.1f;
+float ps_r2_sss_phase2 = 0.1f;
+float ps_r2_sss_radius = 0.05f;
+float ps_r2_technicolor = 0.f;
+float ps_r2_tmp_w = 0.f;
+float ps_r2_tmp_x = 0.f;
+float ps_r2_tmp_y = 0.f;
+float ps_r2_tmp_z = 0.f;
+float ps_r2_vibrance_val = 0.f;
+float ps_r2_vignette = 0.f;
+float ps_r2_zoom_dof = 0.f;
+float ps_r1_dynamic_lights = 1.f;
+float ps_r2_actor_body = 0.f;
+float ps_r_color_add_r = 0.f;
+float ps_r_color_add_g = 0.f;
+float ps_r_color_add_b = 0.f;
+float ps_r_color_base_r = 1.f;
+float ps_r_color_base_g = 1.f;
+float ps_r_color_base_b = 1.f;
+
 u32 ps_steep_parallax = 0;
 int ps_r__detail_radius = 49;
 
@@ -970,5 +1010,43 @@ void xrRender_initconsole()
 #if RENDER == R_R4
     CMD4(CCC_Integer, "r2_mt_render",       &ps_r2_mt_render,    0, 1);
 #endif
+
+    // [DA_PORT] Dead Air compatibility stub commands
+    CMD3(CCC_Token, "r2_shadow_map_size",   &ps_r2_shadow_map_size, qshadow_map_size_token);
+    CMD4(CCC_Float, "r2_sun_shafts_value",  &ps_r2_sun_shafts_value, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_aberration_val",    &ps_r2_aberration_val, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_dof_diff_far",      &ps_r2_dof_diff_far, 0.f, 100.f);
+    CMD4(CCC_Float, "r2_dof_diff_near",     &ps_r2_dof_diff_near, 0.f, 100.f);
+    CMD4(CCC_Float, "r2_dof_pickable",      &ps_r2_dof_pickable, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_dof_time",          &ps_r2_dof_time, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_fxaa",              &ps_r2_fxaa, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_lensdirt",          &ps_r2_lensdirt, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_lensdirt_val",      &ps_r2_lensdirt_val, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_lenswater",         &ps_r2_lenswater, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_lenswater_val",     &ps_r2_lenswater_val, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_lumasharpen",       &ps_r2_lumasharpen, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_reflections",       &ps_r2_reflections, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_sss_blend",         &ps_r2_sss_blend, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_sss_enable",        &ps_r2_sss_enable, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_sss_intensity",      &ps_r2_sss_intensity, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_sss_phase1",        &ps_r2_sss_phase1, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_sss_phase2",        &ps_r2_sss_phase2, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_sss_radius",         &ps_r2_sss_radius, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_technicolor",        &ps_r2_technicolor, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_tmp_w",              &ps_r2_tmp_w, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_tmp_x",              &ps_r2_tmp_x, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_tmp_y",              &ps_r2_tmp_y, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_tmp_z",              &ps_r2_tmp_z, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_vignette",           &ps_r2_vignette, 0.f, 1.f);
+    CMD4(CCC_Float, "r__zoom_dof",           &ps_r2_zoom_dof, 0.f, 1.f);
+    CMD4(CCC_Float, "r1_dynamic_lights",    &ps_r1_dynamic_lights, 0.f, 2.f);
+    CMD4(CCC_Float, "r__actor_body",         &ps_r2_actor_body, 0.f, 1.f);
+    CMD4(CCC_Float, "r__color_add_r",       &ps_r_color_add_r, -1.f, 1.f);
+    CMD4(CCC_Float, "r__color_add_g",       &ps_r_color_add_g, -1.f, 1.f);
+    CMD4(CCC_Float, "r__color_add_b",       &ps_r_color_add_b, -1.f, 1.f);
+    CMD4(CCC_Float, "r__color_base_r",      &ps_r_color_base_r, 0.f, 2.f);
+    CMD4(CCC_Float, "r__color_base_g",      &ps_r_color_base_g, 0.f, 2.f);
+    CMD4(CCC_Float, "r__color_base_b",      &ps_r_color_base_b, 0.f, 2.f);
 }
 } // namespace xray::render::RENDER_NAMESPACE

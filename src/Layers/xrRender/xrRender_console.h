@@ -226,4 +226,42 @@ enum
 
 extern void xrRender_initconsole();
 extern BOOL xrRender_test_hw();
+
+// [DA_PORT] Dead Air compatibility stub variables (x32 mod commands absent in OpenXRay)
+extern ECORE_API u32 ps_r2_shadow_map_size;
+extern ECORE_API float ps_r2_sun_shafts_value;
+extern ECORE_API float ps_r2_aberration_val;
+extern ECORE_API float ps_r2_dof_diff_far;
+extern ECORE_API float ps_r2_dof_diff_near;
+extern ECORE_API float ps_r2_dof_pickable;
+extern ECORE_API float ps_r2_dof_time;
+extern ECORE_API float ps_r2_fxaa;
+extern ECORE_API float ps_r2_lensdirt;
+extern ECORE_API float ps_r2_lensdirt_val;
+extern ECORE_API float ps_r2_lenswater;
+extern ECORE_API float ps_r2_lenswater_val;
+extern ECORE_API float ps_r2_lumasharpen;
+extern ECORE_API float ps_r2_reflections;
+extern ECORE_API float ps_r2_sss_blend;
+extern ECORE_API float ps_r2_sss_enable;
+extern ECORE_API float ps_r2_sss_intensity;
+extern ECORE_API float ps_r2_sss_phase1;
+extern ECORE_API float ps_r2_sss_phase2;
+extern ECORE_API float ps_r2_sss_radius;
+extern ECORE_API float ps_r2_technicolor;
+extern ECORE_API float ps_r2_tmp_w;
+extern ECORE_API float ps_r2_tmp_x;
+extern ECORE_API float ps_r2_tmp_y;
+extern ECORE_API float ps_r2_tmp_z;
+extern ECORE_API float ps_r2_vibrance_val;
+extern ECORE_API float ps_r2_vignette;
+extern ECORE_API float ps_r2_zoom_dof;
+extern ECORE_API float ps_r1_dynamic_lights;
+extern ECORE_API float ps_r2_actor_body;
+extern ECORE_API float ps_r_color_add_r;
+extern ECORE_API float ps_r_color_add_g;
+extern ECORE_API float ps_r_color_add_b;
+extern ECORE_API float ps_r_color_base_r;
+extern ECORE_API float ps_r_color_base_g;
+extern ECORE_API float ps_r_color_base_b;
 } // namespace xray::render::RENDER_NAMESPACE

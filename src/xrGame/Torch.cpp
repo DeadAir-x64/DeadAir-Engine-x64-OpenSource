@@ -271,9 +271,11 @@ bool CTorch::net_Spawn(CSE_Abstract* DC)
     glow_render->set_color(clr);
     glow_render->set_radius(pUserData->r_float(TORCH_DEFINITION, "glow_radius"));
 
-    //включить/выключить фонарик
-    Switch(torch->m_active);
-    VERIFY(!torch->m_active || (torch->ID_Parent != 0xffff));
+    // [DA_PORT] Always start the actor's torch in the OFF state.
+    // Dead Air expects the player to explicitly toggle it with the torch key (L).
+    const bool start_on = torch->m_active && !smart_cast<CActor*>(H_Parent());
+    Switch(start_on);
+    VERIFY(!start_on || (torch->ID_Parent != 0xffff));
 
     if (torch->ID_Parent == 0)
         SwitchNightVision(torch->m_nightvision_active, false);
@@ -465,7 +467,10 @@ void CTorch::net_Import(NET_Packet& P)
     bool new_m_switched_on = !!(F & eTorchActive);
     bool new_m_bNightVisionOn = !!(F & eNightVisionActive);
 
-    if (new_m_switched_on != m_switched_on)
+    // [DA_PORT] Actor's torch must stay OFF until the player presses the torch key.
+    // Server packets may carry m_active=true (e.g. spawned or saved that way),
+    // so ignore the eTorchActive flag for the player actor.
+    if (new_m_switched_on != m_switched_on && !smart_cast<CActor*>(H_Parent()))
         Switch(new_m_switched_on);
     if (new_m_bNightVisionOn != m_bNightVisionOn)
     {

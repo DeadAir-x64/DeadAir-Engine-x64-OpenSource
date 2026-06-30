@@ -2190,6 +2190,10 @@ void CCC_RegisterCommands()
     CMD3(CCC_Mask, "hud_info", &psHUD_Flags, HUD_INFO);
     CMD3(CCC_Mask, "hud_draw", &psHUD_Flags, HUD_DRAW);
 
+    // [DA_PORT] Dead Air compatibility aliases
+    CMD3(CCC_Mask, "hud_draw_info", &psHUD_Flags, HUD_INFO);
+    CMD3(CCC_Mask, "hud_draw_map", &psHUD_Flags, HUD_DRAW);
+
     // hud
     psHUD_Flags.set(HUD_CROSSHAIR, true);
     psHUD_Flags.set(HUD_WEAPON, true);

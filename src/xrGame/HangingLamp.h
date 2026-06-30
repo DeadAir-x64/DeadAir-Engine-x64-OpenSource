@@ -42,6 +42,7 @@ public:
     virtual ~CHangingLamp();
     void TurnOn();
     void TurnOff();
+    bool IsOn() { return !!m_bState; } // Dead Air: hanging_lamp:is_on()
     virtual void Load(LPCSTR section);
     virtual bool net_Spawn(CSE_Abstract* DC);
     virtual void net_Destroy();

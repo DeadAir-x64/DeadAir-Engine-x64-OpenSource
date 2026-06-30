@@ -23,6 +23,7 @@ void CGameObject::script_register(lua_State* luaState)
 {
     using namespace luabind;
 
+    Msg("! [DA_PORT] CGameObject::script_register: before module"); FlushLog();
     module(luaState)
     [
         class_<CBlend>("CBlend"),
@@ -62,4 +63,5 @@ void CGameObject::script_register(lua_State* luaState)
             .def("getVisible", &CGameObject::getVisible)
             .def("getEnabled", &CGameObject::getEnabled)
     ];
+    Msg("! [DA_PORT] CGameObject::script_register: after module"); FlushLog();
 }

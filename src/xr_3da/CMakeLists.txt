@@ -38,6 +38,17 @@ set_target_properties(xr_3da PROPERTIES
     PREFIX ""
 )
 
+# [DA_PORT] Disable ASLR for the game binary. Non-GC64 LuaJIT on Win64 needs its
+# allocations in the low 2GB; high-entropy ASLR maps the image >4GB and randomizes
+# layout, which intermittently corrupts luabind/LuaJIT class registration (crash in
+# CGameObject::script_register). A fixed low-address load makes the export stable.
+if (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_link_options(xr_3da PRIVATE
+        "-Wl,--disable-dynamicbase"
+        "-Wl,--disable-high-entropy-va"
+    )
+endif()
+
 install(TARGETS xr_3da RUNTIME
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )

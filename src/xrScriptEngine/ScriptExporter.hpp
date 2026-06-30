@@ -4,6 +4,11 @@
 
 #include <array>
 
+#ifndef XRAY_STRINGIFY
+#define XRAY_STRINGIFY_IMPL(x) #x
+#define XRAY_STRINGIFY(x) XRAY_STRINGIFY_IMPL(x)
+#endif
+
 namespace xray::script_export
 {
 class XRSCRIPTENGINE_API node;
@@ -20,7 +25,7 @@ class XRSCRIPTENGINE_API node
     node& operator=(node&&) = delete;
 
 public:
-    node(export_func export_func, dependencies_getter deps_getter);
+    node(export_func export_func, dependencies_getter deps_getter, const char* name = "<unknown>");
     ~node();
 
     static void export_all(lua_State* luaState);
@@ -33,6 +38,7 @@ private:
     node* m_next_node{};
     export_func m_export_func{};
     dependencies_getter m_deps_getter{};
+    const char* m_name{};
 };
 
 namespace detail
@@ -64,5 +70,6 @@ auto get_dependencies()
     inline static const xray::script_export::node m_script_export_node \
     {                                                                  \
         &script_register,                                              \
-        xray::script_export::detail::get_dependencies<__VA_ARGS__>     \
+        xray::script_export::detail::get_dependencies<__VA_ARGS__>,    \
+        __FILE__ ":" XRAY_STRINGIFY(__LINE__)                          \
     }

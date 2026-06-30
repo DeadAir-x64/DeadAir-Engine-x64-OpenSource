@@ -785,8 +785,11 @@ void CScriptEngine::init(export_func exporter, bool loadGlobalNamespace)
 {
     ZoneScoped;
 
+    Msg("! [DA_PORT] ScriptEngine::init: before reinit"); FlushLog();
     reinit();
+    Msg("! [DA_PORT] ScriptEngine::init: after reinit, before luabind::open"); FlushLog();
     luabind::open(lua());
+    Msg("! [DA_PORT] ScriptEngine::init: after luabind::open"); FlushLog();
 
     // Workarounds to preserve backwards compatibility with game scripts
     {
@@ -802,9 +805,12 @@ void CScriptEngine::init(export_func exporter, bool loadGlobalNamespace)
     }
 
     luabind::bind_class_info(lua());
+    Msg("! [DA_PORT] ScriptEngine::init: before setup_callbacks"); FlushLog();
     setup_callbacks();
+    Msg("! [DA_PORT] ScriptEngine::init: after setup_callbacks, before exporter"); FlushLog();
     if (exporter)
         exporter(lua());
+    Msg("! [DA_PORT] ScriptEngine::init: after exporter"); FlushLog();
     if (std::strstr(Core.Params, "-dump_bindings") && !bindingsDumped)
     {
         bindingsDumped = true;
@@ -822,6 +828,7 @@ void CScriptEngine::init(export_func exporter, bool loadGlobalNamespace)
         FS.w_close(writer);
     }
 
+    Msg("! [DA_PORT] ScriptEngine::init: before open_lib base"); FlushLog();
     luajit::open_lib(lua(), "", luaopen_base);
     luajit::open_lib(lua(), LUA_LOADLIBNAME, luaopen_package);
     luajit::open_lib(lua(), LUA_TABLIBNAME, luaopen_table);
@@ -838,6 +845,13 @@ void CScriptEngine::init(export_func exporter, bool loadGlobalNamespace)
     luaopen_xrluafix(lua());
 
     tracy::LuaRegister(lua());
+    Msg("! [DA_PORT] ScriptEngine::init: after open_lib, before randomize"); FlushLog();
+
+    // [DA_PORT] Dead Air compat: register globals that DA scripts expect early
+    lua_register(lua(), "is_enough_address_space_available", [](lua_State* L) -> int {
+        lua_pushboolean(L, 1);
+        return 1;
+    });
 
     // Game scripts doesn't call randomize but use random
     // So, we should randomize in the engine.
@@ -892,11 +906,14 @@ void CScriptEngine::init(export_func exporter, bool loadGlobalNamespace)
     {
         bool save = m_reload_modules;
         m_reload_modules = true;
+        Msg("! [DA_PORT] ScriptEngine::init: before process_file_if_exists(_G)"); FlushLog();
         process_file_if_exists(GlobalNamespace, false);
+        Msg("! [DA_PORT] ScriptEngine::init: after process_file_if_exists(_G)"); FlushLog();
         m_reload_modules = save;
     }
     m_stack_level = lua_gettop(lua());
     setvbuf(stderr, g_ca_stdout, _IOFBF, sizeof(g_ca_stdout));
+    Msg("! [DA_PORT] ScriptEngine::init: DONE"); FlushLog();
 }
 
 void CScriptEngine::remove_script_process(const ScriptProcessor& process_id)

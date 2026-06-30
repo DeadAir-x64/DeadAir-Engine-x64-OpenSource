@@ -375,8 +375,11 @@ CApplication::~CApplication()
 
 int CApplication::Run()
 {
+    Msg("! [DA_PORT] Run: before HideSplash"); FlushLog();
     HideSplash();
+    Msg("! [DA_PORT] Run: before Device.Run"); FlushLog();
     Device.Run();
+    Msg("! [DA_PORT] Run: after Device.Run, entering loop"); FlushLog();
 
     while (!SDL_QuitRequested()) // SDL_PumpEvents is here
     {
@@ -440,6 +443,12 @@ int CApplication::Run()
         }
 
         Device.ProcessFrame();
+        static size_t da_port_frames = 0;
+        if (da_port_frames < 5 || (da_port_frames % 100) == 0)
+        {
+            Msg("! [DA_PORT] Run: frame %zu", da_port_frames); FlushLog();
+        }
+        ++da_port_frames;
 
         UpdateDiscordStatus();
         FrameMarkEnd(FRAME_MARK_APPLICATION_RUN);

@@ -18,6 +18,10 @@ void CUIGameCustom::script_register(lua_State* luaState)
         class_<CUIGameCustom, CDialogHolder>("CUIGameCustom")
             .def("AddDialogToRender", &CUIGameCustom::AddDialogToRender)
             .def("RemoveDialogToRender", &CUIGameCustom::RemoveDialogToRender)
+            .def("AddCustomStatic", +[](CUIGameCustom* self, pcstr id) // Dead Air: 1-arg variant (scripts call hud:AddCustomStatic(id))
+            {
+                return self->AddCustomStatic(id, true);
+            })
             .def("AddCustomStatic", +[](CUIGameCustom* self, pcstr id, bool singleInstance)
             {
                 return self->AddCustomStatic(id, singleInstance);

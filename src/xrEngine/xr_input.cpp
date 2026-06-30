@@ -519,7 +519,12 @@ void CInput::ControllerUpdate()
 
 bool KbdKeyToButtonName(const int dik, xr_string& result)
 {
-    static std::locale locale("");
+    // [DA_PORT] std::locale("") throws std::runtime_error under MinGW GCC on Windows
+    // when the system locale name is not recognized by the CRT. Use classic ("C") as fallback.
+    static const std::locale locale = []() -> std::locale {
+        try { return std::locale(""); }
+        catch (const std::exception&) { return std::locale::classic(); }
+    }();
 
     if (dik >= 0)
     {

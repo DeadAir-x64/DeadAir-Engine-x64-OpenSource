@@ -418,6 +418,17 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     // Minmax SM
     appendShaderOption(o.minmax_sm, "USE_MINMAX_SM", "1");
 
+    // [DA_PORT] Dead Air HLSL shaders expect these defines to be present
+    // during compilation. They are normally injected by the mod's shader
+    // pipeline; OpenXRay vanilla does not set them, so we provide safe
+    // defaults here so the deferred geometry shaders compile on R4.
+    options.add("H_MODELS", "0");
+    options.add("H_BUSHES", "0");
+    options.add("H_GRASS", "0");
+    options.add("H_TERR", "0");
+    options.add("L_RANGE", "1.0");
+    options.add("PIXEL_SIZE", "1.0");
+
     // Be carefull!!!!! this should be at the end to correctly generate
     // compiled shader name;
     // add a #define for DX10_1 MSAA support

@@ -28,6 +28,8 @@
 #include "Inventory.h"
 #include "InfoPortion.h"
 #include "ai/monsters/basemonster/base_monster.h"
+#include "Artefact.h"
+#include "inventory_item.h"
 #include "WeaponMagazined.h"
 #include "ai/stalker/ai_stalker.h"
 #include "agent_manager.h"
@@ -2243,11 +2245,67 @@ void CScriptGameObject::SetCharacterIcon(pcstr iconName)
 }
 //-Alundaio
 
-// Dead Air compatibility stub: get_addon_flags
-int CScriptGameObject::GetAddonFlags()
+// Dead Air compat stub: set_radiation_detector
+void CScriptGameObject::SetRadiationDetector(bool b)
 {
-    CWeapon* weapon = smart_cast<CWeapon*>(&object());
-    if (!weapon)
-        return 0;
-    return (int)weapon->GetAddonsState();
+    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
 }
+
+// Dead Air compat stub: enable_torch2
+void CScriptGameObject::EnableTorch2(bool b)
+{
+    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+}
+
+// Dead Air compat stub: set_actor_zoom_inertion
+void CScriptGameObject::SetActorZoomInertion(float f)
+{
+    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+}
+
+// Dead Air compat stub: set_actor_recoil_coeff
+void CScriptGameObject::SetActorRecoilCoeff(float f)
+{
+    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+}
+
+// Dead Air compat stub: get_radiation_detector
+bool CScriptGameObject::GetRadiationDetector()
+{
+    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+    return false;
+}
+
+// Dead Air compat stub: set_profile_name
+void CScriptGameObject::SetProfileName(LPCSTR name)
+{
+    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+}
+
+// Dead Air: artefact immunity/weight — real implementations
+float CScriptGameObject::GetArtefactBurnImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeBurn); }
+void CScriptGameObject::SetArtefactBurnImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeBurn, v); }
+float CScriptGameObject::GetArtefactShockImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeShock); }
+void CScriptGameObject::SetArtefactShockImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeShock, v); }
+float CScriptGameObject::GetArtefactChemicalBurnImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeChemicalBurn); }
+void CScriptGameObject::SetArtefactChemicalBurnImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeChemicalBurn, v); }
+float CScriptGameObject::GetArtefactRadiationImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeRadiation); }
+void CScriptGameObject::SetArtefactRadiationImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeRadiation, v); }
+float CScriptGameObject::GetArtefactTelepaticImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeTelepatic); }
+void CScriptGameObject::SetArtefactTelepaticImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeTelepatic, v); }
+float CScriptGameObject::GetArtefactWoundImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeWound); }
+void CScriptGameObject::SetArtefactWoundImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeWound, v); }
+float CScriptGameObject::GetArtefactFireWoundImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeFireWound); }
+void CScriptGameObject::SetArtefactFireWoundImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeFireWound, v); }
+float CScriptGameObject::GetArtefactStrikeImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeStrike); }
+void CScriptGameObject::SetArtefactStrikeImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeStrike, v); }
+float CScriptGameObject::GetArtefactExplosionImmunity() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->GetArtefactImmunity(ALife::eHitTypeExplosion); }
+void CScriptGameObject::SetArtefactExplosionImmunity(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetArtefactImmunity(ALife::eHitTypeExplosion, v); }
+float CScriptGameObject::GetArtefactWeight() { CInventoryItem* i = smart_cast<CInventoryItem*>(&object()); if (!i) return 0.0f; return i->Weight(); }
+void CScriptGameObject::SetArtefactWeight(float v) { CInventoryItem* i = smart_cast<CInventoryItem*>(&object()); if (!i) return; i->SetWeight(v); }
+float CScriptGameObject::GetArtefactAdditionalWeight() { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return 0.0f; return a->AdditionalInventoryWeight(); }
+void CScriptGameObject::SetArtefactAdditionalWeight(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetAdditionalInventoryWeight(v); }
+
+// Dead Air: weapon break/condition type (items_condition.script)
+u8 CScriptGameObject::GetWeaponConditionType() { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return 0; return w->m_weapon_condition_type; }
+void CScriptGameObject::SetWeaponConditionType(u8 t) { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return; w->m_weapon_condition_type = t; }

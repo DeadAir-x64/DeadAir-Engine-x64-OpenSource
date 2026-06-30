@@ -243,7 +243,10 @@ void CEnvAmbient::load(
             m_effects[k] = create_effect(effects_config, _GetItem(effs, k, tmp));
     }
 
-    R_ASSERT(!m_sound_channels.empty() || !m_effects.empty());
+    // Dead Air defines env_ambient sections with neither sound channels nor effects;
+    // vanilla OXR hard-asserts here. Tolerate it (empty ambient = no sound/effects).
+    if (m_sound_channels.empty() && m_effects.empty())
+        Msg("! [DA_PORT] CEnvAmbient '%s': no sound channels and no effects, skipping", sect.c_str());
 }
 
 //-----------------------------------------------------------------------------

@@ -64,7 +64,12 @@ ICF void load_function(T& func, cpcstr name)
 
 ICF void init_dbghelp()
 {
+    // [DA_PORT] was GetModuleHandleA (only finds an already-loaded module); the MinGW build
+    // never loads dbghelp.dll, so stack traces were always empty. LoadLibraryA loads it from
+    // disk (exe dir / System32) so crash handlers actually produce a call stack.
     s_dbghelp = GetModuleHandleA("dbghelp.dll");
+    if (!s_dbghelp)
+        s_dbghelp = LoadLibraryA("dbghelp.dll");
     if (!s_dbghelp)
     {
         Log("! [StackTraceBuilder] Failed to load dbghelp.dll");

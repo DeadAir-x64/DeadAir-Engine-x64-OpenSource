@@ -92,6 +92,10 @@ public:
     float m_fBleedingRestoreSpeed;
     CHitImmunity m_ArtefactHitImmunities;
 
+    float GetArtefactImmunity(ALife::EHitType t) const { return m_ArtefactHitImmunities.GetHitImmunity(t); }
+    void  SetArtefactImmunity(ALife::EHitType t, float v) { m_ArtefactHitImmunities.SetHitImmunity(t, v); }
+    void  SetAdditionalInventoryWeight(float w) { m_additional_weight = w; }
+
 public:
     enum EAFHudStates
     {

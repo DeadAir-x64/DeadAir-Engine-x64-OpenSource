@@ -255,7 +255,58 @@ luabind::class_<CScriptGameObject>& script_register_game_object2(luabind::class_
         .def("weapon_grenadelauncher_status", &CScriptGameObject::Weapon_GrenadeLauncher_Status)
         .def("weapon_scope_status", &CScriptGameObject::Weapon_Scope_Status)
         .def("weapon_silencer_status", &CScriptGameObject::Weapon_Silencer_Status)
-        .def("get_addon_flags", &CScriptGameObject::GetAddonFlags) // Dead Air compat
+        .def("set_radiation_detector", &CScriptGameObject::SetRadiationDetector) // Dead Air compat
+        .def("get_radiation_detector", &CScriptGameObject::GetRadiationDetector) // Dead Air compat
+        .def("enable_torch2", &CScriptGameObject::EnableTorch2) // Dead Air compat
+        // Dead Air compat: flashlight (torch/torch2) light tuning — no-op stubs (cosmetic;
+        // DA-specific second-torch light params, no OpenXRay/Anomaly equivalent. Real impl TODO.
+        .def("torch_set_range",     +[](CScriptGameObject*, float) {})
+        .def("torch_set_radius",    +[](CScriptGameObject*, float) {})
+        .def("torch_set_inertion",  +[](CScriptGameObject*, float) {})
+        .def("torch_set_color_r",   +[](CScriptGameObject*, float) {})
+        .def("torch_set_color_g",   +[](CScriptGameObject*, float) {})
+        .def("torch_set_color_b",   +[](CScriptGameObject*, float) {})
+        .def("torch_set_color_a",   +[](CScriptGameObject*, float) {})
+        .def("torch_set_offset_y",  +[](CScriptGameObject*, float) {})
+        .def("torch_set_offset_z",  +[](CScriptGameObject*, float) {})
+        .def("torch_set_animation", +[](CScriptGameObject*, LPCSTR) {})
+        .def("torch_set_texture",   +[](CScriptGameObject*, LPCSTR) {})
+        .def("torch_switch_spot",   +[](CScriptGameObject*) {})
+        .def("torch2_set_color_r",  +[](CScriptGameObject*, float) {})
+        .def("torch2_set_color_g",  +[](CScriptGameObject*, float) {})
+        .def("torch2_set_color_b",  +[](CScriptGameObject*, float) {})
+        .def("torch2_set_offset_x", +[](CScriptGameObject*, float) {})
+        .def("torch2_set_offset_y", +[](CScriptGameObject*, float) {})
+        .def("torch2_set_range",    +[](CScriptGameObject*, float) {})
+        .def("torch2_set_radius",   +[](CScriptGameObject*, float) {})
+        .def("get_weapon_condition_type", &CScriptGameObject::GetWeaponConditionType) // Dead Air
+        .def("set_weapon_condition_type", &CScriptGameObject::SetWeaponConditionType) // Dead Air
+        .def("set_actor_zoom_inertion", &CScriptGameObject::SetActorZoomInertion) // Dead Air compat
+        .def("set_actor_recoil_coeff", &CScriptGameObject::SetActorRecoilCoeff) // Dead Air compat
+        .def("set_profile_name", &CScriptGameObject::SetProfileName) // Dead Air compat
+
+        .def("get_artefact_burn_immunity", &CScriptGameObject::GetArtefactBurnImmunity) // Dead Air
+        .def("set_artefact_burn_immunity", &CScriptGameObject::SetArtefactBurnImmunity)
+        .def("get_artefact_shock_immunity", &CScriptGameObject::GetArtefactShockImmunity)
+        .def("set_artefact_shock_immunity", &CScriptGameObject::SetArtefactShockImmunity)
+        .def("get_artefact_chemical_burn_immunity", &CScriptGameObject::GetArtefactChemicalBurnImmunity)
+        .def("set_artefact_chemical_burn_immunity", &CScriptGameObject::SetArtefactChemicalBurnImmunity)
+        .def("get_artefact_radiation_immunity", &CScriptGameObject::GetArtefactRadiationImmunity)
+        .def("set_artefact_radiation_immunity", &CScriptGameObject::SetArtefactRadiationImmunity)
+        .def("get_artefact_telepatic_immunity", &CScriptGameObject::GetArtefactTelepaticImmunity)
+        .def("set_artefact_telepatic_immunity", &CScriptGameObject::SetArtefactTelepaticImmunity)
+        .def("get_artefact_wound_immunity", &CScriptGameObject::GetArtefactWoundImmunity)
+        .def("set_artefact_wound_immunity", &CScriptGameObject::SetArtefactWoundImmunity)
+        .def("get_artefact_fire_wound_immunity", &CScriptGameObject::GetArtefactFireWoundImmunity)
+        .def("set_artefact_fire_wound_immunity", &CScriptGameObject::SetArtefactFireWoundImmunity)
+        .def("get_artefact_strike_immunity", &CScriptGameObject::GetArtefactStrikeImmunity)
+        .def("set_artefact_strike_immunity", &CScriptGameObject::SetArtefactStrikeImmunity)
+        .def("get_artefact_explosion_immunity", &CScriptGameObject::GetArtefactExplosionImmunity)
+        .def("set_artefact_explosion_immunity", &CScriptGameObject::SetArtefactExplosionImmunity)
+        .def("get_artefact_weight", &CScriptGameObject::GetArtefactWeight)
+        .def("set_artefact_weight", &CScriptGameObject::SetArtefactWeight)
+        .def("set_artefact_additional_weight", &CScriptGameObject::SetArtefactAdditionalWeight)
+        .def("get_artefact_additional_weight", &CScriptGameObject::GetArtefactAdditionalWeight)
 
         .def("allow_sprint", &CScriptGameObject::AllowSprint)
 

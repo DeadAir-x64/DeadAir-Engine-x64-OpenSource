@@ -241,6 +241,11 @@ public:
     void set_ammo_elapsed(u16 count);
     u16 get_ammo_magsize();
     void clone_addons(CSE_ALifeItemWeapon* parent);
+    // Dead Air: server-side addon flags access for spawn scripts.
+    // Return a pointer (not Flags8&): luabind's default copy-policy on a non-const
+    // lvalue-reference return corrupts the global class registry under GCC, and would
+    // also expose a copy so flags:set() wouldn't persist. Pointer = real object, mutable.
+    Flags8* get_addon_flags() { return &m_addon_flags; }
 
     virtual BOOL Net_Relevant();
 

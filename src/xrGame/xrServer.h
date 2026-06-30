@@ -7,9 +7,9 @@
 #define AFX_XRSERVER_H__65728A25_16FC_4A7B_8CCE_D798CA5EC64E__INCLUDED_
 #pragma once
 
-#if defined(XR_PLATFORM_WINDOWS)
+#if defined(XR_PLATFORM_WINDOWS) && !defined(__MINGW32__)
 #include "xrNetServer/NET_Server.h"
-#else // XXX: multiplayer on Linux
+#else // XXX: multiplayer on Linux / MinGW (no DirectPlay)
 #include "xrNetServer/empty/NET_Server.h"
 #endif
 #include "game_sv_base.h"

@@ -10,8 +10,8 @@ static size_t nodes_count = 0;
 
 node* node::first_node = nullptr;
 
-node::node(export_func export_func, dependencies_getter deps_getter)
-    : m_next_node(first_node), m_export_func(export_func), m_deps_getter(deps_getter)
+node::node(export_func export_func, dependencies_getter deps_getter, const char* name)
+    : m_next_node(first_node), m_export_func(export_func), m_deps_getter(deps_getter), m_name(name)
 {
     first_node = this;
     ++nodes_count;
@@ -40,14 +40,24 @@ void node::sort()
     xr_unordered_map<const node*, state> map;
     map.reserve(nodes_count);
 
+    Msg("! [DA_PORT] sort: nodes_count=%zu, building map", nodes_count); FlushLog();
+
+    size_t build_count = 0;
     for (auto n = first_node; n; n = n->m_next_node)
+    {
+        ++build_count;
+        if (build_count > 500) { Msg("! [DA_PORT] sort: LOOP DETECTED in node list at %zu", build_count); FlushLog(); break; }
         map[n] = state::not_visited;
+    }
+    Msg("! [DA_PORT] sort: map built, size=%zu build_count=%zu", map.size(), build_count); FlushLog();
 
     xr_vector<node*> sorted;
     sorted.reserve(map.size());
 
+    size_t dfs_calls = 0;
     std::function<void(const node*)> depth_first_search = [&](const node* n)
     {
+        ++dfs_calls;
         const auto it = map.find(n);
         if (it != map.end())
         {
@@ -57,8 +67,10 @@ void node::sort()
         }
 
         map[n] = state::visiting;
+        Msg("! [DA_PORT] sort: dfs=%zu visiting n=%p, before deps_getter", dfs_calls, (void*)n); FlushLog();
 
         const auto& [deps, deps_count] = n->m_deps_getter();
+        Msg("! [DA_PORT] sort: dfs=%zu n=%p deps_count=%zu", dfs_calls, (void*)n, deps_count); FlushLog();
         for (size_t i = 0; i < deps_count; i++)
             depth_first_search(deps[i]);
 
@@ -66,8 +78,17 @@ void node::sort()
         sorted.push_back(const_cast<node*>(n));
     };
 
+    size_t outer = 0;
     for (auto& [n, _] : map)
+    {
+        ++outer;
+        if ((outer & 0x3F) == 0)
+        {
+            Msg("! [DA_PORT] sort: outer loop %zu/%zu", outer, map.size()); FlushLog();
+        }
         depth_first_search(n);
+    }
+    Msg("! [DA_PORT] sort: dfs done, total dfs_calls=%zu, sorted=%zu", dfs_calls, sorted.size()); FlushLog();
 
     node* prev = nullptr;
     for (auto it = sorted.rbegin(); it != sorted.rend(); ++it)
@@ -84,18 +105,30 @@ void node::sort()
 void node::export_all(lua_State* luaState)
 {
     if (!first_node)
+    {
+        Msg("! [DA_PORT] export_all: no nodes registered"); FlushLog();
         return;
+    }
 
     ZoneScoped;
 
     static bool sorted = false;
     if (!sorted)
     {
+        Msg("! [DA_PORT] export_all: before sort()"); FlushLog();
         sort();
+        Msg("! [DA_PORT] export_all: after sort(), starting exports"); FlushLog();
         sorted = true;
     }
 
+    size_t idx = 0;
     for (auto node = first_node; node; node = node->m_next_node)
+    {
+        Msg("! [DA_PORT] export_all: node[%zu] before export_func addr=%p name=%s", idx, (void*)node, node->m_name ? node->m_name : "?"); FlushLog();
         node->m_export_func(luaState);
+        Msg("! [DA_PORT] export_all: node[%zu] after export_func name=%s", idx, node->m_name ? node->m_name : "?"); FlushLog();
+        ++idx;
+    }
+    Msg("! [DA_PORT] export_all: DONE, exported %zu nodes", idx); FlushLog();
 }
 } // namespace xray::script_export

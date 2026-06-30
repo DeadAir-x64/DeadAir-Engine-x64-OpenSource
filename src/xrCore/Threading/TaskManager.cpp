@@ -316,12 +316,20 @@ void TaskManager::RunTask(Task& task)
 void TaskManager::Wait(const Task& task, bool updateSystemEvents /*= false*/) const
 {
     ZoneScoped;
+    Msg("! [DA_PORT] TaskManager::Wait: start, task.IsFinished=%d", task.IsFinished()); FlushLog();
+    size_t iter = 0;
     while (!task.IsFinished())
     {
+        if ((iter % 100) == 0)
+        {
+            Msg("! [DA_PORT] TaskManager::Wait: iter=%zu not finished yet", iter); FlushLog();
+        }
         ExecuteOneTask();
         if (s_tl_worker.id == 0 && (xrDebug::ProcessingFailure() || updateSystemEvents))
             SDL_PumpEvents(); // Necessary to prevent dead locks
+        ++iter;
     }
+    Msg("! [DA_PORT] TaskManager::Wait: DONE after %zu iters", iter); FlushLog();
 }
 
 bool TaskManager::ExecuteOneTask() const

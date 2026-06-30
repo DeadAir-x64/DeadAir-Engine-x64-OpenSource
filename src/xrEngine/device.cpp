@@ -230,15 +230,21 @@ void CRenderDevice::DoRender()
 
     ZoneScoped;
 
+    static size_t da_port_dr = 0;
+    bool trace = (da_port_dr < 5 || (da_port_dr % 100) == 0);
+    if (trace) { Msg("! [DA_PORT] DoRender[%zu]: start", da_port_dr); FlushLog(); }
+
     CStatTimer renderTotalReal;
     renderTotalReal.FrameStart();
     renderTotalReal.Begin();
     if (b_is_Active && RenderBegin())
     {
+        if (trace) { Msg("! [DA_PORT] DoRender[%zu]: after RenderBegin, before seqRender", da_port_dr); FlushLog(); }
         {
             ZoneScopedN("Render process");
             seqRender.Process(); // all rendering is done here
         }
+        if (trace) { Msg("! [DA_PORT] DoRender[%zu]: after seqRender", da_port_dr); FlushLog(); }
 
         CalcFrameStats();
         Statistic->Show();
@@ -247,41 +253,64 @@ void CRenderDevice::DoRender()
         m_imgui_render->Render(ImGui::GetDrawData());
         UpdateViewports();
 
+        if (trace) { Msg("! [DA_PORT] DoRender[%zu]: before RenderEnd", da_port_dr); FlushLog(); }
         RenderEnd(); // Present goes here
+        if (trace) { Msg("! [DA_PORT] DoRender[%zu]: after RenderEnd", da_port_dr); FlushLog(); }
     }
     else
     {
+        if (trace) { Msg("! [DA_PORT] DoRender[%zu]: inactive, UpdateViewports", da_port_dr); FlushLog(); }
         UpdateViewports();
     }
     renderTotalReal.End();
     renderTotalReal.FrameEnd();
     stats.RenderTotal.accum = renderTotalReal.accum;
+    ++da_port_dr;
 }
 
 void CRenderDevice::ProcessFrame()
 {
     ZoneScoped;
 
-    if (!BeforeFrame())
-        return;
+    static size_t da_port_pf = 0;
+    bool trace = (da_port_pf < 10 || (da_port_pf % 100) == 0);
+    if (trace) { Msg("! [DA_PORT] ProcessFrame[%zu]: before BeforeFrame", da_port_pf); FlushLog(); }
 
+    if (!BeforeFrame())
+    {
+        if (trace) { Msg("! [DA_PORT] ProcessFrame[%zu]: BeforeFrame returned false", da_port_pf); FlushLog(); }
+        ++da_port_pf;
+        return;
+    }
+
+    if (trace) { Msg("! [DA_PORT] ProcessFrame[%zu]: before FrameMove", da_port_pf); FlushLog(); }
     const u64 frameStartTime = TimerGlobal.GetElapsed_ms();
 
     FrameMove();
 
+    if (trace) { Msg("! [DA_PORT] ProcessFrame[%zu]: after FrameMove, before OnCameraUpdated", da_port_pf); FlushLog(); }
     OnCameraUpdated();
 
+    if (trace) { Msg("! [DA_PORT] ProcessFrame[%zu]: before processSeqParallel task", da_port_pf); FlushLog(); }
     const auto& processSeqParallel = TaskScheduler->AddTask([this]
     {
         ZoneScopedN("ProcessParallelSequence");
+        Msg("! [DA_PORT] ProcessParallel: start, seqParallel.size=%zu", seqParallel.size()); FlushLog();
         for (u32 pit = 0; pit < seqParallel.size(); pit++)
+        {
+            Msg("! [DA_PORT] ProcessParallel: seqParallel[%u]", pit); FlushLog();
             seqParallel[pit]();
+        }
         seqParallel.clear();
+        Msg("! [DA_PORT] ProcessParallel: before seqFrameMT.Process"); FlushLog();
         seqFrameMT.Process();
+        Msg("! [DA_PORT] ProcessParallel: DONE"); FlushLog();
     });
 
+    if (trace) { Msg("! [DA_PORT] ProcessFrame[%zu]: before DoRender", da_port_pf); FlushLog(); }
     DoRender();
 
+    if (trace) { Msg("! [DA_PORT] ProcessFrame[%zu]: after DoRender, before Wait", da_port_pf); FlushLog(); }
     TaskScheduler->Wait(processSeqParallel);
 
     const u64 frameEndTime = TimerGlobal.GetElapsed_ms();
@@ -300,6 +329,8 @@ void CRenderDevice::ProcessFrame()
 
     if (!b_is_Active)
         Sleep(1);
+
+    ++da_port_pf;
 }
 
 void CRenderDevice::ProcessEvent(const SDL_Event& event)
@@ -434,6 +465,10 @@ void CRenderDevice::FrameMove()
 {
     ZoneScoped;
 
+    static size_t da_port_fm = 0;
+    bool trace = (da_port_fm < 5 || (da_port_fm % 100) == 0);
+    if (trace) { Msg("! [DA_PORT] FrameMove[%zu]: start", da_port_fm); FlushLog(); }
+
     dwFrame++;
     Core.dwFrame = dwFrame;
     dwTimeContinual = TimerMM.GetElapsed_ms() - app_inactive_time;
@@ -490,6 +525,8 @@ void CRenderDevice::FrameMove()
     stats.EngineTotal.FrameEnd();
 
     ImGui::EndFrame();
+    if (trace) { Msg("! [DA_PORT] FrameMove[%zu]: DONE", da_port_fm); FlushLog(); }
+    ++da_port_fm;
 }
 
 ENGINE_API bool bShowPauseString = true;

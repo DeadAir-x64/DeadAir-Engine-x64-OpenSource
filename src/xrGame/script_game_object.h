@@ -183,6 +183,21 @@ public:
     float GetCondition() const;
     void SetCondition(float val);
 
+    // Dead Air: artefact immunity/weight
+    float GetArtefactBurnImmunity();        void SetArtefactBurnImmunity(float v);
+    float GetArtefactShockImmunity();       void SetArtefactShockImmunity(float v);
+    float GetArtefactChemicalBurnImmunity();void SetArtefactChemicalBurnImmunity(float v);
+    float GetArtefactRadiationImmunity();   void SetArtefactRadiationImmunity(float v);
+    float GetArtefactTelepaticImmunity();   void SetArtefactTelepaticImmunity(float v);
+    float GetArtefactWoundImmunity();       void SetArtefactWoundImmunity(float v);
+    float GetArtefactFireWoundImmunity();   void SetArtefactFireWoundImmunity(float v);
+    float GetArtefactStrikeImmunity();      void SetArtefactStrikeImmunity(float v);
+    float GetArtefactExplosionImmunity();   void SetArtefactExplosionImmunity(float v);
+    float GetArtefactWeight();              void SetArtefactWeight(float v);
+    float GetArtefactAdditionalWeight();    void SetArtefactAdditionalWeight(float v);
+    // Dead Air: weapon break/condition type
+    u8 GetWeaponConditionType();            void SetWeaponConditionType(u8 t);
+
     // CEntity
     _DECLARE_FUNCTION10(DeathTime, u32);
     _DECLARE_FUNCTION10(MaxHealth, float);
@@ -402,11 +417,17 @@ public:
     bool Weapon_IsGrenadeLauncherAttached();
     bool Weapon_IsScopeAttached();
     bool Weapon_IsSilencerAttached();
-    int  GetAddonFlags(); // Dead Air compat stub
 
     int Weapon_GrenadeLauncher_Status();
     int Weapon_Scope_Status();
     int Weapon_Silencer_Status();
+
+    void SetRadiationDetector(bool b); // Dead Air compat stub
+    void EnableTorch2(bool b); // Dead Air compat stub
+    void SetActorZoomInertion(float f); // Dead Air compat stub
+    void SetActorRecoilCoeff(float f); // Dead Air compat stub
+    bool GetRadiationDetector(); // Dead Air compat stub
+    void SetProfileName(LPCSTR name); // Dead Air compat stub
 
     LPCSTR ProfileName();
     LPCSTR CharacterName();

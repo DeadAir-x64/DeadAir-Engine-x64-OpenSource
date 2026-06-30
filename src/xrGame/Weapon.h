@@ -32,6 +32,10 @@ public:
     CWeapon();
     virtual ~CWeapon();
 
+    // Dead Air: weapon "break/condition type" tracked by scripts (items_condition.script).
+    // Runtime-only for now (not net/save serialized — resets on load; TODO persist).
+    u8 m_weapon_condition_type{0};
+
     // Generic
     virtual void Load(LPCSTR section);
 

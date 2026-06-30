@@ -134,12 +134,24 @@ void CAI_Crow::Load(LPCSTR section)
     m_Sounds.m_idle.Load("monsters" DELIMITER "crow" DELIMITER "idle");
     // play defaut
 
-    fSpeed = pSettings->r_float(section, "speed");
-    fASpeed = pSettings->r_float(section, "angular_speed");
-    fGoalChangeDelta = pSettings->r_float(section, "goal_change_delta");
+    // [DA_PORT] Dead Air's [m_crow] uses randomized ranges (speed_min/speed_max etc.) instead
+    // of the single keys stock OpenXRay reads -> r_float("speed") FATALs. Read the range and
+    // randomize when present; fall back to the single key for stock configs.
+    auto r_range = [&](cpcstr key) -> float
+    {
+        string128 k_min, k_max;
+        xr_sprintf(k_min, "%s_min", key);
+        xr_sprintf(k_max, "%s_max", key);
+        if (pSettings->line_exist(section, k_min) && pSettings->line_exist(section, k_max))
+            return Random.randF(pSettings->r_float(section, k_min), pSettings->r_float(section, k_max));
+        return pSettings->r_float(section, key);
+    };
+    fSpeed = r_range("speed");
+    fASpeed = r_range("angular_speed");
+    fGoalChangeDelta = r_range("goal_change_delta");
     fMinHeight = pSettings->r_float(section, "min_height");
     vVarGoal = pSettings->r_fvector3(section, "goal_variability");
-    fIdleSoundDelta = pSettings->r_float(section, "idle_sound_delta");
+    fIdleSoundDelta = r_range("idle_sound_delta");
     fIdleSoundTime = fIdleSoundDelta + fIdleSoundDelta * Random.randF(-.5f, .5f);
     VERIFY2(valid_pos(Position()), dbg_valide_pos_string(Position(), this, "CAI_Crow::Load( LPCSTR section )"));
 }

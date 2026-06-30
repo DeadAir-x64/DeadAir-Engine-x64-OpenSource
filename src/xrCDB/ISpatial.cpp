@@ -337,7 +337,19 @@ void ISpatial_DB::_remove(ISpatial_NODE* N, ISpatial_NODE* N_sub)
         octant = 6;
     else if (N_sub == N->children[7])
         octant = 7;
-    VERIFY(octant < 8);
+    // [DA_PORT] VERIFY(octant < 8) removed: the if-guard below handles the error
+    // gracefully instead of crashing. Under MinGW x64 the spatial tree can reach
+    // an inconsistent state during level load (RenderEnd cleanup path).
+    if (octant >= 8)
+    {
+        // [DA_PORT] N_sub is not among N's children: tree inconsistency reached the release
+        // build (VERIFY above is a no-op in release). The original code would index
+        // N->children[0xFFFFFFFF] -> access violation. Skip the prune instead of crashing,
+        // and log so we can trace the upstream corruption (spatial_register/_insert path).
+        Msg("! [DA_PORT] ISpatial_DB::_remove: N_sub %p not a child of N %p, skipping prune", (void*)N_sub, (void*)N);
+        FlushLog();
+        return;
+    }
     VERIFY(N_sub->_empty());
     _node_destroy(N->children[octant]);
 

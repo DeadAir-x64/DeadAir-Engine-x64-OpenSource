@@ -1,0 +1,136 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // ───────────────────────────────────────────────────────────────
+  // PROVIDERS
+  // ───────────────────────────────────────────────────────────────
+  // ollama-local: local Ollama on :11434/v1 (RTX 5070 Ti, CUDA).
+  //   Per opencode docs, the built-in "ollama" provider id is reserved for
+  //   Ollama CLOUD; for LOCAL models we register a custom provider pointing
+  //   at the OpenAI-compatible /v1 endpoint.
+  // ollama: built-in cloud provider (auto-configured via /connect, Pro).
+  "provider": {
+    "ollama-local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local RTX 5070 Ti)",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "qwen3-14b-32k": {
+          "name": "Qwen3 14B (32k ctx, local)",
+          "tool_call": true,
+          "limit": { "context": 32768, "output": 8192 }
+        },
+        "qwen3-coder:30b-32k": {
+          "name": "Qwen3 Coder 30B (32k ctx, local)",
+          "tool_call": true,
+          "limit": { "context": 32768, "output": 8192 }
+        },
+        "qwen3:14b": {
+          "name": "Qwen3 14B (local)",
+          "tool_call": true
+        }
+      }
+    }
+  },
+
+  // ───────────────────────────────────────────────────────────────
+  // GLOBAL MODELS
+  // ───────────────────────────────────────────────────────────────
+  // coder = GLM 5.2 via Ollama Cloud (Pro). scoper/scouter = local GPU (free).
+  "model": "ollama/glm-5.2:cloud",
+  "small_model": "ollama-local/qwen3:14b",
+
+  // ───────────────────────────────────────────────────────────────
+  // PROJECT RULES — auto-injected into EVERY agent's context
+  // ───────────────────────────────────────────────────────────────
+  "instructions": [
+    "AGENTS.md",
+    "PORT_x64_PHASE_B.md",
+    "PORT_x64_GLM_TASKS.md"
+  ],
+
+  // ───────────────────────────────────────────────────────────────
+  // AGENTS — role split: scoper (light) / scouter-deep (heavy) → coder
+  // ───────────────────────────────────────────────────────────────
+  "agent": {
+    // SCOPER — qwen3-14b-32k LOCAL on the RTX 5070 Ti. DENSE 14B, fully
+    // resident in 16 GB VRAM at 32k ctx (flash-attn + q8 KV) → fast on long
+    // context. FREE / offline: zero Ollama Cloud usage. Everyday code
+    // lookups: "find this symbol, read the block, return file:line + context".
+    //   The 32k model is built via: `ollama create qwen3-14b-32k -f Modelfile`
+    //     (FROM qwen3:14b, num_ctx 32768)
+    "scoper": {
+      "description": "Read-only code scout (light): qwen3-14b-32k local on the RTX 5070 Ti, fully in-VRAM (free, fast). Given an error (file:line) or symbol name, finds the exact location, reads surrounding code, returns a tight context pack (file:line, the block, callers) for the coder. Does NOT edit code.",
+      "mode": "all",
+      "model": "ollama-local/qwen3-14b-32k",
+      "temperature": 0.3,
+      "prompt": "You are the SCOPER — a read-only code scout for the Dead Air x64 port (OpenXRay → MinGW GCC). Given an error (file:line) or a symbol/feature name, find the exact location in the source, read the surrounding code (~40 lines around it), and return a tight context pack: file:line, the relevant block, callers, and any data/config involved. Do NOT edit code — you return context so the coder can write the fix. Follow AGENTS.md rules. Keep your answer tight and actionable.",
+      "tools": {
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true,
+        "write": false,
+        "edit": false,
+        "patch": false,
+        "bash": false
+      }
+    },
+
+    // SCOUTER-DEEP — qwen3-coder:30b-32k LOCAL, MoE A3B. Better code reasoning,
+    // but 18 GB weights + 32k KV exceed 16 GB VRAM → ~40% offload to RAM,
+    // slower on long context. Pick manually for hard scopes (cross-DLL ABI,
+    // luabind binding chains, save/net packet layout).
+    "scouter-deep": {
+      "description": "Deep code scout: qwen3-coder:30b-32k (MoE) local — slower (partial offload on 16 GB) but stronger reasoning. For genuinely hard scopes (ABI, luabind chains, packet layouts). Read-only.",
+      "mode": "subagent",
+      "model": "ollama-local/qwen3-coder:30b-32k",
+      "temperature": 0.2,
+      "prompt": "You are the SCOUTER-DEEP — a read-only code scout for the Dead Air x64 port. Use this agent for hard scoping tasks: cross-DLL ABI issues, luabind binding dependency chains, save/net packet field layouts. Given an error (file:line) or symbol name, find the exact location, read surrounding code and related files, trace callers and data flow, and return a tight context pack. Do NOT edit code. Follow AGENTS.md rules. If you encounter a save/net packet path, report the exact field layout — do NOT guess.",
+      "tools": {
+        "read": true,
+        "grep": true,
+        "glob": true,
+        "list": true,
+        "write": false,
+        "edit": false,
+        "patch": false,
+        "bash": false
+      }
+    },
+
+    // CODER — GLM-5.2 via Ollama Cloud (Pro). Writes the engine-side fix.
+    "coder": {
+      "description": "Coder (primary) for the Dead Air x64 port: GLM 5.2. Decides and writes the engine-side fix for the FATAL/Lua error given by the architect. Touches only the named file+function, compile-checks a single target, hands back the changed block. Delegates code lookups to @scoper (light) or @scouter-deep (hard). Follows AGENTS.md rules; never deploys DLLs one-by-one.",
+      "mode": "primary",
+      "model": "ollama/glm-5.2:cloud"
+    }
+  },
+
+  // ───────────────────────────────────────────────────────────────
+  // PERMISSIONS — Windows local dev, single trusted machine
+  // ───────────────────────────────────────────────────────────────
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "allow",
+      "rm *": "ask",
+      "rm -rf *": "ask",
+      "rmdir *": "ask",
+      "del *": "ask",
+      "rd *": "ask",
+      "Remove-Item *": "ask",
+      "git push*": "ask",
+      "git reset --hard*": "ask",
+      "git clean*": "ask",
+      "git checkout -- *": "ask",
+      "git restore*": "ask",
+      "git rebase*": "ask",
+      "shutdown*": "deny",
+      "format *": "deny",
+      "mkfs*": "deny"
+    }
+  }
+}
