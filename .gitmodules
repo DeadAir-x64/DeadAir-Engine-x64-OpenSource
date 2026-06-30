@@ -4,11 +4,11 @@
 	branch = v2.1
 [submodule "Externals/luabind"]
 	path = Externals/luabind
-	url = https://github.com/OpenXRay/luabind-deboostified.git
+	url = https://github.com/DanesCrai1/luabind-deboostified.git
 	branch = xray
 [submodule "Externals/GameSpy"]
 	path = Externals/GameSpy
-	url = https://github.com/OpenXRay/GameSpy.git
+	url = https://github.com/DanesCrai1/GameSpy.git
 [submodule "Externals/AGS_SDK"]
 	path = Externals/AGS_SDK
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/AGS_SDK.git
