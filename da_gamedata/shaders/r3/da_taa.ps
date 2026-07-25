@@ -1,0 +1,229 @@
+// Dead Air x64 — temporal anti-aliasing resolve.
+//
+// Two halves make this work. The engine jitters the projection by a sub-pixel Halton offset every frame
+// (CCameraManager::ApplyDevice), so consecutive frames sample different points inside the same pixel;
+// this pass averages those samples through a history buffer, which is where the actual anti-aliasing
+// comes from. Reprojection is what lets the average survive camera movement.
+//
+// There is no velocity buffer in this engine, so a pixel is reprojected from its depth and the previous
+// camera matrix. That is exact for anything that did not move and wrong for anything that did — so the
+// history is constrained to the colour range of the current pixel's neighbourhood before being blended
+// in. Ghosting on moving objects is suppressed rather than corrected: the same compromise the cheap TAA
+// in other X-Ray forks makes.
+//
+// m_prev_VP is eye-space -> world -> previous frame's UN-JITTERED clip space in one matrix, composed
+// engine-side exactly like the motion-blur m_previous, so the G-buffer position feeds straight into it.
+//
+// Inputs: s_image = current frame (LDR scene colour), s_history = previous resolved frame,
+//         s_position = eye-space position G-buffer. All three are declared in common.h.
+#include "common.h"
+
+uniform float4x4	m_prev_VP;	// eye-space -> previous frame's clip space
+uniform float4		taa_params;	// x = sharpening amount (r__taa_sharp / 100)
+
+Texture2D		s_history;
+
+// Matches combine_1.vs: tc0.xy is the screen texcoord (tc0.zw carry the tonemap scale, unused here).
+struct	vf
+{
+	float4	tc0	: TEXCOORD0;
+	float2	tcJ	: TEXCOORD1;
+	float4	hpos	: SV_Position;
+};
+
+// screen = what the rest of the frame sees, sharpened. history = what gets accumulated, untouched.
+struct	_out
+{
+	float4	screen	: SV_Target0;
+	float4	history	: SV_Target1;
+};
+
+// How much of the history survives where the reprojection is trusted, and the floor it drops to where
+// the pixel travelled a long way across the screen (fast camera movement, near-camera geometry) and the
+// history is correspondingly less likely to be the same surface. The upper figure is what decides how
+// many jittered samples get averaged together: too low and the jitter shows up as shimmer instead of
+// resolving into anti-aliasing.
+#define TAA_FEEDBACK_MAX	0.93
+#define TAA_FEEDBACK_MIN	0.65
+
+// Width of the neighbourhood the history is allowed to live in, in standard deviations. Smaller = less
+// ghosting but the accumulation is cut short more often, which costs anti-aliasing quality.
+#define TAA_CLIP_GAMMA		1.25
+
+// Floor under that width. Where the neighbourhood is nearly uniform the deviation collapses to almost
+// nothing, and a box that tight rejects the history over rounding-level differences — the accumulation
+// restarts every frame and the jitter becomes visible as a crawl.
+#define TAA_CLIP_FLOOR		0.015
+
+// Distances (eye-space metres) over which reprojection stops using parallax and goes by camera rotation
+// alone, and the depth stood in for anything without geometry.
+//
+// The position G-buffer is A16B16G16R16F — half floats, roughly eleven bits of mantissa. At 500 m one
+// step of that is about a quarter of a metre, which moves the reprojected pixel by half a screen pixel
+// from quantisation alone; the history then lands on the wrong texel, gets rejected, and the distance
+// shimmers. Parallax is also worthless out there: walking a whole metre shifts a 400 m object by well
+// under a pixel. So far away the reprojection uses only the view ray and the camera's rotation, which
+// carries no depth term and therefore no quantisation error. Under pure rotation both paths agree
+// exactly, so the crossover is invisible; it only gives up parallax that was never visible anyway.
+#define TAA_PARALLAX_FADE_BEGIN	120.0
+#define TAA_PARALLAX_FADE_END	400.0
+#define TAA_SKY_DEPTH		20000.0
+
+// Clip the history towards the centre of the neighbourhood instead of clamping it to the box. Clamping
+// each channel on its own moves the colour off its own hue when it lands outside; clipping keeps the
+// direction and only shortens the segment, so the correction is invisible instead of tinted.
+float3 da_clip_to_aabb(float3 history, float3 centre, float3 extents)
+{
+	float3 offset = history - centre;
+	float3 units = abs(offset / max(extents, 0.0001));
+	float longest = max(units.x, max(units.y, units.z));
+
+	if (longest <= 1.0)
+		return history;
+
+	return centre + offset / longest;
+}
+
+// Catmull-Rom fetch of the history, 5 taps.
+//
+// This is where TAA sharpness is won or lost. The reprojected coordinate almost never lands on a texel
+// centre, so the history is resampled every single frame — and with a bilinear tap that means the image
+// is low-pass filtered once per frame, forever, compounding into the soft distant detail that plain TAA
+// is notorious for. Catmull-Rom reconstructs instead of averaging, so repeated resampling stops eating
+// detail. Five bilinear taps rather than the full sixteen: the corner weights of the 4x4 kernel are
+// small enough that dropping them is not visible, and this is a per-pixel cost on every frame.
+float3 da_sample_history(float2 tc, float2 size, float2 texel)
+{
+	float2 position = tc * size;
+	float2 centre = floor(position - 0.5) + 0.5;
+	float2 f = position - centre;
+	float2 f2 = f * f;
+	float2 f3 = f2 * f;
+
+	float2 w0 = f2 - 0.5 * (f3 + f);
+	float2 w1 = 1.5 * f3 - 2.5 * f2 + 1.0;
+	float2 w3 = 0.5 * (f3 - f2);
+	float2 w2 = 1.0 - w0 - w1 - w3;
+
+	// Fold w1 and w2 into one bilinear tap placed between the two texels they weight.
+	float2 w12 = w1 + w2;
+	float2 tc0 = (centre - 1.0) * texel;
+	float2 tc12 = (centre + w2 / w12) * texel;
+	float2 tc3 = (centre + 2.0) * texel;
+
+	float3 result =
+		s_history.Sample(smp_rtlinear, float2(tc12.x, tc0.y)).rgb * (w12.x * w0.y) +
+		s_history.Sample(smp_rtlinear, float2(tc0.x, tc12.y)).rgb * (w0.x * w12.y) +
+		s_history.Sample(smp_rtlinear, float2(tc12.x, tc12.y)).rgb * (w12.x * w12.y) +
+		s_history.Sample(smp_rtlinear, float2(tc3.x, tc12.y)).rgb * (w3.x * w12.y) +
+		s_history.Sample(smp_rtlinear, float2(tc12.x, tc3.y)).rgb * (w12.x * w3.y);
+
+	// Catmull-Rom has negative lobes, so a high-contrast edge can push a channel below zero.
+	return max(result, 0.0);
+}
+
+float da_luma(float3 c)
+{
+	return dot(c, float3(0.2126, 0.7152, 0.0722));
+}
+
+// Blend in tone-mapped space (Karis). A bright sample that appears in only some of the jitter phases —
+// a specular glint, a lit leaf edge — otherwise dominates the average and pulses as the jitter moves on
+// and off it; compressing by luminance first weights it down.
+//
+// The inverse transform at the end is not optional. Averaging in compressed space and stopping there
+// biases the result towards whichever input was darker, so the frame dims whenever current and history
+// disagree — which is exactly when the camera is moving. That reads as the picture breathing as you
+// look up and down, and it also drags the auto-exposure around, since phase_luminance measures this
+// very buffer.
+float3 da_tonemap(float3 c)    { return c / (1.0 + da_luma(c)); }
+float3 da_tonemap_inv(float3 c) { return c / max(1.0 - da_luma(c), 0.0001); }
+
+_out main(vf I)
+{
+	_out O;
+	// Texel size of the SCENE target, not of the window: with r__render_scale below 100% those differ,
+	// and screen_res is deliberately the window size. pos_decompression_params2 is the render-target
+	// resolution (.xy = size, .zw = 1/size) and comes from common.h.
+	const float2 size = pos_decompression_params2.xy;
+	const float2 texel = pos_decompression_params2.zw;
+	const float2 tc = I.tc0.xy;
+
+	float3 current = s_image.Sample(smp_rtlinear, tc).rgb;
+
+	// Statistics of the 3x3 neighbourhood. Mean and standard deviation, not min/max: the extremes of a
+	// 3x3 block are far apart on any detailed surface (grass, foliage, rust), and a box that wide lets
+	// a stale colour through unchanged, which is precisely what reads as smearing. The mean doubles as
+	// the low-pass reference for sharpening below.
+	float3 sum = 0.0;
+	float3 sum_sq = 0.0;
+	[unroll] for (int y = -1; y <= 1; ++y)
+	{
+		[unroll] for (int x = -1; x <= 1; ++x)
+		{
+			float3 c = s_image.Sample(smp_rtlinear, tc + float2(x, y) * texel).rgb;
+			sum += c;
+			sum_sq += c * c;
+		}
+	}
+
+	const float3 mean = sum / 9.0;
+	const float3 sigma = sqrt(max(sum_sq / 9.0 - mean * mean, 0.0));
+
+	// Unsharp mask against that mean, written only to the screen output. The history keeps the plain
+	// blend: sharpening what is fed back would re-sharpen its own output every frame and turn the
+	// jitter noise into visible crawl, which is exactly why SSFX runs sharpening as its own phase.
+	const float3 sharpen_kick = (current - mean) * taa_params.x;
+
+	// The eye-space ray through this pixel, straight from its screen position — the same reconstruction
+	// the deferred shaders use (gbuffer_load_data). Rebuilding x and y from it instead of reading them
+	// out of the G-buffer already removes their share of the half-float error.
+	const float3 ray = float3(I.hpos.xy * pos_decompression_params.zw - pos_decompression_params.xy, 1.0);
+
+	// .z == 0 means sky: no geometry wrote there. The sky still gets jittered along with everything else,
+	// so leaving it out of the accumulation made it the one part of the frame that shimmered, and its
+	// edge against the ground read as a moving band along the horizon. It reprojects fine as a very
+	// distant point.
+	const float eye_z = s_position.Sample(smp_nofilter, tc).z;
+	const float depth = abs(eye_z) < 0.001 ? TAA_SKY_DEPTH : eye_z;
+
+	float4 near_clip = mul(m_prev_VP, float4(ray * depth, 1.0));
+	float4 far_clip = mul(m_prev_VP, float4(ray * TAA_SKY_DEPTH, 1.0));
+
+	const float parallax_fade =
+		saturate((depth - TAA_PARALLAX_FADE_BEGIN) / (TAA_PARALLAX_FADE_END - TAA_PARALLAX_FADE_BEGIN));
+
+	float2 near_tc = near_clip.xy / max(near_clip.w, 0.0001);
+	float2 far_tc = far_clip.xy / max(far_clip.w, 0.0001);
+	float2 prev_tc = lerp(near_tc, far_tc, parallax_fade);
+	prev_tc = prev_tc * float2(0.5, -0.5) + 0.5;
+
+	const bool reprojected = near_clip.w > 0.0 && far_clip.w > 0.0 &&
+		prev_tc.x >= 0.0 && prev_tc.x <= 1.0 && prev_tc.y >= 0.0 && prev_tc.y <= 1.0;
+
+	if (!reprojected)
+	{
+		O.history = float4(current, 1.0);
+		O.screen = float4(max(current + sharpen_kick, 0.0), 1.0);
+		return O;
+	}
+
+	float3 history = da_sample_history(prev_tc, size, texel);
+	history = da_clip_to_aabb(history, mean, max(sigma * TAA_CLIP_GAMMA, TAA_CLIP_FLOOR));
+
+	// Trust the history less the further the pixel travelled. Measured in texels so it does not change
+	// meaning with resolution; past ~16 texels of movement the history is mostly guesswork.
+	float travel = length((prev_tc - tc) / texel);
+	float feedback = lerp(TAA_FEEDBACK_MAX, TAA_FEEDBACK_MIN, saturate(travel / 16.0));
+
+	// Fade the history out towards the screen border, where reprojection has the least to work with.
+	float2 edge = abs(prev_tc - 0.5) * 2.0;
+	feedback *= saturate(1.0 - pow(max(edge.x, edge.y), 8.0));
+
+	// Luminance-weighted blend rather than a plain lerp — compress, mix, expand back.
+	const float3 blended = max(da_tonemap_inv(lerp(da_tonemap(current), da_tonemap(history), feedback)), 0.0);
+
+	O.history = float4(blended, 1.0);
+	O.screen = float4(max(blended + sharpen_kick, 0.0), 1.0);
+	return O;
+}

@@ -1,0 +1,194 @@
+#include "common.h"
+/*
+struct 	v2p
+{
+//D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX3
+	float4 	color:		COLOR0;		// multiplier, color.w = noise_amount
+	float4	gray:		COLOR1;		// (.3,.3,.3.,amount)
+ 	float2 	tc0: 		TEXCOORD0;	// base1 (duality)
+ 	float2 	tc1: 		TEXCOORD1;	// base2 (duality)
+ 	float2 	tc2: 		TEXCOORD2;	// base  (noise)
+};
+*/
+
+Texture2D 	s_base0;
+Texture2D 	s_base1;
+Texture2D 	s_noise;
+uniform float4 		c_brightness;
+
+// [DA_PORT] Colour grading from the options sliders: rgb = per-channel gain (r__color_base_r/g/b),
+// w = vibrance (r2_vibrance_val). The mod has had these sliders all along, but nothing in the renderer
+// read the values, so moving them did nothing. At gain 1/1/1 and vibrance 0 this is a no-op.
+uniform float4		da_color_grade;
+
+// Vibrance, not plain saturation: it lifts the muted colours and leaves the already-vivid ones alone,
+// so foliage and rust gain depth without the picture turning into a poster.
+float3 da_apply_vibrance(float3 c, float amount)
+{
+	float mx = max(c.r, max(c.g, c.b));
+	float mn = min(c.r, min(c.g, c.b));
+	float sat = mx - mn;              // how colourful this pixel already is
+	float luma = dot(c, float3(0.2126, 0.7152, 0.0722));
+	// The less saturated the pixel, the more it gets pushed.
+	return lerp(luma.xxx, c, 1.0 + amount * (1.0 - sat));
+}
+
+// [DA_PORT] ---- Upscale for r__render_scale (groundwork for FSR 1.0) --------------------------------
+// This pass is where the finished frame reaches the screen, so when the scene is rendered smaller than
+// the window this Sample() IS the upscale — and a plain bilinear stretch is exactly what looks soft.
+// Replaced with a Catmull-Rom bicubic fetch, which reconstructs edges far better at the same bandwidth.
+//
+// The scene's own size comes from pos_decompression_params2 (the engine binds it to the render-target
+// resolution, .xy = size, .zw = 1/size), so no new engine-side constant is needed. screen_res stays the
+// window size, so comparing the two tells us whether any upscaling is happening at all.
+// NB: pos_decompression_params2 is already declared further up the common.h include chain — declaring
+// it again here is a compile error ("redefinition"), which silently swaps this shader for stub_default.
+uniform float4		screen_res;
+
+float3 da_sample_bicubic(Texture2D tex, float2 uv)
+{
+	const float2 src_size = pos_decompression_params2.xy;
+	const float2 inv_src  = pos_decompression_params2.zw;
+
+	float2 sample_pos = uv * src_size;
+	float2 tex_pos1   = floor(sample_pos - 0.5) + 0.5;
+	float2 f          = sample_pos - tex_pos1;
+
+	// Catmull-Rom weights
+	float2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+	float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+	float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+	float2 w3 = f * f * (-0.5 + 0.5 * f);
+
+	// Fold the two inner taps into one bilinear fetch: 9 taps become 5.
+	float2 w12      = w1 + w2;
+	float2 offset12 = w2 / max(w12, 0.0001);
+
+	float2 tc0  = (tex_pos1 - 1.0)      * inv_src;
+	float2 tc3  = (tex_pos1 + 2.0)      * inv_src;
+	float2 tc12 = (tex_pos1 + offset12) * inv_src;
+
+	float3 result = 0.0;
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc0.y ), 0).rgb * (w12.x * w0.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc0.x,  tc12.y), 0).rgb * (w0.x  * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc12.y), 0).rgb * (w12.x * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc3.x,  tc12.y), 0).rgb * (w3.x  * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc3.y ), 0).rgb * (w12.x * w3.y);
+	return result;
+}
+
+// Only pay for it when the scene really is smaller than the window; at 100% scale this returns the
+// plain bilinear sample, i.e. byte-identical to stock.
+float3 da_fetch_scene(Texture2D tex, float2 uv)
+{
+	if (pos_decompression_params2.x < screen_res.x - 0.5)
+		return da_sample_bicubic(tex, uv);
+
+	return tex.Sample(smp_rtlinear, uv).rgb;
+}
+
+uniform float4 da_upscale;   // x = sharpening strength (r__upscale_sharpness / 100)
+
+// [DA_PORT] Adaptive sharpening for the upscale - the RCAS half of FSR 1.0.
+//
+// Upscaling always softens: the bicubic fetch above reconstructs edges well, but detail that existed
+// below the render resolution cannot come back on its own. A plain unsharp mask would bring it back
+// along with ringing halos and amplified noise. This does it adaptively instead: the strength is
+// limited per pixel by how much headroom the local neighbourhood has before clipping, so flat areas
+// and near-white/near-black regions are left alone and only genuine edges are pushed.
+//
+// Four taps in a cross, sampled in SCENE texels (pos_decompression_params2.zw), not screen ones -
+// sharpening must act on the pixels that actually exist, otherwise it just re-sharpens interpolation.
+float3 da_sharpen_upscaled(Texture2D tex, float2 uv, float3 centre, float strength)
+{
+	const float2 texel = pos_decompression_params2.zw;
+
+	float3 up    = da_fetch_scene(tex, uv + float2(0.0, -texel.y));
+	float3 left  = da_fetch_scene(tex, uv + float2(-texel.x, 0.0));
+	float3 right = da_fetch_scene(tex, uv + float2( texel.x, 0.0));
+	float3 down  = da_fetch_scene(tex, uv + float2(0.0,  texel.y));
+
+	float3 mn = min(min(up, down), min(left, right));
+	float3 mx = max(max(up, down), max(left, right));
+
+	// How much room is left before the result would clip, per channel. Near 0 or 1 there is none, so
+	// the sharpening fades out by itself instead of producing halos.
+	float3 headroom = min(mn, 1.0 - mx) / max(mx, 0.0001);
+	float amount = sqrt(saturate(min(headroom.r, min(headroom.g, headroom.b))));
+
+	// Negative weight on the neighbours, normalised so overall brightness is preserved.
+	float w = -amount * strength * 0.25;
+	float3 sharpened = (up + down + left + right) * w + centre;
+	return max(sharpened / (1.0 + 4.0 * w), 0.0);
+}
+// -------------------------------------------------------------------------------------------------
+
+// [DA_PORT] Gamma / brightness / contrast, x = 1/gamma, y = brightness/2, z = contrast/2,
+// w = 1 when the hardware gamma ramp is NOT doing the job and this has to.
+uniform float4 da_gamma;
+
+// Deliberately the same curve the engine builds for the hardware ramp (CGammaControl::GenLUT), so the
+// result matches what the sliders produced on the original DX9 build rather than being a new look.
+// At gamma 1 / brightness 1 / contrast 1 it reduces exactly to the identity.
+float3 da_apply_gamma(float3 c)
+{
+	const float B = da_gamma.y;
+	const float C = da_gamma.z;
+	float3 v = pow(max(c, 0.0), da_gamma.x);
+	return (C + 0.5) * v + (B - 0.5) * 0.5 - C * 0.5 + 0.25;
+}
+
+// [DA_PORT] Motion-vector debug view, switched on with "r__motion_vectors 2" (da_gamma.w carries the
+// mode). Vectors are in NDC and tiny — a fast pan moves a pixel a few hundredths of the screen — so
+// they are scaled up hard and split by sign: red/green for the two directions of horizontal movement,
+// blue for vertical. Still geometry reads black, and that is the point of looking at it.
+Texture2D s_velocity;
+
+float3 da_debug_velocity(float2 uv)
+{
+	float2 v = s_velocity.Sample(smp_rtlinear, uv).xy * 200.0;
+	return float3(saturate(v.x), saturate(-v.x), saturate(abs(v.y)));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// Pixel
+float4 main( p_postpr I ) : SV_Target
+{
+//	float3	t_0 	= tex2D		(s_base0,I.tc0);
+//	float3	t_1 	= tex2D		(s_base1,I.tc1);
+	// [DA_PORT] Debug view of the velocity buffer, before anything else touches the frame.
+	if (da_upscale.y > 1.5)
+		return float4(da_debug_velocity(I.Tex0), 1.0h);
+
+	float3	t_0 	= da_fetch_scene(s_base0, I.Tex0);	// [DA_PORT] was a plain bilinear Sample
+	float3	t_1 	= da_fetch_scene(s_base1, I.Tex1);	// [DA_PORT] both read $user$albedo
+	float3 	image	= (t_0+t_1)*.5;					// add_d2
+
+	// [DA_PORT] Sharpen only when the scene was actually upscaled - at native resolution there is
+	// nothing to recover and this would just add crunch.
+	if (da_upscale.x > 0.001 && pos_decompression_params2.x < screen_res.x - 0.5)
+		image = da_sharpen_upscaled(s_base0, I.Tex0, image, da_upscale.x);
+	float	gray 	= dot		(image,I.Gray);			// dp3
+			image 	= lerp 		(gray,image,I.Gray.w);		// mul/mad
+
+//	float4	t_noise	= tex2D		(s_noise,I.tc2);	
+	float4	t_noise	= s_noise.Sample( smp_linear, I.Tex2);	
+	float3 	noised 	= image*t_noise*2;                     		// mul_2x
+			image	= lerp( noised, image, I.Color.w); 	// lrp ?
+			image	= (image * I.Color + c_brightness)*2;		// mad
+//		image	= (image + c_brightness) * I.Color;		// mad ?
+
+	// [DA_PORT] Colour grading last, on the finished frame � same place the sliders expect to act.
+	image *= da_color_grade.rgb;
+	if (da_color_grade.w > 0.001)
+		image = da_apply_vibrance(image, da_color_grade.w);
+
+	// Last of all, exactly where the hardware ramp used to sit: after everything else has been drawn
+	// into the frame. NB this covers the scene only, not the menu and inventory - the ramp affected
+	// those too, but they are drawn in a separate pass that never reaches this shader.
+	if (da_gamma.w > 0.5)
+		image = da_apply_gamma(image);
+
+	// out
+	return  float4( max(image, 0.0), 1.0h);				// +mov
+}

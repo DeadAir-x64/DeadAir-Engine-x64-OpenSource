@@ -1,0 +1,216 @@
+#include "common.h"
+#include "ogse_reflections.h"
+
+struct   vf
+{
+	float2	tbase	: TEXCOORD0;	// base
+	float4	tnorm0	: TEXCOORD1;	// nm0
+	float4	position_w	: TEXCOORD2;	// nm1
+	float3	M1		: TEXCOORD3;
+	float3	M2		: TEXCOORD4;
+	float3	M3		: TEXCOORD5;
+	float3	v2point	: TEXCOORD6;
+//#ifdef	USE_SOFT_WATER
+//#ifdef	NEED_SOFT_WATER
+	float4	tctexgen: TEXCOORD7;
+//#endif	//	USE_SOFT_WATER
+//#endif	//	NEED_SOFT_WATER	
+	float4	c0		: COLOR0;
+	float	fog		: FOG;
+	float4	hpos	: SV_Position;
+};
+
+Texture2D	s_nmap;
+Texture2D	s_leaves;
+Texture2D	jitter0;
+
+uniform float4		various;
+
+#if defined(USE_SOFT_WATER) && defined(NEED_SOFT_WATER)
+float3	water_intensity;
+#endif	//	defined(USE_SOFT_WATER) && defined(NEED_SOFT_WATER)
+
+// [DA_PORT] ---- Water look ------------------------------------------------------------------------
+// Three things were missing next to what a modern X-Ray water shader does, and all three are what makes
+// water read as expensive rather than as a tinted mirror.
+
+// 1. Depth colour. The stock shader tints deep water with a flat grey (0.1, 0.1, 0.1). Real water is a
+//    coloured filter: red is absorbed within about a metre, green survives several, blue furthest — so
+//    the colour SHIFTS with depth instead of just darkening. Shallow tint is what a boot-deep puddle
+//    over silt looks like; deep tint is the standing water in the Zone, green-black rather than blue.
+#define WATER_TINT_SHALLOW	float3(0.10, 0.16, 0.15)
+#define WATER_TINT_DEEP		float3(0.035, 0.085, 0.095)
+#define WATER_TINT_FALLOFF	0.26	// larger = the deep colour takes over closer to the shore
+
+// 2. Shoreline foam. Where the bed comes up to meet the surface there is always broken water. Its
+//    absence is the single most obvious tell that a water plane is just a plane.
+// Narrow, because the shores here are shallow-sloped: a wide band spread over many metres of ground
+// stops reading as a shoreline and just hazes the whole surface.
+#define WATER_FOAM_WIDTH	0.25	// metres of depth over which the foam fades out
+#define WATER_FOAM_STRENGTH	0.90
+#define WATER_FOAM_COLOR	float3(0.62, 0.62, 0.58)
+
+// 3. Sun glint. There is a moon road below but nothing for the sun, so daytime water never catches the
+//    light. Tight exponent so it stays a glitter track rather than a wash.
+#define WATER_SUN_POWER		280.0
+#define WATER_SUN_STRENGTH	2.6
+
+float3 calc_moon_road(float3 color, float3 vreflect, float2 tc, float depth, float Nz)
+{
+	float cut = 4;
+	float r = 0.0015*jitter0.Sample(smp_linear,tc).x;											// randomize borders of road
+	//float r = 0.0015;											// randomize borders of road
+	float f = dot(normalize(vreflect.xz), -normalize(L_sun_dir_w.xz));
+	f = step(lerp(0.998+r /*+ 0.2*ogse_c_screen.w*2.2*/, 1, depth*0.01), f);		// road appearance factor
+	f *= step(cut, depth);															// cut road in near 10 m
+	f *= saturate((depth-cut)*0.5);													// fade in road in 2 m
+	f *= step(Nz, 0);																// remove road from pixels with normals with positive z for better look
+	f *= 1 - saturate(abs(L_sun_dir_w.y*2));										// road fading out with sun height
+	f *= various.x;															// weather control
+	return lerp(color, L_sun_color*2, f);
+}
+
+
+#ifdef GBUFFER_OPTIMIZATION
+float4 main( vf I, float4 pos2d : SV_Position ) : SV_Target
+#else
+float4 main( vf I ) : SV_Target
+#endif
+{
+	float4	base= s_base.Sample( smp_base, I.tbase);
+	float3	n0	= s_nmap.Sample( smp_base, I.tnorm0.xy);
+	float3	n1	= s_nmap.Sample( smp_base, I.tnorm0.zw);
+	float3	Navg	= n0 + n1 - 1;
+
+	float3	Nw	= mul (float3x3(I.M1, I.M2, I.M3), Navg);
+			Nw	= normalize (Nw);
+	float3	v2point	= normalize (I.v2point);
+	
+	float2 PosTc = I.tctexgen.xy/I.tctexgen.z;
+#ifdef GBUFFER_OPTIMIZATION
+	gbuffer_data gbd = gbuffer_load_data( PosTc, pos2d );
+#else
+	gbuffer_data gbd = gbuffer_load_data( PosTc );
+#endif
+	
+	float3 N = mul(m_V, Nw);
+	float4 _P = 	float4( gbd.P, gbd.mtl );
+	float 	ms	= xmaterial;
+	
+	float3 vreflect = reflect(normalize(v2point), normalize(Nw.xyz));
+	float3 env = calc_envmap(vreflect);
+	
+	//env = Vibrance(env,0.75);
+	
+	float	fresnel	= saturate (dot(vreflect,v2point));
+	float	power	= pow(fresnel,9);
+	
+	
+#ifdef USE_REFLECTIONS
+	// [DA_PORT] Real screen-space reflections: get_reflection() now samples the scene copy (rt_SSR,
+	// bound to s_image by loose r3\effects_water.s). refl.w is the screen-edge fade -> near the screen
+	// centre the ray-marched scene colour wins, towards the borders it falls back to the sky cubemap.
+	float4 refl = calc_reflections(I.position_w, vreflect);
+	float3 c_reflection = lerp(refl.xyz, env.xyz, refl.www);
+	c_reflection = lerp(c_reflection,env,0.18);	// [DA_PORT] was 0.75 (SSR diluted to 25%), now ~82% SSR
+#else
+	float3	c_reflection       = env;
+#endif
+
+	c_reflection *= 0.95;	// [DA_PORT] was 0.5 — the reflection was being halved on top of everything else
+
+	// [DA_PORT] Let the surface texture fade out at grazing angles: real water turns mirror-like as the
+	// view flattens, so keeping the full base texture there was flattening the reflection.
+	float3	final              = lerp(c_reflection,base.rgb,base.a*0.6*(1.0h-0.6h*power));
+			final	*= I.c0*2;
+	
+#ifdef	NEED_SOFT_WATER
+
+	float	alpha	= 0.25h+0.25h*power;                        // 1=full env, 0=no env
+
+#ifdef	USE_SOFT_WATER
+	//	Igor: additional depth test
+	float waterDepth = _P.z-I.tctexgen.z;
+	
+	//	water fog
+	// [DA_PORT] transparency: this fog is what makes the surface go milky with depth. -4.0 saturates
+	// after ~0.5 m, hiding the bottom; -2.5 went white before the depth colour had a chance to show, so
+	// the middle distance read as haze rather than as water. -1.3 keeps the bed visible several metres
+	// out and lets the tint, not the fog, be what darkens the deep parts.
+	// Tuning: more negative = murkier, closer to 0 = clearer.
+	float  fog_exp_intens = -1.3h;
+	float fog	= 1-exp(fog_exp_intens*waterDepth);
+
+	// [DA_PORT] Coloured absorption instead of the flat grey. saturate() on the depth term because
+	// waterDepth goes negative on geometry poking through the surface.
+	float  depth_mix = 1.0h - exp(-saturate(waterDepth) * WATER_TINT_FALLOFF * 4.0h);
+	float3 Fc  	= lerp(WATER_TINT_SHALLOW, WATER_TINT_DEEP, depth_mix) * water_intensity.r;
+	// [DA_PORT] Reflection visibility used to ride on `alpha` (0.25..0.5), so looking down at the water
+	// left 75% flat deep-water grey and the reflection barely registered — and dropping alpha for
+	// transparency made it worse. Give the surface colour its own weight so transparency and
+	// reflection strength are independent knobs.
+	// Tuning: raise for a more mirror-like surface, lower for murky/flat.
+	// Clear water is a weak mirror seen from above and a strong one seen edge-on — that IS the Fresnel
+	// curve. Leaning harder on the angle is what buys transparency without giving up the reflections:
+	// look down and you see the bed, look along the surface and it still mirrors the far bank.
+	float	refl_amount = saturate(0.28h + 0.72h*power);
+	final 		= lerp (Fc, final, refl_amount);
+
+	alpha 		= min(alpha, saturate(waterDepth));
+
+	alpha 		= max (fog, alpha);
+
+	alpha 		*= 0.80h;	// [DA_PORT] slightly more see-through overall
+
+	//	Leaves
+	float4	leaves	= s_leaves.Sample( smp_base, I.tbase);
+			leaves.rgb *= water_intensity.r;
+	float	calc_cos = -dot(float3(I.M1.z, I.M2.z, I.M3.z),  normalize(v2point));
+	float	calc_depth = saturate(waterDepth*calc_cos);
+	float	fLeavesFactor = smoothstep(0.025, 0.05, calc_depth );
+			fLeavesFactor *= smoothstep(0.1, 0.075, calc_depth );
+	final		= lerp(final, leaves, leaves.a*fLeavesFactor);
+	alpha		= lerp(alpha, leaves.a, leaves.a*fLeavesFactor);
+
+	
+#ifdef USE_REFLECTIONS
+	final = calc_moon_road(final, vreflect, I.tbase.xy, _P.z, Nw.z);
+#endif
+
+	// [DA_PORT] Sun glint. L_sun_dir_w points the way the light travels, so the direction TO the sun is
+	// its negation; v2point runs from the eye to the surface, so the eye vector is likewise negated.
+	// Weighted by the same grazing-angle term as the reflection — water only glints when seen flat.
+	{
+		float3 sun_h = normalize(-v2point - L_sun_dir_w);
+		float  glint = pow(saturate(dot(Nw, sun_h)), WATER_SUN_POWER);
+		final += L_sun_color * (glint * WATER_SUN_STRENGTH * saturate(0.25h + power));
+	}
+
+	// [DA_PORT] Shoreline foam. The band is driven by the same depth difference the water fog uses, and
+	// broken up by the two scrolling normal maps that are already sampled above — they give an animated
+	// pattern for free, which is what keeps the foam from looking like a painted-on outline.
+	{
+		float  foam_band = 1.0h - saturate(waterDepth / WATER_FOAM_WIDTH);
+			   foam_band = foam_band * foam_band;			// keep it hugging the shore
+		float  foam_noise = saturate((n0.x + n1.y) * 0.9h);
+		float  foam = saturate(foam_band * foam_noise * WATER_FOAM_STRENGTH);
+			   foam *= saturate(waterDepth * 12.0h);		// no foam where the surface is not wet yet
+		final  = lerp(final, WATER_FOAM_COLOR * water_intensity.r, foam);
+		alpha  = max(alpha, foam);
+	}
+
+#endif	//	USE_SOFT_WATER
+
+	//	Fogging
+	final 		= lerp(fog_color, final, I.fog);
+	alpha		*= I.fog*I.fog;
+
+	return  float4   (final, alpha )                ;
+
+#else	//	NEED_SOFT_WATER
+
+	final 		= lerp(fog_color, final, I.fog);
+	return  float4   (final, I.fog*I.fog )      ;
+
+#endif	//	NEED_SOFT_WATER
+}
