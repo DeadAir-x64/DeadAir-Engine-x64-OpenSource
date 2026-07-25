@@ -116,6 +116,56 @@ CKinematics::CKinematics()
 #endif
 
     m_is_original_lod = false;
+
+    // [DA_PORT] motion vectors
+    da_world_old.identity();
+    da_world_tmp.identity();
+}
+
+// [DA_PORT] Roll the visual's world matrix one frame back. Called from the render path with the matrix
+// currently in effect; only does anything once per frame, so the several draws a visual receives (scene
+// pass plus one per shadow cascade) cannot collapse "previous" into "current".
+//
+// On the visual's very first frame both copies are seeded with the current matrix: otherwise the object
+// would appear to jump from the origin to its position, and a single frame of enormous motion vectors
+// is exactly what makes a temporal upscaler smear an object across the screen when it spawns.
+void CKinematics::da_store_world_matrix(const Fmatrix& world)
+{
+    if (da_last_render_frame == Device.dwFrame)
+        return;
+
+    const u16 bones = LL_BoneCount();
+    const bool first = (da_last_render_frame == 0);
+
+    if (da_bones_tmp.size() != bones)
+    {
+        da_bones_tmp.resize(bones);
+        da_bones_old.resize(bones);
+        for (u16 i = 0; i < bones; ++i)
+        {
+            da_bones_tmp[i].set(LL_GetBoneInstance(i).mRenderTransform);
+            da_bones_old[i].set(da_bones_tmp[i]);
+        }
+    }
+
+    if (first)
+    {
+        da_world_tmp.set(world);
+        da_world_old.set(world);
+    }
+    else
+    {
+        da_world_old.set(da_world_tmp);
+        da_world_tmp.set(world);
+
+        for (u16 i = 0; i < bones; ++i)
+        {
+            da_bones_old[i].set(da_bones_tmp[i]);
+            da_bones_tmp[i].set(LL_GetBoneInstance(i).mRenderTransform);
+        }
+    }
+
+    da_last_render_frame = Device.dwFrame;
 }
 
 CKinematics::~CKinematics()

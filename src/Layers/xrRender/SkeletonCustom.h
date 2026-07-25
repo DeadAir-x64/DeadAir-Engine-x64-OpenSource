@@ -130,6 +130,24 @@ public:
     virtual void LL_AddTransformToBone(KinematicsABT::additional_bone_transform& offset); //--#SM+#--
     virtual void LL_ClearAdditionalTransform(u16 bone_id = BI_NONE); //--#SM+#--
 public:
+    // [DA_PORT] ---- Motion vectors: this visual's world matrix on the previous frame ---------------
+    // Two matrices, not one: a visual is drawn several times per frame (the scene pass, then each
+    // shadow cascade), so the "previous" value must not be overwritten mid-frame by the current one.
+    // The tmp copy holds this frame's matrix and only rolls over into the old one when a NEW frame
+    // starts, which is what da_store_world_matrix guards with da_last_render_frame.
+    Fmatrix da_world_old;
+    Fmatrix da_world_tmp;
+    u32 da_last_render_frame{};
+
+    // Bone poses of the previous frame, so that limbs of an animated character carry their own motion
+    // and not just the movement of the figure as a whole. Kept here rather than in CBoneInstance: that
+    // class lives in xrCore and is shared by the whole engine, and this is purely a rendering concern.
+    xr_vector<Fmatrix> da_bones_old;
+    xr_vector<Fmatrix> da_bones_tmp;
+
+    // Call before rendering with the visual's current world matrix; also rolls the bone poses.
+    void da_store_world_matrix(const Fmatrix& world);
+
     dxRender_Visual* m_lod;
 
 protected:

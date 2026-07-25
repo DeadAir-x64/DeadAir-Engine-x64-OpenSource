@@ -13,6 +13,7 @@
 namespace xray::render::RENDER_NAMESPACE
 {
 shared_str s_bones_array_const;
+shared_str s_bones_array_old_const; // [DA_PORT] previous-frame poses, for motion vectors
 
 //////////////////////////////////////////////////////////////////////
 // Body Part
@@ -43,6 +44,18 @@ void CSkeletonX::_Copy(CSkeletonX* B)
 //////////////////////////////////////////////////////////////////////
 void CSkeletonX::_Render(CBackend& cmd_list, ref_geom& hGeom, u32 vCount, u32 iOffset, u32 pCount)
 {
+    // [DA_PORT] Motion vectors: remember where this visual was, and tell the backend, so the shader's
+    // m_WVP_old describes the object's own movement and not just the camera's. Only during the scene
+    // pass — the shadow passes reuse the same visual with different matrices and would corrupt the
+    // stored history, and nothing reads velocity while rendering shadow maps anyway.
+    // The phase lives on the scene graph rather than the renderer in this codebase, and each command
+    // list has its own — hence looking it up by context rather than asking RImplementation directly.
+    if (Parent && RImplementation.get_context(cmd_list.context_id).o.phase == CRender::PHASE_NORMAL)
+    {
+        Parent->da_store_world_matrix(cmd_list.xforms.m_w);
+        cmd_list.xforms.set_W_old(Parent->da_world_old);
+    }
+
     cmd_list.stat.r.s_dynamic.add(vCount);
     switch (RenderMode)
     {
@@ -80,6 +93,24 @@ void CSkeletonX::_Render(CBackend& cmd_list, ref_geom& hGeom, u32 vCount, u32 iO
             cmd_list.set_ca(&*array, id + 0, M._11, M._21, M._31, M._41);
             cmd_list.set_ca(&*array, id + 1, M._12, M._22, M._32, M._42);
             cmd_list.set_ca(&*array, id + 2, M._13, M._23, M._33, M._43);
+        }
+
+        // [DA_PORT] The same poses as they were on the previous frame, for motion vectors. Without this
+        // an animated character reports only the movement of the figure as a whole: arms and legs would
+        // be described as standing still while they swing, which is exactly where a temporal upscaler
+        // produces the worst smearing. get_c returns null when the shader has no such array (the shadow
+        // passes, and any shader built without DA_VELOCITY), and then this costs nothing.
+        if (ref_constant array_old = cmd_list.get_c(s_bones_array_old_const))
+        {
+            const bool have = Parent->da_bones_old.size() >= count;
+            for (u32 mid = 0; mid < count; mid++)
+            {
+                const Fmatrix& M = have ? Parent->da_bones_old[mid] : Parent->LL_GetTransform_R(u16(mid));
+                u32 id = mid * 3;
+                cmd_list.set_ca(&*array_old, id + 0, M._11, M._21, M._31, M._41);
+                cmd_list.set_ca(&*array_old, id + 1, M._12, M._22, M._32, M._42);
+                cmd_list.set_ca(&*array_old, id + 2, M._13, M._23, M._33, M._43);
+            }
         }
 
         // render
@@ -156,6 +187,7 @@ void CSkeletonX::_Render_soft(CBackend& cmd_list, ref_geom& hGeom, u32 vCount, u
 void CSkeletonX::_Load(const char* N, IReader* data, u32& dwVertCount)
 {
     s_bones_array_const = "sbones_array";
+    s_bones_array_old_const = "sbones_array_old"; // [DA_PORT]
     xr_vector<u16> bids;
 
     // Load vertices

@@ -15,6 +15,11 @@
 #include "Layers/xrRenderDX11/3DFluid/dx113DFluidManager.h"
 #endif
 
+// [DA_PORT] Defined in the engine (xr_ioc_cmd.cpp). Declared outside the namespace on purpose: an
+// extern written inside xray::render::render_r4 would look for the symbol in that namespace instead.
+extern ENGINE_API int ps_r__motion_vectors;
+extern ENGINE_API Fmatrix g_da_taa_unjittered_VP;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 CRender RImplementation;
@@ -118,6 +123,45 @@ static class cl_prev_vp : public R_constant_setup
         cmd_list.set_c(C, eye_to_prev_clip);
     }
 } binder_prev_vp;
+
+// [DA_PORT] World-view-projection of the PREVIOUS frame, for motion vectors. Static level geometry is
+// authored in world space, so its world matrix is identity and this is simply the previous frame's
+// view-projection — the same matrix TAA reprojects through, kept un-jittered on purpose: the vectors
+// must describe where the surface went, not where the sub-pixel offset moved the sample.
+//
+// Objects with a world matrix of their own (models, NPCs, doors) need it multiplied in here; that is
+// the next step and needs the engine to remember each object's previous transform. Until then they are
+// treated as static, i.e. their vectors account for camera movement but not for their own.
+static class cl_wvp_old : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // Previous frame's world-view-projection for whatever is being drawn: the object's own previous
+        // transform followed by the previous camera. For static level geometry the world part is
+        // identity and this reduces to the previous view-projection.
+        Fmatrix wvp_old;
+        wvp_old.mul(g_da_prev_VP, cmd_list.xforms.m_w_old);
+        cmd_list.set_c(C, wvp_old);
+    }
+} binder_wvp_old;
+
+// [DA_PORT] Current frame's view-projection WITHOUT the temporal-AA jitter. Motion vectors have to be
+// computed between two un-jittered positions: m_WVP carries the sub-pixel offset TAA adds every frame,
+// and subtracting an un-jittered previous position from a jittered current one yields the jitter itself
+// as a phantom motion — every pixel appears to move while the camera stands still. Upscalers are told
+// the jitter separately, so leaving it in the vectors would also count it twice.
+// NB despite the name this is the full world-view-projection, just without the jitter — it has to
+// mirror m_WVP_old exactly, and that one carries the object's world matrix too. For static geometry the
+// world part is identity, so the two readings coincide.
+static class cl_vp_nojitter : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        Fmatrix wvp_nojit;
+        wvp_nojit.mul(::g_da_taa_unjittered_VP, cmd_list.xforms.m_w);
+        cmd_list.set_c(C, wvp_nojit);
+    }
+} binder_vp_nojitter;
 
 static class cl_pos_decompress_params2 : public R_constant_setup
 {
@@ -481,6 +525,20 @@ void CRender::create()
 
     o.gbuffer_opt = ps_r2_ls_flags.test(R3FLAG_GBUFFER_OPT);
 
+    // [DA_PORT] Motion vectors. R4 only — the extra target and the shader option are DX11-side, and R2
+    // has no upscaler to consume them. Latched here so a mid-game toggle cannot desynchronise the bound
+    // target count from what the shaders were compiled for.
+#if RENDER == R_R4
+    o.velocity = !!::ps_r__motion_vectors;
+    // [DA_PORT] Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every
+    // G-buffer shader writes a fixed identifier instead of a motion vector. Answers "what actually
+    // draws this object" directly, instead of guessing from pass names in the log.
+    o.velocity_debug_ids = (::ps_r__motion_vectors == 3);
+#else
+    o.velocity = 0;
+    o.velocity_debug_ids = 0;
+#endif
+
     o.minmax_sm = ps_r3_minmax_sm;
     o.minmax_sm_screenarea_threshold = 1600 * 1200;
 
@@ -529,6 +587,8 @@ void CRender::create()
     Resources->RegisterConstantSetup("pos_decompression_params2", &binder_pos_decompress_params2);
     Resources->RegisterConstantSetup("m_AlphaRef", &binder_alpha_ref);
     Resources->RegisterConstantSetup("m_prev_VP", &binder_prev_vp); // [DA_PORT] temporal reprojection
+    Resources->RegisterConstantSetup("m_WVP_old", &binder_wvp_old); // [DA_PORT] motion vectors
+    Resources->RegisterConstantSetup("m_VP_nojit", &binder_vp_nojitter); // [DA_PORT] motion vectors
 #if defined(USE_DX11)
     Resources->RegisterConstantSetup("triLOD", &binder_LOD);
 #endif

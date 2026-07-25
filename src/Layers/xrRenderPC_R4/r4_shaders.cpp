@@ -401,6 +401,11 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     // Geometry buffer optimization
     appendShaderOption(o.gbuffer_opt, "GBUFFER_OPTIMIZATION", "1");
 
+    // [DA_PORT] Motion vectors as an extra G-buffer output — see f_deffer in common_iostructs.h. Must
+    // match the target count bound in phase_scene_begin, hence both read the same latched o.velocity.
+    appendShaderOption(o.velocity, "DA_VELOCITY", "1");
+    appendShaderOption(o.velocity_debug_ids, "DA_DEBUG_SHADER_IDS", "1"); // [DA_PORT] see r2.cpp
+
     // Shader Model 4.1
     appendShaderOption(o.dx11_sm4_1, "SM_4_1", "1");
 

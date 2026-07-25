@@ -72,6 +72,7 @@ void R_dsgraph_structure::render_graph(u32 _priority)
                 cmd_list.set_Pass(it->first);
                 cmd_list.apply_lmaterial();
 
+
                 mapNormalItems& items = it->second;
                 items.ssa = 0;
 
@@ -112,6 +113,7 @@ void R_dsgraph_structure::render_graph(u32 _priority)
             for (const auto& it : matPasses)
             {
                 cmd_list.set_Pass(it->first);
+
 
                 mapMatrixItems& items = it->second;
                 items.ssa = 0;
@@ -304,6 +306,7 @@ void R_dsgraph_structure::render_sorted()
 {
     ZoneScoped;
     PIX_EVENT_CTX(cmd_list, dsgraph_render_sorted);
+
 
     sort_back_to_front_render_and_clean(context_id, mapSorted);
 

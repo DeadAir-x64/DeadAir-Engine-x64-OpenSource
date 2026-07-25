@@ -13,6 +13,13 @@ public:
     Fmatrix m_vp; // Derived	- view2projection
     Fmatrix m_wvp; // Derived	- world2view2projection
 
+    // [DA_PORT] World matrix this object had on the PREVIOUS frame, for motion vectors. set_W keeps it
+    // equal to the current one, which is the right answer for everything that does not move (the whole
+    // static level, where it stays identity) and a safe fallback for anything that moves but does not
+    // report its previous transform — such an object gets the camera's motion and none of its own,
+    // instead of a garbage vector. Movers call set_W_old right after set_W to supply the real one.
+    Fmatrix m_w_old;
+
     R_constant* c_w;
     R_constant* c_invw;
     R_constant* c_v;
@@ -28,6 +35,7 @@ public:
     explicit R_xforms(CBackend& cmd_list_in);
     void unmap();
     void set_W(const Fmatrix& m);
+    void set_W_old(const Fmatrix& m) { m_w_old.set(m); } // [DA_PORT] motion vectors
     void set_V(const Fmatrix& m);
     void set_P(const Fmatrix& m);
     const Fmatrix& get_W() { return m_w; }

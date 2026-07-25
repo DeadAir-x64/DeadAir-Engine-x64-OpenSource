@@ -790,6 +790,12 @@ ENGINE_API int ps_r__taa = 0;
 // recover. 0 disables it.
 ENGINE_API int ps_r__upscale_sharpness = 40;
 
+// [DA_PORT] Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
+// the one input FSR 2, XeSS and DLSS all require and the engine has never had. Off by default and read
+// only when the renderer starts — changing it needs a renderer restart, because it decides both the
+// number of targets the scene pass binds and the shader option the G-buffer shaders are compiled with.
+ENGINE_API int ps_r__motion_vectors = 0;
+
 // [DA_PORT] One control instead of two. The pair that actually drives the upscale — render scale and
 // sharpening — means nothing to a player, and the whole point of this feature is the people running the
 // mod on old hardware. The preset writes both; the individual console variables still work for tuning.
@@ -865,6 +871,7 @@ void CCC_Register()
     // idle at 1080p, so spare GPU time is better spent on image quality than left unused.
     CMD4(CCC_RenderScale, "r__render_scale", &ps_r__render_scale, 25, 200);
     CMD3(CCC_UpscalePreset, "r__upscale_preset", &ps_r__upscale_preset, qupscale_preset_token);
+    CMD4(CCC_Integer, "r__motion_vectors", &ps_r__motion_vectors, 0, 3); // 2 = show buffer, 3 = map which shader drew what
     CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
     CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]

@@ -59,12 +59,47 @@ void CRenderTarget::phase_scene_prepare()
 void CRenderTarget::phase_scene_begin()
 {
     // Targets, use accumulator for temporary storage
+    // [DA_PORT] With motion vectors on, rt_Velocity is bound as the last colour target. Only the
+    // compressed G-buffer layout is wired up: it is the one the port actually runs (R3FLAG_GBUFFER_OPT
+    // is set by default), and binding four targets on the uncompressed path without a shader that
+    // writes the fourth would leave it undefined rather than merely unused.
+#if RENDER == R_R4
+    const bool da_velocity = RImplementation.o.velocity && RImplementation.o.gbuffer_opt;
+#else
+    constexpr bool da_velocity = false;
+#endif
+
     if (!RImplementation.o.gbuffer_opt)
     {
         if (RImplementation.o.albedo_wo)
             u_setrt(RCache, rt_Position, rt_Normal, rt_Accumulator, rt_MSAADepth);
         else
             u_setrt(RCache, rt_Position, rt_Normal, rt_Color, rt_MSAADepth);
+    }
+    else if (da_velocity)
+    {
+        // [DA_PORT] Clear the velocity target ONCE PER FRAME. Pixels the G-buffer never covers — the sky
+        // above all — are written by nothing, so without a clear they keep whatever previous frames left
+        // there, and an upscaler trusts this buffer everywhere.
+        //
+        // The once-per-frame guard is essential, not tidiness: with the scene split in two (see
+        // render_forward / the split path in r2_R_render.cpp) this function runs TWICE per frame, and
+        // clearing on the second call wipes everything the first part drew. That left only what the
+        // second part draws — the HUD weapon and the detail grass — with vectors, while the whole world
+        // and every NPC came out empty. Cost me an evening.
+#if defined(USE_DX11)
+        if (rt_Velocity && rt_Velocity->pRT && da_velocity_cleared_frame != Device.dwFrame)
+        {
+            constexpr float zero[4] = { 0.f, 0.f, 0.f, 0.f };
+            HW.get_context(RCache.context_id)->ClearRenderTargetView(rt_Velocity->pRT, zero);
+            da_velocity_cleared_frame = Device.dwFrame;
+        }
+#endif
+
+        if (RImplementation.o.albedo_wo)
+            u_setrt(RCache, rt_Position, rt_Accumulator, rt_Velocity, rt_MSAADepth);
+        else
+            u_setrt(RCache, rt_Position, rt_Color, rt_Velocity, rt_MSAADepth);
     }
     else
     {

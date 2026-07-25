@@ -239,6 +239,70 @@ public:
     virtual void Info(TInfo& I) { xr_strcpy(I, "dump ui xml files served by the VFS into logs\\vfs_ui"); }
 };
 
+// [DA_PORT] Same trick for shaders, needed to edit the G-buffer output structure for motion vectors.
+// Offline carving is not an option here: the archive's own index decompresses correctly for only part
+// of its entries (the tail comes out as garbage), the shader sources are not among the entries that do
+// survive, and the archive holds more than one copy of the r3 sources. Asking the VFS is exact by
+// construction — it hands back the very bytes the renderer compiles, loose overrides included.
+class CCC_DumpShaders : public IConsole_Command
+{
+public:
+    CCC_DumpShaders(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+    virtual void Execute(LPCSTR args)
+    {
+        // Which renderer's folder to dump; defaults to the one in use.
+        string64 sub;
+        if (args && xr_strlen(args))
+            xr_sprintf(sub, "%s", args);
+        else
+            xr_strcpy(sub, "r3");
+
+        string_path mask;
+        xr_sprintf(mask, "%s" DELIMITER "*.*", sub);
+
+        FS_FileSet files;
+        FS.file_list(files, "$game_shaders$", FS_ListFiles, mask);
+
+        u32 exported = 0, unreadable = 0;
+        for (const FS_File& f : files)
+        {
+            string_path src;
+            FS.update_path(src, "$game_shaders$", f.name.c_str());
+
+            IReader* r = FS.r_open(src);
+            if (!r)
+            {
+                ++unreadable;
+                if (unreadable <= 3)
+                    Msg("~ [DA_PORT] shader dump: cannot open [%s]", src);
+                continue;
+            }
+
+            // Flattened like the ui dump: w_open will not create nested directories.
+            pcstr base = f.name.c_str();
+            if (pcstr slash = strrchr(base, DELIMITER[0]))
+                base = slash + 1;
+
+            string_path dst;
+            xr_sprintf(dst, "vfs_shaders" DELIMITER "%s", base);
+            if (IWriter* w = FS.w_open("$logs$", dst))
+            {
+                w->w(r->pointer(), r->length());
+                FS.w_close(w);
+                ++exported;
+            }
+            else if (exported == 0)
+                Msg("~ [DA_PORT] shader dump: cannot write [%s]", dst);
+
+            FS.r_close(r);
+        }
+        Msg("~ [DA_PORT] dumped %u/%u shader files from [%s] to appdata" DELIMITER "logs" DELIMITER
+            "vfs_shaders" DELIMITER, exported, (u32)files.size(), sub);
+        FlushLog();
+    }
+    virtual void Info(TInfo& I) { xr_strcpy(I, "dump shader sources served by the VFS into logs\\vfs_shaders [r1|r2|r3]"); }
+};
+
 class CCC_MemStats : public IConsole_Command
 {
 public:
@@ -2610,6 +2674,7 @@ void CCC_RegisterCommands()
     // and test with (the dump_* commands above are debug-only, which is why the first attempt at this
     // came back as "Unknown command").
     CMD1(CCC_DumpUIXml, "da_dump_ui_xml");
+    CMD1(CCC_DumpShaders, "da_dump_shaders");
 
 #ifndef MASTER_GOLD
     CMD1(CCC_StartTimeSingle, "start_time_single");

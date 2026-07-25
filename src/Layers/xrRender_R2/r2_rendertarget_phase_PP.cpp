@@ -4,6 +4,7 @@
 // extern written inside xray::render::render_r4 would look for the symbol in that namespace.
 extern ENGINE_API int ps_r__upscale_sharpness;
 extern ENGINE_API float ps_gamma, ps_brightness, ps_contrast;
+extern ENGINE_API int ps_r__motion_vectors;
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -204,8 +205,9 @@ void CRenderTarget::phase_pp()
     RCache.set_c(s_colorgrade, ps_r_color_base_r, ps_r_color_base_g, ps_r_color_base_b, ps_r2_vibrance_val);
 
     // [DA_PORT] Sharpening strength for the upscale (RCAS, the second half of FSR 1.0).
+    // y carries the motion-vector mode so that 2 shows the velocity buffer instead of the frame.
     static shared_str s_upscale = "da_upscale";
-    RCache.set_c(s_upscale, float(::ps_r__upscale_sharpness) / 100.f, 0.f, 0.f, 0.f);
+    RCache.set_c(s_upscale, float(::ps_r__upscale_sharpness) / 100.f, float(::ps_r__motion_vectors), 0.f, 0.f);
 
     // [DA_PORT] Gamma / brightness / contrast. These reach the screen through the hardware gamma ramp,
     // which on DX11 only works in exclusive fullscreen — in borderless or windowed mode the sliders do

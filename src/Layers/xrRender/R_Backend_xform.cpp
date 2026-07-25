@@ -8,6 +8,11 @@ namespace xray::render::RENDER_NAMESPACE
 void R_xforms::set_W(const Fmatrix& m)
 {
     m_w.set(m);
+    // [DA_PORT] Default the previous-frame world to the current one; movers overwrite it via set_W_old
+    // immediately afterwards. Doing it here rather than leaving the last object's matrix behind matters:
+    // these are set per draw call, and a stale value from an unrelated object would produce vectors
+    // pointing at nothing.
+    m_w_old.set(m);
     m_wv.mul_43(m_v, m_w);
     m_wvp.mul(m_p, m_wv);
     if (c_w)
@@ -80,6 +85,7 @@ R_xforms::R_xforms(CBackend& cmd_list_in)
 {
     unmap();
     m_w.identity();
+    m_w_old.identity(); // [DA_PORT] motion vectors
     m_invw.identity();
     m_v.identity();
     m_p.identity();

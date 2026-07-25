@@ -232,7 +232,9 @@ void CBlender_postprocess_msaa::Compile(CBlender_Compile& C)
         C.r_dx11Texture("s_base0", r2_RT_generic);
         C.r_dx11Texture("s_base1", r2_RT_generic);
         C.r_dx11Texture("s_noise", "fx" DELIMITER "fx_noise2");
-
+        // [DA_PORT] NOTE: this C++ blender is NOT what builds the post-process pass in Dead Air —
+        // s_postprocess is created by name ("postprocess"), which resolves to the mod's script blender
+        // shaders\r3\postprocess.s. Texture bindings added here have no effect; add them there.
         C.r_dx11Sampler("smp_rtlinear");
         C.r_dx11Sampler("smp_linear");
         C.r_End();

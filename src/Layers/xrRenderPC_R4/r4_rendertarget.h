@@ -61,6 +61,7 @@ public:
     ref_rt rt_TAA_scratch; // DA: second output of the resolve — the copy that goes into the history
     ref_rt rt_TAA_out;     // DA: first output of the resolve — the copy that goes back on screen
     ref_rt rt_Velocity;    // DA: screen-space motion vectors, RG16F (R4). Groundwork for FSR 2.
+    u32 da_velocity_cleared_frame{}; // DA: phase_scene_begin runs twice per frame when the scene is split
 
     //
     ref_rt rt_Accumulator; // 64bit		(r,g,b,specular)

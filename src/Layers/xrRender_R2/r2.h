@@ -246,6 +246,11 @@ public:
         u32 msaa_hybrid : 1; // DX10.0 main path with DX10.1 A-test msaa allowed
         u32 msaa_opt : 1; // DX10.1 path
         u32 gbuffer_opt : 1;
+        // [DA_PORT] Motion vectors written as an extra G-buffer target. Latched once when the renderer
+        // starts, not read per frame: it decides both how many targets the scene pass binds and whether
+        // the shaders are compiled with DA_VELOCITY, and those two must never disagree.
+        u32 velocity : 1;
+    u32 velocity_debug_ids : 1; // [DA_PORT] mode 3: shaders stamp their identity instead of motion
         u32 dx11_sm4_1 : 1; // DX10.1 path
         u32 msaa_alphatest : 2; //	A-test mode
         u32 msaa_samples : 4;
