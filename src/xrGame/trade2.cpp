@@ -157,7 +157,10 @@ u32 CTrade::GetItemPrice(PIItem pItem, bool b_buying, bool bFree /*= false*/)
 
     // computing condition factor
     // for "dead" weapon we use 10% from base cost, for "good" weapon we use full base cost
-    const float condition_factor = powf(pItem->GetCondition() * 0.9f + .1f, 0.75f);
+    // [DA_PORT] Dead Air reads the condition exponent from config ([trade] buy_condition_koeff),
+    // instead of the hardcoded 0.75f. With koeff=3 worn items lose value far more steeply.
+    const float buy_condition_koeff = pSettings->r_float("trade", "buy_condition_koeff");
+    const float condition_factor = powf(pItem->GetCondition() * 0.9f + .1f, buy_condition_koeff);
 
     // computing relation factor
     float relation_factor;

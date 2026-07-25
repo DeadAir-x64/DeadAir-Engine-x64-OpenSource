@@ -89,17 +89,43 @@ static class cl_pos_decompress_params : public R_constant_setup
 #else
 #   error No graphics API selected or enabled!
 #endif
-        cmd_list.set_c(
-            C, HorzTan, VertTan, (2.0f * HorzTan) / (float)Device.dwWidth, (2.0f * VertTan) / (float)Device.dwHeight);
+        // [DA_PORT] These describe the G-BUFFER, not the window: the deferred shaders rebuild eye-space
+        // position from it by stepping one texel at a time. With r__render_scale < 100 the G-buffer is
+        // smaller, so dividing the view angle by the output width gave every pixel a position that was
+        // wrong by exactly the scale factor — which reads as broken depth, and the whole scene drowned
+        // in fog. Must follow the render resolution.
+        cmd_list.set_c(C, HorzTan, VertTan, (2.0f * HorzTan) / (float)Device.dwRenderWidth,
+            (2.0f * VertTan) / (float)Device.dwRenderHeight);
     }
 } binder_pos_decompress_params;
+
+// [DA_PORT] Previous frame's view-projection, for temporal reprojection (TAA, temporal SSR).
+// Anomaly's engine has no velocity buffer at all — its temporal effects reproject through depth plus
+// the previous camera matrix and hide the resulting ghosts on moving objects by clipping the history
+// against the current neighbourhood. Same approach here: this constant is the only engine-side input
+// that approach needs, and it costs nothing when unused.
+Fmatrix g_da_prev_VP = Fidentity;
+
+static class cl_prev_vp : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // The shader feeds this an EYE-space position straight out of the G-buffer, so the matrix has to
+        // undo the current view before applying the previous frame's view-projection. Same composition
+        // the motion-blur code in phase_combine builds for m_previous.
+        Fmatrix eye_to_prev_clip;
+        eye_to_prev_clip.mul(g_da_prev_VP, Device.mInvView);
+        cmd_list.set_c(C, eye_to_prev_clip);
+    }
+} binder_prev_vp;
 
 static class cl_pos_decompress_params2 : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
     {
-        cmd_list.set_c(C, (float)Device.dwWidth, (float)Device.dwHeight, 1.0f / (float)Device.dwWidth,
-            1.0f / (float)Device.dwHeight);
+        // [DA_PORT] Same reasoning: this is the G-buffer's size, used for texel-exact fetches.
+        cmd_list.set_c(C, (float)Device.dwRenderWidth, (float)Device.dwRenderHeight,
+            1.0f / (float)Device.dwRenderWidth, 1.0f / (float)Device.dwRenderHeight);
     }
 } binder_pos_decompress_params2;
 
@@ -502,6 +528,7 @@ void CRender::create()
     Resources->RegisterConstantSetup("pos_decompression_params", &binder_pos_decompress_params);
     Resources->RegisterConstantSetup("pos_decompression_params2", &binder_pos_decompress_params2);
     Resources->RegisterConstantSetup("m_AlphaRef", &binder_alpha_ref);
+    Resources->RegisterConstantSetup("m_prev_VP", &binder_prev_vp); // [DA_PORT] temporal reprojection
 #if defined(USE_DX11)
     Resources->RegisterConstantSetup("triLOD", &binder_LOD);
 #endif

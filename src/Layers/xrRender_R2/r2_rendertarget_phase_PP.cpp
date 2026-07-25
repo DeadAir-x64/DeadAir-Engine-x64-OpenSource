@@ -1,5 +1,10 @@
 #include "stdafx.h"
 
+// [DA_PORT] Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace: an
+// extern written inside xray::render::render_r4 would look for the symbol in that namespace.
+extern ENGINE_API int ps_r__upscale_sharpness;
+extern ENGINE_API float ps_gamma, ps_brightness, ps_contrast;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 void CRenderTarget::u_calc_tc_noise(Fvector2& p0, Fvector2& p1)
@@ -131,7 +136,10 @@ struct TL_2c3uv
 void CRenderTarget::phase_pp()
 {
     // combination/postprocess
-    u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, get_base_zb());
+    // [DA_PORT] no depth here on purpose: this composites a full-screen quad onto the back buffer,
+    // and with r__render_scale < 100 the scene depth buffer is smaller than the back buffer — D3D
+    // requires the depth-stencil view to match the render target, so pairing them renders nothing.
+    u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr);
     //	Element 0 for for normal post-process
     //	Element 4 for color map post-process
     bool bCMap = u_need_CM();
@@ -187,6 +195,28 @@ void CRenderTarget::phase_pp()
     static shared_str s_colormap = "c_colormap";
     RCache.set_c(s_brightness, p_brightness.x, p_brightness.y, p_brightness.z, 0.f);
     RCache.set_c(s_colormap, param_color_map_influence, param_color_map_interpolate, 0.f, 0.f);
+
+    // [DA_PORT] Colour grading. r__color_base_r/g/b and r2_vibrance_val existed as console variables
+    // and had sliders in the mod's options, but nothing in the renderer ever read them — the sliders
+    // moved and the picture did not. Fed to the shader here; at 1/1/1 with vibrance 0 the result is
+    // identical to before, so the defaults change nothing.
+    static shared_str s_colorgrade = "da_color_grade";
+    RCache.set_c(s_colorgrade, ps_r_color_base_r, ps_r_color_base_g, ps_r_color_base_b, ps_r2_vibrance_val);
+
+    // [DA_PORT] Sharpening strength for the upscale (RCAS, the second half of FSR 1.0).
+    static shared_str s_upscale = "da_upscale";
+    RCache.set_c(s_upscale, float(::ps_r__upscale_sharpness) / 100.f, 0.f, 0.f, 0.f);
+
+    // [DA_PORT] Gamma / brightness / contrast. These reach the screen through the hardware gamma ramp,
+    // which on DX11 only works in exclusive fullscreen — in borderless or windowed mode the sliders do
+    // nothing at all (see xr_effgamma.cpp). The mod ships with rs_c_brightness 1.2, so that loss showed
+    // up as a picture noticeably darker than the original. Applied here in the shader whenever the ramp
+    // is not in effect; w = 0 disables the shader path so fullscreen keeps the stock behaviour and the
+    // correction is never applied twice.
+    static shared_str s_gamma = "da_gamma";
+    const float shader_path = g_da_gamma_ramp_active ? 0.f : 1.f;
+    RCache.set_c(s_gamma, 1.f / (::ps_gamma + EPS), ::ps_brightness * 0.5f, ::ps_contrast * 0.5f, shader_path);
+
     RCache.set_Geometry(g_postprocess);
     RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 }

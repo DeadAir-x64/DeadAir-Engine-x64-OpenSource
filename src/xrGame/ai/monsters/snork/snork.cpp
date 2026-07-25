@@ -42,7 +42,7 @@ void CSnork::Load(LPCSTR section)
     SVelocityParam& velocity_walk_dmg = move().get_velocity(MonsterMovement::eVelocityParameterWalkDamaged);
     SVelocityParam& velocity_run_dmg = move().get_velocity(MonsterMovement::eVelocityParameterRunDamaged);
     SVelocityParam& velocity_steal = move().get_velocity(MonsterMovement::eVelocityParameterSteal);
-    // SVelocityParam &velocity_drag		= move().get_velocity(MonsterMovement::eVelocityParameterDrag);
+    SVelocityParam& velocity_drag = move().get_velocity(MonsterMovement::eVelocityParameterDrag);
 
     const SAnimItem::Effects fxs{ "stand_fx_f", "stand_fx_b", "stand_fx_l", "stand_fx_r" };
 
@@ -61,6 +61,28 @@ void CSnork::Load(LPCSTR section)
     anim().AddAnim(eAnimEat, "stand_eat_", -1, &velocity_none, PS_STAND, fxs);
     anim().AddAnim(eAnimCheckCorpse, "stand_check_corpse_", -1, &velocity_none, PS_STAND, fxs);
 
+    // [DA_PORT] Sleeping/lying and corpse dragging, from the Dead Air alpha (which took the snork over
+    // from Shadow of Chernobyl). The animations live in snork_animation.omf, supplied by the dev and
+    // installed under gamedata\meshes\monsters. Registered as OPTIONAL so a snork visual without them
+    // degrades to the stock behaviour instead of failing to load. Note the alpha drops the footstep
+    // effects and run-turn anims that our base has — those are kept here, so this is a merge of both.
+    const bool has_lie_idle = anim().AddAnim(eAnimLieIdle, "lie_sleep_", -1, &velocity_none, PS_LIE, fxs, false);
+    const bool has_sleep = anim().AddAnim(eAnimSleep, "lie_sleep_", -1, &velocity_none, PS_LIE, fxs, false);
+    const bool has_stand_up = anim().AddAnim(eAnimLieStandUp, "lie_stand_up_", -1, &velocity_none, PS_LIE, fxs, false);
+    const bool has_to_sleep = anim().AddAnim(eAnimLieToSleep, "lie_to_sleep_", -1, &velocity_none, PS_LIE, fxs, false);
+    const bool has_lie = has_lie_idle && has_sleep && has_stand_up && has_to_sleep;
+
+    const bool has_drag = anim().AddAnim(eAnimDragCorpse, "stand_drag_", -1, &velocity_drag, PS_STAND, fxs, false);
+
+    if (has_lie)
+    {
+        anim().AddTransition(eAnimStandLieDown, eAnimSleep, eAnimLieToSleep, false);
+        anim().AddTransition(PS_LIE, PS_STAND, eAnimLieStandUp, false, SKIP_IF_AGGRESSIVE);
+        // The alpha also adds PS_STAND -> PS_LIE / eAnimSleep transitions that play eAnimStandLieDown,
+        // but no "stand_lie_down_" motion exists in the supplied .omf — wiring them would ask the
+        // animation system for a motion that isn't there. Left out until that animation shows up.
+    }
+
     if (anim().AddAnim(eAnimRunTurnLeft, "stand_run_look_left_", -1, &velocity_run, PS_STAND, fxs, false) ||
         anim().AddAnim(eAnimRunTurnLeft,       "run_look_left_", -1, &velocity_run, PS_STAND, fxs, false))
     {
@@ -75,14 +97,14 @@ void CSnork::Load(LPCSTR section)
 
     anim().LinkAction(ACT_STAND_IDLE, eAnimStandIdle);
     anim().LinkAction(ACT_SIT_IDLE, eAnimStandIdle);
-    anim().LinkAction(ACT_LIE_IDLE, eAnimStandIdle);
+    anim().LinkAction(ACT_LIE_IDLE, has_lie ? eAnimLieIdle : eAnimStandIdle); // [DA_PORT]
     anim().LinkAction(ACT_WALK_FWD, eAnimWalkFwd);
     anim().LinkAction(ACT_WALK_BKWD, eAnimWalkFwd);
     anim().LinkAction(ACT_RUN, eAnimRun);
     anim().LinkAction(ACT_EAT, eAnimEat);
-    anim().LinkAction(ACT_SLEEP, eAnimStandIdle);
+    anim().LinkAction(ACT_SLEEP, has_lie ? eAnimSleep : eAnimStandIdle); // [DA_PORT]
     anim().LinkAction(ACT_REST, eAnimStandIdle);
-    anim().LinkAction(ACT_DRAG, eAnimStandIdle);
+    anim().LinkAction(ACT_DRAG, has_drag ? eAnimDragCorpse : eAnimStandIdle); // [DA_PORT]
     anim().LinkAction(ACT_ATTACK, eAnimAttack);
     anim().LinkAction(ACT_STEAL, eAnimSteal);
     anim().LinkAction(ACT_LOOK_AROUND, eAnimLookAround);

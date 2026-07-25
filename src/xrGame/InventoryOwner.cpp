@@ -320,6 +320,17 @@ float CInventoryOwner::MaxCarryWeight() const
     if (outfit)
         ret += outfit->m_additional_weight2;
 
+    // [DA_PORT] The equipped backpack extends the carry limit too - without this the inventory
+    // showed "max 11 kg" while the player (correctly) walked around with 25. DA's backpacks are
+    // scripted artefacts (config class SCRPTART), NOT the engine's CBackpack, so GetBackpack()
+    // (a smart_cast to CBackpack) misses them. Read additional_inventory_weight2 straight from the
+    // backpack-slot item's config so the bonus applies for both the engine backpack and DA's.
+    if (PIItem backpack_item = inventory().ItemFromSlot(BACKPACK_SLOT))
+    {
+        pcstr sect = backpack_item->object().cNameSect().c_str();
+        ret += READ_IF_EXISTS(pSettings, r_float, sect, "additional_inventory_weight2", 0.f);
+    }
+
     return ret;
 }
 

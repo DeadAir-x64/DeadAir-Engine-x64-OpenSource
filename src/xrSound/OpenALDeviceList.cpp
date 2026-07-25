@@ -35,6 +35,45 @@ ALDeviceList::ALDeviceList()
     Enumerate();
 }
 
+// [DA_PORT] OpenAL Soft returns device names as UTF-8 on Windows, but the game's fonts and string
+// tables are Windows-1251. A device whose name contains Cyrillic therefore showed up as mojibake in
+// the sound options ("OpenAL Soft on РКР°Р¶... (JBL TUNE770NC)"). Transcode once, where the names
+// enter the engine, so everything downstream keeps working in the single-byte encoding it expects.
+// Pure-ASCII names (the common case) pass through unchanged.
+static void da_sound_name_to_ui_encoding([[maybe_unused]] pstr name, [[maybe_unused]] size_t size)
+{
+#if defined(XR_PLATFORM_WINDOWS)
+    if (!name || !name[0])
+        return;
+
+    // ASCII-only? nothing to do.
+    bool has_high_bit = false;
+    for (pcstr p = name; *p; ++p)
+    {
+        if (static_cast<u8>(*p) >= 0x80)
+        {
+            has_high_bit = true;
+            break;
+        }
+    }
+    if (!has_high_bit)
+        return;
+
+    WCHAR wide[512];
+    const int wide_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name, -1, wide, std::size(wide));
+    if (wide_len <= 0)
+        return; // not valid UTF-8 after all - leave the original bytes alone
+
+    string512 converted;
+    const int converted_len =
+        WideCharToMultiByte(1251, 0, wide, -1, converted, sizeof(converted), "?", nullptr);
+    if (converted_len <= 0)
+        return;
+
+    xr_strcpy(name, size, converted);
+#endif
+}
+
 void ALDeviceList::IterateAndAddDevicesString(pcstr devices)
 {
     // go through device list (each device terminated with a single NULL, list terminated with double NULL)
@@ -144,7 +183,12 @@ void ALDeviceList::Enumerate()
 
     for (u32 i = 0; i < _cnt; ++i)
     {
-        devices.emplace_back(xr_strdup(m_devices[i].name), i);
+        // [DA_PORT] Only the string shown in the UI/console is transcoded; m_devices[i].name keeps the
+        // original bytes because alcOpenDevice() and the default-device comparisons need them verbatim.
+        string512 ui_name;
+        xr_strcpy(ui_name, m_devices[i].name);
+        da_sound_name_to_ui_encoding(ui_name, sizeof(ui_name));
+        devices.emplace_back(xr_strdup(ui_name), i);
     }
     devices.emplace_back(nullptr, -1);
     //--

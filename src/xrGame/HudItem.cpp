@@ -7,12 +7,24 @@
 #include "xrMessages.h"
 #include "Level.h"
 #include "Inventory.h"
+#include "xrCDB/xr_collide_defs.h" // [DA_PORT] nearwall: collide::rq_result for the forward wall ray
 #include "xrEngine/CameraBase.h"
 #include "player_hud.h"
 #include "xrCore/Animation/SkeletonMotions.hpp"
 #include "xrNetServer/NET_Messages.h"
 
 #include "xrUICore/ui_base.h"
+
+extern ENGINE_API float psHUD_FOV;
+extern ENGINE_API float g_hud_fov_current;
+
+// [DA_PORT] nearwall weapon-collision HUD FOV (opt-in). Default OFF => g_hud_fov_current stays
+// == psHUD_FOV, i.e. behaviour identical to stock. Tunable live via console (hud_nearwall*).
+int   g_hud_nearwall            = 1;      // master toggle (0=off) — DA default ON (weapon collision)
+float g_hud_nearwall_dist_min   = 0.05f;  // at/below this wall distance -> full pull (target_fov)
+float g_hud_nearwall_dist_max   = 1.0f;   // at/above this -> no effect (base psHUD_FOV)
+float g_hud_nearwall_target_fov = 0.35f;  // HUD FOV when hard against a wall (smaller = weapon closer)
+float g_hud_nearwall_speed      = 8.0f;   // exponential smoothing speed
 
 CHudItem::CHudItem()
 {
@@ -181,6 +193,31 @@ void CHudItem::SendHiddenItem()
 void CHudItem::UpdateHudAdditonal(Fmatrix& hud_trans) {}
 void CHudItem::UpdateCL()
 {
+    // [DA_PORT] nearwall: smoothly pull the weapon HUD FOV toward target_fov as a wall gets close
+    // ahead of the camera. Opt-in (hud_nearwall); when off we simply mirror psHUD_FOV so every HUD
+    // projection site behaves exactly like stock. Runs for the actively-shown first-person HUD only.
+    if (g_hud_nearwall && GetHUDmode())
+    {
+        const float dmax = g_hud_nearwall_dist_max;
+        const float dmin = g_hud_nearwall_dist_min;
+        float wall = dmax;
+        collide::rq_result RQ;
+        // rqtStatic hits only level geometry (the dynamic actor capsule is never hit), so no ignore needed
+        if (Level().ObjectSpace.RayPick(Device.vCameraPosition, Device.vCameraDirection, dmax,
+                collide::rqtStatic, RQ, nullptr))
+            wall = RQ.range;
+
+        wall = clampr(wall, dmin, dmax);
+        const float t = (dmax > dmin) ? (wall - dmin) / (dmax - dmin) : 1.f; // 0 at wall, 1 far
+        const float instant = g_hud_nearwall_target_fov + t * (psHUD_FOV - g_hud_nearwall_target_fov);
+        const float k = clampr(g_hud_nearwall_speed * Device.fTimeDelta, 0.f, 1.f);
+        g_hud_fov_current = instant * k + g_hud_fov_current * (1.f - k);
+    }
+    else
+    {
+        g_hud_fov_current = psHUD_FOV;
+    }
+
     if (m_current_motion_def)
     {
         if (m_bStopAtEndAnimIsRunning)
@@ -437,7 +474,6 @@ void CHudItem::OnMovementChanged(ACTOR_DEFS::EMoveCommand cmd)
     }
 }
 
-extern ENGINE_API float psHUD_FOV;
 void CHudItem::TransformPosFromWorldToHud(Fvector& worldPos)
 {
     CActor* actor = smart_cast<CActor*>(object().H_Parent());
@@ -452,7 +488,7 @@ void CHudItem::TransformPosFromWorldToHud(Fvector& worldPos)
     }
 
     Fmatrix hud_project;
-    hud_project.build_projection(deg2rad(psHUD_FOV * Device.fFOV), Device.fASPECT, HUD_VIEWPORT_NEAR,
+    hud_project.build_projection(deg2rad(g_hud_fov_current * Device.fFOV), Device.fASPECT, HUD_VIEWPORT_NEAR,
         g_pGamePersistent->Environment().CurrentEnv.far_plane);
 
     mView.transform_tiny(worldPos);
@@ -476,7 +512,7 @@ void CHudItem::TransformDirFromWorldToHud(Fvector& worldDir)
     }
 
     Fmatrix hud_project;
-    hud_project.build_projection(deg2rad(psHUD_FOV * Device.fFOV), Device.fASPECT, HUD_VIEWPORT_NEAR,
+    hud_project.build_projection(deg2rad(g_hud_fov_current * Device.fFOV), Device.fASPECT, HUD_VIEWPORT_NEAR,
         g_pGamePersistent->Environment().CurrentEnv.far_plane);
 
     mView.transform_dir(worldDir);

@@ -26,10 +26,19 @@ static const float y_spin0_factor = 0.0f;
 static const float y_spin1_factor = 0.4f;
 static const float y_shoulder_factor = 0.4f;
 static const float y_head_factor = 0.2f;
+// [DA_PORT] PITCH factors bend the actor's THIRD-PERSON spine/head bones to follow the first-person
+// camera pitch (r_torso.pitch). They only affect the 3rd-person model — never the first-person
+// camera or the HUD hands (player_hud) — so in single-player their sole consumer is the actor's own
+// self-shadow (r2_actor_shadow / CHUDManager::Render_First) and the death corpse. With the stock
+// values (shoulder 0.7 + spine1 0.2 + head 0.1 ~= full camera pitch) looking DOWN to inspect your
+// own shadow folded the whole upper body forward, collapsing the arms and tucking the head — the
+// shadow read as armless/headless. Softened so the shadow stays upright and NPC-like (head + arms
+// visible) regardless of view pitch; the shadow no longer tilts with steep aim, which is invisible
+// for a shadow. YAW/ROLL kept stock (turning + lean look natural). Dial these to taste.
 static const float p_spin0_factor = 0.0f;
-static const float p_spin1_factor = 0.2f;
-static const float p_shoulder_factor = 0.7f;
-static const float p_head_factor = 0.1f;
+static const float p_spin1_factor = 0.1f;
+static const float p_shoulder_factor = 0.2f;
+static const float p_head_factor = 0.05f;
 static const float r_spin0_factor = 0.3f;
 static const float r_spin1_factor = 0.3f;
 static const float r_shoulder_factor = 0.2f;

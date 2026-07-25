@@ -168,8 +168,8 @@ void CRenderTarget::phase_combine()
         */
 
         // Fill VB
-        float scale_X = float(Device.dwWidth) / float(TEX_jitter);
-        float scale_Y = float(Device.dwHeight) / float(TEX_jitter);
+        float scale_X = float(Device.dwRenderWidth) / float(TEX_jitter);
+        float scale_Y = float(Device.dwRenderHeight) / float(TEX_jitter);
 
         // Fill vertex buffer
         FVF::TL* pv = (FVF::TL*)RImplementation.Vertex.Lock(4, g_combine->vb_stride, Offset);
@@ -200,6 +200,17 @@ void CRenderTarget::phase_combine()
         RCache.set_c("ssao_noise_tile_factor", fSSAONoise);
         RCache.set_c("ssao_kernel_size", fSSAOKernelSize);
 
+        // [DA_PORT] Visor rain-droplet ("lens water") intensity. blender_combine puts the combine_1.ps
+        // pixel shader (which holds the `#ifdef USE_LENS_WATER -> visor_drops()` block) in THIS pass
+        // (E[0]), so the constant must be bound here. dinamic_hud.script drives r2_lenswater_val while
+        // it rains; r2_lenswater (no _val) is a manual override (untouched by scripts) for testing.
+        {
+            const float lensw = std::max(ps_r2_lenswater_val, ps_r2_lenswater);
+            const float lensd = std::max(ps_r2_lensdirt_val, ps_r2_lensdirt);
+            RCache.set_c("lenswater", lensw, lensw, lensw, lensw);
+            RCache.set_c("lensdirt", lensd, lensd, lensd, lensd);
+        }
+
         if (!RImplementation.o.msaa)
             RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
         else
@@ -224,6 +235,35 @@ void CRenderTarget::phase_combine()
                 RCache.StateManager.SetSampleMask(0xffffffff);
             }
             RCache.set_Stencil(FALSE, D3DCMP_EQUAL, 0x01, 0xff, 0);
+        }
+    }
+
+    // [DA_PORT] Scene-grab for water screen-space reflections (SSLR).
+    // Dead Air's water shader (r3\water.ps -> ogse_reflections.h::get_reflection) ray-marches the lit
+    // frame to find what the surface reflects, sampling it as `s_image`. Water is drawn in the forward
+    // pass below, straight INTO rt_Generic_0 — a render target cannot be sampled while it is bound, so
+    // the shader has to read a copy taken just before the water goes in. That copy is rt_SSR, which
+    // loose r3\effects_water.s binds: shader:dx10texture("s_image", "$user$ssr").
+    // Without this, s_image keeps whatever texture the previous pass left in that slot (the normals
+    // G-buffer -> reflections came out neon green).
+    {
+        PIX_EVENT(DA_scene_grab_for_SSLR);
+        // rt_Generic_0(_r) is still bound as a render target from the combine pass above; D3D11 will not
+        // copy from a bound RT, so park the output on another RT first (re-bound right after).
+        u_setrt(RCache, rt_Generic_1_r, nullptr, nullptr, rt_MSAADepth);
+
+        if (RImplementation.o.msaa)
+        {
+            rt_Generic_0_r->resolve_into(*rt_SSR); // MSAA -> single-sampled copy
+        }
+        else
+        {
+            ID3DBaseTexture* src = rt_Generic_0->pTexture->surface_get();
+            ID3DBaseTexture* dst = rt_SSR->pTexture->surface_get();
+            if (src && dst)
+                HW.get_context(CHW::IMM_CTX_ID)->CopyResource(dst, src);
+            _RELEASE(src);
+            _RELEASE(dst);
         }
     }
 
@@ -255,6 +295,13 @@ void CRenderTarget::phase_combine()
         rt_Generic_0_r->resolve_into(*rt_Generic_0);
         rt_Generic_1_r->resolve_into(*rt_Generic_1);
     }
+
+    // [DA_PORT] The stand-alone full-screen SSR pass is retired: reflections are done inside Dead Air's
+    // own water shader (see the scene-grab above + r3\water.ps / ogse_reflections.h). Its shader
+    // ssr_screen.ps never loaded — the engine only honours loose shaders that override a name already
+    // present in the archive — so this call was drawing a fullscreen stub_default quad every frame.
+    // rt_SSR itself lives on as the scene-grab target.
+    // phase_ssr();
 
     // for msaa we need a resolved color buffer - Holger
     phase_bloom(); // HDR RT invalidated here
@@ -297,14 +344,14 @@ void CRenderTarget::phase_combine()
         if (PP_Complex)
             u_setrt(RCache, rt_Generic, nullptr, nullptr, rt_Base_Depth); // LDR RT
         else
-            u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, get_base_zb());
+            u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
     }
     else
     {
         if (PP_Complex)
             u_setrt(RCache, rt_Color, nullptr, nullptr, rt_Base_Depth); // LDR RT
         else
-            u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, get_base_zb());
+            u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
     }
     //. u_setrt				( Device.dwWidth,Device.dwHeight, get_base_rt(), NULL, NULL, get_base_zb());
     RCache.set_CullMode(CULL_NONE);
@@ -404,6 +451,7 @@ void CRenderTarget::phase_combine()
         RCache.set_c("dof_params", dof.x, dof.y, dof.z, ps_r2_dof_sky);
         //.		RCache.set_c				("dof_params",	ps_r2_dof.x, ps_r2_dof.y, ps_r2_dof.z, ps_r2_dof_sky);
         RCache.set_c("dof_kernel", vDofKernel.x, vDofKernel.y, ps_r2_dof_kernel_size, 0.f);
+        // NB: visor lens-water is bound in the combine_1 pass (E[0]) above, not here (combine_2 = AA).
 
         RCache.set_Geometry(g_aa_AA);
         RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
@@ -418,6 +466,20 @@ void CRenderTarget::phase_combine()
     //	PP-if required
     if (PP_Complex)
     {
+        // [DA_PORT] Temporal AA, on the assembled frame.
+        //
+        // It used to run further up, on rt_Generic_0 — which was wrong. The combine pass splits the HDR
+        // scene across TWO targets (combine_1.ps: tonemap(o.low, o.high, ...)): rt_Generic_0 holds the
+        // low part and rt_Generic_1 the high part, which becomes the bloom. Blending only the low part
+        // with a history while the bloom stayed at its current value broke the correspondence between
+        // them, and the error scaled with how bright the pixel was — so the sky drifted in brightness
+        // while the ground held still, and the horizon between them read as a moving band.
+        //
+        // Here the two halves are already summed into rt_Color and the frame is one image, so temporal
+        // accumulation has nothing left to desynchronise. Ahead of phase_pp so grain, colour grading and
+        // the render-scale upscale all act on the stabilised picture.
+        phase_taa();
+
         PIX_EVENT(phase_pp);
         phase_pp();
     }

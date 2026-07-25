@@ -189,7 +189,13 @@ void destroySettings()
 void destroyConsole()
 {
     ZoneScoped;
-    Console->Execute("cfg_save");
+    // [DA_PORT] Headless tooling runs (-da_export_scripts/-da_export_configs) and explicit
+    // -da_no_cfg_save must NOT persist their menu-session console state into user.ltx: one
+    // such run silently clobbered snd_device/r2_dof/time_factor_single of the real player
+    // profile ("куда-то пропал звук" + broken DoF zoom). Diagnostic sessions stay read-only.
+    if (!strstr(Core.Params, "-da_export_scripts") && !strstr(Core.Params, "-da_export_configs") &&
+        !strstr(Core.Params, "-da_no_cfg_save"))
+        Console->Execute("cfg_save");
     Console->Destroy();
     xr_delete(Console);
 }
@@ -443,12 +449,6 @@ int CApplication::Run()
         }
 
         Device.ProcessFrame();
-        static size_t da_port_frames = 0;
-        if (da_port_frames < 5 || (da_port_frames % 100) == 0)
-        {
-            Msg("! [DA_PORT] Run: frame %zu", da_port_frames); FlushLog();
-        }
-        ++da_port_frames;
 
         UpdateDiscordStatus();
         FrameMarkEnd(FRAME_MARK_APPLICATION_RUN);

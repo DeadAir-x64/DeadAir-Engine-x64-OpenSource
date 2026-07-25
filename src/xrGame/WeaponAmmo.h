@@ -78,6 +78,7 @@ public:
     bool m_4to1_tracer{};
     u16 m_boxSize;
     u16 m_boxCurr;
+    u32 m_boxCost; // [DA_PORT] flat surcharge for the box itself, on top of the per-round price
 
 public:
     CInventoryItem* can_make_killing(const CInventory* inventory) const override;

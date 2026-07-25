@@ -119,6 +119,12 @@ void CWeaponAmmo::Load(LPCSTR section)
 
     m_boxSize = (u16)pSettings->r_s32(section, "box_size");
     m_boxCurr = m_boxSize;
+    // [DA_PORT] Dead Air prices the box itself on top of the rounds, for price micro-balance.
+    // Optional with a 0 default per the author, so ammo without the key costs exactly what it does now.
+    // NOTE: the alpha's full Cost() also multiplies by a Lua-provided coefficient
+    // (actor_menu_inventory.CWeaponAmmo_GetCost) under an R_ASSERT — that function does not exist in the
+    // release scripts, so porting the whole formula would hard-fail. Only the surcharge is taken.
+    m_boxCost = pSettings->read_if_exists<u32>(section, "box_cost", 0);
 }
 
 bool CWeaponAmmo::net_Spawn(CSE_Abstract* DC)
@@ -252,5 +258,5 @@ u32 CWeaponAmmo::Cost() const
 
     res = iFloor(res * (float)m_boxCurr / (float)m_boxSize + 0.5f);
 
-    return res;
+    return res + m_boxCost; // [DA_PORT] box surcharge (0 unless the section sets box_cost)
 }

@@ -24,10 +24,11 @@ add_compile_definitions(
     $<$<CONFIG:Release,ReleaseMasterGold>:LUABIND_NO_ERROR_CHECKING>
 )
 
-# Link-time optimization
+# Link-time optimization (toggle: -DXR_ENABLE_LTO=OFF for fast debug builds; ON keeps release behavior)
+option(XR_ENABLE_LTO "Enable link-time optimization (slow link; off for fast debug iteration)" ON)
 include(CheckIPOSupported)
 check_ipo_supported(RESULT LTO_IS_SUPPORTED)
-if (LTO_IS_SUPPORTED)
+if (LTO_IS_SUPPORTED AND XR_ENABLE_LTO)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASEMASTERGOLD ON)
 endif()

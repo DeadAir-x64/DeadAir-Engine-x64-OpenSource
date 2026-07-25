@@ -23,10 +23,44 @@
 #include "xrGame/game_type.h"
 #include "UIHelper.h"
 
+#include "xrEngine/StringTable/StringTable.h" // [DA_PORT] weapon condition-type localized strings
+
 extern const LPCSTR g_inventory_upgrade_xml;
 
 #define INV_GRID_WIDTH2 40.0f
 #define INV_GRID_HEIGHT2 40.0f
+
+// [DA_PORT] Dead Air shows a weapon's malfunction state in its description: a header (st_condition_type =
+// "Состояние:") followed, per set bit of the 32-bit condition_type bitmask, by st_condition_type_<bit+1>
+// (or st_condition_type_0 = "perfect" when the mask is empty). The mask is maintained by scripts
+// (items_condition.script) via get/set_weapon_condition_type. The port had the field but never displayed it.
+static void DA_AppendWeaponConditionType(xr_string& text, CInventoryItem& item)
+{
+    CWeapon* w = smart_cast<CWeapon*>(&item);
+    if (!w)
+        return;
+    if (!StringTable().has_translation("st_condition_type"))
+        return; // localization not loaded -> show nothing rather than raw ids
+
+    const u32 mask = w->m_weapon_condition_type;
+    text += StringTable().translate("st_condition_type").c_str();
+
+    if (mask == 0)
+    {
+        text += StringTable().translate("st_condition_type_0").c_str(); // "Идеальное"
+        return;
+    }
+    for (int i = 0; i < 32; ++i)
+    {
+        if (mask & (1u << i))
+        {
+            string64 id;
+            xr_sprintf(id, "st_condition_type_%d", i + 1);
+            if (StringTable().has_translation(id))
+                text += StringTable().translate(id).c_str();
+        }
+    }
+}
 
 CUIItemInfo::CUIItemInfo() : CUIWindow(CUIItemInfo::GetDebugType())
 {
@@ -285,7 +319,10 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
             descr->SetFont(m_desc_info.pDescFont);
             descr->SetWidth(UIDesc->GetDesiredChildWidth());
             descr->SetTextComplexMode(true);
-            descr->SetText(pInvItem->ItemDescription().c_str());
+            // [DA_PORT] append the weapon "condition type" (malfunction) section, as Dead Air does.
+            xr_string desc_text = pInvItem->ItemDescription().c_str();
+            DA_AppendWeaponConditionType(desc_text, *pInvItem);
+            descr->SetText(desc_text.c_str());
             descr->AdjustHeightToText();
             UIDesc->AddWindow(descr, !soc_style);
         }

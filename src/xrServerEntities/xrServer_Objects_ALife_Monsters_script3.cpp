@@ -91,6 +91,11 @@ void CSE_ALifeOnlineOfflineGroup::script_register(lua_State* luaState)
             .def("clear_location_types", &CSE_ALifeOnlineOfflineGroup::clear_location_types)
             .def("force_change_position", &CSE_ALifeOnlineOfflineGroup::force_change_position)
             //.def("force_change_game_vertex_id", &CSE_ALifeOnlineOfflineGroup::force_change_game_vertex_id)
+            // Dead Air compat: DA's x32 engine picks squad actions engine-side. The only live
+            // script caller (alun_utils.assign_squad_to_smart, debug spawn command) nils
+            // current_action right before this, and sim_squad_scripted:update() re-picks an
+            // action on the next tick anyway - so a no-op keeps the flow correct.
+            .def("get_next_action", +[](CSE_ALifeOnlineOfflineGroup*, bool) {})
 #endif
     ];
 }

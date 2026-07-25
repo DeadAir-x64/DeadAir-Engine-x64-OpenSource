@@ -114,6 +114,8 @@ public:
 };
 
 class CUIArtefactDetectorBase;
+class CUIArtefactDetectorHudUI;
+class CLAItem;
 
 class CCustomDetector : public CHudItemObject
 {
@@ -121,6 +123,9 @@ class CCustomDetector : public CHudItemObject
 
 protected:
     CUIArtefactDetectorBase* m_ui;
+    // [DA_PORT] optional generic hud_ui_* 3D artefact screen (simple/advanced/craft)
+    CUIArtefactDetectorHudUI* m_hud_ui{ nullptr };
+    bool m_hud_ui_checked{ false };
     bool m_bFastAnimMode;
     bool m_bNeedActivation;
 
@@ -148,6 +153,12 @@ public:
     virtual void OnAnimationEnd(u32 state);
     virtual void UpdateXForm();
 
+    // [DA_PORT] hud_ui_* 3D screen hooks (no-op unless the HUD section defines hud_ui_*)
+    virtual void on_a_hud_attach() override;
+    virtual void on_b_hud_detach() override;
+    virtual void render_item_3d_ui() override;
+    virtual bool render_item_3d_ui_query() override;
+
     void ToggleDetector(bool bFastMode);
     void HideDetector(bool bFastMode);
     void ShowDetector(bool bFastMode);
@@ -164,10 +175,46 @@ protected:
     virtual void UpdateAf(){};
     virtual void CreateUI(){};
 
+    // [DA_PORT] lazily builds m_hud_ui from HUD-section hud_ui_* keys, then feeds it
+    // the positions of all currently-detected artefacts each work tick.
+    void TryCreateHudUI();
+    void UpdateHudUI();
+
     bool m_bWorking;
     float m_fAfVisRadius;
     float m_fDecayRate; //Alundaio
     CAfList m_artefacts;
+
+    // [DA_PORT] World light for dropped/placed light items (e.g. the device_kerosinka kerosene lamp,
+    // which is a slot=-1 DET_SIMP with light_enabled=true). When such an item lies independent in the
+    // world it emits a real scene light (+ color animator flicker) so the lamp "burns" on the ground.
+    // Handheld light items (flashlight/glowstick/lighter) render their light via the hidden device_torch;
+    // this covers the OTHER case - a light item sitting in the world with no owner.
+    ref_light m_world_light;
+    CLAItem* m_world_lanim{ nullptr };
+    float m_world_brightness{ 1.f };
+    bool m_world_light_enabled{ false };
+    bool m_world_light_on{ false };
+    // [DA_PORT] world flame particle (device_kerosinka particles_enabled=true -> "kerosine_glow"). Plays and
+    // moves with the world light so a lamp dropped/placed on the ground visibly burns, not just glows.
+    CParticlesObject* m_world_particles{ nullptr };
+    bool m_world_particles_enabled{ false };
+    shared_str m_world_particles_name;
+    void ActivateWorldLight(bool active);
+    void UpdateWorldLight();
+
+    // [DA_PORT] HUD flame particle (device_lighter hud_particles_enabled=true -> "gas_light_glow" attached to
+    // HUD-model bone "light_bone_2"). Rides on the first-person model while the lighter is held/drawn.
+    CParticlesObject* m_hud_particles{ nullptr };
+    bool m_hud_particles_enabled{ false };
+    shared_str m_hud_particles_name;
+    shared_str m_hud_particles_bone;
+    // [DA_PORT] the held lighter must actually illuminate. device_lighter has no light_* of its own and its
+    // beam is meant to come from the hidden device_torch (fragile script chain that can end up dropped), so
+    // drive a small warm point light here while the flame item is drawn. Gated on hud_particles_enabled,
+    // which only the lighter has -> flashlight/glowstick (device_torch spot/omni) are untouched.
+    ref_light m_held_light;
+    void UpdateHudParticles();
 };
 
 class CZoneList : public CDetectList<CCustomZone>

@@ -424,7 +424,8 @@ void CEnvDescriptor::load(CEnvironment& environment, const CInifile& config, pcs
     C_CHECK(ambient);
     C_CHECK(hemi_color);
     C_CHECK(sun_color);
-    on_device_create();
+    // DA (skybox mem): не грузим sky-текстуры при парсинге конфига — только для current+next (см. SelectEnvs/StopWFX)
+    // on_device_create();
 }
 
 #undef C_CHECK

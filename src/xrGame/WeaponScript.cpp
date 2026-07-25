@@ -42,6 +42,9 @@ void CWeapon::script_register(lua_State* luaState)
         class_<CWeapon, CGameObject>("CWeapon")
             .def(constructor<>())
             .def("can_kill", (bool (CWeapon::*)() const)&CWeapon::can_kill)
+            // Dead Air / Weapons Evolution compat (see xray-monolith WeaponAK74.cpp exports)
+            .def("SetMisfire", &CWeapon::SetMisfireScript)
+            .def("IsMisfire", +[](CWeapon* w) -> bool { return !!w->IsMisfire(); })
     ];
 }
 

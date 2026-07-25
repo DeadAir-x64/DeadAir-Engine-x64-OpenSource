@@ -299,6 +299,10 @@ void CInput::KeyUpdate()
         case SDL_KEYDOWN:
             if (event.key.repeat)
                 continue;
+            if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
+            {
+                FlushLog();
+            }
             cbStack.back()->IR_OnKeyboardPress(event.key.keysym.scancode);
             break;
 

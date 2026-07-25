@@ -88,9 +88,21 @@ void player_hud_motion_container::load(IKinematicsAnimated* model, const shared_
 #endif // #ifdef DEBUG
                 }
             }
-            R_ASSERT2(!pm.m_animations.empty(), make_string("motion not found [%s]", pm.m_base_name.c_str()).c_str());
-
-            m_anims.emplace(name, std::move(pm));
+            // [DA_PORT] Some Dead Air weapon HUD configs reference decorative motions (e.g.
+            // wpn_pm_hud's anim_fakeshot -> "fakeshot_pistol") that don't exist in the actual
+            // model's animation set - a data gap, not an engine bug. This used to be a hard
+            // R_ASSERT2 FATAL that reopened on every level load. Skip the entry and warn instead:
+            // the core animations (idle/shoot/reload/etc.) all load fine independently, so a
+            // missing cosmetic motion shouldn't block the whole game.
+            if (pm.m_animations.empty())
+            {
+                Msg("! [DA_PORT] player_hud_motion_container::load: motion not found [%s] in section [%s], skipping",
+                    pm.m_base_name.c_str(), sect.c_str());
+            }
+            else
+            {
+                m_anims.emplace(name, std::move(pm));
+            }
         }
     }
 }
@@ -424,10 +436,15 @@ u32 attachable_hud_item::anim_play(const shared_str& anm_name_b, BOOL bMixIn, co
     xr_sprintf(anim_name_r, "%s%s", anm_name_b.c_str(), m_attach_place_idx == 1 && is_16x9 ? "_16x9" : "");
 
     const player_hud_motion* anm = m_hand_motions.find_motion(anim_name_r);
-    R_ASSERT2(anm, make_string("model [%s] has no motion alias defined [%s]", m_sect_name.c_str(), anim_name_r).c_str());
-    R_ASSERT2(anm->m_animations.size(), make_string("model [%s] has no motion defined in motion_alias [%s]",
-                                            m_visual_name.c_str(), anim_name_r)
-                                            .c_str());
+    // [DA_PORT] Some Dead Air weapon configs reference motion aliases with no matching model
+    // animation (data gap, see player_hud_motion_container::load above) - skip playing rather
+    // than FATAL-crashing the whole game over a missing cosmetic HUD animation.
+    if (!anm || anm->m_animations.empty())
+    {
+        Msg("! [DA_PORT] attachable_hud_item::anim_play: no motion for alias [%s] in model [%s], skipping",
+            anim_name_r, m_sect_name.c_str());
+        return 0;
+    }
 
     const float speed = CalcMotionSpeed(anm->m_base_name, anm->m_anim_speed);
 

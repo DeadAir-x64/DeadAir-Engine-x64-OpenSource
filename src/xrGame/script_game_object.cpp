@@ -372,6 +372,55 @@ u8 CScriptGameObject::GetAmmoType()
     return weapon->GetAmmoType();
 }
 
+// [DA_PORT] Dead Air compat: index of the current scope variant in the weapon's scopes_sect
+// list; 255 = no scope attached (bind_item.script's "nothing to persist" sentinel - it saves
+// the index to alife storage and restores it after offline/online transitions).
+u8 CScriptGameObject::WeaponGetScope()
+{
+    CWeapon* weapon = smart_cast<CWeapon*>(&object());
+    if (!weapon || !weapon->IsScopeAttached())
+        return 255;
+
+    return weapon->m_cur_scope;
+}
+
+void CScriptGameObject::WeaponSetScope(u8 idx)
+{
+    CWeapon* weapon = smart_cast<CWeapon*>(&object());
+    if (!weapon || idx >= weapon->m_scopes.size())
+        return;
+
+    weapon->m_cur_scope = idx;
+    weapon->UpdateAddonsVisibility();
+    weapon->InitAddons();
+}
+
+// [DA_PORT] Dead Air compat: section name of the weapon's currently selected ammo type
+// (itms_manager.script's drag-n-drop ammo conversion unloads/compares against it).
+pcstr CScriptGameObject::GetAmmoName()
+{
+    CWeapon* weapon = smart_cast<CWeapon*>(&object());
+    if (!weapon || weapon->m_ammoTypes.empty())
+        return "";
+
+    u32 idx = weapon->GetAmmoType();
+    if (idx >= weapon->m_ammoTypes.size())
+        idx = 0;
+    return weapon->m_ammoTypes[idx].c_str();
+}
+
+bool CScriptGameObject::IsAmmoSuitable(pcstr ammo_section)
+{
+    CWeapon* weapon = smart_cast<CWeapon*>(&object());
+    if (!weapon || !ammo_section)
+        return false;
+
+    for (const auto& ammo_type : weapon->m_ammoTypes)
+        if (0 == xr_strcmp(ammo_type.c_str(), ammo_section))
+            return true;
+    return false;
+}
+
 void CScriptGameObject::SetMainWeaponType(u32 type)
 {
     CWeapon* weapon = smart_cast<CWeapon*>(&object());

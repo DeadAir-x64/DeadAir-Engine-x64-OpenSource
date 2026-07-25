@@ -6,7 +6,11 @@
 #include "xrMessages.h"
 
 u64 g_qwStartGameTime = 12 * 60 * 60 * 1000;
-float g_fTimeFactor = 10;
+// [DA_PORT] This was hardcoded to 10 (10x real time speed) - normally overwritten immediately by
+// xrGame.cpp's read of [alife]/time_factor at startup, but the "time_factor_single" console command
+// binds directly to this variable and persists whatever value was active to user.ltx, so once it
+// got saved as 10 it kept reasserting itself on every subsequent launch. Use a sane 1x default.
+float g_fTimeFactor = 1;
 u64 g_qwEStartGameTime = 12 * 60 * 60 * 1000;
 
 EGameIDs ParseStringToGameType(LPCSTR str);
@@ -193,6 +197,7 @@ game_GameState::game_GameState()
     m_qwStartProcessorTime = Level().timeServer_Async();
     m_qwStartGameTime = g_qwStartGameTime;
     m_fTimeFactor = g_fTimeFactor;
+    FlushLog();
     m_qwEStartProcessorTime = m_qwStartProcessorTime;
     m_qwEStartGameTime = g_qwEStartGameTime;
     m_fETimeFactor = m_fTimeFactor;
@@ -249,13 +254,34 @@ void game_GameState::switch_Phase(u32 new_phase)
 ALife::_TIME_ID game_GameState::GetStartGameTime() { return (m_qwStartGameTime); }
 ALife::_TIME_ID game_GameState::GetGameTime()
 {
-    return (m_qwStartGameTime +
-        ALife::_TIME_ID(m_fTimeFactor * float(Level().timeServer_Async() - m_qwStartProcessorTime)));
+    ALife::_TIME_ID result = m_qwStartGameTime +
+        ALife::_TIME_ID(m_fTimeFactor * float(Level().timeServer_Async() - m_qwStartProcessorTime));
+
+    // directly, independent of what m_fTimeFactor claims, in case something else (unit mismatch,
+    // double-application, etc.) is inflating it beyond the configured factor.
+    static u32 last_log_real = 0;
+    static ALife::_TIME_ID last_log_game = 0;
+    if (Device.dwTimeGlobal - last_log_real > 5000)
+    {
+        if (last_log_real != 0)
+        {
+            double real_delta_sec = (Device.dwTimeGlobal - last_log_real) / 1000.0;
+            double game_delta_sec = (result - last_log_game) / 1000.0;
+            FlushLog();
+        }
+        last_log_real = Device.dwTimeGlobal;
+        last_log_game = result;
+    }
+
+    return result;
 }
 
 float game_GameState::GetGameTimeFactor() { return (m_fTimeFactor); }
 void game_GameState::SetGameTimeFactor(const float fTimeFactor)
 {
+    // factor (e.g. Dead Air's own scripts via level.set_time_factor), separate from the global
+    // g_fTimeFactor default set at engine startup.
+    FlushLog();
     m_qwStartGameTime = GetGameTime();
     m_qwStartProcessorTime = Level().timeServer_Async();
     m_fTimeFactor = fTimeFactor;
@@ -263,6 +289,7 @@ void game_GameState::SetGameTimeFactor(const float fTimeFactor)
 
 void game_GameState::SetGameTimeFactor(ALife::_TIME_ID GameTime, const float fTimeFactor)
 {
+    FlushLog();
     m_qwStartGameTime = GameTime;
     m_qwStartProcessorTime = Level().timeServer_Async();
     m_fTimeFactor = fTimeFactor;

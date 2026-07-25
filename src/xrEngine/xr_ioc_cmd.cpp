@@ -341,6 +341,63 @@ public:
     }
 };
 //-----------------------------------------------------------------------
+// [DA_PORT] Internal render resolution, as a percentage of the output. Every scene render target is
+// built from it, so applying the change means recreating them — hence the device reset, the same thing
+// a resolution change does. The UI keeps drawing at the output resolution either way.
+class CCC_RenderScale : public CCC_Integer
+{
+public:
+    CCC_RenderScale(pcstr N, int* V, int _min, int _max) : CCC_Integer(N, V, _min, _max) {}
+
+    void Execute(pcstr args) override
+    {
+        const int was = *value;
+        CCC_Integer::Execute(args);
+        if (*value == was)
+            return;
+
+        Device.UpdateRenderResolution();
+        if (Device.b_is_Ready)
+            Device.Reset();
+    }
+};
+//-----------------------------------------------------------------------
+// [DA_PORT] Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible
+// step down, performance is half resolution per axis. Sharpening rises with the preset because the
+// lower the source, the more detail the reconstruction has to put back — but only to a point, past
+// which it stops recovering detail and starts amplifying noise in grass and gravel.
+// Defined further down this file, alongside the other render variables.
+extern ENGINE_API int ps_r__render_scale;
+extern ENGINE_API int ps_r__upscale_sharpness;
+
+class CCC_UpscalePreset : public CCC_Token
+{
+public:
+    CCC_UpscalePreset(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+
+        const int was = ps_r__render_scale;
+        switch (*value)
+        {
+        case 1: ps_r__render_scale = 77; ps_r__upscale_sharpness = 40; break;
+        case 2: ps_r__render_scale = 67; ps_r__upscale_sharpness = 40; break;
+        case 3: ps_r__render_scale = 50; ps_r__upscale_sharpness = 55; break;
+        default: ps_r__render_scale = 100; ps_r__upscale_sharpness = 0; break;
+        }
+
+        if (ps_r__render_scale == was)
+            return;
+
+        // Same sequence CCC_RenderScale uses — the scene targets are recreated at the new size.
+        Device.UpdateRenderResolution();
+        if (Device.b_is_Ready)
+            Device.Reset();
+    }
+};
+//-----------------------------------------------------------------------
 class CCC_VidMonitor : public CCC_Token
 {
 public:
@@ -490,7 +547,9 @@ public:
 };
 
 //-----------------------------------------------------------------------
-float ps_gamma = 1.f, ps_brightness = 1.f, ps_contrast = 1.f;
+// [DA_PORT] Exported: the renderer now applies these itself when the hardware gamma ramp is
+// unavailable (see xr_effgamma.cpp) instead of leaving the sliders doing nothing.
+ENGINE_API float ps_gamma = 1.f, ps_brightness = 1.f, ps_contrast = 1.f;
 class CCC_Gamma : public CCC_Float
 {
 public:
@@ -698,6 +757,10 @@ public:
 
 ENGINE_API float g_fov = 67.5f;
 ENGINE_API float psHUD_FOV = 0.45f;
+// [DA_PORT] Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
+// collision feature modulates it (see CHudItem::UpdateCL). All HUD projection sites read this
+// instead of psHUD_FOV so the weapon/particles/UI stay consistent. Off by default => == psHUD_FOV.
+ENGINE_API float g_hud_fov_current = 0.45f;
 
 // extern int psSkeletonUpdate;
 extern int rsDVB_Size;
@@ -712,6 +775,46 @@ extern int g_ErrorLineCount;
 
 ENGINE_API int ps_r__Supersample = 1;
 ENGINE_API int ps_r__WallmarksOnSkeleton = 0;
+// [DA_PORT] Percentage of the output resolution the 3D scene is rendered at (see
+// CRenderDevice::UpdateRenderResolution). 100 = native, i.e. exactly the stock behaviour.
+ENGINE_API int ps_r__render_scale = 100;
+
+// [DA_PORT] Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
+// code needs it too: the projection jitter TAA feeds on is applied in CCameraManager::ApplyDevice.
+// Off by default — at 0 the resolve pass returns immediately and no jitter is applied, so the frame is
+// exactly what it was before TAA existed.
+ENGINE_API int ps_r__taa = 0;
+
+// [DA_PORT] Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
+// Only does anything when r__render_scale is below 100 - at native resolution there is nothing to
+// recover. 0 disables it.
+ENGINE_API int ps_r__upscale_sharpness = 40;
+
+// [DA_PORT] One control instead of two. The pair that actually drives the upscale — render scale and
+// sharpening — means nothing to a player, and the whole point of this feature is the people running the
+// mod on old hardware. The preset writes both; the individual console variables still work for tuning.
+ENGINE_API u32 ps_r__upscale_preset = 0;
+ENGINE_API xr_token qupscale_preset_token[] = {
+    { "st_da_upscale_off", 0 },
+    { "st_da_upscale_quality", 1 },
+    { "st_da_upscale_balanced", 2 },
+    { "st_da_upscale_performance", 3 },
+    { nullptr, 0 },
+};
+
+// [DA_PORT] Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
+// frame the history is resampled and averaged — so a little high-frequency restoration afterwards is
+// part of the technique, not a cosmetic extra.
+ENGINE_API int ps_r__taa_sharp = 20;
+
+// [DA_PORT] Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
+// distant textures, but it also hands the temporal filter more aliasing than it can absorb on foliage.
+ENGINE_API int ps_r__taa_mipbias = 0;
+
+// [DA_PORT] Projection jitter, separately switchable. TAA has two halves that fail in different ways —
+// jitter turns aliasing into sub-pixel samples, the resolve averages them — and being able to run the
+// resolve without the jitter is what tells the two apart when something shimmers.
+ENGINE_API int ps_r__taa_jitter = 1;
 ENGINE_API shared_str current_player_hud_sect{};
 
 extern int ps_fps_limit;
@@ -757,6 +860,16 @@ void CCC_Register()
 
     // Render device states
     CMD4(CCC_Integer, "r__supersample", &ps_r__Supersample, 1, 4);
+    // [DA_PORT] Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
+    // i.e. supersampling — worth having, because this engine is heavily CPU-bound and a modern GPU sits
+    // idle at 1080p, so spare GPU time is better spent on image quality than left unused.
+    CMD4(CCC_RenderScale, "r__render_scale", &ps_r__render_scale, 25, 200);
+    CMD3(CCC_UpscalePreset, "r__upscale_preset", &ps_r__upscale_preset, qupscale_preset_token);
+    CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
+    CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
+    CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
+    CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
+    CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
     CMD4(CCC_Integer, "r__wallmarks_on_skeleton", &ps_r__WallmarksOnSkeleton, 0, 1);
 
     CMD1(CCC_Editor, "rs_editor");

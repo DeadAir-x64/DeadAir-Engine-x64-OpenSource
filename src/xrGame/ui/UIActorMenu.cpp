@@ -346,6 +346,13 @@ EDDListType CUIActorMenu::GetListType(CUIDragDropListEx* l)
         return iActorSlot;
     if (l == m_pLists[eInventoryDetectorList] && m_pLists[eInventoryDetectorList] != nullptr)
         return iActorSlot;
+    // [DA_PORT] slot 14 grenade/binocular cell must count as a slot list, else double-click and
+    // drag-out from it never reach the "case iActorSlot -> ToBag" unequip path (grenade got stuck).
+    if (l == m_pLists[eInventoryBinocularList] && m_pLists[eInventoryBinocularList] != nullptr)
+        return iActorSlot;
+    // [DA_PORT] slot 5 sidearm cell must count as a slot list too, so double-click/drag-out unequip works.
+    if (l == m_pLists[eInventorySidearmList] && m_pLists[eInventorySidearmList] != nullptr)
+        return iActorSlot;
 
     if (l == m_pLists[eTradeActorBagList])
         return iActorBag;
@@ -655,7 +662,7 @@ void CUIActorMenu::highlight_item_slot(CUICellItem* cell_item)
 
     CWeapon* weapon = smart_cast<CWeapon*>(item);
     CHelmet* helmet = smart_cast<CHelmet*>(item);
-    CBackpack* backpack = smart_cast<CBackpack*>(item);
+    [[maybe_unused]] CBackpack* backpack = smart_cast<CBackpack*>(item); // [DA_PORT] DA backpacks aren't CBackpack; see BACKPACK_SLOT check below
     CCustomOutfit* outfit = smart_cast<CCustomOutfit*>(item);
     CCustomDetector* detector = smart_cast<CCustomDetector*>(item);
     CEatableItem* eatable = smart_cast<CEatableItem*>(item);
@@ -674,7 +681,10 @@ void CUIActorMenu::highlight_item_slot(CUICellItem* cell_item)
             m_pLists[eInventoryHelmetList]->Highlight(true);
         return;
     }
-    if (backpack && slot_id == BACKPACK_SLOT)
+    // [DA_PORT] Dead Air backpacks are artefact-class (SCRPTART), so the CBackpack smart_cast is null and
+    // they would fall through to the artefact branch below and wrongly highlight the BELT. Key off the slot
+    // instead: anything bound to BACKPACK_SLOT highlights the backpack cell and returns (never the belt).
+    if (slot_id == BACKPACK_SLOT)
     {
         if (m_pLists[eInventoryBackpackList])
             m_pLists[eInventoryBackpackList]->Highlight(true);
@@ -977,6 +987,10 @@ void CUIActorMenu::ClearAllLists()
         m_pLists[eInventoryHelmetList]->ClearAll(true);
     if (m_pLists[eInventoryDetectorList])
         m_pLists[eInventoryDetectorList]->ClearAll(true);
+    if (m_pLists[eInventoryBinocularList]) // [DA_PORT] slot 14 grenade/binocular cell - must be cleared
+        m_pLists[eInventoryBinocularList]->ClearAll(true); // too, else it accumulated items and crashed
+    if (m_pLists[eInventorySidearmList]) // [DA_PORT] slot 5 sidearm cell - clear like every other slot list
+        m_pLists[eInventorySidearmList]->ClearAll(true);
     if (m_pLists[eInventoryBackpackList])
         m_pLists[eInventoryBackpackList]->ClearAll(true);
     if (m_pLists[eInventoryKnifeList])

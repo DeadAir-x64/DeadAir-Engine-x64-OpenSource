@@ -17,7 +17,7 @@ XRSOUND_API Flags32 psSoundFlags =
     ss_Hardware | ss_EFX | ss_UseFloat32
 };
 
-XRSOUND_API int psSoundTargets = 32;
+XRSOUND_API int psSoundTargets = 256; // DA: больше одновременных звуков (было 32) — меньше обрезания
 XRSOUND_API float psSoundOcclusionScale = 0.5f;
 XRSOUND_API float psSoundTimeFactor = 1.0f;
 XRSOUND_API float psSoundCull = 0.01f;

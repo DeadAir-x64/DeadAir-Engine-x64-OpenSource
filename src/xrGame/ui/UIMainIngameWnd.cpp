@@ -40,6 +40,7 @@
 #include "static_cast_checked.hpp"
 #include "game_cl_capture_the_artefact.h"
 #include "UIHudStatesWnd.h"
+#include "xrEngine/CustomHUD.h"
 #include "UIActorMenu.h"
 #include "xrUICore/ProgressBar/UIProgressShape.h"
 #include "UIArtefactPanel.h"
@@ -297,7 +298,10 @@ void CUIMainIngameWnd::Draw()
 
     UIMotionIcon->Draw();
 
-    UIZoneMap->visible = true;
+    // [DA_PORT] this used to force the minimap/radar on unconditionally, ignoring hud_draw_map -
+    // now respects the (now-dedicated, see CustomHUD.h) HUD_DRAW_MAP bit, which is what Dead Air's
+    // own saved preference (user.ltx: "hud_draw_map off") actually intends to control.
+    UIZoneMap->visible = psHUD_Flags.test(HUD_DRAW_MAP);
     UIZoneMap->Render();
 
     bool tmp = UIMotionIcon->IsShown();

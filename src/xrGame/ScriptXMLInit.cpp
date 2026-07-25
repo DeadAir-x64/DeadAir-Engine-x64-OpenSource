@@ -85,7 +85,13 @@ CUIEditBox* CScriptXmlInit::InitEditBox(LPCSTR path, CUIWindow* parent)
 CUIStatic* CScriptXmlInit::InitStatic(LPCSTR path, CUIWindow* parent)
 {
     CUIStatic* pWnd = xr_new<CUIStatic>(path);
-    CUIXmlInit::InitStatic(m_xml, path, 0, pWnd);
+    // [DA_PORT] DA's UI scripts reference nodes that may be absent in the port's UI XMLs (version
+    // mismatch, e.g. DA's color-correction sliders in tab_video). CUIXmlInit fatal-asserts on a
+    // missing node — skip init so the menu degrades gracefully (empty control) instead of crashing.
+    if (m_xml.NavigateToNode(path, 0))
+        CUIXmlInit::InitStatic(m_xml, path, 0, pWnd);
+    else
+        Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
     _attach_child(pWnd, parent);
     return pWnd;
 }
@@ -141,7 +147,10 @@ CUIListBox* CScriptXmlInit::InitListBox(LPCSTR path, CUIWindow* parent)
 CUICheckButton* CScriptXmlInit::InitCheck(LPCSTR path, CUIWindow* parent)
 {
     CUICheckButton* pWnd = xr_new<CUICheckButton>();
-    CUIXmlInit::InitCheck(m_xml, path, 0, pWnd);
+    if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+        CUIXmlInit::InitCheck(m_xml, path, 0, pWnd);
+    else
+        Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
     _attach_child(pWnd, parent);
     return pWnd;
 }
@@ -173,7 +182,10 @@ CUISpinText* CScriptXmlInit::InitSpinText(LPCSTR path, CUIWindow* parent)
 CUIComboBox* CScriptXmlInit::InitComboBox(LPCSTR path, CUIWindow* parent)
 {
     CUIComboBox* pWnd = xr_new<CUIComboBox>();
-    CUIXmlInit::InitComboBox(m_xml, path, 0, pWnd);
+    if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+        CUIXmlInit::InitComboBox(m_xml, path, 0, pWnd);
+    else
+        Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
     _attach_child(pWnd, parent);
     return pWnd;
 }
@@ -181,7 +193,10 @@ CUIComboBox* CScriptXmlInit::InitComboBox(LPCSTR path, CUIWindow* parent)
 CUI3tButton* CScriptXmlInit::Init3tButton(LPCSTR path, CUIWindow* parent)
 {
     CUI3tButton* pWnd = xr_new<CUI3tButton>();
-    CUIXmlInit::Init3tButton(m_xml, path, 0, pWnd);
+    if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+        CUIXmlInit::Init3tButton(m_xml, path, 0, pWnd);
+    else
+        Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
     _attach_child(pWnd, parent);
     return pWnd;
 }
@@ -238,7 +253,10 @@ CUIWindow* CScriptXmlInit::InitKeyBinding(LPCSTR path, CUIWindow* parent)
 CUITrackBar* CScriptXmlInit::InitTrackBar(LPCSTR path, CUIWindow* parent)
 {
     CUITrackBar* pWnd = xr_new<CUITrackBar>();
-    CUIXmlInit::InitTrackBar(m_xml, path, 0, pWnd);
+    if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+        CUIXmlInit::InitTrackBar(m_xml, path, 0, pWnd);
+    else
+        Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
     _attach_child(pWnd, parent);
     return pWnd;
 }

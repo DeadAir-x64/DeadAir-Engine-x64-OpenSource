@@ -208,6 +208,11 @@ void CUIActorMenu::InitializeUniversal(CUIXml& uiXml)
 
         { eInventoryBeltList,      "dragdrop_belt",            nullptr,               "artefact_slot_highlight", "belt_list_over",   true },
         { eInventoryDetectorList,  "dragdrop_detector",        nullptr,               "detector_slot_highlight", nullptr,            true },
+        // [DA_PORT] slot 14 cell (binocular/grenade). required=false so menus whose xml lacks it don't fatal.
+        { eInventoryBinocularList, "dragdrop_binocular",       nullptr,               nullptr,                   nullptr,            false },
+        // [DA_PORT] slot 5 cell (sidearm: pistols + binocular item). Has its own condition bar + highlight
+        // in Dead Air's actor_menu. required=false so 4:3/older layouts that lack it don't fatal.
+        { eInventorySidearmList,   "dragdrop_sidearm",         "progess_bar_sidearm", "sidearm_highlight",       nullptr,            false },
 
         { eInventoryBagList,       "dragdrop_bag",             nullptr,               nullptr,                   nullptr,            true },
 
@@ -222,7 +227,9 @@ void CUIActorMenu::InitializeUniversal(CUIXml& uiXml)
 
         { eTrashList,              "dragdrop_trash",           nullptr,               nullptr,                   nullptr,            false },
 
-        { eInventoryBackpackList,  "dragdrop_backpack",        nullptr,               "backpack_slot_highlight", nullptr,            false },
+        // [DA_PORT] "backpack_over" blocker overlay: shown (via capacity->0 in UpdateOutfit) when the worn
+        // outfit forbids a backpack, so the disabled slot reads clearly - same treatment as helmet_over.
+        { eInventoryBackpackList,  "dragdrop_backpack",        nullptr,               "backpack_slot_highlight", "backpack_over",    false },
     };
     static_assert(std::size(inventory_lists) == eListCount,
         "All lists should be listed in the tuple above.");
@@ -258,6 +265,10 @@ void CUIActorMenu::InitializeUniversal(CUIXml& uiXml)
 
     if (m_pLists[eInventoryHelmetList])
         m_pLists[eInventoryHelmetList]->SetMaxCellsCapacity(m_pLists[eInventoryHelmetList]->CellsCapacity());
+    // [DA_PORT] remember the backpack cell's full capacity so UpdateOutfit can shrink it to 0 (drawing the
+    // backpack_over blocker) when the outfit forbids a backpack, then restore it.
+    if (m_pLists[eInventoryBackpackList])
+        m_pLists[eInventoryBackpackList]->SetMaxCellsCapacity(m_pLists[eInventoryBackpackList]->CellsCapacity());
 
     m_pQuickSlot = UIHelper::CreateDragDropReferenceList(uiXml, "dragdrop_quick_slots", this, false);
     if (m_pQuickSlot)
@@ -274,6 +285,13 @@ void CUIActorMenu::InitializeUniversal(CUIXml& uiXml)
     m_trade_button = UIHelper::Create3tButton(uiXml, "trade_button", this, false);
     m_trade_buy_button = UIHelper::Create3tButton(uiXml, "trade_buy_button", this, false);
     m_trade_sell_button = UIHelper::Create3tButton(uiXml, "trade_sell_button", this, false);
+    // [DA_PORT] Dead Air's actor_menu.xml has a third trade button (present in the x32 engine's
+    // element-name set): goods-for-goods barter. Optional - absent in stock CoP layouts.
+    // Created windows are visible by default and only InitTradeMode manages this one, so hide
+    // it immediately - otherwise it bleeds into the plain inventory screen.
+    m_trade_barter_button = UIHelper::Create3tButton(uiXml, "trade_barter_button", this, false);
+    if (m_trade_barter_button)
+        m_trade_barter_button->Show(false);
     m_takeall_button = UIHelper::Create3tButton(uiXml, "takeall_button", this);
     m_exit_button = UIHelper::Create3tButton(uiXml, "exit_button", this);
 
@@ -516,6 +534,10 @@ void CUIActorMenu::InitCallbacks()
     RegisterCallback(m_trade_sell_button, BUTTON_CLICKED,
         CUIWndCallback::void_function(this, &CUIActorMenu::OnBtnPerformTradeSell));
 
+    if (m_trade_barter_button) // [DA_PORT] optional Dead Air barter button
+        RegisterCallback(m_trade_barter_button, BUTTON_CLICKED,
+            CUIWndCallback::void_function(this, &CUIActorMenu::OnBtnPerformTradeBarter));
+
     RegisterCallback(m_takeall_button, BUTTON_CLICKED,
         CUIWndCallback::void_function(this, &CUIActorMenu::TakeAllFromPartner));
 
@@ -538,6 +560,8 @@ void CUIActorMenu::InitCallbacks()
 
     BindDragDropListEvents(m_pLists[eInventoryBeltList]);
     BindDragDropListEvents(m_pLists[eInventoryDetectorList]);
+    BindDragDropListEvents(m_pLists[eInventoryBinocularList]); // [DA_PORT] slot 14 grenade/binocular cell
+    BindDragDropListEvents(m_pLists[eInventorySidearmList]);   // [DA_PORT] slot 5 sidearm (pistol/binocular) cell
 
     BindDragDropListEvents(m_pLists[eInventoryBagList]);
 

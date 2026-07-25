@@ -80,8 +80,19 @@ bool CUIActorMenu::DropItemOnAnotherItem(EDDListType t_old, EDDListType t_new, C
         CUICellItem* _citem = new_owner->ItemsCount() == 1 ? new_owner->GetItemIdx(0) : nullptr;
         if (!_citem)
         {
-            CUICellContainer* c = old_owner->GetContainer();
-            Ivector2 c_pos = c->PickCell(old_owner->GetDragItemPosition());
+            // [DA_PORT] Pick the cell under the CURSOR, not under the dragged icon's top-left corner.
+            //
+            // GetDragItemPosition() returns m_pos_offset + cursor, and m_pos_offset is the vector from
+            // the cursor to the icon's corner recorded when you grabbed the item. Grab an artefact by
+            // its middle and that corner sits half a cell up and to the left of where you are actually
+            // pointing — so the drop resolved to a neighbouring cell and the container was only hit by
+            // luck. That is what made dropping an artefact into a container work "sometimes".
+            //
+            // The container is also taken from new_owner: it is the list being dropped INTO. Today the
+            // two are always the same list (OnItemDrop only calls this when old_owner == new_owner), so
+            // this changes nothing now and stays correct if that ever widens.
+            CUICellContainer* c = new_owner->GetContainer();
+            Ivector2 c_pos = c->PickCell(GetUICursor().GetCursorPosition());
             if (c->ValidCell(c_pos))
             {
                 CUICell& ui_cell = c->GetCellAt(c_pos);

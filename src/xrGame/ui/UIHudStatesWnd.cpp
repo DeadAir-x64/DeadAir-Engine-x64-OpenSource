@@ -675,13 +675,19 @@ void CUIHudStatesWnd::UpdateZones()
         //определить текущую частоту срабатывания сигнала
         zone_info.cur_period = zone_type->freq.x + (zone_type->freq.y - zone_type->freq.x) * (fRelPow * fRelPow);
 
+        // [DA_PORT] expose the radiation zone's click rate to scripts (game_object:get_radiation_detector)
+        if (hit_type == ALife::eHitTypeRadiation)
+            m_zone_frequency = zone_info.cur_period;
+
         // string256	buff_z;
         // xr_sprintf( buff_z, "zone %2.2f\n", zone_info.cur_period );
         // xr_strcat( buff, buff_z );
         if (zone_info.snd_time > zone_info.cur_period)
         {
             zone_info.snd_time = 0.0f;
-            HUD_SOUND_ITEM::PlaySound(zone_type->detect_snds, Fvector().set(0, 0, 0), NULL, true, false);
+            // [DA_PORT] only click when the actor carries a powered detector (see m_zone_sound_enabled)
+            if (m_zone_sound_enabled)
+                HUD_SOUND_ITEM::PlaySound(zone_type->detect_snds, Fvector().set(0, 0, 0), NULL, true, false);
         }
         else
         {
@@ -850,6 +856,16 @@ float CUIHudStatesWnd::get_zone_cur_power(ALife::EHitType hit_type)
     }
     return m_zone_cur_power[iz_type];
 }
+
+// [DA_PORT] Zone detector on/off, driven per tick by itms_manager.script from the actor's geiger +
+// battery charge. Resetting the frequency on every switch matches Dead Air.
+void CUIHudStatesWnd::SwitchZoneDetector(bool enable)
+{
+    m_zone_sound_enabled = enable;
+    m_zone_frequency = 0.0f;
+}
+
+float CUIHudStatesWnd::GetZoneFrequency() { return m_zone_frequency; }
 
 void CUIHudStatesWnd::DrawZoneIndicators()
 {

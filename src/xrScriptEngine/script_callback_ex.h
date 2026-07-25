@@ -18,6 +18,23 @@ IC bool compare_safe(const luabind::object& o1, const luabind::object& o2)
     return (o1 == o2);
 }
 
+// [DA_PORT] "-da_lua_trace": log every engine->script object-callback dispatch with the
+// handler's source location (file:line of the Lua function) - whole-mod diagnostics for
+// Dead Air's scripts without touching their data. Diagnostic runs only: the log is huge.
+IC void da_trace_script_callback(const luabind::object& functor)
+{
+    if (!CScriptEngine::da_lua_trace() || !functor.is_valid())
+        return;
+    lua_State* L = functor.interpreter();
+    if (!L)
+        return;
+    functor.push(L);
+    lua_Debug ar;
+    if (lua_getinfo(L, ">S", &ar))
+        Msg("* [DA_LUA] callback -> %s:%d", ar.short_src, ar.linedefined);
+    FlushLog();
+}
+
 #ifndef LUABIND_NO_EXCEPTIONS
 #define process_error \
     catch (luabind::error&) { GEnv.ScriptEngine->print_output(GEnv.ScriptEngine->lua(), "", LUA_ERRRUN); }
@@ -99,6 +116,7 @@ public:
                 if (m_functor)
                 {
                     VERIFY(m_functor.is_valid());
+                    da_trace_script_callback(m_functor); // [DA_PORT] no-op without -da_lua_trace
                     if (m_object)
                     {
                         VERIFY(m_object.is_valid());
@@ -130,6 +148,7 @@ public:
                 if (m_functor)
                 {
                     VERIFY(m_functor.is_valid());
+                    da_trace_script_callback(m_functor); // [DA_PORT] no-op without -da_lua_trace
                     if (m_object)
                     {
                         VERIFY(m_object.is_valid());

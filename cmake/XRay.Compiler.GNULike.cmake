@@ -136,6 +136,18 @@ if (XRAY_LINKER)
     add_link_options(-fuse-ld=${XRAY_LINKER})
 endif()
 
+# [DA_PORT] Disable ASLR/high-entropy-VA for ALL targets (DLLs + exe). MinGW's 32-bit
+# pseudo-relocation scheme cannot resolve cross-DLL references when images are mapped
+# at high-entropy addresses (>4GB); this manifests as "32 bit pseudo relocation out of
+# range" runtime failures at DLL load. Without --disable-dynamicbase the loader randomizes
+# image bases and pseudo-relocations overflow. LuaJIT (non-GC64) also needs low 2GB.
+if (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_link_options(
+        "-Wl,--disable-dynamicbase"
+        "-Wl,--disable-high-entropy-va"
+    )
+endif()
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-Og)
 endif()

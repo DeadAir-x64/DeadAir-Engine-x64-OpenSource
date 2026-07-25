@@ -214,6 +214,8 @@ public:
     static int lua_panic(lua_State* L);
     static void lua_error(lua_State* L);
     static int lua_pcall_failed(lua_State* L);
+    // [DA_PORT] "-da_lua_trace" launch flag: whole-mod engine->script dispatch tracing
+    static bool da_lua_trace();
 #if !XRAY_EXCEPTIONS
     static void lua_cast_failed(lua_State* L, const luabind::type_id& info);
 #endif
@@ -252,6 +254,12 @@ private:
 template <typename TResult>
 IC bool CScriptEngine::functor(LPCSTR function_to_call, luabind::functor<TResult>& lua_function)
 {
+    // [DA_PORT] "-da_lua_trace": log every named engine->script functor dispatch
+    if (da_lua_trace())
+    {
+        Msg("* [DA_LUA] functor: %s", function_to_call);
+        FlushLog();
+    }
     luabind::object object;
     if (!function_object(function_to_call, object))
         return false;

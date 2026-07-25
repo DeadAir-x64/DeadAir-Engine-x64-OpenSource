@@ -681,7 +681,15 @@ bool CActor::net_Spawn(CSE_Abstract* DC)
             }
         }
     */
-    SetDefaultVisualOutfit(cNameVisual());
+    // [DA_HEAD] DA spawns the actor already wearing the "hero" starter outfit, so cNameVisual() here
+    // is the HEADLESS first-person body model actors\legs\hero_outfit. Capturing that as the default
+    // meant taking off any outfit (or spawning naked) reverted the actor to a headless model — no
+    // head on the shadow / death corpse. Capture the actor's real head-having config visual instead
+    // (`[actor] visual` = actors\stalker_hero\stalker_hero_1.ogf).
+    if (pSettings->line_exist(cNameSect(), "visual"))
+        SetDefaultVisualOutfit(pSettings->r_string(cNameSect(), "visual"));
+    else
+        SetDefaultVisualOutfit(cNameVisual());
 
     smart_cast<IKinematics*>(Visual())->CalculateBones();
 

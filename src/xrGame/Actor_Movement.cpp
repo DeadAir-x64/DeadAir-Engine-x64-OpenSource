@@ -12,6 +12,7 @@
 #include "ActorCondition.h"
 #include "game_cl_base.h"
 #include "WeaponMagazined.h"
+#include "CustomOutfit.h" // [DA_PORT] sprint weight penalty needs the outfit up here
 #include "CharacterPhysicsSupport.h"
 #include "ActorEffector.h"
 #include "static_cast_checked.hpp"
@@ -24,6 +25,16 @@ static const float s_fLandingTime1 = 0.1f; // через сколько снят
 static const float s_fLandingTime2 = 0.3f; // через сколько снять флаг Landing2 (т.е. включить следующую анимацию)
 static const float s_fJumpTime = 0.3f;
 static const float s_fJumpGroundTime = 0.1f; // для снятия флажка Jump если на земле
+
+// [DA_PORT] A failing actor moves like one. Below DA_FAILING_HEALTH ordinary movement speed falls off
+// towards DA_FAILING_SPEED, so heavy radiation poisoning or blood loss are felt in the controls and not
+// only on the health bar. Driven by health rather than by radiation specifically: the same stagger fits
+// bleeding out or starving, and the actor already gasps audibly down there.
+//
+// NB: this has no counterpart in Dead Air's own engine or scripts — it is an addition, not a port. In
+// the original a stalker at 5% health runs like a healthy one.
+static const float DA_FAILING_HEALTH = 0.30f; // health at which the slowdown starts
+static const float DA_FAILING_SPEED = 0.50f;  // fraction of normal speed left at zero health
 const float s_fFallTime = 0.2f;
 
 IC static void generate_orthonormal_basis1(const Fvector& dir, Fvector& updir, Fvector& right)
@@ -301,7 +312,26 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector& vControlAccel, float& Ju
                 if (mstate_real & mcClimb)
                     scale *= m_fClimbFactor;
                 if (mstate_real & mcSprint)
-                    scale *= m_fSprintFactor;
+                {
+                    // [DA_PORT] The carried weapon and worn outfit eat into sprint speed. Both koefs
+                    // default to 0, so this stays inert until the configs set sprint_weapon_koef /
+                    // sprint_outfit_koef. The alpha's wider movement rework (overweight gradually
+                    // slowing walk/run) is NOT taken: our block has diverged — it carries backpack
+                    // handling the alpha lacks, and the stock "too heavy to walk" stop is still here,
+                    // so grafting the gradual version on top would half-apply both rules.
+                    float wt = 0.f;
+
+                    const auto active_slot = inventory().GetActiveSlot();
+                    if (CWeaponMagazined* pWM = smart_cast<CWeaponMagazined*>(
+                            active_slot != NO_ACTIVE_SLOT ? inventory().ItemFromSlot(active_slot) : nullptr))
+                        wt += pWM->Weight() * m_fSprintWeaponFactor;
+
+                    if (CCustomOutfit* pOutfit = smart_cast<CCustomOutfit*>(inventory().ItemFromSlot(OUTFIT_SLOT)))
+                        wt += pOutfit->Weight() * m_fSprintOutfitFactor;
+
+                    clamp(wt, 0.f, 1.5f);
+                    scale *= (m_fSprintFactor - wt);
+                }
 
                 if (mstate_real & (mcLStrafe | mcRStrafe) && !(mstate_real & mcCrouch))
                 {
@@ -317,6 +347,17 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector& vControlAccel, float& Ju
                     scale *= backpack->m_fWalkAccel;
                     if (inventory().TotalWeight() > MaxCarryWeight())
                         scale *= backpack->m_fOverweightWalkK;
+                }
+
+                // [DA_PORT] see DA_FAILING_HEALTH above. Sprint is deliberately untouched — it is governed
+                // by stamina, which already collapses at low health; scaling both would stack.
+                {
+                    const float da_health = conditions().GetHealth();
+                    if (da_health < DA_FAILING_HEALTH)
+                    {
+                        const float da_t = da_health / DA_FAILING_HEALTH; // 1 at the threshold, 0 at death
+                        scale *= DA_FAILING_SPEED + (1.f - DA_FAILING_SPEED) * da_t;
+                    }
                 }
 
                 vControlAccel.mul(scale);
@@ -572,9 +613,14 @@ bool isActorAccelerated(u32 mstate, bool ZoomMode)
     else
         res = true;
 
-    if (mstate & (mcCrouch | mcClimb | mcJump | mcLanding | mcLanding2))
+    // DA: зум приоритетнее приседа — нельзя быть «ускоренным» (спринт) в прицеле
+    if (mstate & (mcClimb | mcJump | mcLanding | mcLanding2))
         return res;
-    if (mstate & mcLookout || ZoomMode)
+    if (ZoomMode)
+        return false;
+    if (mstate & mcCrouch)
+        return res;
+    if (mstate & mcLookout)
         return false;
     return res;
 }
@@ -668,12 +714,17 @@ float CActor::get_additional_weight() const
     CCustomOutfit* outfit = GetOutfit();
     if (outfit)
     {
-        res += outfit->m_additional_weight;
+        res += outfit->m_additional_weight * outfit->GetCondition(); // DA: грузоподъёмность костюма скейлится по состоянию
     }
 
     CBackpack* pBackpack = GetBackpack();
     if (pBackpack)
         res += pBackpack->m_additional_weight;
+    // [DA_PORT] DA's backpacks are scripted artefacts (config class SCRPTART), not the engine
+    // CBackpack, so GetBackpack() (a smart_cast to CBackpack) misses them. Add the backpack-slot
+    // artefact's additional_inventory_weight so the carry limit actually grows when it's worn.
+    else if (CArtefact* pBackpackAf = smart_cast<CArtefact*>(inventory().ItemFromSlot(BACKPACK_SLOT)))
+        res += pBackpackAf->AdditionalInventoryWeight();
 
     for (TIItemContainer::const_iterator it = inventory().m_belt.begin(); inventory().m_belt.end() != it; ++it)
     {

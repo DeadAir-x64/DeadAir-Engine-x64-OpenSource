@@ -15,9 +15,10 @@
 
 void LuaLog(pcstr caMessage)
 {
-#ifndef MASTER_GOLD
+    // [DA_PORT] was #ifndef MASTER_GOLD - our Release defines MASTER_GOLD, which silently
+    // discarded EVERY script printf/log() of the whole mod since the port began (Dead Air's
+    // _g.printf routes here). Script output is essential diagnostics - always log it.
     GEnv.ScriptEngine->script_log(LuaMessageType::Message, "%s", caMessage);
-#endif
 #if defined(USE_DEBUGGER)
     if (GEnv.ScriptEngine->debugger())
         GEnv.ScriptEngine->debugger()->Write(caMessage);

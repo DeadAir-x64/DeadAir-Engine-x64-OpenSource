@@ -170,8 +170,138 @@ float CActorCondition::GetZoneMaxPower(ALife::EHitType hit_type) const
     return GetZoneMaxPower(iz_type);
 }
 
+
+// [DA_PORT] ---- Dying vision ------------------------------------------------------------------------
+// Below DA_DYING_HEALTH the picture desaturates and blurs, deepening as health approaches zero, so the
+// player reads their own state without staring at the HUD. Deliberately built in code rather than as a
+// .ppe: adding a section to postprocess.ltx would mean editing mod data, and the effect is two numbers.
+//
+// Matches the movement slowdown in Actor_Movement.cpp (DA_FAILING_HEALTH) so both kick in together.
+static const float DA_DYING_HEALTH = 0.30f; // health at which vision starts to go
+static const float DA_DYING_GRAY = 0.85f;   // desaturation at zero health
+static const float DA_DYING_BLUR = 0.60f;   // blur at zero health
+
+// Radiation sickness works on the eyes too, and earlier than on the health bar. Above this dose the
+// picture starts to swim: acute exposure causes blurred vision, and the yellowish cast stands in for
+// the sallow tint the mod's own radiation.ppe uses, so the two read as the same condition.
+// The in-game readout is radiation * 10000 mSv, so these are 600 mSv and 3000 mSv respectively. The
+// effect is scaled between the two rather than up to the top of the scale: stretched over the whole
+// range it would be invisible at the doses actually encountered in play.
+// Chosen against real radiobiology rather than against the engine's 0..1 range: under ~100 mSv there
+// are no acute symptoms, 100-1000 mSv is mild radiation sickness (weakness, nausea), past 1000 mSv it
+// turns severe. So the eyes start to go at 200 mSv and are fully affected by 800, where a person is
+// genuinely ill. Scaling to the top of the scale instead would put every visible symptom at doses that
+// kill outright, and the player would never see them.
+static const float DA_RAD_VISION_MIN = 0.02f; // 200 mSv - first symptoms
+static const float DA_RAD_VISION_MAX = 0.08f; // 800 mSv - full strength
+static const float DA_RAD_BLUR = 0.45f;       // blur at full dose
+static const float DA_RAD_GRAY = 0.30f;       // desaturation at full dose
+static const float DA_RAD_DUALITY = 0.12f;    // double vision at full dose
+
+class CEffectorDyingVision : public CEffectorPP
+{
+    CActorCondition* m_owner;
+
+public:
+    CEffectorDyingVision(CActorCondition* owner) : CEffectorPP(EEffectorPPType(effDyingVision), 1.0f, false), m_owner(owner) {}
+
+    bool Valid() override { return true; } // lifetime is managed by UpdateDyingVision, not by a timer
+
+    bool Process(SPPInfo& pp) override
+    {
+        // CRITICAL: UpdatePPEffectors hands every effector pp_zero — an all-zero struct, base colour
+        // included — and adds the result on top of pp_identity. So an effector must fill the WHOLE
+        // structure, not just the fields it cares about. Starting from pp_identity is what keeps the
+        // picture intact; forgetting this turns the screen completely black.
+        pp = pp_identity;
+
+        const float health = m_owner->GetHealth();
+        if (health >= DA_DYING_HEALTH)
+            return true;
+
+        // 0 at the threshold, 1 at death.
+        float k = 1.f - (health / DA_DYING_HEALTH);
+        clamp(k, 0.f, 1.f);
+        k *= k; // ease in: barely noticeable at first, heavy at the end
+
+        pp.gray = DA_DYING_GRAY * k;
+        pp.blur = DA_DYING_BLUR * k;
+        return true;
+    }
+};
+
+class CEffectorRadiationVision : public CEffectorPP
+{
+    CActorCondition* m_owner;
+
+public:
+    CEffectorRadiationVision(CActorCondition* owner)
+        : CEffectorPP(EEffectorPPType(effRadiationVision), 1.0f, false), m_owner(owner)
+    {
+    }
+
+    bool Valid() override { return true; }
+
+    bool Process(SPPInfo& pp) override
+    {
+        pp = pp_identity; // see the note in CEffectorDyingVision::Process — pp arrives as pp_zero
+
+        const float rad = m_owner->GetRadiation();
+        if (rad <= DA_RAD_VISION_MIN)
+            return true;
+
+        // 0 at the threshold, 1 at DA_RAD_VISION_MAX and beyond.
+        float k = (rad - DA_RAD_VISION_MIN) / (DA_RAD_VISION_MAX - DA_RAD_VISION_MIN);
+        clamp(k, 0.f, 1.f);
+
+        pp.blur = DA_RAD_BLUR * k;
+        pp.gray = DA_RAD_GRAY * k;
+
+        // Double vision: the eyes stop converging. Kept small — past a slight offset it stops reading
+        // as sickness and just makes the game unplayable.
+        pp.duality.h = DA_RAD_DUALITY * k;
+        pp.duality.v = DA_RAD_DUALITY * k * 0.5f;
+
+        // Sallow cast, matching the mod's own radiation post-effect.
+        pp.color_base.g = pp_identity.color_base.g * (1.f - 0.05f * k);
+        pp.color_base.b = pp_identity.color_base.b * (1.f - 0.15f * k);
+        return true;
+    }
+};
+
+void CActorCondition::UpdateRadiationVision()
+{
+    if (!IsGameTypeSingle() || !Actor())
+        return;
+
+    CEffectorPP* ppe = object().Cameras().GetPPEffector(EEffectorPPType(effRadiationVision));
+    const bool want = GetRadiation() > DA_RAD_VISION_MIN && !psActorFlags.test(AF_GODMODE_RT);
+
+    if (want && !ppe)
+        object().Cameras().AddPPEffector(xr_new<CEffectorRadiationVision>(this));
+    else if (!want && ppe)
+        object().Cameras().RemovePPEffector(EEffectorPPType(effRadiationVision));
+}
+
+void CActorCondition::UpdateDyingVision()
+{
+    if (!IsGameTypeSingle() || !Actor())
+        return;
+
+    CEffectorPP* ppe = object().Cameras().GetPPEffector(EEffectorPPType(effDyingVision));
+    const bool want = GetHealth() < DA_DYING_HEALTH && !psActorFlags.test(AF_GODMODE_RT);
+
+    if (want && !ppe)
+        object().Cameras().AddPPEffector(xr_new<CEffectorDyingVision>(this));
+    else if (!want && ppe)
+        object().Cameras().RemovePPEffector(EEffectorPPType(effDyingVision));
+}
+
 void CActorCondition::UpdateCondition()
 {
+    UpdateDyingVision(); // [DA_PORT]
+    UpdateRadiationVision(); // [DA_PORT]
+
     if (psActorFlags.test(AF_GODMODE_RT))
     {
         UpdateSatiety();
@@ -326,7 +456,11 @@ void CActorCondition::AffectDamage_InjuriousMaterialAndMonstersInfluence()
 
     float psy_influence = 0;
     float fire_influence = 0;
-    float radiation_influence = GetInjuriousMaterialDamage(); // Get Radiation from Material
+    // [DA_PORT] Radiation from the ground is NOT folded in here — see the separate hit at the end of the
+    // loop below. Dead Air splits it out, and the split matters: this stream is delivered as a hit with
+    // BI_NONE, while the material hit goes into the spine. Armour protection is resolved per bone, so
+    // merging the two makes the suit shield ground radiation differently than the author intended.
+    float radiation_influence = 0; // Get Radiation from Material
 
     // Add Radiation and Psy Level from Monsters
     CPda* const pda = m_object->GetPDA();
@@ -378,6 +512,19 @@ void CActorCondition::AffectDamage_InjuriousMaterialAndMonstersInfluence()
             }
 
         } // for
+
+        // [DA_PORT] Radiation from radioactive ground, as its own hit into the spine (as in Dead Air).
+        float MaterialRadiation = GetInjuriousMaterialDamage() * one;
+        if (MaterialRadiation > EPS)
+        {
+            ALife::EHitType type = ALife::eHitTypeRadiation;
+            SHit HDS = SHit(MaterialRadiation, Fvector().set(0, 1, 0), NULL, u16(Actor()->m_spine),
+                Fvector().set(0, 0, 0), 0.0f, type, 0.0f, false);
+
+            HDS.GenHeader(GE_HIT, m_object->ID());
+            HDS.Write_Packet(np);
+            CGameObject::u_EventSend(np);
+        }
 
     } // while
 }
@@ -463,7 +610,12 @@ void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
 {
     float power = m_fWalkPower;
     power += m_fWalkWeightPower * weight * (weight > 1.f ? m_fOverweightWalkK : 1.f);
-    power *= m_fDeltaTime * (accel ? (sprint ? m_fSprintK : m_fAccelK) : 1.f);
+    // DA: выносливость тратится ТОЛЬКО на спринте (ходьба/ускорение — без траты); перегруз усиливает трату спринта
+    // power *= m_fDeltaTime * (accel ? (sprint ? m_fSprintK : m_fAccelK) : 1.f);
+    const float k = 0.0015f;
+    float overweight_k = (object().inventory().TotalWeight() - m_object->MaxWalkWeight()) * (m_object->MaxWalkWeight() * k);
+    clamp(overweight_k, 0.f, 1.0f);
+    power *= m_fDeltaTime * (sprint ? m_fSprintK + overweight_k * 4 : 0.f);
     m_fPower -= HitPowerEffect(power);
 }
 
@@ -789,21 +941,25 @@ bool CActorCondition::PlayHitSound(SHit* pHDS)
     switch (pHDS->hit_type)
     {
     case ALife::eHitTypeTelepatic: return false; break;
-    case ALife::eHitTypeShock:
+    // DA: физ.урон — звук только при damage>0.1; шок/ожоги — при >1.0; радиация — без звука
     case ALife::eHitTypeStrike:
     case ALife::eHitTypeWound:
     case ALife::eHitTypeExplosion:
     case ALife::eHitTypeFireWound:
     case ALife::eHitTypeWound_2:
-    case ALife::eHitTypePhysicStrike:
-        return true;
+//  case ALife::eHitTypePhysicStrike:
+        return (pHDS->damage() > 0.1f);
         break;
 
-    case ALife::eHitTypeRadiation:
+    case ALife::eHitTypeShock:
     case ALife::eHitTypeBurn:
     case ALife::eHitTypeLightBurn:
     case ALife::eHitTypeChemicalBurn:
-        return (pHDS->damage() > 0.017f); // field zone threshold
+        return (pHDS->damage() > 1.f);
+        break;
+
+    case ALife::eHitTypeRadiation:
+        return false;
         break;
     default: return true;
     }

@@ -61,6 +61,9 @@ public:
     shared_str m_NightVisionSect;
 
     bool bIsHelmetAvaliable;
+    // [DA_PORT] Dead Air outfit flag next to helmet_avaliable (default true). When false the outfit forbids
+    // equipping a backpack (e.g. the sealed scientific suit) - same gate/kick semantics as the helmet flag.
+    bool bIsBackpackAvaliable;
 
     virtual u32 ef_equipment_type() const;
     virtual bool BonePassBullet(int boneID);

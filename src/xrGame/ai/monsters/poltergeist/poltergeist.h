@@ -8,6 +8,7 @@ class CStateManagerPoltergeist;
 class CPoltergeisMovementManager;
 class CPolterSpecialAbility;
 class CPolterTele;
+class CLAItem;
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -41,6 +42,14 @@ class CPoltergeist : public CBaseMonster, public CTelekinesis, public CEnergyHol
     float m_current_detection_level;
     float m_detection_success_level;
     float m_detection_max_level;
+
+    // DA: светящийся полтергейст (point-light на кости головы + цветоанимация light_color_animmator)
+    ref_light m_light_render;
+    CLAItem* m_lanim;
+    u16 m_light_bone;
+    float m_light_range, m_light_brightness, m_light_angle;
+    bool m_light_volumetric, m_light_shadow;
+    Fcolor m_light_color;
 
 public:
     bool m_detect_without_sight;

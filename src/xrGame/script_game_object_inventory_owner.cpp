@@ -25,6 +25,8 @@
 #include "xrAICore/Navigation/level_graph.h"
 #include "HudItem.h"
 #include "ui/UITalkWnd.h"
+#include "ui/UIMainIngameWnd.h" // [DA_PORT] set/get_radiation_detector -> hud states window
+#include "ui/UIHudStatesWnd.h"
 #include "Inventory.h"
 #include "InfoPortion.h"
 #include "ai/monsters/basemonster/base_monster.h"
@@ -2245,22 +2247,49 @@ void CScriptGameObject::SetCharacterIcon(pcstr iconName)
 }
 //-Alundaio
 
-// Dead Air compat stub: set_radiation_detector
+// [DA_PORT] Dead Air's zone-detector switch. itms_manager.script calls this on the actor every tick:
+// true only while a "geiger" item is carried AND its battery ("wpn_upd") still holds charge, false
+// otherwise. It gates the geiger clicking in CUIHudStatesWnd::UpdateZones, which stock played
+// unconditionally — so without this, radiation detection worked for free, with no device needed.
 void CScriptGameObject::SetRadiationDetector(bool b)
 {
-    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+    CActor* pActor = smart_cast<CActor*>(&object());
+    if (!pActor)
+        return;
+
+    CUIGameCustom* ui = CurrentGameUI();
+    if (!ui || !ui->UIMainIngameWnd)
+        return;
+
+    CUIHudStatesWnd* wnd = ui->UIMainIngameWnd->get_hud_states();
+    if (!wnd)
+        return;
+
+    wnd->SwitchZoneDetector(b);
 }
 
-// Dead Air compat stub: enable_torch2
-void CScriptGameObject::EnableTorch2(bool b)
+// Dead Air: "torch2" - the real player-toggled flashlight beam (see Torch.h/.cpp for the
+// torch/torch2 split rationale - itms_manager.script forces "torch" on every tick as a
+// harmless base light, "torch2" is what the torch key actually controls).
+void CScriptGameObject::EnableTorch2(bool value)
 {
-    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+    CTorch* torch = smart_cast<CTorch*>(&object());
+    if (!torch)
+    {
+        GEnv.ScriptEngine->script_log(LuaMessageType::Error, "CTorch : cannot access class member enable_torch2!");
+        return;
+    }
+    torch->Switch2(value);
 }
 
-// Dead Air compat stub: set_actor_zoom_inertion
+// [DA_PORT] set_actor_zoom_inertion: DA scripts (xr_actor.script) push an extra aim-sway factor
+// derived from the actor's psy_health/power each frame; the engine applies it to the zoom inertion.
 void CScriptGameObject::SetActorZoomInertion(float f)
 {
-    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+    CActor* actor = smart_cast<CActor*>(&object());
+    if (!actor)
+        return; // DA only ever calls this on db.actor
+    actor->SetZoomInertionScale(f);
 }
 
 // Dead Air compat stub: set_actor_recoil_coeff
@@ -2269,11 +2298,24 @@ void CScriptGameObject::SetActorRecoilCoeff(float f)
     Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
 }
 
-// Dead Air compat stub: get_radiation_detector
-bool CScriptGameObject::GetRadiationDetector()
+// [DA_PORT] Click period of the nearest radiation zone. Returns a float, not a bool — DA's scripts do
+// arithmetic on it (xr_actor.script: `2 - db.actor:get_radiation_detector()`), though those call sites
+// are currently commented out in the shipped scripts.
+float CScriptGameObject::GetRadiationDetector()
 {
-    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
-    return false;
+    CActor* pActor = smart_cast<CActor*>(&object());
+    if (!pActor)
+        return 0.0f;
+
+    CUIGameCustom* ui = CurrentGameUI();
+    if (!ui || !ui->UIMainIngameWnd)
+        return 0.0f;
+
+    CUIHudStatesWnd* wnd = ui->UIMainIngameWnd->get_hud_states();
+    if (!wnd)
+        return 0.0f;
+
+    return wnd->GetZoneFrequency();
 }
 
 // Dead Air compat stub: set_profile_name
@@ -2307,5 +2349,6 @@ float CScriptGameObject::GetArtefactAdditionalWeight() { CArtefact* a = smart_ca
 void CScriptGameObject::SetArtefactAdditionalWeight(float v) { CArtefact* a = smart_cast<CArtefact*>(&object()); if (!a) return; a->SetAdditionalInventoryWeight(v); }
 
 // Dead Air: weapon break/condition type (items_condition.script)
-u8 CScriptGameObject::GetWeaponConditionType() { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return 0; return w->m_weapon_condition_type; }
-void CScriptGameObject::SetWeaponConditionType(u8 t) { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return; w->m_weapon_condition_type = t; }
+// [DA_PORT] 32-bit bitmask (bit=malfunction). Was u8 -> truncated bits 8..31 (scripts use bit 28, loop 0..31).
+u32 CScriptGameObject::GetWeaponConditionType() { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return 0; return w->m_weapon_condition_type; }
+void CScriptGameObject::SetWeaponConditionType(u32 t) { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return; w->m_weapon_condition_type = t; }

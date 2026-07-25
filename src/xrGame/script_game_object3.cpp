@@ -1463,16 +1463,32 @@ void CScriptGameObject::SwitchState(u32 state)
 
 u32 CScriptGameObject::GetState()
 {
+    u32 st = 65535;
     if (const auto weapon = object().cast_weapon())
-        return weapon->GetState();
-
-    if (CInventoryItem* IItem = object().cast_inventory_item())
+        st = weapon->GetState();
+    else if (CInventoryItem* IItem = object().cast_inventory_item())
     {
         if (const auto itm = IItem->cast_hud_item())
-            return itm->GetState();
+            st = itm->GetState();
     }
 
-    return 65535;
+    // get_state()==0 (eHidden). Trace the actual HUD state the port reports for these light items
+    // (on change only) to see why only the glowstick (no state gate) lights up. REMOVE after.
+    {
+        LPCSTR sect = object().cNameSect().c_str();
+        if (sect && (strstr(sect, "device_flashlight") || strstr(sect, "device_lighter") || strstr(sect, "device_glowstick")))
+        {
+            static u32 s_last = 0xDEADBEEF;
+            static string128 s_last_sect = "";
+            if (st != s_last || 0 != xr_strcmp(s_last_sect, sect))
+            {
+                s_last = st;
+                xr_strcpy(s_last_sect, sect);
+            }
+        }
+    }
+
+    return st;
 }
 
 bool CScriptGameObject::WeaponInGrenadeMode()

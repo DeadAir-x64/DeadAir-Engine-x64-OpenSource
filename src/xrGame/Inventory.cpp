@@ -47,12 +47,17 @@ bool defaultSlotActiveness[] =
     false, // detector
     false, // torch
     true, // artefact
-    false // helmet
+    false, // helmet
+    false, // [DA_PORT] script animation slot (13)
+    true, // [DA_PORT] grenade slot (14) - DA relocated hand grenades here (DA slot_active_14 = true)
+    false // [DA_PORT] backpack slot (15)
 };
 
 CInventory::CInventory()
 {
     m_fMaxWeight = pSettings->r_float("inventory", "max_weight");
+    // config actually specifies, to rule out an engine-side unit/scale bug vs their own data.
+    FlushLog();
     m_iMaxBelt = pSettings->read_if_exists<s32>("inventory", "max_belt", 5);
 
     u16 slotsCount = SLOTS_COUNT;
@@ -90,7 +95,10 @@ CInventory::CInventory()
 
     m_iLastSlot = i;
 #ifndef MASTER_GOLD
-    if (m_iLastSlot != slotsCount)
+    // [DA_PORT] Only warn when the config actually defines MORE slots than the engine enum knows
+    // (the real failure mode — items in those slots can't be placed). A larger SLOTS_COUNT than the
+    // config's slot_persistent count is harmless (spare, unused enum entries), so don't spam for it.
+    if (m_iLastSlot > slotsCount)
     {
         Log("~ Not critical, but check [inventory] section in your system.ltx.");
         Msg("~ slots_count = %u, but real slots count is %u", slotsCount, m_iLastSlot);
@@ -180,7 +188,14 @@ void CInventory::Take(CGameObject* pObj, bool bNotActivate, bool strict_placemen
         const bool slotFirst = pSettingsOpenXRay->read_if_exists<bool>("compatibility", "default_to_slot", ShadowOfChernobylMode);
         const bool defaultToRuck = pIItem->RuckDefault();
 
-        if (slotFirst || !defaultToRuck)
+        // [DA_PORT] Dead Air's slot 14 (GRENADE_SLOT) is a MANUAL utility slot the actor shares between a
+        // hand grenade and the binocular. Grenades ship with default_to_ruck=false, so stock Take auto-
+        // equips a picked-up grenade straight into slot 14 - which fights the binocular and leaves the slot
+        // bugged. Keep the ACTOR's grenades in the ruck (equip manually via double-click to throw); NPCs
+        // keep the stock auto-slot so their combat AI always has a grenade ready.
+        const bool daActorGrenade = smart_cast<CActor*>(m_pOwner) && pIItem->BaseSlot() == GRENADE_SLOT;
+
+        if (!daActorGrenade && (slotFirst || !defaultToRuck))
         {
             if (CanPutInSlot(pIItem, pIItem->BaseSlot()))
             {
@@ -593,9 +608,15 @@ void CInventory::Activate(u16 slot, bool bForce)
         {
             if (slot == GRENADE_SLOT) // fake for grenade
             {
-                PIItem gr = SameSlot(GRENADE_SLOT, NULL, true);
-                if (gr)
-                    Slot(GRENADE_SLOT, gr);
+                // [DA_PORT] Skip the auto-refill for the ACTOR: Dead Air's slot 14 is a manual utility
+                // slot (grenade OR binocular), so auto-pulling the next grenade would relocate/lock it
+                // on menu close. NPCs keep the stock behavior (their AI relies on a ready grenade).
+                if (!smart_cast<CActor*>(m_pOwner))
+                {
+                    PIItem gr = SameSlot(GRENADE_SLOT, NULL, true);
+                    if (gr)
+                        Slot(GRENADE_SLOT, gr);
+                }
             }
         }
     }
@@ -1190,6 +1211,14 @@ bool CInventory::CanPutInSlot(PIItem pIItem, u16 slot_id) const
             return false;
     }
 
+    // [DA_PORT] Dead Air: an outfit with backpack_avaliable=false (scientific suit) forbids a backpack.
+    if (slot_id == BACKPACK_SLOT)
+    {
+        CCustomOutfit* pOutfit = m_pOwner->GetOutfit();
+        if (pOutfit && !pOutfit->bIsBackpackAvaliable)
+            return false;
+    }
+
     if (slot_id != NO_ACTIVE_SLOT && NULL == ItemFromSlot(slot_id))
         return true;
 
@@ -1204,6 +1233,11 @@ bool CInventory::CanPutInBelt(PIItem pIItem)
     if (!m_bBeltUseful)
         return false;
     if (!pIItem || !pIItem->Belt())
+        return false;
+    // [DA_PORT] Dead Air backpacks are artefact-class (belt=true from af_base) but must NEVER live on the
+    // artefact belt - only the backpack slot or the ruck. Their 2x2 inv grid also overflows a 1-tall belt
+    // cell and crashes FindFreeCell. Reject any BACKPACK_SLOT item from the belt.
+    if (pIItem->BaseSlot() == BACKPACK_SLOT)
         return false;
     if (m_belt.size() >= BeltWidth())
         return false;

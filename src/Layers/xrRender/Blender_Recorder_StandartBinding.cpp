@@ -326,6 +326,11 @@ static class cl_screen_res : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
     {
+        // [DA_PORT] Deliberately the plain window size, i.e. stock behaviour. Deriving it from the current
+        // render target instead is tempting — the deferred passes and the 2D/UI shaders genuinely need
+        // different answers once r__render_scale shrinks the scene targets — but it also changes what
+        // passes that render into small fixed-size targets (bloom, luminance) see, and that is a
+        // behavioural change at 100% scale, which must stay byte-identical to before.
         cmd_list.set_c(C, (float)Device.dwWidth, (float)Device.dwHeight, 1.0f / (float)Device.dwWidth,
             1.0f / (float)Device.dwHeight);
     }

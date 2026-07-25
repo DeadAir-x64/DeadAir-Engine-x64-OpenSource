@@ -3,6 +3,8 @@
 #include "xrCore/xr_token.h"
 #include "xr_input.h"
 
+extern ENGINE_API int ps_r__render_scale; // [DA_PORT] defined in xr_ioc_cmd.cpp
+
 xr_vector<xr_token> vid_monitor_token;
 xr_map<u32, xr_vector<xr_token>> vid_mode_token;
 
@@ -235,6 +237,32 @@ void CRenderDevice::SelectResolution(const bool windowed)
 
     dwWidth = psDeviceMode.Width;
     dwHeight = psDeviceMode.Height;
+    UpdateRenderResolution();
+}
+
+// [DA_PORT] Derive the internal scene resolution from "r__render_scale" (a percentage of the output).
+// Kept even so both dimensions stay divisible by 2 — several passes (SSAO half-depth, bloom) work on
+// halved buffers and an odd size there costs half a texel of alignment.
+void CRenderDevice::UpdateRenderResolution()
+{
+    // Nothing to derive from yet (called before the mode is picked) — leave the previous values alone
+    // rather than producing a 0x0 scene target, which renders a black screen.
+    if (dwWidth == 0 || dwHeight == 0)
+        return;
+
+    const int scale = clampr(ps_r__render_scale, 25, 200); // >100 = supersampling
+
+    dwRenderWidth = static_cast<u32>((dwWidth * scale) / 100) & ~1u;
+    dwRenderHeight = static_cast<u32>((dwHeight * scale) / 100) & ~1u;
+
+    if (dwRenderWidth < 64)
+        dwRenderWidth = 64;
+    if (dwRenderHeight < 64)
+        dwRenderHeight = 64;
+
+    if (dwRenderWidth != dwWidth || dwRenderHeight != dwHeight)
+        Msg("* [DA_PORT] render scale %d%%: scene renders at %ux%u, presented at %ux%u", scale, dwRenderWidth,
+            dwRenderHeight, dwWidth, dwHeight);
 }
 
 SDL_Window* CRenderDevice::GetApplicationWindow()

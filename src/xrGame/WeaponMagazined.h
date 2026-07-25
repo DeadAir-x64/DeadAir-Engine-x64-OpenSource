@@ -57,6 +57,9 @@ protected:
     virtual void UpdateSounds();
 
     bool TryReload();
+    // [DA_PORT] Dead Air core mechanic: the actor reloads only with ammo carried on the
+    // belt (DA's belt is an ammo belt); NPC keep the stock whole-inventory search.
+    CWeaponAmmo* FindAmmoForReload(pcstr ammo_sect);
 
 protected:
     virtual void ReloadMagazine();

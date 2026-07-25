@@ -178,6 +178,8 @@ CSE_Abstract* CALifeSimulator__spawn_item2(CALifeSimulator* self, LPCSTR section
     packet.w_stringZ(section);
 
     CSE_Abstract* item = self->spawn_item(section, position, level_vertex_id, game_vertex_id, id_parent, false);
+    if (!item) // [DA_PORT] spawn_item now rejects bad section/vertex instead of crashing
+        return nullptr;
     item->Spawn_Write(packet, FALSE);
     self->server().FreeID(item->ID, 0);
     F_entity_Destroy(item);
@@ -214,7 +216,7 @@ CSE_Abstract* CALifeSimulator__spawn_item3(CALifeSimulator* self, pcstr section,
 
     CSE_Abstract* item = self->spawn_item(section, position, level_vertex_id, game_vertex_id, id_parent, false);
 
-    return item;
+    return item; // may be nullptr now (bad section/vertex) - Lua gets nil instead of a crash
 }
 
 CSE_Abstract* CALifeSimulator__spawn_ammo(CALifeSimulator* self, LPCSTR section, const Fvector& position,
@@ -236,6 +238,8 @@ CSE_Abstract* CALifeSimulator__spawn_ammo(CALifeSimulator* self, LPCSTR section,
     if (!object || !object->m_bOnline)
     {
         CSE_Abstract* item = self->spawn_item(section, position, level_vertex_id, game_vertex_id, id_parent);
+        if (!item) // [DA_PORT] bad section/vertex rejected inside - give Lua nil, don't THROW
+            return (0);
 
         CSE_ALifeItemAmmo* ammo = smart_cast<CSE_ALifeItemAmmo*>(item);
         THROW(ammo);
@@ -250,6 +254,8 @@ CSE_Abstract* CALifeSimulator__spawn_ammo(CALifeSimulator* self, LPCSTR section,
     packet.w_stringZ(section);
 
     CSE_Abstract* item = self->spawn_item(section, position, level_vertex_id, game_vertex_id, id_parent, false);
+    if (!item) // [DA_PORT] bad section/vertex rejected inside - give Lua nil, don't THROW
+        return (0);
 
     CSE_ALifeItemAmmo* ammo = smart_cast<CSE_ALifeItemAmmo*>(item);
     THROW(ammo);

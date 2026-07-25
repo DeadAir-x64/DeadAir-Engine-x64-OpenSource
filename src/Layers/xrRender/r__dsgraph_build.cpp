@@ -37,6 +37,83 @@ ICF float CalcSSA(float& distSQ, Fvector& C, float R)
     return R / distSQ;
 }
 
+// [DA_PORT] ---- Geometry cut-off by size and distance --------------------------------------------
+// Ported from the Dead Air sources (_engine_diff/DA_render_R2.patch); the OpenXRay base has no
+// equivalent, so the port was rendering every visual the frustum let through. A visual is skipped
+// once it is both small enough and far enough that it cannot read as anything on screen.
+//
+// Distance is divided by the field-of-view ratio, so aiming down a scope does not start culling the
+// things the player is deliberately looking at — zooming in makes distant objects larger on screen,
+// and the threshold has to follow.
+//
+// The shadow-map pass uses its own, much harsher set of thresholds: the sun's cascades traverse the
+// world several times per frame, and a pebble's shadow at 100 m is not visible in the result.
+IC float da_cull_adjusted_distance(const Fvector& world_pos)
+{
+    const float distance_to = Device.vCameraPosition.distance_to(world_pos) + EPS;
+    const float fov_K = 67.f / Device.fFOV;
+    return distance_to / fov_K;
+}
+
+IC bool da_is_valuable_static(dxRender_Visual* pVisual, u32 phase)
+{
+    const bool smap = (phase == CRender::PHASE_SMAP) && ps_r_high_optimize_sun_shad;
+    if (ps_r_optimize_static < 1 && !smap)
+        return true;
+
+    const float sphere_volume = pVisual->vis.sphere.volume();
+    const float d = da_cull_adjusted_distance(pVisual->vis.sphere.P);
+
+    if (smap)
+    {
+        // Nothing beyond the last cascade can cast a shadow that ends up in the frame at all.
+        if (sphere_volume < 50000.f && d > ps_r2_sun_shadows_far_casc)
+            return false;
+
+        if (sphere_volume < O_S_L1_S_ULT && d > O_S_L1_D_ULT) return false;
+        if (sphere_volume < O_S_L2_S_ULT && d > O_S_L2_D_ULT) return false;
+        if (sphere_volume < O_S_L3_S_ULT && d > O_S_L3_D_ULT) return false;
+        if (sphere_volume < O_S_L4_S_ULT && d > O_S_L4_D_ULT) return false;
+        if (sphere_volume < O_S_L5_S_ULT && d > O_S_L5_D_ULT) return false;
+        return true;
+    }
+
+    if (sphere_volume < o_optimize_static_l1_size && d > o_optimize_static_l1_dist) return false;
+    if (sphere_volume < o_optimize_static_l2_size && d > o_optimize_static_l2_dist) return false;
+    if (sphere_volume < o_optimize_static_l3_size && d > o_optimize_static_l3_dist) return false;
+    if (sphere_volume < o_optimize_static_l4_size && d > o_optimize_static_l4_dist) return false;
+    if (sphere_volume < o_optimize_static_l5_size && d > o_optimize_static_l5_dist) return false;
+    return true;
+}
+
+IC bool da_is_valuable_dynamic(dxRender_Visual* pVisual, const Fmatrix& xform, u32 phase)
+{
+    const bool smap = (phase == CRender::PHASE_SMAP) && ps_r_high_optimize_sun_shad;
+    if (ps_r_optimize_dynamic < 1 && !smap)
+        return true;
+
+    const float sphere_volume = pVisual->vis.sphere.volume();
+
+    // Dynamic visuals carry their position in object space, so it has to go through the object's
+    // transform before the distance means anything.
+    Fvector world_pos;
+    xform.transform_tiny(world_pos, pVisual->vis.sphere.P);
+    const float d = da_cull_adjusted_distance(world_pos);
+
+    if (smap)
+    {
+        if (sphere_volume < O_D_L1_S_ULT && d > O_D_L1_D_ULT) return false;
+        if (sphere_volume < O_D_L2_S_ULT && d > O_D_L2_D_ULT) return false;
+        if (sphere_volume < O_D_L3_S_ULT && d > O_D_L3_D_ULT) return false;
+        return true;
+    }
+
+    if (sphere_volume < o_optimize_dynamic_l1_size && d > o_optimize_dynamic_l1_dist) return false;
+    if (sphere_volume < o_optimize_dynamic_l2_size && d > o_optimize_dynamic_l2_dist) return false;
+    if (sphere_volume < o_optimize_dynamic_l3_size && d > o_optimize_dynamic_l3_dist) return false;
+    return true;
+}
+
 void R_dsgraph_structure::insert_dynamic(IRenderable* root, dxRender_Visual* pVisual, Fmatrix& xform, Fvector& Center)
 {
     ZoneScoped;
@@ -260,6 +337,9 @@ void R_dsgraph_structure::add_leafs_dynamic(IRenderable* root, dxRender_Visual* 
     if (nullptr == pVisual)
         return;
 
+    if (!da_is_valuable_dynamic(pVisual, xform, o.phase)) // [DA_PORT] geometry cut-off
+        return;
+
     // Visual is 100% visible - simply add it
     switch (pVisual->Type)
     {
@@ -344,6 +424,9 @@ void R_dsgraph_structure::add_leafs_static(dxRender_Visual* pVisual)
     ZoneScoped;
 
     if (o.use_hom && !RImplementation.HOM.visible(pVisual->vis))
+        return;
+
+    if (!da_is_valuable_static(pVisual, o.phase)) // [DA_PORT] geometry cut-off
         return;
 
     // Visual is 100% visible - simply add it
@@ -554,6 +637,9 @@ void R_dsgraph_structure::add_static(dxRender_Visual* pVisual, const CFrustum& v
         return;
 
     if (o.use_hom && !RImplementation.HOM.visible(vis))
+        return;
+
+    if (!da_is_valuable_static(pVisual, o.phase)) // [DA_PORT] geometry cut-off
         return;
 
     // If we get here visual is visible or partially visible

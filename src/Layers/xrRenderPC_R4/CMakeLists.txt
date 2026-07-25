@@ -8,6 +8,7 @@ target_sources(xrRenderPC_R4 PRIVATE
     r4_rendertarget_build_textures.cpp
     r4_rendertarget_phase_combine.cpp
     r4_rendertarget_phase_hdao.cpp
+    r4_rendertarget_phase_taa.cpp
     r4_rendertarget_u_set_rt.cpp
     r4_shaders.cpp
     R_Backend_LOD.cpp
@@ -42,6 +43,7 @@ target_sources(xrRenderPC_R4 PRIVATE
     "../xrRender/blenders/Blender_Particle_deferred.cpp"
     "../xrRender/blenders/Blender_Screen_SET.cpp"
     "../xrRender/blenders/blender_ssao.cpp"
+    "../xrRender/blenders/blender_taa.cpp"
     "../xrRender/blenders/Blender_tree_deferred.cpp"
     "../xrRender/blenders/dx11HDAOCSBlender.cpp"
     "../xrRender/blenders/dx11MinMaxSMBlender.cpp"

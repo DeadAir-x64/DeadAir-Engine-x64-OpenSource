@@ -197,6 +197,19 @@ void CWeaponMagazined::Reload()
     TryReload();
 }
 
+// [DA_PORT] Dead Air core mechanic: the actor reloads only with ammo carried on the belt
+// (in DA the belt is an ammo belt), backpack ammo is dead weight until moved there. NPC and
+// offline logic keep the stock whole-inventory search. CInventory::Get(name, false) is
+// exactly the belt-only lookup that GetAny() starts with.
+CWeaponAmmo* CWeaponMagazined::FindAmmoForReload(pcstr ammo_sect)
+{
+    if (!m_pInventory)
+        return nullptr;
+    if (ParentIsActor())
+        return smart_cast<CWeaponAmmo*>(m_pInventory->Get(ammo_sect, false));
+    return smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(ammo_sect));
+}
+
 bool CWeaponMagazined::TryReload()
 {
     if (m_pInventory)
@@ -207,7 +220,7 @@ bool CWeaponMagazined::TryReload()
             Actor()->callback(GameObject::eWeaponNoAmmoAvailable)(lua_game_object(), AC);
         }
 
-        m_pCurrentAmmo = smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(m_ammoTypes[m_ammoType].c_str()));
+        m_pCurrentAmmo = FindAmmoForReload(m_ammoTypes[m_ammoType].c_str());
 
         if (IsMisfire() && iAmmoElapsed)
         {
@@ -225,7 +238,7 @@ bool CWeaponMagazined::TryReload()
         else
             for (u8 i = 0; i < u8(m_ammoTypes.size()); ++i)
             {
-                m_pCurrentAmmo = smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(m_ammoTypes[i].c_str()));
+                m_pCurrentAmmo = FindAmmoForReload(m_ammoTypes[i].c_str());
                 if (m_pCurrentAmmo)
                 {
                     m_set_next_ammoType_on_reload = i;
@@ -244,11 +257,11 @@ bool CWeaponMagazined::TryReload()
 
 bool CWeaponMagazined::IsAmmoAvailable()
 {
-    if (smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(m_ammoTypes[m_ammoType].c_str())))
+    if (FindAmmoForReload(m_ammoTypes[m_ammoType].c_str()))
         return (true);
     else
         for (u32 i = 0; i < m_ammoTypes.size(); ++i)
-            if (smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(m_ammoTypes[i].c_str())))
+            if (FindAmmoForReload(m_ammoTypes[i].c_str()))
                 return (true);
     return (false);
 }
@@ -360,14 +373,14 @@ void CWeaponMagazined::ReloadMagazine()
             return;
 
         //попытаться найти в инвентаре патроны текущего типа
-        m_pCurrentAmmo = smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(tmp_sect_name));
+        m_pCurrentAmmo = FindAmmoForReload(tmp_sect_name);
 
         if (!m_pCurrentAmmo && !m_bLockType)
         {
             for (u8 i = 0; i < u8(m_ammoTypes.size()); ++i)
             {
                 //проверить патроны всех подходящих типов
-                m_pCurrentAmmo = smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(m_ammoTypes[i].c_str()));
+                m_pCurrentAmmo = FindAmmoForReload(m_ammoTypes[i].c_str());
                 if (m_pCurrentAmmo)
                 {
                     m_ammoType = i;
@@ -1022,8 +1035,10 @@ void CWeaponMagazined::LoadAddons()
 */
 void CWeaponMagazined::InitAddons()
 {
+    // [DA_PORT] multiplier domain (CoC lineage): default was 50.0 DEGREES, which under
+    // magnification semantics would mean an insane 50x - identity-ish 1.0x instead.
     m_zoom_params.m_fIronSightZoomFactor =
-        READ_IF_EXISTS(pSettings, r_float, cNameSect(), "ironsight_zoom_factor", 50.0f);
+        READ_IF_EXISTS(pSettings, r_float, cNameSect(), "ironsight_zoom_factor", 1.0f);
     if (IsScopeAttached())
     {
         shared_str scope_tex_name;

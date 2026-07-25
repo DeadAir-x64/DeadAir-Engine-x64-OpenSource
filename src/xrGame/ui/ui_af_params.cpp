@@ -87,7 +87,11 @@ bool CUIArtefactParams::InitFromXml(CUIXml& xml)
     };
 
     //Alundaio: Show AF Condition
-    m_disp_condition = create_item("condition", "ui_inv_af_condition");
+    // [DA_PORT] The caption was passed as a raw string-table KEY, so the inventory showed the literal
+    // text "ui_inv_af_condition" next to the percentage. Every other caption below goes through
+    // StringTable().translate() — this one line was simply missed. Dead Air does have the translation
+    // (configs/text/rus/ui_st_inventory.xml → "Эффективность").
+    m_disp_condition = create_item("condition", StringTable().translate("ui_inv_af_condition").c_str());
     //-Alundaio
 
     for (auto [id, section, actor_condition, caption_id, magnitude, sign_inverse, unit] : af_restore)

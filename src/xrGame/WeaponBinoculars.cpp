@@ -100,12 +100,13 @@ void CWeaponBinoculars::render_item_ui()
 
 void GetZoomData(const float scope_factor, float& delta, float& min_zoom_factor)
 {
-    float def_fov = float(g_fov);
-    float min_zoom_k = 0.3f;
-    float zoom_step_count = 3.0f;
-    float delta_factor_total = def_fov - scope_factor;
-    VERIFY(delta_factor_total > 0);
-    min_zoom_factor = def_fov - delta_factor_total * min_zoom_k;
+    // [DA_PORT] multiplier domain like CoC-Xray (Weapon.h GetZoomData): scope_factor is an
+    // optical magnification (1.1x..4x in Dead Air's data), NOT a target fov in degrees.
+    const float def_fov = 1.0f;
+    const float min_zoom_k = 0.3f;
+    const float zoom_step_count = 3.0f;
+    const float delta_factor_total = def_fov - scope_factor;
+    min_zoom_factor = (def_fov - delta_factor_total) * min_zoom_k;
     delta = (delta_factor_total * (1 - min_zoom_k)) / zoom_step_count;
 }
 

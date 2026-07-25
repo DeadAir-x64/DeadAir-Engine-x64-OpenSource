@@ -196,7 +196,7 @@ public:
     float GetArtefactWeight();              void SetArtefactWeight(float v);
     float GetArtefactAdditionalWeight();    void SetArtefactAdditionalWeight(float v);
     // Dead Air: weapon break/condition type
-    u8 GetWeaponConditionType();            void SetWeaponConditionType(u8 t);
+    u32 GetWeaponConditionType();           void SetWeaponConditionType(u32 t); // [DA_PORT] 32-bit malfunction bitmask
 
     // CEntity
     _DECLARE_FUNCTION10(DeathTime, u32);
@@ -273,6 +273,7 @@ public:
     // Burer
     void burer_set_force_gravi_attack(bool force);
     bool burer_get_force_gravi_attack();
+    bool burer_get_force_anti_aim(); // [DA_PORT] Dead Air compat
 
     // Poltergeist
     void poltergeist_set_actor_ignore(bool ignore);
@@ -422,11 +423,11 @@ public:
     int Weapon_Scope_Status();
     int Weapon_Silencer_Status();
 
-    void SetRadiationDetector(bool b); // Dead Air compat stub
+    void SetRadiationDetector(bool b); // Dead Air: zone-detector clicking on/off
     void EnableTorch2(bool b); // Dead Air compat stub
     void SetActorZoomInertion(float f); // Dead Air compat stub
     void SetActorRecoilCoeff(float f); // Dead Air compat stub
-    bool GetRadiationDetector(); // Dead Air compat stub
+    float GetRadiationDetector(); // Dead Air: click period of the nearest radiation zone (float, not bool)
     void SetProfileName(LPCSTR name); // Dead Air compat stub
 
     LPCSTR ProfileName();
@@ -887,6 +888,11 @@ public:
     u32 GetWeaponType();
     u8 GetWeaponSubstate();
     u8 GetAmmoType();
+    // [DA_PORT] Dead Air compat
+    u8 WeaponGetScope();
+    void WeaponSetScope(u8 idx);
+    pcstr GetAmmoName();
+    bool IsAmmoSuitable(pcstr ammo_section);
 
     // CWeaponAmmo
     u16 AmmoGetCount();

@@ -185,8 +185,28 @@ void CResourceManager::_DeleteConstantBuffer(u32 context_id, const dx11ConstantB
         return;
     if (reclaim(v_constant_buffer[context_id], pBuffer))
         return;
+
+    // [DA_PORT] Look in the other contexts before giving up. Buffers are filed under the context that
+    // created them, but a shader can be released from a different one — and then the lookup above fails
+    // even though the buffer is perfectly well registered, just next door. The result was a leaked
+    // entry plus an error line per release: 11340 of them in one session, each a synchronous write to
+    // the log, which is exactly the shape of a stutter.
+    for (u32 i = 0; i < R__NUM_CONTEXTS; ++i)
+    {
+        if (i == context_id)
+            continue;
+        if (reclaim(v_constant_buffer[i], pBuffer))
+            return;
+    }
+
 #ifndef MASTER_GOLD
-    Msg("! ERROR: Failed to find compiled constant buffer");
+    // Genuinely not registered anywhere — report once, so a real problem is visible without the flood.
+    static bool reported = false;
+    if (!reported)
+    {
+        reported = true;
+        Msg("! ERROR: Failed to find compiled constant buffer (further occurrences suppressed)");
+    }
 #endif
 }
 

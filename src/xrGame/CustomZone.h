@@ -108,6 +108,10 @@ protected:
         eUseSecondaryHit = (1 << 17),
         eVisibleByDetector = (1 << 18),
         eSpawnBlowoutArtefacts = (1 << 19),
+        // [DA_PORT] Dead Air's inverse filters: skip living entities / skip large objects. The alpha
+        // puts these on bits 18-19, which are already taken here, so they moved up.
+        eIgnoreAlive = (1 << 20),
+        eIgnoreBig = (1 << 21),
     };
 
     u32 m_owner_id;
@@ -245,6 +249,10 @@ protected:
     float m_fIdleLightRange;
     float m_fIdleLightRangeDelta;
     float m_fIdleLightHeight;
+    // [DA_PORT] Dead Air detailed volumetric idle-light params
+    float m_fIdleLightVolumetricQuality;
+    float m_fIdleLightVolumetricIntensity;
+    float m_fIdleLightVolumetricDistance;
     CLAItem* m_pIdleLAnim;
 
     void StartIdleLight();

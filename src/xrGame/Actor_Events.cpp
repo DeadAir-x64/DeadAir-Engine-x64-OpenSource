@@ -16,6 +16,8 @@
 #include "CameraLook.h"
 #include "CameraFirstEye.h"
 #include "holder_custom.h"
+#include "script_game_object.h"
+#include "xrScriptEngine/script_callback_ex.h"
 //.#include "ui/uiinventoryWnd.h"
 #include "game_base_space.h"
 #ifdef DEBUG
@@ -65,6 +67,13 @@ void CActor::OnEvent(NET_Packet& P, u16 type)
             inventory().Take(_GO, false, true);
 
             SelectBestWeapon(Obj);
+
+            // Dead Air compat: fire "take_item_from_ground" only for genuine world/ground pickups.
+            // In single-player GE_OWNERSHIP_TAKE is generated exclusively by SendPickUpEvent
+            // (Actor_Feel ground pickups); trade uses GE_TRADE_BUY and boxes use their own path,
+            // so gating on the event type isolates ground pickups without spurious fires.
+            if (type == GE_OWNERSHIP_TAKE)
+                callback(GameObject::eOnItemTakeFromGround)(_GO->lua_game_object());
         }
         else
         {

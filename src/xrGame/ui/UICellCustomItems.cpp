@@ -34,7 +34,11 @@ CUIInventoryCellItem::CUIInventoryCellItem(CInventoryItem* itm)
     inherited::SetStretchTexture(true);
 
     //Alundaio; Layered icon
-    for (u8 i = 0; i < 255; ++i)
+    // [DA_PORT] Numbering starts at 1, not 0. Every layered icon in Dead Air is declared as
+    // "1icon_layer" (156 of them, none as "0icon_layer"), so a loop starting at zero found nothing on
+    // its very first probe and broke out immediately — no layer was ever built. That is why an artefact
+    // packed into a container showed a bare container icon instead of the artefact drawn on top of it.
+    for (u8 i = 1; i < 255; ++i)
     {
         string32 layer_str;
         xr_sprintf(layer_str, "%u%s", i, detail::ICON_LAYER_FIELD);

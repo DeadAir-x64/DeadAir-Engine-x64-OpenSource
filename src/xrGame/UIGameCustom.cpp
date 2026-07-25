@@ -13,6 +13,7 @@
 #include "ui/UIHudStatesWnd.h"
 #include "Actor.h"
 #include "Inventory.h"
+#include "xrScriptEngine/script_engine.hpp"
 #include "game_cl_base.h"
 
 #include "ui/UICellItem.h" //Alundaio
@@ -103,6 +104,14 @@ void CUIGameCustom::Render()
                     item->render_item_ui();
             }
         }
+        {
+            static u32 last_log_time = 0;
+            if (Device.dwTimeGlobal - last_log_time > 3000)
+            {
+                last_log_time = Device.dwTimeGlobal;
+                FlushLog();
+            }
+        }
         if (GameIndicatorsShown() && psHUD_Flags.is(HUD_DRAW | HUD_DRAW_RT))
             UIMainIngameWnd->Draw();
     }
@@ -112,7 +121,6 @@ void CUIGameCustom::Render()
 
 StaticDrawableWrapper* CUIGameCustom::AddCustomStatic(const char* id, bool singleInstance, float ttlDefault /*= -1.0f*/)
 {
-    Msg("! [DA_PORT] AddCustomStatic: id='%s' singleInstance=%d MsgConfig=%p", id, singleInstance, MsgConfig); FlushLog();
     if (singleInstance)
     {
         const auto it = std::find_if(CustomStatics.begin(), CustomStatics.end(), predicate_find_stat(id));
@@ -134,7 +142,6 @@ StaticDrawableWrapper* CUIGameCustom::AddCustomStatic(const char* id, bool singl
 StaticDrawableWrapper* CUIGameCustom::GetCustomStatic(const char* id)
 {
     auto it = std::find_if(CustomStatics.begin(), CustomStatics.end(), predicate_find_stat(id));
-    Msg("! [DA_PORT] GetCustomStatic: id='%s' total=%u found=%d", id, (u32)CustomStatics.size(), it != CustomStatics.end()); FlushLog();
     if (it != CustomStatics.end())
         return *it;
     return nullptr;

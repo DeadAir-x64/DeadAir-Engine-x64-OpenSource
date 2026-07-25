@@ -17,6 +17,11 @@ ENGINE_API extern Flags32 psHUD_Flags;
 #define HUD_WEAPON_RT2 (1 << 11)
 #define HUD_DRAW_RT2 (1 << 12)
 #define HUD_LEFT_HANDED (1 << 13)
+// [DA_PORT] dedicated bit for the "hud_draw_map" compat alias (see console_commands.cpp) - it used
+// to be mapped onto HUD_DRAW itself, so toggling it off (as Dead Air's map/PDA scripts do) silently
+// killed the entire main indicators HUD (health/boosts) forever, since the off state got persisted
+// to user.ltx. Give it its own bit so it can't affect anything else.
+#define HUD_DRAW_MAP (1 << 14)
 
 class IGameObject;
 

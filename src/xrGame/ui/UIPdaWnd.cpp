@@ -29,6 +29,8 @@
 #include "UIRankingWnd.h"
 #include "UILogsWnd.h"
 #include "UIScriptWnd.h"
+#include "xrScriptEngine/script_engine.hpp"
+#include "xrEngine/StringTable/StringTable.h"
 
 #define PDA_XML "pda.xml"
 
@@ -301,14 +303,107 @@ void CUIPdaWnd::SetActiveSubdialog(const shared_str& section)
         }
     }
 
+    FlushLog();
+
     luabind::functor<CUIDialogWndEx*> functor;
     if (GEnv.ScriptEngine->functor("pda.set_active_subdialog", functor))
     {
+        // so the "Отношения" (eptRelations) empty-grid bug can be traced to its real source.
+        if (section == "eptRelations")
+        {
+            static bool traced = false;
+            if (!traced)
+            {
+                traced = true;
+
+                // like "st_goodwill_friendly" - check directly whether those keys actually resolve
+                // to anything at runtime (the source .xml has them correctly cp1251-encoded, so if
+                // this comes back empty, the lookup itself is failing, not the data).
+                for (pcstr key : {"st_goodwill_friendly", "st_goodwill_enemy", "st_goodwill_indifferent"})
+                {
+                    shared_str val = StringTable().translate(key);
+                }
+                FlushLog();
+
+                lua_State* L = GEnv.ScriptEngine->lua();
+                functor.push(L);
+                lua_Debug ar;
+                if (lua_getinfo(L, ">S", &ar))
+                {
+                }
+                FlushLog();
+
+                // for xr_actor.script/ui_debug_main.script - need the actual relations-grid
+                // population logic to find why it's rendering empty.
+                string_path pda_script_path;
+                FS.update_path(pda_script_path, "$game_scripts$", "pda.script");
+                IReader* r3 = FS.r_open(pda_script_path);
+                if (r3)
+                {
+                    IWriter* w3 = FS.w_open("$logs$", "pda_dump.script");
+                    if (w3)
+                    {
+                        w3->w(r3->pointer(), r3->length());
+                        FS.w_close(w3);
+                    }
+                    FS.r_close(r3);
+                }
+                FlushLog();
+
+                // ui_pda_relations_tab.get_ui() - dump that module too, it's the actual grid logic.
+                string_path relations_script_path;
+                FS.update_path(relations_script_path, "$game_scripts$", "ui_pda_relations_tab.script");
+                IReader* r4 = FS.r_open(relations_script_path);
+                if (r4)
+                {
+                    IWriter* w4 = FS.w_open("$logs$", "ui_pda_relations_tab_dump.script");
+                    if (w4)
+                    {
+                        w4->w(r4->pointer(), r4->length());
+                        FS.w_close(w4);
+                    }
+                    FS.r_close(r4);
+                }
+                else
+                {
+                }
+                FlushLog();
+
+                // where the visual bug lives, since the Lua logic and translation strings both
+                // check out fine) so we know exactly what to fix.
+                string_path relations_xml_path;
+                FS.update_path(relations_xml_path, "$game_config$", "ui\\pda_relations.xml");
+                IReader* r5 = FS.r_open(relations_xml_path);
+                if (r5)
+                {
+                    IWriter* w5 = FS.w_open("$logs$", "pda_relations_dump.xml");
+                    if (w5)
+                    {
+                        w5->w(r5->pointer(), r5->length());
+                        FS.w_close(w5);
+                    }
+                    FS.r_close(r5);
+                }
+                else
+                {
+                }
+                FlushLog();
+            }
+        }
         if (CUIDialogWndEx* scriptWnd = functor(section.c_str()))
         {
+            FlushLog();
             scriptWnd->SetHolder(CurrentDialogHolder());
             m_pActiveDialog = scriptWnd;
         }
+        else
+        {
+            FlushLog();
+        }
+    }
+    else
+    {
+        FlushLog();
     }
 
     if (m_pActiveDialog)

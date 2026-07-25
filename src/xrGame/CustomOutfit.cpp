@@ -113,6 +113,8 @@ void CCustomOutfit::Load(LPCSTR section)
 
     m_BonesProtectionSect = READ_IF_EXISTS(pSettings, r_string, section, "bones_koeff_protection", "");
     bIsHelmetAvaliable = !!READ_IF_EXISTS(pSettings, r_bool, section, "helmet_avaliable", true);
+    // [DA_PORT] Dead Air: outfit may forbid a backpack (scientific suit). Default true (allowed), like helmet.
+    bIsBackpackAvaliable = !!READ_IF_EXISTS(pSettings, r_bool, section, "backpack_avaliable", true);
 
     // Added by Axel, to enable optional condition use on any item
     m_flags.set(FUsingCondition, READ_IF_EXISTS(pSettings, r_bool, section, "use_condition", true));
@@ -191,7 +193,12 @@ float CCustomOutfit::HitThroughArmor(float hit_power, s16 element, float ap, boo
         }
         else
         {
-            float one = 0.1f;
+            // [DA_PORT] Stock scaled non-bullet protection (radiation, chemical burn, psi, burn, shock)
+            // down by 10x, leaving only strike/wound/explosion at full strength. Dead Air sets this to
+            // 1.0 and balances its configs around that: helm_respirator's radiation_protection = 0.019
+            // becomes 0.0019 under the old 0.1 factor, i.e. effectively no protection at all. Since our
+            // data is Dead Air's 1:1, the engine has to apply it the way those numbers were tuned for.
+            float one = 1.0f; // was 0.1f
             if (hit_type == ALife::eHitTypeStrike ||
                 hit_type == ALife::eHitTypeWound ||
                 hit_type == ALife::eHitTypeWound_2 ||
@@ -302,6 +309,11 @@ void CCustomOutfit::OnMoveToSlot(const SInvItemPlace& prev)
             PIItem pHelmet = pActor->inventory().ItemFromSlot(HELMET_SLOT);
             if (pHelmet && !bIsHelmetAvaliable)
                 pActor->inventory().Ruck(pHelmet, false);
+            // [DA_PORT] mirror the helmet kick for the backpack: putting on an outfit that forbids a
+            // backpack moves the currently-worn one back to the ruck.
+            PIItem pBackpack = pActor->inventory().ItemFromSlot(BACKPACK_SLOT);
+            if (pBackpack && !bIsBackpackAvaliable)
+                pActor->inventory().Ruck(pBackpack, false);
         }
     }
 }
@@ -328,7 +340,52 @@ void CCustomOutfit::ApplySkinModel(CActor* pActor, bool bDress, bool bHUDOnly)
                 }
             }
             if (!NewVisual.size())
-                NewVisual = m_ActorVisual;
+            {
+                // [DA_HEAD] Dead Air's outfit `actor_visual` (actors\legs\*.ogf) is a FIRST-PERSON
+                // body model — legs + torso only, with NO arms and NO head (in first person the arms
+                // are the separate HUD weapon model and you never see your own head). It is therefore
+                // unusable for the actor's third-person passes (self-shadow, death corpse): swapping
+                // Visual() to it gave a headless/armless shadow, and grafting a head submesh onto it
+                // left the head floating over an armless torso.
+                //
+                // Instead map each outfit to a full NPC faction model (head + arms + matching armour)
+                // via the port config gamedata\configs\da_port_actor_visual.ltx ([da_actor_visual_3d],
+                // keyed by outfit section). Those are stock game models that NPCs already wear, so they
+                // load cleanly and look correct in third person. Fall back to the actor's config base
+                // visual (stalker_hero — headed, generic) when an outfit is unmapped or its model is
+                // missing.
+                static bool s_map_tried = false;
+                static CInifile* s_map = nullptr;
+                if (!s_map_tried)
+                {
+                    s_map_tried = true;
+                    string_path map_fn;
+                    if (FS.exist(map_fn, "$game_config$", "da_port_actor_visual.ltx"))
+                        s_map = xr_new<CInifile>(map_fn);
+                }
+                if (s_map && s_map->section_exist("da_actor_visual_3d") &&
+                    s_map->line_exist("da_actor_visual_3d", cNameSect().c_str()))
+                {
+                    LPCSTR model = s_map->r_string("da_actor_visual_3d", cNameSect().c_str());
+                    if (model && model[0])
+                    {
+                        string_path model_ogf, mesh_fn;
+                        xr_sprintf(model_ogf, "%s.ogf", model);
+                        if (FS.exist(mesh_fn, "$game_meshes$", model_ogf))
+                            NewVisual = model; // full NPC faction model (armour + head)
+                    }
+                }
+                if (!NewVisual.size())
+                {
+                    LPCSTR actorSect = pActor->cNameSect().c_str();
+                    if (actorSect && pSettings->line_exist(actorSect, "visual"))
+                        NewVisual = pSettings->r_string(actorSect, "visual");
+                    else if (pActor->GetDefaultVisualOutfit().size())
+                        NewVisual = pActor->GetDefaultVisualOutfit();
+                    else
+                        NewVisual = m_ActorVisual;
+                }
+            }
 
             pActor->ChangeVisual(NewVisual);
         }

@@ -3,6 +3,8 @@
 
 namespace xray::render::RENDER_NAMESPACE
 {
+bool g_da_gamma_ramp_active = false;
+
 IC u16 clr2gamma(float c)
 {
     int C = iFloor(c);
@@ -79,11 +81,26 @@ void CGammaControl::Update() const
 
         _RELEASE(pOutput);
         if (SUCCEEDED(hr))
+        {
+            g_da_gamma_ramp_active = true;
             return;
+        }
     }
 #endif
     u16 red[256], green[256], blue[256];
     GenLUT(red, green, blue, 256);
     SDL_SetWindowGammaRamp(Device.m_sdlWnd, red, green, blue);
+
+    // [DA_PORT] On Windows this call is a no-op that still reports success: the OS has ignored
+    // per-window gamma ramps since Windows 10 (the SDL2 function is deprecated and gone in SDL3).
+    // Dead Air originally ran on DX9 in exclusive fullscreen, where the ramp did work, so the mod's
+    // own default of rs_c_brightness 1.2 was always being applied; here it silently did nothing and
+    // the picture came out ~20% darker than the author intended. Report the ramp as inactive so the
+    // post-process pass applies gamma/brightness/contrast in the shader instead.
+#if defined(XR_PLATFORM_WINDOWS)
+    g_da_gamma_ramp_active = false;
+#else
+    g_da_gamma_ramp_active = true;
+#endif
 }
 } // namespace xray::render::RENDER_NAMESPACE

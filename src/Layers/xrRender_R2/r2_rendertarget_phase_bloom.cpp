@@ -5,6 +5,40 @@
 
 namespace xray::render::RENDER_NAMESPACE
 {
+// [DA_PORT] ---- Why this pass forces a window-sized viewport ------------------------------------
+// The bloom and luminance quads are built in PIXELS and turned into clip space by the vertex shader as
+//     HPos.x = P.x * screen_res.z * 2 - 1
+// i.e. divided by screen_res, which the engine deliberately binds to the WINDOW size. So a quad of
+// BLOOM_size pixels covers a BLOOM_size-sized target only while the viewport is also the window size.
+//
+// u_setrt (unlike CBackend::set_pass_targets) never touches the viewport, so this pass simply inherits
+// whatever the scene left behind. At 100% render scale that happens to be the window size and everything
+// lines up by accident; with r__render_scale below 100 the scene viewport is smaller, the quad covers
+// only part of each bloom target, and the unwritten remainder keeps the previous frame's content — which
+// is what showed up as rectangles across the sky.
+//
+// Two earlier attempts failed for the same reason and are worth recording: setting the viewport to the
+// TARGET size (256x256) is the intuitive fix and is wrong — it shrinks the quad further, auto-exposure
+// then measures mostly stale pixels, and the whole picture goes dark. The size that matters here is the
+// one screen_res is bound to, not the one being rendered into.
+namespace
+{
+#if defined(USE_DX11)
+// Returns the viewport that was in effect, so the caller can put it back: later passes that also go
+// through u_setrt would otherwise inherit the window size while rendering into scene-sized targets.
+D3D_VIEWPORT da_push_screen_viewport(CBackend& cmd_list)
+{
+    D3D_VIEWPORT saved{};
+    UINT count = 1;
+    HW.get_context(cmd_list.context_id)->RSGetViewports(&count, &saved);
+
+    const D3D_VIEWPORT screen = { 0.f, 0.f, float(Device.dwWidth), float(Device.dwHeight), 0.f, 1.f };
+    cmd_list.SetViewport(screen);
+    return saved;
+}
+#endif
+}
+
 namespace phase_bloom
 {
 #pragma pack(push, 4)
@@ -82,6 +116,11 @@ void CRenderTarget::phase_bloom()
     // Targets
     u_setrt(RCache, rt_Bloom_1, 0, 0, 0); // No need for ZBuffer at all
 
+#if defined(USE_DX11)
+    // [DA_PORT] see the note at the top of this file — every quad below depends on this.
+    const D3D_VIEWPORT da_saved_viewport = da_push_screen_viewport(RCache);
+#endif
+
     // Clear    - don't clear - it's stupid here :)
     // Stencil  - disable
     // Misc     - draw everything (no culling)
@@ -89,8 +128,8 @@ void CRenderTarget::phase_bloom()
 
     // Transfer into Bloom1
     {
-        float _w = float(Device.dwWidth);
-        float _h = float(Device.dwHeight);
+        float _w = float(Device.dwRenderWidth);
+        float _h = float(Device.dwRenderHeight);
         float _2w = _w / 2;
         float tw = BLOOM_size_X;
         float _2h = _h / 2;
@@ -534,6 +573,11 @@ void CRenderTarget::phase_bloom()
     {
         RCache.ClearRT(RCache.get_RT(), {}); // black
     }
+
+#if defined(USE_DX11)
+    // [DA_PORT] Hand the viewport back exactly as it was — the passes after this one inherit it too.
+    RCache.SetViewport(da_saved_viewport);
+#endif
 
     // re-enable z-buffer
     RCache.set_Z(true);

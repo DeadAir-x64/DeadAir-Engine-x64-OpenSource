@@ -15,6 +15,11 @@
 #include "GameFont.h"
 #include "Render.h"
 
+// [DA_PORT] TAA: defined in xr_ioc_cmd.cpp / device.cpp — see the jitter block in ApplyDevice below.
+extern ENGINE_API int ps_r__taa;
+extern ENGINE_API int ps_r__taa_jitter;
+extern ENGINE_API Fvector2 g_da_taa_jitter;
+
 float psCamInert = 0.f;
 float psCamSlideInert = 0.25f;
 
@@ -331,6 +336,34 @@ void CCameraManager::ApplyDevice()
     // Apply offset required for Nvidia Ansel
     Device.mProject._31 = -m_cam_info.offsetX;
     Device.mProject._32 = -m_cam_info.offsetY;
+
+    // [DA_PORT] TAA projection jitter. Reprojecting the previous frame only removes temporal noise; the
+    // actual anti-aliasing comes from moving the sample point around inside the pixel and letting the
+    // history average those samples together. Halton(2,3) is the usual sequence for it — 8 phases spread
+    // evenly over the pixel with no clumping. _31/_32 shift the projection in NDC, which is exactly what
+    // Ansel above uses them for, so this rides on an offset the engine already supports.
+    g_da_taa_jitter.set(0.f, 0.f);
+
+    // Not while the menu is up. Since the paused scene is now drawn behind the menu, the menu itself
+    // ends up inside the temporal history — and with the projection shifting by a sub-pixel every frame
+    // the static text smears into stripes as the history accumulates. The scene is frozen anyway, so
+    // there is nothing for the jitter to resolve here.
+    const bool menu_up = g_pGamePersistent && g_pGamePersistent->m_pMainMenu && g_pGamePersistent->m_pMainMenu->IsActive();
+
+    if (ps_r__taa && ps_r__taa_jitter && !menu_up && Device.dwRenderWidth && Device.dwRenderHeight)
+    {
+        static constexpr float halton_x[8] = { 0.5f, 0.25f, 0.75f, 0.125f, 0.625f, 0.375f, 0.875f, 0.0625f };
+        static constexpr float halton_y[8] = { 1.f / 3.f, 2.f / 3.f, 1.f / 9.f, 4.f / 9.f, 7.f / 9.f, 2.f / 9.f, 5.f / 9.f, 8.f / 9.f };
+
+        const u32 phase = Device.dwFrame & 7;
+        // Halton is in [0,1); centre it on the pixel, then convert pixels to NDC (the [-1,1] cube spans
+        // the whole target, so one pixel is 2/width).
+        g_da_taa_jitter.set((halton_x[phase] - 0.5f) * 2.f / float(Device.dwRenderWidth),
+            (halton_y[phase] - 0.5f) * 2.f / float(Device.dwRenderHeight));
+
+        Device.mProject._31 += g_da_taa_jitter.x;
+        Device.mProject._32 += g_da_taa_jitter.y;
+    }
 
     if (g_pGamePersistent && g_pGamePersistent->m_pMainMenu->IsActive())
         ResetPP();

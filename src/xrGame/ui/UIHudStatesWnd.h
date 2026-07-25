@@ -77,6 +77,13 @@ private:
     float m_zone_feel_radius_max{};
     u32 m_timer_1sec{};
 
+    // [DA_PORT] Dead Air gates the zone-detector clicking on the actor actually carrying a working
+    // geiger: itms_manager.script calls db.actor:set_radiation_detector(true) only while a "geiger"
+    // item is present and its battery ("wpn_upd") still has charge. Stock played the clicks
+    // unconditionally, i.e. radiation detection was free.
+    bool m_zone_sound_enabled{};
+    float m_zone_frequency{}; // click period of the nearest radiation zone (read back by scripts)
+
     bool m_fake_indicators_update{};
     std::bitset<it_max> m_cur_state_LA;
     bool m_b_force_update;
@@ -100,6 +107,10 @@ public:
 
     float get_zone_cur_power(ALife::EHitType hit_type);
     float get_main_sensor_value() { return m_radia_hit; }
+
+    // [DA_PORT] driven from Lua via game_object:set_radiation_detector()/get_radiation_detector()
+    void SwitchZoneDetector(bool enable);
+    float GetZoneFrequency();
     void DrawZoneIndicators();
     void FakeUpdateIndicatorType(u8 t, float power);
     void EnableFakeIndicators(bool enable);

@@ -35,7 +35,8 @@ void CRenderTarget::mark_msaa_edges()
 #if defined(USE_DX11) // XXX: remove this difference
     u_setrt(RCache, nullptr, nullptr, nullptr, rt_MSAADepth);
 #elif defined(USE_OGL)
-    u_setrt(RCache, Device.dwWidth, Device.dwHeight, 0, 0, 0, rt_MSAADepth->pZRT);
+    // [DA_PORT] scene-space pass: viewport follows the scene targets, not the window
+    u_setrt(RCache, Device.dwRenderWidth, Device.dwRenderHeight, 0, 0, 0, rt_MSAADepth->pZRT);
 #endif
     RCache.set_Element(s_mark_msaa_edges->E[0]);
     RCache.set_Geometry(g_combine_2UV);

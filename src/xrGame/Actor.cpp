@@ -375,6 +375,15 @@ void CActor::Load(LPCSTR section)
     m_fCrouchFactor = pSettings->r_float(section, "crouch_coef");
     m_fClimbFactor = pSettings->r_float(section, "climb_coef");
     m_fSprintFactor = pSettings->r_float(section, "sprint_koef");
+    // [DA_PORT] Weight-based sprint penalty (Actor_Movement.cpp). The alpha reads these as required
+    // keys, but they are absent from the release configs, so they are optional here with a 0 default =
+    // no penalty, i.e. movement is untouched until the configs opt in. Beware when tuning: the penalty
+    // is subtracted from sprint_koef (1.9) in kilograms, and caps at 1.5 — a value of 1.0 would drop
+    // sprint to 0.4 for anyone holding a weapon, i.e. slower than walking.
+    m_fSprintWeaponFactor = READ_IF_EXISTS(pSettings, r_float, section, "sprint_weapon_koef", 0.0f);
+    m_fSprintOutfitFactor = READ_IF_EXISTS(pSettings, r_float, section, "sprint_outfit_koef", 0.0f);
+    // [DA_PORT] hold-breath sway multiplier (see UpdateCL). DA: [actor] breath_koef = 0.02
+    m_fBreathKoef = READ_IF_EXISTS(pSettings, r_float, section, "breath_koef", 0.02f);
 
     m_fWalk_StrafeFactor = READ_IF_EXISTS(pSettings, r_float, section, "walk_strafe_coef", 1.0f);
     m_fRun_StrafeFactor = READ_IF_EXISTS(pSettings, r_float, section, "run_strafe_coef", 1.0f);
@@ -1032,6 +1041,9 @@ void CActor::g_Physics(Fvector& _accel, float jump, float dt)
     }
 }
 extern ENGINE_API float g_fov;
+// [DA_PORT] like CoC-Xray (Actor.cpp): fake fov a zoom texture (scope overlay) is calibrated
+// for, so scope magnification is screen-fov independent. Console: "scope_fov".
+float g_scope_fov = 75.0f;
 
 float CActor::currentFOV()
 {
@@ -1040,19 +1052,26 @@ float CActor::currentFOV()
 
     CWeapon* pWeapon = smart_cast<CWeapon*>(inventory().ActiveItem());
 
-    if (eacFirstEye == cam_active && pWeapon && pWeapon->IsZoomed() &&
-        (!pWeapon->ZoomTexture() || (!pWeapon->IsRotatingToZoom() && pWeapon->ZoomTexture())))
+    if (eacFirstEye == cam_active && pWeapon && pWeapon->IsZoomed())
     {
-        return pWeapon->GetZoomFactor() * (0.75f);
+        // [DA_PORT] Dead Air (CoC lineage) treats zoom factors as optical MAGNIFICATION
+        // multipliers (their data: 1.1x..4x), not a target fov in degrees. The old degrees
+        // math returned factor*0.75 => a 1.35° camera for an 1.8x sight ("zoom to the
+        // stratosphere"). True-optics formula ported from CoC-Xray (Alundaio).
+        if (!pWeapon->ZoomTexture())
+            return atan(tan(g_fov * (0.5f * PI / 180.f)) / pWeapon->GetZoomFactor()) / (0.5f * PI / 180.f);
+
+        if (!pWeapon->IsRotatingToZoom())
+            return atan(tan(g_scope_fov * (0.5f * PI / 180.f)) / pWeapon->GetZoomFactor()) / (0.5f * PI / 180.f);
     }
-    else
-    {
-        return g_fov;
-    }
+    return g_fov;
 }
 
 void CActor::UpdateCL()
 {
+    if (m_item_placement_active) // [DA_PORT] keep the placement ghost tracking the crosshair
+        UpdateItemPlacement();
+
     if (g_Alive() && Level().CurrentViewEntity() == this)
     {
         if (CurrentGameUI() && !CurrentGameUI()->TopInputReceiver() && !m_holder)
@@ -1117,6 +1136,13 @@ void CActor::UpdateCL()
         if (pWeapon->IsZoomed())
         {
             float full_fire_disp = pWeapon->GetFireDispersion(true);
+
+            // [DA_PORT] Dead Air aim-sway: extra sway from actor psy/power (scripts feed it each frame
+            // via set_actor_zoom_inertion; 0 => no extra), then hold-breath — holding the accel/sprint
+            // ACTION (mcAccel, rebind-safe) while aiming steadies the aim by breath_koef (DA=0.02).
+            full_fire_disp *= (1.f + m_fZoomInertionScale);
+            if (mstate_real & mcAccel)
+                full_fire_disp *= m_fBreathKoef;
 
             CEffectorZoomInertion* S = smart_cast<CEffectorZoomInertion*>(Cameras().GetCamEffector(eCEZoom));
             if (S)
@@ -1450,8 +1476,12 @@ void CActor::shedule_Update(u32 DT)
     }
 
     //если в режиме HUD, то сама модель актера не рисуется
+    // [DA_PORT] ...except while placing an item. The placement ghost is drawn as part of the actor, so
+    // an invisible actor means an invisible ghost — and since a hidden object still generates shadows,
+    // all that reached the screen was the ghost's shadow on the ground. During placement the actor is
+    // made visible and renderable_Render below skips the body, so only the ghost is drawn.
     if (!character_physics_support()->IsRemoved())
-        setVisible(!HUDview());
+        setVisible(!HUDview() || m_item_placement_active);
 
     //что актер видит перед собой
     collide::rq_result& RQ = HUD().GetCurrentRayQuery();
@@ -1532,11 +1562,144 @@ void CActor::shedule_Update(u32 DT)
     Check_for_AutoPickUp();
 };
 #include "debug_renderer.h"
+// [DA_PORT] defined in script_game_object_script3.cpp (a script TU): calls the Lua functor
+// itms_manager.inv_item_place_confirmed to release the item and spawn the world object. Kept out of
+// Actor.cpp because pulling luabind into this non-script TU breaks compilation.
+extern void DA_ConfirmItemPlacement(u16 item_id, float x, float y, float z, float rot);
+
+// [DA_PORT] --- "Установить" item placement preview (kerosene lamp etc.) ---
+void CActor::StartItemPlacement(LPCSTR section, u16 item_id)
+{
+    CancelItemPlacement();
+    if (!section || !pSettings->section_exist(section) || !pSettings->line_exist(section, "visual"))
+        return;
+    m_item_placement_section = section;
+    m_item_placement_item_id = item_id;
+    m_item_placement_visual = GEnv.Render->model_Create(pSettings->r_string(section, "visual"));
+    if (!m_item_placement_visual)
+        return;
+    m_item_placement_xform.identity();
+
+    // [DA_PORT] Ghost highlight: a soft cyan point light plus a glow sprite, so the preview reads as a
+    // hologram rather than as an item already lying there. Cyan because every real light source in the
+    // Zone is warm — nothing in the world glows this colour, which is what makes it read as "not real".
+    m_item_placement_light = GEnv.Render->light_create();
+    m_item_placement_light->set_type(IRender_Light::POINT);
+    m_item_placement_light->set_shadow(false);
+    // Bright and close to white: the ghost gets NO other light. It is drawn through the actor, and the
+    // actor is invisible in first person, so its hemi/sun data is zero — without this lamp the preview
+    // renders as a flat black silhouette. The blue tint is kept only as a hint, not as the main colour.
+    m_item_placement_light->set_range(4.0f);
+    m_item_placement_light->set_color(0.85f, 0.95f, 1.10f);
+    m_item_placement_light->set_active(true);
+
+    m_item_placement_glow = GEnv.Render->glow_create();
+    m_item_placement_glow->set_texture("glow\glow_torch_r2");
+    m_item_placement_glow->set_color(0.35f, 0.75f, 0.95f);
+    m_item_placement_glow->set_radius(0.45f);
+    m_item_placement_glow->set_active(true);
+
+    m_item_placement_active = true;
+
+    // [DA_PORT] Close the inventory: placement is aimed with the crosshair, so the menu that started it
+    // has to get out of the way. Done here rather than in the script so every item using the placement
+    // functor behaves the same without touching mod data.
+    if (CurrentGameUI())
+        CurrentGameUI()->GetActorMenu().HideDialog();
+
+    UpdateItemPlacement();
+}
+
+void CActor::UpdateItemPlacement()
+{
+    if (!m_item_placement_active)
+        return;
+    Fvector cam_pos, cam_dir, cam_norm;
+    cam_Active()->Get(cam_pos, cam_dir, cam_norm);
+    cam_dir.normalize_safe();
+    collide::rq_result& RQ = HUD().GetCurrentRayQuery();
+    const float dist = (RQ.range > 0.1f) ? _min(RQ.range, 4.0f) : 2.5f;
+    Fvector pos;
+    pos.mad(cam_pos, cam_dir, dist);
+    m_item_placement_xform.setHPB(cam_dir.getH(), 0.f, 0.f);
+    m_item_placement_xform.c = pos;
+
+    // Pulse: slow breathing so the highlight is obviously a preview and not a placed light source.
+    // Shallow pulse only: the lamp is what makes the model visible at all, so it must never dim far.
+    const float pulse = 0.85f + 0.15f * _abs(_sin(Device.fTimeGlobal * 2.2f));
+
+    // Above and slightly towards the player, so the shape is lit from the front and reads as an object
+    // rather than as a silhouette.
+    Fvector light_pos = pos;
+    light_pos.y += 0.8f;
+    Fvector to_player;
+    to_player.sub(Position(), pos).normalize_safe();
+    light_pos.mad(to_player, 0.5f);
+
+    if (m_item_placement_light)
+    {
+        m_item_placement_light->set_position(light_pos);
+        m_item_placement_light->set_color(0.85f * pulse, 0.95f * pulse, 1.10f * pulse);
+    }
+    if (m_item_placement_glow)
+    {
+        Fvector glow_pos = pos;
+        glow_pos.y += 0.25f;
+        m_item_placement_glow->set_position(glow_pos);
+        m_item_placement_glow->set_color(0.35f * pulse, 0.75f * pulse, 0.95f * pulse);
+    }
+}
+
+void CActor::ConfirmItemPlacement()
+{
+    if (!m_item_placement_active)
+        return;
+    const Fvector pos = m_item_placement_xform.c;
+    const float h = m_item_placement_xform.k.getH();
+    const u16 id = m_item_placement_item_id;
+    // Hand the confirmed spot to itms_manager (it releases the inventory item and alife-creates the
+    // world object), reusing the existing DA placement/spawn logic.
+    DA_ConfirmItemPlacement(id, pos.x, pos.y, pos.z, h);
+    CancelItemPlacement();
+}
+
+void CActor::CancelItemPlacement()
+{
+    if (m_item_placement_visual)
+        GEnv.Render->model_Delete(m_item_placement_visual);
+    m_item_placement_visual = nullptr;
+
+    if (m_item_placement_light)
+    {
+        m_item_placement_light->set_active(false);
+        m_item_placement_light = nullptr;
+    }
+    if (m_item_placement_glow)
+    {
+        m_item_placement_glow->set_active(false);
+        m_item_placement_glow = nullptr;
+    }
+    m_item_placement_active = false;
+    m_item_placement_item_id = 0xffff;
+    m_item_placement_section = nullptr;
+}
+
 void CActor::renderable_Render(u32 context_id, IRenderable* root)
 {
     VERIFY(_valid(XFORM()));
-    inherited::renderable_Render(context_id, root);
-    CInventoryOwner::renderable_Render(context_id, root);
+
+    // [DA_PORT] In first person during placement the actor is forced visible purely to get the ghost
+    // drawn (see setVisible above) — so skip the body here, or the player would see themselves.
+    const bool ghost_only = m_item_placement_active && HUDview();
+    if (!ghost_only)
+    {
+        inherited::renderable_Render(context_id, root);
+        CInventoryOwner::renderable_Render(context_id, root);
+    }
+
+    // [DA_PORT] draw the placement-preview ghost at the crosshair.
+    if (m_item_placement_active && m_item_placement_visual)
+        GEnv.Render->add_Visual(context_id, root, m_item_placement_visual, m_item_placement_xform);
 }
 
 bool CActor::renderable_ShadowGenerate()
@@ -1803,14 +1966,19 @@ void CActor::OnItemDrop(CInventoryItem* inventory_item, bool just_before_destroy
             weapon->EnableActorNVisnAfterZoom();
     }
 
-    if (!just_before_destroy && inventory_item->BaseSlot() == GRENADE_SLOT &&
-        NULL == inventory().ItemFromSlot(GRENADE_SLOT))
-    {
-        PIItem grenade = inventory().SameSlot(GRENADE_SLOT, inventory_item, true);
-
-        if (grenade)
-            inventory().Slot(GRENADE_SLOT, grenade, true, true);
-    }
+    // [DA_PORT] Dead Air's slot 14 (== GRENADE_SLOT) is a MANUAL utility slot (holds a grenade OR a
+    // binocular, equipped/removed by hand), not a stock auto-refilling grenade slot. The stock reslot
+    // below immediately refilled the slot from the next grenade in the ruck, so an equipped grenade
+    // could not be removed (it came straight back) and got relocated on menu close. Disabled for the
+    // actor so the slot is hand-managed; it is still throwable via the grenade key while occupied.
+    // (NPC grenade readiness is unaffected - this path is CActor-only.)
+    // if (!just_before_destroy && inventory_item->BaseSlot() == GRENADE_SLOT &&
+    //     NULL == inventory().ItemFromSlot(GRENADE_SLOT))
+    // {
+    //     PIItem grenade = inventory().SameSlot(GRENADE_SLOT, inventory_item, true);
+    //     if (grenade)
+    //         inventory().Slot(GRENADE_SLOT, grenade, true, true);
+    // }
 
     CArtefact* artefact = smart_cast<CArtefact*>(inventory_item);
     if (artefact && artefact->m_ItemCurrPlace.type == eItemPlaceBelt)
@@ -1878,7 +2046,11 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
     }
     else
     {
-        f_update_time = update_time;
+        // [DA_PORT] Dead Air runs artefact and outfit effects at double rate (`update_time*2` in the
+        // author's engine). The period itself is unchanged — it is the amount applied per tick that
+        // doubles, so healing, bleeding, stamina and satiety from artefacts all bite twice as hard.
+        // Without this the configs, which are balanced around the doubled figure, feel inert.
+        f_update_time = update_time * 2.0f;
         update_time = 0.0f;
     }
 
@@ -1892,15 +2064,38 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
             conditions().ChangeHealth((artefact->m_fHealthRestoreSpeed * art_cond) * f_update_time);
             conditions().ChangePower((artefact->m_fPowerRestoreSpeed * art_cond) * f_update_time);
             conditions().ChangeSatiety((artefact->m_fSatietyRestoreSpeed * art_cond) * f_update_time);
-            if (artefact->m_fRadiationRestoreSpeed * art_cond > 0.0f)
-            {
-                float val = (artefact->m_fRadiationRestoreSpeed * art_cond) - conditions().GetBoostRadiationImmunity();
-                clamp(val, 0.0f, val);
-                conditions().ChangeRadiation(val * f_update_time);
-            }
-            else
-                conditions().ChangeRadiation((artefact->m_fRadiationRestoreSpeed * art_cond) * f_update_time);
+
+            // [DA_PORT] Artefact radiation is deliberately NOT applied here — Dead Air's own engine has
+            // this line commented out too, and for a reason worth spelling out.
+            //
+            // Stock only irradiates artefacts carried ON THE BELT. Dead Air's rule is that an artefact
+            // irradiates from anywhere in the inventory until it goes into a container, and that rule
+            // lives in inventory_radiation.script: it walks the WHOLE inventory (iterate_inventory) and
+            // adds `get_artefact_radiation()` for every object whose class is artefact. A container is
+            // not a special case there — putting an artefact into one replaces both items with a single
+            // object of section <artefact>_<container> (itms_manager.container_add), and those sections
+            // derive from lead_box_closed, which is class S_PDA with radiation_restore_speed = 0. So the
+            // packed artefact simply stops matching the class check and stops irradiating.
+            //
+            // Leaving the engine line in place would therefore double-count every artefact on the belt:
+            // once here, once in the script. The belt is not exempt from the script — m_all includes it.
         }
+    }
+
+    // [DA_PORT] Helmets were read but never applied: CHelmet loads health/radiation/power/bleeding/
+    // satiety _restore_speed from its section (ActorHelmet.cpp), yet stock only ever walked artefacts
+    // and the outfit here, so those values were dead data. Dead Air's release helmets do use them —
+    // five of them carry a NEGATIVE power_restore_speed, i.e. wearing one is meant to cost stamina.
+    CHelmet* helmet = smart_cast<CHelmet*>(inventory().ItemFromSlot(HELMET_SLOT));
+    if (helmet)
+    {
+        conditions().ChangeBleeding(helmet->m_fBleedingRestoreSpeed * f_update_time);
+        conditions().ChangeHealth(helmet->m_fHealthRestoreSpeed * f_update_time);
+        // stamina cost applies while sprinting only — same rule as the ported ConditionWalk
+        if (mstate_real & mcSprint)
+            conditions().ChangePower(helmet->m_fPowerRestoreSpeed * f_update_time);
+        conditions().ChangeSatiety(helmet->m_fSatietyRestoreSpeed * f_update_time);
+        conditions().ChangeRadiation(helmet->m_fRadiationRestoreSpeed * f_update_time);
     }
 
     CCustomOutfit* outfit = GetOutfit();
@@ -1908,7 +2103,9 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
     {
         conditions().ChangeBleeding(outfit->m_fBleedingRestoreSpeed * f_update_time);
         conditions().ChangeHealth(outfit->m_fHealthRestoreSpeed * f_update_time);
-        conditions().ChangePower(outfit->m_fPowerRestoreSpeed * f_update_time);
+        // [DA_PORT] as above: the outfit's stamina drain only bites while sprinting
+        if (mstate_real & mcSprint)
+            conditions().ChangePower(outfit->m_fPowerRestoreSpeed * f_update_time);
         conditions().ChangeSatiety(outfit->m_fSatietyRestoreSpeed * f_update_time);
         conditions().ChangeRadiation(outfit->m_fRadiationRestoreSpeed * f_update_time);
     }
@@ -2190,9 +2387,20 @@ void CActor::On_SetEntity()
 {
     auto pOutfit = GetOutfit();
     if (!pOutfit)
+    {
         g_player_hud->load_default();
+        // [DA_HEAD] On load the actor's visual is restored from the save (DA's headless legs model)
+        // and the outfit's OnMoveToSlot does NOT re-fire, so the visual is never corrected. For a
+        // naked actor, restore the head-having default visual here so its shadow/corpse has a head.
+        shared_str def = GetDefaultVisualOutfit();
+        if (def.size() && 0 != xr_strcmp(def.c_str(), cNameVisual().c_str()))
+            ChangeVisual(def);
+    }
     else
-        pOutfit->ApplySkinModel(this, true, true);
+        // [DA_HEAD] re-apply the FULL outfit skin (bHUDOnly=false) on load, not just the HUD, so the
+        // head-having model (see CCustomOutfit::ApplySkinModel) is applied without needing a manual
+        // re-equip after loading a save.
+        pOutfit->ApplySkinModel(this, true, false);
 }
 
 bool CActor::unlimited_ammo() { return !!psActorFlags.test(AF_UNLIMITEDAMMO); }

@@ -52,6 +52,7 @@ enum ECallbackType : u32
     eTraderSoundEnd,
 
     eInvBoxItemTake,
+    eOnItemTakeFromGround, // Dead Air compat: fires only on genuine world/ground pickups
     eWeaponNoAmmoAvailable,
 
     //Alundaio: added defines

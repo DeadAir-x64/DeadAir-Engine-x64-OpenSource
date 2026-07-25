@@ -9,6 +9,8 @@
 #include "pch_script.h"
 #include "script_game_object.h"
 #include "script_game_object_impl.h"
+#include "Torch.h" // [DA_PORT] for the real torch_set_* light-tuning bindings
+#include "Actor.h" // [DA_PORT] for start_item_placement binding
 #include "alife_space.h"
 #include "script_entity_space.h"
 #include "movement_manager_space.h"
@@ -34,6 +36,16 @@
 #include "PhysicObject.h"
 #include "Artefact.h"
 #include "level_changer.h"
+
+// [DA_PORT] Called from CActor::ConfirmItemPlacement (Actor.cpp is not a script TU, so luabind can't
+// be pulled in there). Invokes the Lua functor itms_manager.inv_item_place_confirmed(item_id,x,y,z,rot)
+// which releases the inventory item and alife-creates the world object at the confirmed spot.
+void DA_ConfirmItemPlacement(u16 item_id, float x, float y, float z, float rot)
+{
+    luabind::functor<void> f;
+    if (GEnv.ScriptEngine->functor("itms_manager.inv_item_place_confirmed", f))
+        f((u32)item_id, x, y, z, rot);
+}
 
 /*
     New luabind makes incorrect casts in this case. He makes casts only to 'true derived class'.
@@ -258,20 +270,23 @@ luabind::class_<CScriptGameObject>& script_register_game_object2(luabind::class_
         .def("set_radiation_detector", &CScriptGameObject::SetRadiationDetector) // Dead Air compat
         .def("get_radiation_detector", &CScriptGameObject::GetRadiationDetector) // Dead Air compat
         .def("enable_torch2", &CScriptGameObject::EnableTorch2) // Dead Air compat
-        // Dead Air compat: flashlight (torch/torch2) light tuning — no-op stubs (cosmetic;
-        // DA-specific second-torch light params, no OpenXRay/Anomaly equivalent. Real impl TODO.
-        .def("torch_set_range",     +[](CScriptGameObject*, float) {})
-        .def("torch_set_radius",    +[](CScriptGameObject*, float) {})
-        .def("torch_set_inertion",  +[](CScriptGameObject*, float) {})
-        .def("torch_set_color_r",   +[](CScriptGameObject*, float) {})
-        .def("torch_set_color_g",   +[](CScriptGameObject*, float) {})
-        .def("torch_set_color_b",   +[](CScriptGameObject*, float) {})
-        .def("torch_set_color_a",   +[](CScriptGameObject*, float) {})
-        .def("torch_set_offset_y",  +[](CScriptGameObject*, float) {})
-        .def("torch_set_offset_z",  +[](CScriptGameObject*, float) {})
-        .def("torch_set_animation", +[](CScriptGameObject*, LPCSTR) {})
-        .def("torch_set_texture",   +[](CScriptGameObject*, LPCSTR) {})
-        .def("torch_switch_spot",   +[](CScriptGameObject*) {})
+        // [DA_PORT] flashlight/glowstick/lighter light tuning — REAL impl. Dead Air's xr_actor.script
+        // reconfigures the single hidden device_torch (CTorch) per equipped light item via these.
+        .def("torch_set_range",     +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetRange(v); })
+        .def("torch_set_radius",    +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetRadius(v); })
+        .def("torch_set_inertion",  +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetInertion(v); })
+        .def("torch_set_color_r",   +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetColorR(v); })
+        .def("torch_set_color_g",   +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetColorG(v); })
+        .def("torch_set_color_b",   +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetColorB(v); })
+        .def("torch_set_color_a",   +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetColorA(v); })
+        .def("torch_set_offset_y",  +[](CScriptGameObject*, float) {})  // reserved (positioning polish)
+        .def("torch_set_offset_z",  +[](CScriptGameObject*, float) {})  // reserved (positioning polish)
+        .def("torch_set_animation", +[](CScriptGameObject* o, LPCSTR s) { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetAnimation(s); })
+        .def("torch_set_texture",   +[](CScriptGameObject* o, LPCSTR s) { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetTexture(s); })
+        .def("torch_switch_spot",   +[](CScriptGameObject* o, bool b)   { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSwitchSpot(b); })
+        // [DA_PORT] "Установить" placement preview: start the ghost-follows-crosshair mode for an item.
+        .def("start_item_placement", +[](CScriptGameObject* o, LPCSTR section, u16 item_id)
+            { if (CActor* a = smart_cast<CActor*>(&o->object())) a->StartItemPlacement(section, item_id); })
         .def("torch2_set_color_r",  +[](CScriptGameObject*, float) {})
         .def("torch2_set_color_g",  +[](CScriptGameObject*, float) {})
         .def("torch2_set_color_b",  +[](CScriptGameObject*, float) {})
@@ -279,6 +294,11 @@ luabind::class_<CScriptGameObject>& script_register_game_object2(luabind::class_
         .def("torch2_set_offset_y", +[](CScriptGameObject*, float) {})
         .def("torch2_set_range",    +[](CScriptGameObject*, float) {})
         .def("torch2_set_radius",   +[](CScriptGameObject*, float) {})
+        // Dead Air compat: DA's 3D item UI (device screens rendered onto the item). OpenXRay has
+        // no such subsystem; get_3d_ui's only DA call site is commented out (a void return reads
+        // as nil in Lua), reset_3d_ui is only hit from the debug menu's config-reload button.
+        .def("get_3d_ui",   +[](CScriptGameObject*) {})
+        .def("reset_3d_ui", +[](CScriptGameObject*) {})
         .def("get_weapon_condition_type", &CScriptGameObject::GetWeaponConditionType) // Dead Air
         .def("set_weapon_condition_type", &CScriptGameObject::SetWeaponConditionType) // Dead Air
         .def("set_actor_zoom_inertion", &CScriptGameObject::SetActorZoomInertion) // Dead Air compat

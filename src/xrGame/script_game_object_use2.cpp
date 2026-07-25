@@ -63,6 +63,21 @@ bool CScriptGameObject::burer_get_force_gravi_attack()
     return monster->get_force_gravi_attack();
 }
 
+// [DA_PORT] Dead Air compat: DA's rename of CoC's get_force_anti_aim (xr_conditions.burer_anti_aim).
+// Any base monster carries the anti-aim ability flag, so cast to CBaseMonster like CoC does.
+bool CScriptGameObject::burer_get_force_anti_aim()
+{
+    CBaseMonster* monster = smart_cast<CBaseMonster*>(&object());
+    if (!monster)
+    {
+        GEnv.ScriptEngine->script_log(
+            LuaMessageType::Error, "object is not CBaseMonster to call burer_get_force_anti_aim");
+        return false;
+    }
+
+    return monster->get_force_anti_aim();
+}
+
 //////////////////////////////////////////////////////////////////////////
 // Poltergeist
 

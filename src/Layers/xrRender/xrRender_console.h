@@ -254,6 +254,8 @@ extern ECORE_API float ps_r2_tmp_x;
 extern ECORE_API float ps_r2_tmp_y;
 extern ECORE_API float ps_r2_tmp_z;
 extern ECORE_API float ps_r2_vibrance_val;
+extern ECORE_API u32 ps_r_grading_preset; // [DA_PORT] ready-made colour grading profiles
+extern ECORE_API const xr_token qgrading_preset_token[];
 extern ECORE_API float ps_r2_vignette;
 extern ECORE_API float ps_r2_zoom_dof;
 extern ECORE_API float ps_r1_dynamic_lights;
@@ -264,4 +266,109 @@ extern ECORE_API float ps_r_color_add_b;
 extern ECORE_API float ps_r_color_base_r;
 extern ECORE_API float ps_r_color_base_g;
 extern ECORE_API float ps_r_color_base_b;
+
+// [DA_PORT] ---- Geometry cut-off by size and distance (author's optimisation) --------------------
+// Dead Air drops geometry that is too small to matter at its distance, instead of rendering every
+// visual the frustum lets through. The port never had this at all — it is a whole subsystem the
+// original engine gained and the OpenXRay base does not have (see _engine_diff/DA_render_R2.patch,
+// r__dsgraph_build.cpp). It matters most when building the sun's shadow map, where the same world is
+// traversed several times per frame for the cascades and small objects contribute nothing readable.
+//
+// Thresholds are pairs: _S_ is the visual's bounding-sphere volume, _D_ the distance past which a
+// visual that small is skipped. LOW/MED/HII are the user-selectable quality levels; ULT is the far
+// harsher set used only for the shadow map.
+#define O_S_L1_S_LOW 10.f // geometry 3d volume size
+#define O_S_L1_D_LOW 150.f // distance, after which it is not rendered
+#define O_S_L2_S_LOW 100.f
+#define O_S_L2_D_LOW 200.f
+#define O_S_L3_S_LOW 500.f
+#define O_S_L3_D_LOW 250.f
+#define O_S_L4_S_LOW 2500.f
+#define O_S_L4_D_LOW 350.f
+#define O_S_L5_S_LOW 7000.f
+#define O_S_L5_D_LOW 400.f
+
+#define O_S_L1_S_MED 25.f
+#define O_S_L1_D_MED 50.f
+#define O_S_L2_S_MED 200.f
+#define O_S_L2_D_MED 150.f
+#define O_S_L3_S_MED 1000.f
+#define O_S_L3_D_MED 200.f
+#define O_S_L4_S_MED 2500.f
+#define O_S_L4_D_MED 300.f
+#define O_S_L5_S_MED 7000.f
+#define O_S_L5_D_MED 400.f
+
+#define O_S_L1_S_HII 50.f
+#define O_S_L1_D_HII 50.f
+#define O_S_L2_S_HII 400.f
+#define O_S_L2_D_HII 150.f
+#define O_S_L3_S_HII 1500.f
+#define O_S_L3_D_HII 200.f
+#define O_S_L4_S_HII 5000.f
+#define O_S_L4_D_HII 300.f
+#define O_S_L5_S_HII 20000.f
+#define O_S_L5_D_HII 350.f
+
+#define O_S_L1_S_ULT 80.f
+#define O_S_L1_D_ULT 40.f
+#define O_S_L2_S_ULT 600.f
+#define O_S_L2_D_ULT 100.f
+#define O_S_L3_S_ULT 2500.f
+#define O_S_L3_D_ULT 120.f
+#define O_S_L4_S_ULT 5000.f
+#define O_S_L4_D_ULT 140.f
+#define O_S_L5_S_ULT 20000.f
+#define O_S_L5_D_ULT 200.f
+
+#define O_D_L1_S_LOW 1.f
+#define O_D_L1_D_LOW 80.f
+#define O_D_L2_S_LOW 3.f
+#define O_D_L2_D_LOW 150.f
+#define O_D_L3_S_LOW 4000.f
+#define O_D_L3_D_LOW 250.f
+
+#define O_D_L1_S_MED 1.f
+#define O_D_L1_D_MED 40.f
+#define O_D_L2_S_MED 4.f
+#define O_D_L2_D_MED 100.f
+#define O_D_L3_S_MED 4000.f
+#define O_D_L3_D_MED 200.f
+
+#define O_D_L1_S_HII 1.4f
+#define O_D_L1_D_HII 30.f
+#define O_D_L2_S_HII 4.f
+#define O_D_L2_D_HII 80.f
+#define O_D_L3_S_HII 4000.f
+#define O_D_L3_D_HII 150.f
+
+#define O_D_L1_S_ULT 2.0f
+#define O_D_L1_D_ULT 30.f
+#define O_D_L2_S_ULT 8.f
+#define O_D_L2_D_ULT 50.f
+#define O_D_L3_S_ULT 4000.f
+#define O_D_L3_D_ULT 110.f
+
+extern ECORE_API u32 ps_r_optimize_static;
+extern ECORE_API u32 ps_r_optimize_dynamic;
+extern ECORE_API int ps_r_high_optimize_sun_shad;
+extern ECORE_API float ps_r2_sun_shadows_far_casc;
+
+extern ECORE_API float o_optimize_static_l1_dist;
+extern ECORE_API float o_optimize_static_l1_size;
+extern ECORE_API float o_optimize_static_l2_dist;
+extern ECORE_API float o_optimize_static_l2_size;
+extern ECORE_API float o_optimize_static_l3_dist;
+extern ECORE_API float o_optimize_static_l3_size;
+extern ECORE_API float o_optimize_static_l4_dist;
+extern ECORE_API float o_optimize_static_l4_size;
+extern ECORE_API float o_optimize_static_l5_dist;
+extern ECORE_API float o_optimize_static_l5_size;
+
+extern ECORE_API float o_optimize_dynamic_l1_dist;
+extern ECORE_API float o_optimize_dynamic_l1_size;
+extern ECORE_API float o_optimize_dynamic_l2_dist;
+extern ECORE_API float o_optimize_dynamic_l2_size;
+extern ECORE_API float o_optimize_dynamic_l3_dist;
+extern ECORE_API float o_optimize_dynamic_l3_size;
 } // namespace xray::render::RENDER_NAMESPACE

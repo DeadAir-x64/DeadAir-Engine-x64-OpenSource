@@ -74,6 +74,7 @@ extern u64 g_qwEStartGameTime;
 
 ENGINE_API
 extern float psHUD_FOV;
+extern float g_scope_fov; // Actor.cpp [DA_PORT] CoC-Xray compat
 extern float psSqueezeVelocity;
 extern int psLUA_GCSTEP;
 extern int psLUA_GCTIMEOUT;
@@ -179,6 +180,64 @@ static void full_memory_stats()
     dump_file_mappings();
 #endif
 }
+
+// [DA_PORT] Dump the UI xml files the game actually loads, straight through the engine's VFS, into
+// appdata\logs\vfs_ui\. Offline unpacking of Dead Air's archives has proven unreliable for these —
+// the copies it produced were a different, older revision than what the VFS serves (they were missing
+// nodes the shipped scripts require), and editing a menu on top of that wrong base breaks the options
+// screen. This is the same trick already used to obtain the trustworthy script dump.
+class CCC_DumpUIXml : public IConsole_Command
+{
+public:
+    CCC_DumpUIXml(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+    virtual void Execute(LPCSTR /*args*/)
+    {
+        FS_FileSet files;
+        FS.file_list(files, "$game_config$", FS_ListFiles, "ui" DELIMITER "*.xml");
+
+        u32 exported = 0;
+        u32 unreadable = 0;
+        for (const FS_File& f : files)
+        {
+            // The listing already carries the "ui\" part of the mask, so f.name is used as-is here;
+            // prefixing it a second time is what made the first run report 0 of 165 exported.
+            string_path src;
+            FS.update_path(src, "$game_config$", f.name.c_str());
+
+            IReader* r = FS.r_open(src);
+            if (!r)
+            {
+                ++unreadable;
+                if (unreadable <= 3)
+                    Msg("~ [DA_PORT] ui dump: cannot open [%s]", src);
+                continue;
+            }
+
+            // Flatten into one folder: names come through as "ui\foo.xml", and w_open will not create
+            // nested directories for us.
+            pcstr base = f.name.c_str();
+            if (pcstr slash = strrchr(base, DELIMITER[0]))
+                base = slash + 1;
+
+            string_path dst;
+            xr_sprintf(dst, "vfs_ui" DELIMITER "%s", base);
+            if (IWriter* w = FS.w_open("$logs$", dst))
+            {
+                w->w(r->pointer(), r->length());
+                FS.w_close(w);
+                ++exported;
+            }
+            else if (exported == 0)
+                Msg("~ [DA_PORT] ui dump: cannot write [%s]", dst);
+
+            FS.r_close(r);
+        }
+        Msg("~ [DA_PORT] dumped %u/%u ui xml files to appdata" DELIMITER "logs" DELIMITER "vfs_ui" DELIMITER,
+            exported, (u32)files.size());
+        FlushLog();
+    }
+    virtual void Info(TInfo& I) { xr_strcpy(I, "dump ui xml files served by the VFS into logs\\vfs_ui"); }
+};
 
 class CCC_MemStats : public IConsole_Command
 {
@@ -1570,7 +1629,10 @@ struct CCC_TimeFactorSingle : public CCC_Float
 
     virtual void Execute(LPCSTR args)
     {
+        // user.ltx exec vs any other caller, and what g_fTimeFactor is right before/after.
+        FlushLog();
         CCC_Float::Execute(args);
+        FlushLog();
 
         if (!g_pGameLevel)
             return;
@@ -2192,7 +2254,10 @@ void CCC_RegisterCommands()
 
     // [DA_PORT] Dead Air compatibility aliases
     CMD3(CCC_Mask, "hud_draw_info", &psHUD_Flags, HUD_INFO);
-    CMD3(CCC_Mask, "hud_draw_map", &psHUD_Flags, HUD_DRAW);
+    // [DA_PORT] "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+    // (as DA's map/PDA scripts do) silently killed the entire main indicators HUD (health/boosts)
+    // forever, since the off state got persisted to user.ltx. Give it its own dedicated bit.
+    CMD3(CCC_Mask, "hud_draw_map", &psHUD_Flags, HUD_DRAW_MAP);
 
     // hud
     psHUD_Flags.set(HUD_CROSSHAIR, true);
@@ -2205,7 +2270,19 @@ void CCC_RegisterCommands()
     CMD3(CCC_Mask, "hud_left_handed", &psHUD_Flags, HUD_LEFT_HANDED);
 
     CMD4(CCC_Float, "hud_fov", &psHUD_FOV, 0.1f, 1.0f);
+    // [DA_PORT] nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+    {
+        extern int g_hud_nearwall;
+        extern float g_hud_nearwall_dist_min, g_hud_nearwall_dist_max, g_hud_nearwall_target_fov,
+            g_hud_nearwall_speed;
+        CMD4(CCC_Integer, "hud_nearwall", &g_hud_nearwall, 0, 1);
+        CMD4(CCC_Float, "hud_nearwall_dist_min", &g_hud_nearwall_dist_min, 0.0f, 2.0f);
+        CMD4(CCC_Float, "hud_nearwall_dist_max", &g_hud_nearwall_dist_max, 0.1f, 5.0f);
+        CMD4(CCC_Float, "hud_nearwall_target_fov", &g_hud_nearwall_target_fov, 0.05f, 1.0f);
+        CMD4(CCC_Float, "hud_nearwall_speed", &g_hud_nearwall_speed, 0.5f, 40.0f);
+    }
     CMD4(CCC_Float, "fov", &g_fov, 5.0f, 180.0f);
+    CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
 
     // Demo
     CMD1(CCC_DemoPlay, "demo_play");
@@ -2529,6 +2606,10 @@ void CCC_RegisterCommands()
 
     CMD3(CCC_Mask, "cl_dynamiccrosshair", &psHUD_Flags, HUD_CROSSHAIR_DYNAMIC);
     CMD1(CCC_MainMenu, "main_menu");
+    // [DA_PORT] Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+    // and test with (the dump_* commands above are debug-only, which is why the first attempt at this
+    // came back as "Unknown command").
+    CMD1(CCC_DumpUIXml, "da_dump_ui_xml");
 
 #ifndef MASTER_GOLD
     CMD1(CCC_StartTimeSingle, "start_time_single");

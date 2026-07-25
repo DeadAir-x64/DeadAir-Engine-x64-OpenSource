@@ -226,6 +226,7 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     string32 c_sun_shafts;
     string32 c_ssao;
     string32 c_sun_quality;
+    string32 c_water_reflection;
     char c_msaa_samples[2];
     char c_msaa_current_sample[2];
 
@@ -417,6 +418,62 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
 
     // Minmax SM
     appendShaderOption(o.minmax_sm, "USE_MINMAX_SM", "1");
+
+    // [DA_PORT] Enable Dead Air's visor rain-droplet ("lens water") effect that lives in the
+    // post-combine shader (combine_1.ps: `#ifdef USE_LENS_WATER -> final = visor_drops(...)`). Stock R4
+    // never defined this macro, so the whole block was compiled out — the actor's "clean mask" wipe
+    // animation (dinamic_hud.script) then had nothing to wipe (drops never appeared on the visor).
+    // Compiled in unconditionally; the effect is driven at runtime by the `lenswater` shader constant
+    // (bound to ps_r2_lenswater_val in r4_rendertarget_phase_combine.cpp), which dinamic_hud ramps up
+    // while it rains. lenswater == 0 makes visor_drops a no-op, so it costs nothing when dry.
+    options.add("USE_LENS_WATER", "1");
+
+    // [DA_PORT] Enable Dead Air's OWN screen-space reflections on water. DA's archive water.ps/waterd.ps
+    // (shaders\r3, self-contained OGSE pack) already implement full SSLR: calc_reflections()->get_reflection()
+    // ray-marches s_image (scene color) along the reflected ray, plus calc_moon_road(). The whole block is
+    // gated by `#ifdef USE_REFLECTIONS`, which the R2 engine defined but OpenXRay R4 never did -> only the
+    // cubemap env reflection was active ("sky reflects but nothing else"). USE_REFLECTIONS appears ONLY in
+    // water.ps/waterd.ps (4x total), so defining it globally is safe. All deps (REFL_RANGE, get_depth_fast,
+    // eye_direction, screen_res, is_sky) exist in the archive common.h/ogse_reflections.h. If reflections come
+    // out black, s_image is not bound in the R4 water pass (bind it there) — the shader still compiles.
+    // Driven by the existing "r3_water_refl" console setting (off/low/medium/high/ultra, default high),
+    // the same knob the GL renderer already uses — so weaker machines can dial the ray-march down or
+    // turn reflections off entirely. SSR_QUALITY picks the march length / range in ogse_reflections.h.
+    // Off also drops USE_REFLECTIONS, so the water falls back to the plain cubemap and costs nothing.
+    if (ps_r_water_reflection)
+    {
+        options.add("USE_REFLECTIONS", "1");
+        xr_sprintf(c_water_reflection, "%d", ps_r_water_reflection);
+        options.add("SSR_QUALITY", c_water_reflection);
+        sh_name.append(ps_r_water_reflection);
+
+        // "r3_water_refl_jitter": dithers each pixel's ray start along the march so the stair-stepping
+        // of a fixed-stride trace breaks into fine noise instead of visible bands on the reflection.
+        appendShaderOption(ps_r2_ls_flags_ext.test(R3FLAGEXT_SSR_JITTER), "SSR_JITTER", "1");
+
+        // NOTE: "r3_water_refl_half_depth" is deliberately NOT wired up here. It would need rt_half_depth,
+        // which only exists when o.ssao_opt_data is set — and R2FLAGEXT_SSAO_OPT_DATA is commented out of
+        // the default flag mask (xrRender_console.cpp), so neither the RT nor phase_downsamp() ever runs.
+        // Sampling it would hand the ray-march an empty buffer. Supporting it means giving SSR its own
+        // downsample pass; until then the setting simply has no effect on R4.
+    }
+    else
+    {
+        // keep the compiled-shader name length stable
+        sh_name.append(static_cast<u32>(0)); // quality
+        sh_name.append(static_cast<u32>(0)); // jitter
+    }
+
+    // [DA_PORT] Do NOT inject H_*/L_*/PIXEL_SIZE/eye_direction macros here!
+    // Dead Air's shader pack lives INSIDE database\configs.xdb0 (shaders\r2, shaders\r3) and is
+    // self-contained: its own common.h defines H_MAIN=7.0 (H_TERR/H_GRASS=3.5, H_MODELS/H_BUSHES=1.4),
+    // L_RANGE=1.0, L_BRIGHT=1.0, PIXEL_SIZE; shared\common.h declares 'uniform half3 eye_direction'
+    // (bound by Blender_Recorder_StandartBinding.cpp r_Constant("eye_direction")).
+    // The historical "undeclared identifier L_RANGE/eye_direction" compile errors were caused by
+    // loose STOCK OpenXRay override files in gamedata\shaders\r2|r3 SHADOWING the archive versions
+    // (X-Ray VFS: loose files override archives). Those stock files are quarantined to
+    // "shaders_loose_stock_backup\" in the game root. Injecting zeroed macros here instead
+    // (H_TERR=0 etc.) kills hemisphere lighting -> "world renders but far too dark".
 
     // Be carefull!!!!! this should be at the end to correctly generate
     // compiled shader name;

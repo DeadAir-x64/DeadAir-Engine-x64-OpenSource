@@ -22,7 +22,11 @@ void CRenderTarget::phase_scene_prepare()
                                             ((ps_r_sun_shafts > 0) && (fValue >= 0.0001)) || (ps_r_ssao > 0)))
     {
         //	TODO: DX11: Check if we need to set RT here.
-        u_setrt(RCache, Device.dwWidth, Device.dwHeight, rt_Position->pRT, 0, 0, rt_MSAADepth);
+        // [DA_PORT] This is the G-buffer pass — the viewport has to match the scene targets, not the
+        // window. With r__render_scale < 100 the old window-sized viewport rasterised the geometry at
+        // full size into a smaller buffer, so only its top-left corner was captured and the final blit
+        // then blew that corner up over the whole screen.
+        u_setrt(RCache, Device.dwRenderWidth, Device.dwRenderHeight, rt_Position->pRT, 0, 0, rt_MSAADepth);
 
         const Fcolor color{}; // black
         RCache.ClearRT(rt_Position, color);
@@ -41,7 +45,8 @@ void CRenderTarget::phase_scene_prepare()
     else
     {
         //	TODO: DX11: Check if we need to set RT here.
-        u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, rt_MSAADepth);
+        // [DA_PORT] same reasoning: depth here is the scene depth, so the viewport follows the scene
+        u_setrt(RCache, Device.dwRenderWidth, Device.dwRenderHeight, get_base_rt(), 0, 0, rt_MSAADepth);
         RCache.ClearZB(rt_MSAADepth, 1.0f, 0);
     }
 

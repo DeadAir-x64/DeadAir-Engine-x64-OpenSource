@@ -112,7 +112,12 @@ void CALifeGraphRegistry::attach(CSE_Abstract& object, CSE_ALifeInventoryItem* i
     if (alife_query)
         remove(smart_cast<CSE_ALifeDynamicObject*>(item), game_vertex_id);
     else
-        level().remove(smart_cast<CSE_ALifeDynamicObject*>(item));
+    {
+        // [DA_PORT] tolerate an item that was never level().add()'ed (spawned already attached
+        // to a parent) — same crash class as remove() above.
+        CSE_ALifeDynamicObject* it = smart_cast<CSE_ALifeDynamicObject*>(item);
+        level().remove(it, level().object(it->ID, true) == nullptr);
+    }
 
     CSE_ALifeDynamicObject* dynamic_object = smart_cast<CSE_ALifeDynamicObject*>(&object);
     R_ASSERT2(!alife_query || dynamic_object, "Cannot attach an item to a non-alife object object");
@@ -200,8 +205,24 @@ void CALifeGraphRegistry::remove(CSE_ALifeDynamicObject* object, GameGraph::_GRA
                 game_vertex_id);
         }
 #endif
-        m_objects[game_vertex_id].objects().remove(object->ID);
+        // [DA_PORT] no_assert=true. An item spawned already attached to a parent
+        // (alife():create with a parent id) is never added to the world registry —
+        // register_object()'s graph().update() skips attached items (see update():66) — so a
+        // later attach()/remove() finds no key here. Asserting hard-crashed the game (repro:
+        // an NPC gathering an artefact via xr_gather_items while the actor stood at a trader).
+        // Removing an absent object from this per-vertex list is a benign no-op.
+        m_objects[game_vertex_id].objects().remove(object->ID, true);
     }
     if (update && m_level)
-        level().remove(object, ai().game_graph().vertex(game_vertex_id)->level_id() != level().level_id());
+    {
+        const bool cross_level =
+            ai().game_graph().vertex(game_vertex_id)->level_id() != level().level_id();
+        // Same tolerance for the per-level registry: an attached-spawn item was never level().add()'ed.
+        const bool absent = (level().object(object->ID, true) == nullptr);
+        if (absent && !cross_level)
+            Msg("~ [DA_PORT] graph().remove: object id[%u] absent from level registry "
+                "(attached-spawn) - skipping instead of asserting",
+                u32(object->ID));
+        level().remove(object, cross_level || absent);
+    }
 }

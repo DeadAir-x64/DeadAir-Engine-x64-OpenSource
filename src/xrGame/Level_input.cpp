@@ -129,7 +129,12 @@ void CLevel::IR_OnKeyboardPress(int key)
     EGameActions _curr = GetBindedAction(key);
 
     /* avo: script callback */
-    if (!g_bDisableAllInput && g_actor)
+    // [DA_PORT] Dead Air's eKeyPress script hook reacts to the raw ESCAPE scancode by force-opening
+    // the PDA menu (confirmed via StartMenu/CUIPdaWnd tracing - it fires on every ESC press,
+    // stomping whatever dialog was actually open underneath: Inventory/Trade stayed open while PDA
+    // flashed open+closed on top, and the player only saw the cursor re-center). ESC has its own
+    // dedicated handling directly below, so don't hand it to the generic script key-press callback.
+    if (!g_bDisableAllInput && g_actor && key != SDL_SCANCODE_ESCAPE)
     {
         g_actor->callback(GameObject::eKeyPress)(key);
     }
@@ -138,9 +143,23 @@ void CLevel::IR_OnKeyboardPress(int key)
     // then opens the main menu when no UI is open.
     if (key == SDL_SCANCODE_ESCAPE)
     {
-        if (b_ui_exist && CurrentGameUI()->TopInputReceiver() && !Device.Paused())
+        CUIDialogWnd* tir = b_ui_exist ? CurrentGameUI()->TopInputReceiver() : nullptr;
+        pcstr tir_kind = "?";
+        if (b_ui_exist && tir)
         {
-            if (CurrentGameUI()->IR_UIOnKeyboardPress(key))
+            if (tir == (CUIDialogWnd*)&CurrentGameUI()->GetActorMenu())
+                tir_kind = "ActorMenu(Inv/Trade/Upgrade)";
+            else if (tir == (CUIDialogWnd*)&CurrentGameUI()->GetPdaMenu())
+                tir_kind = "PdaMenu";
+            else
+                tir_kind = typeid(*tir).name();
+        }
+        FlushLog();
+        if (b_ui_exist && tir && !Device.Paused())
+        {
+            bool consumed = CurrentGameUI()->IR_UIOnKeyboardPress(key);
+            FlushLog();
+            if (consumed)
                 return;
             CurrentGameUI()->TopInputReceiver()->HideDialog();
             return;

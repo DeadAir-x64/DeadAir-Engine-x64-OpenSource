@@ -85,6 +85,10 @@ void CCustomZone::Load(LPCSTR section)
     m_zone_flags.set(eIgnoreNonAlive, pSettings->r_bool(section, "ignore_nonalive"));
     m_zone_flags.set(eIgnoreSmall, pSettings->r_bool(section, "ignore_small"));
     m_zone_flags.set(eIgnoreArtefact, pSettings->r_bool(section, "ignore_artefacts"));
+    // [DA_PORT] Inverse filters from the alpha. Read optionally with a false default (author's call):
+    // the release configs carry neither key, so every zone keeps behaving exactly as before.
+    m_zone_flags.set(eIgnoreAlive, pSettings->read_if_exists<bool>(section, "ignore_alive", false));
+    m_zone_flags.set(eIgnoreBig, pSettings->read_if_exists<bool>(section, "ignore_big", false));
     m_zone_flags.set(eVisibleByDetector, pSettings->read_if_exists<bool>(section, "visible_by_detector", false));
 
     //загрузить времена для зоны
@@ -281,6 +285,13 @@ void CCustomZone::Load(LPCSTR section)
         m_pIdleLAnim = LALib.FindItem(light_anim);
         m_fIdleLightHeight = pSettings->r_float(section, "idle_light_height");
         m_zone_flags.set(eIdleLightVolumetric, pSettings->read_if_exists<bool>(section, "idle_light_volumetric", false));
+        // [DA_PORT] Dead Air adds detailed volumetric light params (CoC/port had only on/off).
+        // Defaults are 0 per the mod author's instruction. Nothing in the release data reaches this
+        // anyway: these three are only applied when "idle_light_volumetric" is set, and no zone in
+        // Dead Air's configs sets it — so the values here are a crash guard, not a visual choice.
+        m_fIdleLightVolumetricQuality = pSettings->read_if_exists<float>(section, "light_volumetric_quality", 0.0f);
+        m_fIdleLightVolumetricIntensity = pSettings->read_if_exists<float>(section, "light_volumetric_intensity", 0.0f);
+        m_fIdleLightVolumetricDistance = pSettings->read_if_exists<float>(section, "light_volumetric_distance", 0.0f);
         m_zone_flags.set(eIdleLightShadow, pSettings->read_if_exists<bool>(section, "idle_light_shadow", true));
         m_zone_flags.set(eIdleLightR1, pSettings->read_if_exists<bool>(section, "idle_light_r1", true));
     }
@@ -381,6 +392,10 @@ bool CCustomZone::net_Spawn(CSE_Abstract* DC)
         {
             // m_pIdleLight->set_type				(IRender_Light::SPOT);
             m_pIdleLight->set_volumetric(true);
+            // [DA_PORT] apply Dead Air detailed volumetric params
+            m_pIdleLight->set_volumetric_quality(m_fIdleLightVolumetricQuality);
+            m_pIdleLight->set_volumetric_intensity(m_fIdleLightVolumetricIntensity);
+            m_pIdleLight->set_volumetric_distance(m_fIdleLightVolumetricDistance);
         }
     }
     else
@@ -633,7 +648,9 @@ void CCustomZone::feel_touch_new(IGameObject* O)
         object_info.small_object = false;
 
     if ((object_info.small_object && m_zone_flags.test(eIgnoreSmall)) ||
+        (!object_info.small_object && m_zone_flags.test(eIgnoreBig)) || // [DA_PORT]
         (object_info.nonalive_object && m_zone_flags.test(eIgnoreNonAlive)) ||
+        (!object_info.nonalive_object && m_zone_flags.test(eIgnoreAlive)) || // [DA_PORT]
         (pArtefact && m_zone_flags.test(eIgnoreArtefact)))
         object_info.zone_ignore = true;
     else

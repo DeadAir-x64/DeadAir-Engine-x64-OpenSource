@@ -48,7 +48,12 @@ void xrGameModule::initialize(Factory_Create*& pCreate, Factory_Destroy*& pDestr
     pCreate = &xrFactory_Create;
     pDestroy = &xrFactory_Destroy;
 
-    g_fTimeFactor = pSettings->r_float("alife", "time_factor"); // XXX: find a better place
+    // [DA_PORT] Dead Air's own [alife]/time_factor is 10 (confirmed via trace) - genuinely their
+    // config, not an engine bug, but it silently clobbered the "time_factor_single" console command
+    // (which shares g_fTimeFactor) on every single launch, making that setting impossible to
+    // actually override via user.ltx. Per project decision: stop reading it here so the persisted
+    // console var (defaulting to 1x, see game_base.cpp) is the one real, always-honored setting.
+    // g_fTimeFactor = pSettings->r_float("alife", "time_factor"); // XXX: find a better place
 
     // Fill ui style token
     UIStyles = xr_new<UIStyleManager>();

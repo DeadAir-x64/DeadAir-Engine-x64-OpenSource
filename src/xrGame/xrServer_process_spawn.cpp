@@ -13,7 +13,6 @@ CSE_Abstract* xrServer::Process_spawn(
     NET_Packet& P, ClientID sender, bool bSpawnWithClientsMainEntityAsParent, CSE_Abstract* tpExistedEntity)
 {
     ZoneScoped;
-    Msg("! [DA_PORT] Process_spawn: this=%p sender=%u tpExistedEntity=%p", this, sender.value(), tpExistedEntity); FlushLog();
 
     // create server entity
     xrClientData* CL = ID_to_client(sender);
@@ -160,7 +159,6 @@ CSE_Abstract* xrServer::Process_spawn(
         E->Spawn_Write(Packet, FALSE);
         if (E->s_flags.is(M_SPAWN_UPDATE))
             E->UPDATE_Write(Packet);
-        Msg("! [DA_PORT] Process_spawn: CL=%p CL->ID=%u, calling SendBroadcast", CL, CL->ID.value()); FlushLog();
         SendBroadcast(CL->ID, Packet, net_flags(TRUE, TRUE));
     }
     else
@@ -170,7 +168,6 @@ CSE_Abstract* xrServer::Process_spawn(
             E->UPDATE_Write(Packet);
         ClientID clientID;
         clientID.set(0);
-        Msg("! [DA_PORT] Process_spawn: CL=null, calling SendBroadcast(0)", 0); FlushLog();
         SendBroadcast(clientID, Packet, net_flags(TRUE, TRUE));
     }
     if (!tpExistedEntity)

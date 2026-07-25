@@ -140,7 +140,7 @@ float ps_r__WallmarkSHIFT_V = 0.0001f;
 
 float ps_r__GLOD_ssa_start = 256.f;
 float ps_r__GLOD_ssa_end = 64.f;
-float ps_r__LOD = 0.75f;
+float ps_r__LOD = 1.0f; // [DA_PORT] was 0.75f — the author raised geometry LOD distance
 //float ps_r__LOD_Power = 1.5f;
 float ps_r__ssaDISCARD = 3.5f; // RO
 float ps_r__ssaDONTSORT = 32.f; // RO
@@ -170,7 +170,7 @@ int ps_r1_SoftwareSkinning = 0; // r1-only
 bool ps_r2_sun_static = false;
 bool ps_r2_advanced_pp = true; // advanced post process and effects
 
-float ps_r2_ssaLOD_A = 64.f;
+float ps_r2_ssaLOD_A = 96.f; // [DA_PORT] was 64.f — models keep their detail further out
 float ps_r2_ssaLOD_B = 48.f;
 
 // R2-specific
@@ -189,18 +189,22 @@ Flags32 ps_r2_ls_flags_ext = {
 
 float ps_r2_df_parallax_h = 0.02f;
 float ps_r2_df_parallax_range = 75.f;
+// [DA_PORT] Tone mapping and bloom below are the author's values, taken from the Dead Air sources
+// (_engine_diff/DA_render_R2.patch), not OpenXRay's stock ones. His exposure curve is flatter: brighter
+// outdoors in daylight, darker indoors, and it adapts twice as fast. Keeping the stock curve made the
+// port noticeably duller than the original everywhere the player actually spends time.
 float ps_r2_tonemap_middlegray = 1.f; // r2-only
-float ps_r2_tonemap_adaptation = 1.f; // r2-only
-float ps_r2_tonemap_low_lum = 0.0001f; // r2-only
-float ps_r2_tonemap_amount = 0.7f; // r2-only
+float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
+float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
+float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
 float ps_r2_ls_bloom_kernel_g = 3.f; // r2-only
-float ps_r2_ls_bloom_kernel_b = .7f; // r2-only
+float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
 float ps_r2_ls_bloom_speed = 100.f; // r2-only
-float ps_r2_ls_bloom_kernel_scale = .7f; // r2-only // gauss
+float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
 float ps_r2_ls_dsm_kernel = .7f; // r2-only
 float ps_r2_ls_psm_kernel = .7f; // r2-only
 float ps_r2_ls_ssm_kernel = .7f; // r2-only
-float ps_r2_ls_bloom_threshold = .00001f; // r2-only
+float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
 Fvector ps_r2_aa_barier = {.8f, .1f, 0}; // r2-only
 Fvector ps_r2_aa_weight = {.25f, .25f, 0}; // r2-only
 float ps_r2_aa_kernel = .5f; // r2-only
@@ -215,15 +219,18 @@ float ps_r2_ls_squality = 1.0f; // 1.00f
 float ps_r2_sun_tsm_projection = 0.3f; // 0.18f
 float ps_r2_sun_tsm_bias = -0.2f;
 float ps_r2_sun_near = 20.f; // 12.0f
-float ps_r2_sun_near_border = 0.75f; // 1.0f
+float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
 float ps_r2_sun_far = 100.f; // 180.f
 float ps_r2_sun_depth_far_scale = 1.00000f; // 1.00001f
 float ps_r2_sun_depth_far_bias = -0.00002f; // -0.0000f
 float ps_r2_sun_depth_near_scale = 1.0000f; // 1.00001f
 float ps_r2_sun_depth_near_bias = 0.00001f; // -0.00005f
-float ps_r2_sun_lumscale = 1.0f; // 1.0f
-float ps_r2_sun_lumscale_hemi = 1.0f; // 1.0f
-float ps_r2_sun_lumscale_amb = 1.0f;
+// [DA_PORT] The author's lighting balance: a much stronger sun against a heavily damped ambient and
+// hemisphere term. This is what gives Dead Air its hard, contrasty daylight and genuinely dark shade;
+// with the stock 1/1/1 everything is lit evenly from all sides and the picture goes flat.
+float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
+float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
+float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
 float ps_r2_gmaterial = 2.2f; //
 float ps_r2_zfill = 0.25f; // .1f
 
@@ -274,7 +281,9 @@ float ps_r2_tmp_w = 0.f;
 float ps_r2_tmp_x = 0.f;
 float ps_r2_tmp_y = 0.f;
 float ps_r2_tmp_z = 0.f;
-float ps_r2_vibrance_val = 0.f;
+// [DA_PORT] Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
+// scenes keep their blue cast while grass and brick gain depth. 0.18 is felt without looking graded.
+float ps_r2_vibrance_val = 0.18f;
 float ps_r2_vignette = 0.f;
 float ps_r2_zoom_dof = 0.f;
 float ps_r1_dynamic_lights = 1.f;
@@ -282,9 +291,29 @@ float ps_r2_actor_body = 0.f;
 float ps_r_color_add_r = 0.f;
 float ps_r_color_add_g = 0.f;
 float ps_r_color_add_b = 0.f;
-float ps_r_color_base_r = 1.f;
-float ps_r_color_base_g = 1.f;
-float ps_r_color_base_b = 1.f;
+// [DA_PORT] Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
+// The console command applies the four values; the sliders stay live afterwards, so a profile is a
+// starting point rather than a lock.
+u32 ps_r_grading_preset = 1; // 1 = the port default below
+const xr_token qgrading_preset_token[] =
+{
+    { "ui_mm_grade_original", 0 },
+    { "ui_mm_grade_default",  1 },
+    { "ui_mm_grade_autumn",   2 },
+    { "ui_mm_grade_cold",     3 },
+    { "ui_mm_grade_faded",    4 },
+    { "ui_mm_grade_vivid",    5 },
+    { nullptr, 0 }
+};
+
+// [DA_PORT] Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
+// burnt-out autumn - ochre, rust, grey-green - and lifting red while easing blue makes rust and dry
+// grass read better without touching the sky, which stays cold because it is bright and gets pushed
+// least. Deliberately small: grading is a matter of taste, and the sliders are there for whoever
+// disagrees. 1/1/1 restores stock behaviour exactly.
+float ps_r_color_base_r = 1.04f;
+float ps_r_color_base_g = 1.00f;
+float ps_r_color_base_b = 0.96f;
 
 u32 ps_steep_parallax = 0;
 int ps_r__detail_radius = 49;
@@ -311,7 +340,7 @@ xr_token ext_quality_token[] = {{"qt_off", 0}, {"qt_low", 1}, {"qt_medium", 2},
 //-AVO
 
 //- Mad Max
-float ps_r2_gloss_factor = 4.0f;
+float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
 //- Mad Max
 
 //AVO: detail draw radius
@@ -451,6 +480,111 @@ public:
     virtual void Execute(LPCSTR /*args*/) { RImplementation.Models->dump(); }
 };
 
+// [DA_PORT] ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
+// Selecting a level rewrites the working thresholds; the render graph itself only ever reads the
+// o_optimize_* values, so switching quality costs nothing per frame.
+// NB the author's own inconsistency, kept deliberately: the level reads as 1 ("low") while the working
+// thresholds start at MED. Until the console command runs, MED is what the original actually rendered
+// with, so matching his behaviour means keeping the initialisers as they are rather than "fixing" them.
+u32 ps_r_optimize_static = 1;
+u32 ps_r_optimize_dynamic = 1;
+int ps_r_high_optimize_sun_shad = 1;
+float ps_r2_sun_shadows_far_casc = 192.f;
+
+float o_optimize_static_l1_dist = O_S_L1_D_MED;
+float o_optimize_static_l1_size = O_S_L1_S_MED;
+float o_optimize_static_l2_dist = O_S_L2_D_MED;
+float o_optimize_static_l2_size = O_S_L2_S_MED;
+float o_optimize_static_l3_dist = O_S_L3_D_MED;
+float o_optimize_static_l3_size = O_S_L3_S_MED;
+float o_optimize_static_l4_dist = O_S_L4_D_MED;
+float o_optimize_static_l4_size = O_S_L4_S_MED;
+float o_optimize_static_l5_dist = O_S_L5_D_MED;
+float o_optimize_static_l5_size = O_S_L5_S_MED;
+
+float o_optimize_dynamic_l1_dist = O_D_L1_D_MED;
+float o_optimize_dynamic_l1_size = O_D_L1_S_MED;
+float o_optimize_dynamic_l2_dist = O_D_L2_D_MED;
+float o_optimize_dynamic_l2_size = O_D_L2_S_MED;
+float o_optimize_dynamic_l3_dist = O_D_L3_D_MED;
+float o_optimize_dynamic_l3_size = O_D_L3_S_MED;
+
+xr_token q_optimize_geom[] = {
+    { "st_optimize_off", 0 },
+    { "st_optimize_low", 1 },
+    { "st_optimize_med", 2 },
+    { "st_optimize_high", 3 },
+    { nullptr, 0 },
+};
+
+class CCC_OptimizeStatic : public CCC_Token
+{
+public:
+    CCC_OptimizeStatic(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+        switch (*value)
+        {
+        case 0:
+            break; // culling disabled entirely — the checks bail out on ps_r_optimize_static < 1
+        case 1:
+            o_optimize_static_l1_dist = O_S_L1_D_LOW; o_optimize_static_l1_size = O_S_L1_S_LOW;
+            o_optimize_static_l2_dist = O_S_L2_D_LOW; o_optimize_static_l2_size = O_S_L2_S_LOW;
+            o_optimize_static_l3_dist = O_S_L3_D_LOW; o_optimize_static_l3_size = O_S_L3_S_LOW;
+            o_optimize_static_l4_dist = O_S_L4_D_LOW; o_optimize_static_l4_size = O_S_L4_S_LOW;
+            o_optimize_static_l5_dist = O_S_L5_D_LOW; o_optimize_static_l5_size = O_S_L5_S_LOW;
+            break;
+        case 2:
+            o_optimize_static_l1_dist = O_S_L1_D_MED; o_optimize_static_l1_size = O_S_L1_S_MED;
+            o_optimize_static_l2_dist = O_S_L2_D_MED; o_optimize_static_l2_size = O_S_L2_S_MED;
+            o_optimize_static_l3_dist = O_S_L3_D_MED; o_optimize_static_l3_size = O_S_L3_S_MED;
+            o_optimize_static_l4_dist = O_S_L4_D_MED; o_optimize_static_l4_size = O_S_L4_S_MED;
+            o_optimize_static_l5_dist = O_S_L5_D_MED; o_optimize_static_l5_size = O_S_L5_S_MED;
+            break;
+        default:
+            o_optimize_static_l1_dist = O_S_L1_D_HII; o_optimize_static_l1_size = O_S_L1_S_HII;
+            o_optimize_static_l2_dist = O_S_L2_D_HII; o_optimize_static_l2_size = O_S_L2_S_HII;
+            o_optimize_static_l3_dist = O_S_L3_D_HII; o_optimize_static_l3_size = O_S_L3_S_HII;
+            o_optimize_static_l4_dist = O_S_L4_D_HII; o_optimize_static_l4_size = O_S_L4_S_HII;
+            o_optimize_static_l5_dist = O_S_L5_D_HII; o_optimize_static_l5_size = O_S_L5_S_HII;
+            break;
+        }
+    }
+};
+
+class CCC_OptimizeDynamic : public CCC_Token
+{
+public:
+    CCC_OptimizeDynamic(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+        switch (*value)
+        {
+        case 0:
+            break; // culling disabled entirely — the checks bail out on ps_r_optimize_dynamic < 1
+        case 1:
+            o_optimize_dynamic_l1_dist = O_D_L1_D_LOW; o_optimize_dynamic_l1_size = O_D_L1_S_LOW;
+            o_optimize_dynamic_l2_dist = O_D_L2_D_LOW; o_optimize_dynamic_l2_size = O_D_L2_S_LOW;
+            o_optimize_dynamic_l3_dist = O_D_L3_D_LOW; o_optimize_dynamic_l3_size = O_D_L3_S_LOW;
+            break;
+        case 2:
+            o_optimize_dynamic_l1_dist = O_D_L1_D_MED; o_optimize_dynamic_l1_size = O_D_L1_S_MED;
+            o_optimize_dynamic_l2_dist = O_D_L2_D_MED; o_optimize_dynamic_l2_size = O_D_L2_S_MED;
+            o_optimize_dynamic_l3_dist = O_D_L3_D_MED; o_optimize_dynamic_l3_size = O_D_L3_S_MED;
+            break;
+        default:
+            o_optimize_dynamic_l1_dist = O_D_L1_D_HII; o_optimize_dynamic_l1_size = O_D_L1_S_HII;
+            o_optimize_dynamic_l2_dist = O_D_L2_D_HII; o_optimize_dynamic_l2_size = O_D_L2_S_HII;
+            o_optimize_dynamic_l3_dist = O_D_L3_D_HII; o_optimize_dynamic_l3_size = O_D_L3_S_HII;
+            break;
+        }
+    }
+};
+
 class CCC_SSAO_Mode : public CCC_Token
 {
 public:
@@ -530,6 +664,36 @@ public:
         FS.update_path(_cfg, "$game_config$", _cfg);
         strconcat(sizeof(cmd), cmd, "cfg_load", " ", _cfg);
         Console->Execute(cmd);
+    }
+};
+
+// [DA_PORT] Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
+// gamedata/configs/da_grade_*.ltx, so console, menu and files never disagree.
+class CCC_GradingPreset : public CCC_Token
+{
+public:
+    CCC_GradingPreset(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+
+        struct grade { float r, g, b, v; };
+        static const grade profiles[] =
+        {
+            { 1.00f, 1.00f, 1.00f,  0.00f }, // original - exactly as the mod shipped
+            { 1.04f, 1.00f, 0.96f,  0.18f }, // port default - gently warm
+            { 1.10f, 1.02f, 0.90f,  0.30f }, // golden autumn
+            { 0.96f, 1.00f, 1.08f,  0.10f }, // cold Zone
+            { 1.02f, 1.00f, 0.98f, -0.25f }, // faded film
+            { 1.06f, 1.02f, 0.98f,  0.40f }, // vivid
+        };
+
+        const u32 idx = *value < std::size(profiles) ? *value : 1;
+        ps_r_color_base_r = profiles[idx].r;
+        ps_r_color_base_g = profiles[idx].g;
+        ps_r_color_base_b = profiles[idx].b;
+        ps_r2_vibrance_val = profiles[idx].v;
     }
 };
 
@@ -793,6 +957,12 @@ void xrRender_initconsole()
     CMD4(CCC_Integer, "r__supersample", &ps_r__Supersample, 1, 8);
 
     CMD4(CCC_Float, "r__geometry_lod", &ps_r__LOD, 0.1f, 2.f);
+
+    // [DA_PORT] Geometry cut-off, ported from the author's build. Defaults match his: both levels on
+    // "low" (i.e. the gentlest culling) and the harsher shadow-map pass enabled.
+    CMD3(CCC_OptimizeStatic, "r__optimize_static_geom", &ps_r_optimize_static, q_optimize_geom);
+    CMD3(CCC_OptimizeDynamic, "r__optimize_dynamic_geom", &ps_r_optimize_dynamic, q_optimize_geom);
+    CMD4(CCC_Integer, "r__optimize_sun_shad", &ps_r_high_optimize_sun_shad, 0, 1);
     //CMD4(CCC_Float, "r__geometry_lod_pow", &ps_r__LOD_Power, 0, 2);
 
     CMD4(CCC_Float, "r__detail_density", &ps_current_detail_density/*&ps_r__Detail_density*/, 0.1f, 0.99f);
@@ -1037,7 +1207,8 @@ void xrRender_initconsole()
     CMD4(CCC_Float, "r2_tmp_x",              &ps_r2_tmp_x, 0.f, 1.f);
     CMD4(CCC_Float, "r2_tmp_y",              &ps_r2_tmp_y, 0.f, 1.f);
     CMD4(CCC_Float, "r2_tmp_z",              &ps_r2_tmp_z, 0.f, 1.f);
-    CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, 0.f, 1.f);
+    CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+    CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
     CMD4(CCC_Float, "r2_vignette",           &ps_r2_vignette, 0.f, 1.f);
     CMD4(CCC_Float, "r__zoom_dof",           &ps_r2_zoom_dof, 0.f, 1.f);
     CMD4(CCC_Float, "r1_dynamic_lights",    &ps_r1_dynamic_lights, 0.f, 2.f);

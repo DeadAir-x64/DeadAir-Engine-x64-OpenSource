@@ -19,6 +19,7 @@
 #include "visual_memory_manager.h"
 #include "ActorEffector.h"
 #include "ActorCondition.h"
+#include "xrEngine/LightAnimLibrary.h" // DA: цветоанимация света полтергейста
 
 void SetActorVisibility(u16 who, float value);
 
@@ -31,6 +32,8 @@ CPoltergeist::CPoltergeist()
     m_flame = 0;
     m_tele = 0;
     m_actor_ignore = false;
+
+    m_light_render = NULL; // DA
 }
 
 CPoltergeist::~CPoltergeist()
@@ -141,6 +144,17 @@ void CPoltergeist::Load(LPCSTR section)
     m_current_detection_level = 0;
     m_last_detection_time = 0;
     m_detection_pp_type_index = 0;
+
+    // DA: параметры светящегося полтергейста (ключи есть в m_poltergeist.ltx)
+    m_light_range = pSettings->r_float(section, "light_range");
+    m_light_brightness = pSettings->r_float(section, "light_brightness");
+    m_light_angle = pSettings->r_float(section, "light_angle");
+    m_light_shadow = !!pSettings->r_bool(section, "light_shadow");
+    m_light_volumetric = !!pSettings->r_bool(section, "light_volumetric");
+    m_light_color = pSettings->r_fcolor(section, "light_color");
+    m_light_color.a = 1.f;
+    m_light_color.mul_rgb(m_light_brightness);
+    m_lanim = LALib.FindItem(pSettings->r_string(section, "light_color_animmator"));
 
     PostLoad(section);
 }
@@ -314,6 +328,29 @@ void CPoltergeist::UpdateCL()
         MakeMeCrow();
     }
 
+    // DA: обновление светящегося источника (позиция по кости + цветоанимация)
+    if (m_light_render && m_light_render->get_active())
+    {
+        Fmatrix xf;
+        IKinematics* K = smart_cast<IKinematics*>(Visual());
+        Fmatrix& M = K->LL_GetTransform(u16(m_light_bone));
+        xf.mul(XFORM(), M);
+        VERIFY(!fis_zero(DET(xf)));
+
+        m_light_render->set_rotation(xf.k, xf.i);
+        m_light_render->set_position(xf.c);
+
+        if (m_lanim)
+        {
+            int frame;
+            u32 clr = m_lanim->CalculateBGR(Device.fTimeGlobal, frame);
+            Fcolor fclr;
+            fclr.set((float)color_get_B(clr), (float)color_get_G(clr), (float)color_get_R(clr), 1.f);
+            fclr.mul_rgb(m_light_brightness / 255.f);
+            m_light_render->set_color(fclr);
+        }
+    }
+
     //	Visual()->getVisData().hom_frame = Device.dwFrame;
 }
 
@@ -350,6 +387,18 @@ bool CPoltergeist::net_Spawn(CSE_Abstract* DC)
     setVisible(false);
     ability()->on_hide();
 
+    // DA: создать светящийся источник на кости головы
+    IKinematics* K = smart_cast<IKinematics*>(Visual());
+    m_light_bone = K->LL_BoneID("bip01_head");
+    m_light_render = GEnv.Render->light_create();
+    m_light_render->set_shadow(m_light_shadow);
+    m_light_render->set_type(IRender_Light::POINT);
+    m_light_render->set_range(m_light_range);
+    m_light_render->set_color(m_light_color);
+    m_light_render->set_cone(m_light_angle);
+    m_light_render->set_volumetric(m_light_volumetric);
+    m_light_render->set_active(true);
+
     return (TRUE);
 }
 
@@ -360,6 +409,13 @@ void CPoltergeist::net_Destroy()
     Energy::disable();
 
     ability()->on_destroy();
+
+    // DA: погасить и уничтожить свет
+    if (m_light_render)
+    {
+        m_light_render->set_active(false);
+        m_light_render.destroy();
+    }
 }
 
 void CPoltergeist::Die(IGameObject* who)

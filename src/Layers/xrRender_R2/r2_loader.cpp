@@ -43,6 +43,13 @@ void CRender::level_Load(IReader* fs)
                 continue;
             xr_strcpy(n_sh, n);
             pstr delim = strchr(n_sh, '/');
+            // [DA_PORT] The result was dereferenced unchecked: a level shader entry without a '/' wrote
+            // through a null pointer. Skip it and say which one instead of taking the whole game down.
+            if (!delim)
+            {
+                Msg("! [DA_PORT] level shader [%s] has no '/' separator - skipped", n_sh);
+                continue;
+            }
             *delim = 0;
             xr_strcpy(n_tlist, delim + 1);
             Shaders[i] = Resources->Create(n_sh, n_tlist);

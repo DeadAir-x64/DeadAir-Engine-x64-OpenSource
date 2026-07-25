@@ -137,6 +137,72 @@ CMainMenu::CMainMenu()
     }
 
     Device.seqFrame.Add(this, REG_PRIORITY_LOW - 1000);
+
+    // [DA_PORT] "-da_export_scripts": dump every script the VFS actually resolves (packed
+    // archives + loose overrides, in engine priority order) to appdata\logs\vfs_scripts\ and
+    // quit. Dev-tooling flag: the offline _unpacked reference set proved incomplete
+    // (falout_manager & co load in-game but are absent there), and this runs at main menu -
+    // no level load needed, so the whole collection step is scriptable from outside.
+    if (strstr(Core.Params, "-da_export_scripts"))
+    {
+        FS_FileSet all_scripts;
+        FS.file_list(all_scripts, "$game_scripts$", FS_ListFiles, "*.script");
+        u32 exported = 0;
+        for (const FS_File& f : all_scripts)
+        {
+            string_path script_src;
+            FS.update_path(script_src, "$game_scripts$", f.name.c_str());
+            IReader* r = FS.r_open(script_src);
+            if (!r)
+                continue;
+            string_path dump_name;
+            xr_sprintf(dump_name, "vfs_scripts\\%s", f.name.c_str());
+            IWriter* w = FS.w_open("$logs$", dump_name);
+            if (w)
+            {
+                w->w(r->pointer(), r->length());
+                FS.w_close(w);
+                ++exported;
+            }
+            FS.r_close(r);
+        }
+        Msg("! [DA_PORT] -da_export_scripts: exported %u/%u VFS scripts to appdata\\logs\\vfs_scripts\\, quitting",
+            exported, (u32)all_scripts.size());
+        FlushLog();
+        Console->Execute("quit");
+    }
+
+    // [DA_PORT] "-da_export_configs": same idea for $game_config$ (ltx/xml) - needed to study
+    // data-driven DA features (trade/barter UI wiring, character_desc barter_mode profiles,
+    // UI layouts) that live only in the packed archives.
+    if (strstr(Core.Params, "-da_export_configs"))
+    {
+        FS_FileSet all_configs;
+        FS.file_list(all_configs, "$game_config$", FS_ListFiles);
+        u32 exported = 0;
+        for (const FS_File& f : all_configs)
+        {
+            string_path cfg_src;
+            FS.update_path(cfg_src, "$game_config$", f.name.c_str());
+            IReader* r = FS.r_open(cfg_src);
+            if (!r)
+                continue;
+            string_path dump_name;
+            xr_sprintf(dump_name, "vfs_configs\\%s", f.name.c_str());
+            IWriter* w = FS.w_open("$logs$", dump_name);
+            if (w)
+            {
+                w->w(r->pointer(), r->length());
+                FS.w_close(w);
+                ++exported;
+            }
+            FS.r_close(r);
+        }
+        Msg("! [DA_PORT] -da_export_configs: exported %u/%u VFS configs to appdata\\logs\\vfs_configs\\, quitting",
+            exported, (u32)all_configs.size());
+        FlushLog();
+        Console->Execute("quit");
+    }
 }
 
 CMainMenu::~CMainMenu()
@@ -310,7 +376,18 @@ bool CMainMenu::ReloadUI()
 }
 
 bool CMainMenu::IsActive() const { return m_Flags.test(flActive); }
-bool CMainMenu::CanSkipSceneRendering() { return IsActive() && !m_Flags.test(flGameSaveScreenshot); }
+bool CMainMenu::CanSkipSceneRendering()
+{
+    if (!IsActive() || m_Flags.test(flGameSaveScreenshot))
+        return false;
+
+    // [DA_PORT] Drawing the paused scene behind the menu was tried and reverted: the menu is composed
+    // inside the combine pass, and with the world rendering behind it the translucent text accumulated
+    // frame over frame into stripes. Disabling the TAA jitter, and then the whole temporal pass, did
+    // not stop it - the accumulation comes from somewhere else in the UI path. Worth revisiting only
+    // with that root cause understood; the splash art costs nothing and always reads cleanly.
+    return true;
+}
 
 void CMainMenu::IR_OnActivate()
 {

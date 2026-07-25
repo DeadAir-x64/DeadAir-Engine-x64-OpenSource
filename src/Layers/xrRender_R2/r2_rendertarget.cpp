@@ -10,6 +10,7 @@
 #include "Layers/xrRender/blenders/blender_bloom_build.h"
 #include "Layers/xrRender/blenders/blender_luminance.h"
 #include "Layers/xrRender/blenders/blender_ssao.h"
+#include "Layers/xrRender/blenders/blender_taa.h" // DA: temporal AA
 
 #include "Layers/xrRender/blenders/dx11MSAABlender.h"
 #include "Layers/xrRender/blenders/dx11RainBlender.h"
@@ -29,8 +30,8 @@ void CRenderTarget::u_stencil_optimize(CBackend& cmd_list, eStencilOptimizeMode 
     // TODO: DX11: remove half pixel offset?
     VERIFY(RImplementation.o.nvstencil);
     u32 Offset;
-    float _w = float(Device.dwWidth);
-    float _h = float(Device.dwHeight);
+    float _w = float(Device.dwRenderWidth);
+    float _h = float(Device.dwRenderHeight);
     u32 C = color_rgba(255, 255, 255, 255);
     FVF::TL* pv = (FVF::TL*)RImplementation.Vertex.Lock(4, g_combine->vb_stride, Offset);
     float eps = 0;
@@ -113,8 +114,8 @@ void CRenderTarget::u_compute_texgen_jitter(CBackend& cmd_list, Fmatrix& m_Texge
     m_Texgen_J.mul(m_TexelAdjust, cmd_list.xforms.m_wvp);
 
     // rescale - tile it
-    float scale_X = float(Device.dwWidth) / float(TEX_jitter);
-    float scale_Y = float(Device.dwHeight) / float(TEX_jitter);
+    float scale_X = float(Device.dwRenderWidth) / float(TEX_jitter);
+    float scale_Y = float(Device.dwRenderHeight) / float(TEX_jitter);
     m_TexelAdjust.scale(scale_X, scale_Y, 1.f);
     m_Texgen_J.mulA_44(m_TexelAdjust);
 }
@@ -201,6 +202,19 @@ CRenderTarget::CRenderTarget()
 {
     ZoneScoped;
 
+    // [DA_PORT] Make sure the internal render resolution is current before any target is sized from it.
+    // Targets are also rebuilt on device reset, which is how a render-scale change takes effect.
+    Device.UpdateRenderResolution();
+
+    // Belt and braces: a zero here would create 0x0 scene targets, i.e. a black screen with no D3D error.
+    if (Device.dwRenderWidth == 0 || Device.dwRenderHeight == 0)
+    {
+        Device.dwRenderWidth = Device.dwWidth;
+        Device.dwRenderHeight = Device.dwHeight;
+    }
+    Msg("* [DA_PORT] render targets: output %ux%u, scene %ux%u", Device.dwWidth, Device.dwHeight,
+        Device.dwRenderWidth, Device.dwRenderHeight);
+
     static constexpr pcstr SAMPLE_DEFS[] = { "0", "1", "2", "3", "4", "5", "6", "7" };
 
     if (!strstr(Core.Params, "-smap"))
@@ -255,13 +269,19 @@ CRenderTarget::CRenderTarget()
 
     // NORMAL
     {
-        u32 w = Device.dwWidth, h = Device.dwHeight;
+        // [DA_PORT] Scene targets follow the internal render resolution ("r__render_scale"); only the
+        // back buffer itself stays at the output size. rt_Base comes straight out of the swap chain, so
+        // its dimensions are fixed by the swap chain regardless of what is passed here — but the scene
+        // depth buffer is an ordinary texture and has to match the colour targets, or D3D rejects the
+        // pairing. When the scale is 100% both are identical and nothing changes.
+        u32 w = Device.dwRenderWidth, h = Device.dwRenderHeight;
+
         rt_Base.resize(HW.BackBufferCount);
         for (u32 i = 0; i < HW.BackBufferCount; i++)
         {
             string32 temp;
             xr_sprintf(temp, "%s%u", r2_RT_base, i);
-            rt_Base[i].create(temp, w, h, HW.Caps.fTarget, 1, { CRT::CreateBase });
+            rt_Base[i].create(temp, Device.dwWidth, Device.dwHeight, HW.Caps.fTarget, 1, { CRT::CreateBase });
         }
         rt_Base_Depth.create(r2_RT_base_depth, w, h, HW.Caps.fDepth, 1, { CRT::CreateBase });
 
@@ -271,6 +291,13 @@ CRenderTarget::CRenderTarget()
             rt_MSAADepth.create(r2_RT_MSAAdepth, w, h, D3DFMT_D24S8, SampleCount);
 
         rt_Position.create(r2_RT_P, w, h, D3DFMT_A16B16G16R16F, SampleCount);
+#if RENDER == R_R4
+        // DA: scene-grab target for water SSLR ("$user$ssr", bound to s_image by r3\effects_water.s).
+        // ALWAYS single-sampled: with MSAA off we CopyResource rt_Generic_0 into it, with MSAA on we
+        // ResolveSubresource into it — both require a non-MSAA destination.
+        rt_SSR.create(r2_RT_SSR, w, h, D3DFMT_A8R8G8B8, 1);
+
+#endif
         if (!options.gbuffer_opt)
             rt_Normal.create(r2_RT_N, w, h, D3DFMT_A16B16G16R16F, SampleCount);
 
@@ -312,6 +339,33 @@ CRenderTarget::CRenderTarget()
         rt_Generic_0.create(r2_RT_generic0, w, h, D3DFMT_A8R8G8B8, 1);
         rt_Generic_1.create(r2_RT_generic1, w, h, D3DFMT_A8R8G8B8, 1);
         rt_Generic.create(r2_RT_generic, w, h, D3DFMT_A8R8G8B8, 1);
+
+#if RENDER == R_R4
+        // DA: temporal AA buffers. They live on rt_Color, which is where the finished frame lands after
+        // the final combine, so they must match its format exactly — CopyResource refuses otherwise, and
+        // rt_Color is fp16 on some option combinations. Always single-sampled: the resolve is skipped
+        // under MSAA anyway.
+        //
+        // Three of them because the resolve has two outputs and neither can be its own input: rt_TAA_out
+        // takes the sharpened frame that goes back into rt_Color, rt_TAA_scratch the plain one bound for
+        // the history, and rt_TAA_history is what the next frame reads.
+        {
+            const D3DFORMAT taa_fmt = rt_Color->fmt;
+            rt_TAA_out.create(r2_RT_taa_out, w, h, taa_fmt, 1);
+            rt_TAA_scratch.create(r2_RT_taa_scratch, w, h, taa_fmt, 1);
+            rt_TAA_history.create(r2_RT_taa_history, w, h, taa_fmt, 1);
+        }
+
+        // [DA_PORT] Motion vectors: where each pixel was on the previous frame, in screen space.
+        // RG16F is the format FSR 2 and every other temporal upscaler expects — two signed channels
+        // with enough precision for sub-pixel movement, at half the bandwidth of a full fp16 target.
+        //
+        // Deliberately NOT a fourth G-buffer target: that would mean changing the shared output
+        // structure and touching all 48 blenders at once. Static geometry's motion is recovered
+        // analytically from depth plus the previous camera matrix (one full-screen pass, no blender
+        // changes), and only genuinely moving things need to draw into this on top.
+        rt_Velocity.create(r2_RT_velocity, w, h, D3DFMT_G16R16F, 1);
+#endif
 
         if (!options.msaa)
         {
@@ -561,13 +615,13 @@ CRenderTarget::CRenderTarget()
         u32 h = 0;
         if (options.ssao_half_data)
         {
-            w = Device.dwWidth / 2;
-            h = Device.dwHeight / 2;
+            w = Device.dwRenderWidth / 2;
+            h = Device.dwRenderHeight / 2;
         }
         else
         {
-            w = Device.dwWidth;
-            h = Device.dwHeight;
+            w = Device.dwRenderWidth;
+            h = Device.dwRenderHeight;
         }
 
         D3DFORMAT fmt = HW.Caps.id_vendor == 0x10DE ? D3DFMT_R32F : D3DFMT_R16F;
@@ -575,6 +629,15 @@ CRenderTarget::CRenderTarget()
 
         CBlender_SSAO_noMSAA b_ssao;
         s_ssao.create(&b_ssao, "r2" DELIMITER "ssao");
+#if RENDER == R_R4
+        // DA: temporal AA resolve (R4-only). Skipped under MSAA: common.h then types s_position as
+        // Texture2DMS, which da_taa.ps does not sample, so the shader would only fail to compile.
+        if (!options.msaa)
+        {
+            CBlender_TAA b_taa;
+            s_taa.create(&b_taa, "r2" DELIMITER "taa");
+        }
+#endif
     }
 
     // HDAO/SSAO
@@ -583,7 +646,7 @@ CRenderTarget::CRenderTarget()
 
     if (ssao_blur_on || ssao_hdao_ultra)
     {
-        const u32 w = Device.dwWidth, h = Device.dwHeight;
+        const u32 w = Device.dwRenderWidth, h = Device.dwRenderHeight;
 
         if (ssao_hdao_ultra)
         {
@@ -639,7 +702,8 @@ CRenderTarget::CRenderTarget()
             rt_LUM_pool[it].create(name, 1, 1, D3DFMT_R32F);
             RCache.ClearRT(rt_LUM_pool[it], 0x7f7f7f7f);
         }
-        u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, get_base_zb());
+        // [DA_PORT] see phase_pp: no depth when targeting the back buffer (sizes may differ)
+        u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr);
     }
 
     // COMBINE
@@ -699,8 +763,8 @@ CRenderTarget::CRenderTarget()
 #endif
 
     //
-    dwWidth[RCache.context_id] = Device.dwWidth;
-    dwHeight[RCache.context_id] = Device.dwHeight;
+    dwWidth[RCache.context_id] = Device.dwRenderWidth;
+    dwHeight[RCache.context_id] = Device.dwRenderHeight;
 }
 
 CRenderTarget::~CRenderTarget()
@@ -756,8 +820,8 @@ void CRenderTarget::reset_light_marker(CBackend& cmd_list, bool bResetStencil)
     if (bResetStencil)
     {
         u32 Offset;
-        float _w = float(Device.dwWidth);
-        float _h = float(Device.dwHeight);
+        float _w = float(Device.dwRenderWidth);
+        float _h = float(Device.dwRenderHeight);
         u32 C = color_rgba(255, 255, 255, 255);
         float eps = 0;
         float _dw = 0.5f;

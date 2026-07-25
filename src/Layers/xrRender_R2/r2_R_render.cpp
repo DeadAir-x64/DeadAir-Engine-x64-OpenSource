@@ -8,6 +8,10 @@
 
 #include "Layers/xrRender/FBasicVisual.h"
 
+// [DA_PORT] Defined in the engine (device.cpp). Declared out here, not inside the function that uses it:
+// an extern inside namespace xray::render::render_r4 would be looking for a symbol in that namespace.
+extern ENGINE_API Fmatrix g_da_taa_unjittered_VP;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 void CRender::RenderMenu()
@@ -20,6 +24,19 @@ void CRender::RenderMenu()
     RCache.set_CullMode(CULL_CCW);
     RCache.set_Stencil(FALSE);
     RCache.set_ColorWriteEnable();
+
+    // [DA_PORT] The composite path below draws the menu into rt_Generic_0 — but the UI lays itself out in
+    // screen coordinates, and with r__render_scale < 100 that target is smaller than the screen. Only the
+    // top-left corner of the menu would land in it, then get stretched back over the whole screen. The
+    // render scale is meant for the 3D scene, not the menu, so when it is active the menu goes straight to
+    // the back buffer at native size. The only thing lost is the menu distortion overlay.
+    if (Device.dwRenderWidth != Device.dwWidth || Device.dwRenderHeight != Device.dwHeight)
+    {
+        Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr);
+        RCache.ClearRT(Target->get_base_rt(), {});
+        g_pGamePersistent->OnRenderPPUI_main();
+        return;
+    }
 
     // Main Render
     {
@@ -34,7 +51,7 @@ void CRender::RenderMenu()
     }
 
     // Actual Display
-    Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, Target->get_base_zb());
+    Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
     RCache.set_Shader(Target->s_menu);
     RCache.set_Geometry(Target->g_menu);
 
@@ -94,7 +111,7 @@ void CRender::Render()
     // if (!(g_pGameLevel && g_hud) || bMenu)
     if (!g_pGameLevel || bMenu)
     {
-        Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, Target->get_base_zb());
+        Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
         return;
     }
 
@@ -380,6 +397,14 @@ void CRender::Render()
         PIX_EVENT(DEFER_LIGHT_COMBINE);
         Target->phase_combine();
     }
+
+    // [DA_PORT] Remember this frame's camera for the next one. Temporal effects reproject a pixel into
+    // the previous frame from its depth and this matrix; it has to be captured after the frame is fully
+    // rendered, so that the next frame compares against the camera the picture was actually drawn with.
+    // The un-jittered matrix, not mFullTransform: with TAA on the projection carries a sub-pixel offset
+    // that changes every frame, and reprojecting through it would read that offset as camera movement.
+    extern Fmatrix g_da_prev_VP;
+    g_da_prev_VP = ::g_da_taa_unjittered_VP;
 
     VERIFY(dsgraph.mapDistort.empty());
 }

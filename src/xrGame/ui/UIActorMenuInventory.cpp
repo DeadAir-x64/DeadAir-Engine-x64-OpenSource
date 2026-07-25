@@ -51,6 +51,7 @@ void CUIActorMenu::InitInventoryMode()
     ShowIfExist(m_pLists[eInventoryKnifeList], true);
     m_pLists[eInventoryPistolList]->Show(true);
     m_pLists[eInventoryAutomaticList]->Show(true);
+    ShowIfExist(m_pLists[eInventorySidearmList], true); // [DA_PORT] slot 5 sidearm (pistol/binocular) cell
     ShowIfExist(m_pQuickSlot, true);
     ShowIfExist(m_pLists[eTrashList], true);
     ShowIfExist(m_clock_value, true);
@@ -248,6 +249,7 @@ void CUIActorMenu::OnInventoryAction(PIItem pItem, u16 action_type)
     {
         m_pLists[eInventoryBeltList], m_pLists[eInventoryKnifeList], m_pLists[eInventoryPistolList], m_pLists[eInventoryAutomaticList],
         m_pLists[eInventoryBackpackList], m_pLists[eInventoryOutfitList], m_pLists[eInventoryHelmetList], m_pLists[eInventoryDetectorList],
+        m_pLists[eInventorySidearmList], // [DA_PORT] slot 5 sidearm cell
         m_pLists[eInventoryBagList], m_pLists[eTradeActorBagList], m_pLists[eTradeActorList]
     };
 
@@ -389,6 +391,30 @@ void CUIActorMenu::DetachAddon(LPCSTR addon_name, PIItem itm)
         itm->Detach(addon_name, true);
 }
 
+// [DA_PORT] Dead Air equips items to small "utility" slot cells whose authored capacity (rows_num x
+// cols_num, e.g. 2x1) can be smaller than the item's inventory grid: the slot-14 binocular/grenade cell
+// holds a binocular (a wpn, grid can exceed 2x1) and the slot-5 sidearm cell holds pistols. Placing an
+// oversized item makes CUICellContainer::FindFreeCell R_ASSERT "no free room" -> hard crash. Grow the cell
+// to fit BEFORE placing. Use SetStartCellsCapacity (grows m_orig_cell_capacity too) so a later Compact()/
+// ClearAll() -> ResetCellsCapacity() keeps the grown size instead of snapping back to the tiny original and
+// asserting on the retry (that reset was why plain SetCellsCapacity still crashed). Account for a vertical
+// list swapping x/y in FindFreeCell. Returns true if the (empty) cell now holds room for the item.
+static bool DA_GrowSlotCellToFit(CUIDragDropListEx* list, CUICellItem* ci)
+{
+    if (!list || !ci)
+        return false;
+    Ivector2 need = ci->GetGridSize();
+    if (list->GetVerticalPlacement())
+        std::swap(need.x, need.y);
+    const Ivector2 cap = list->CellsCapacity();
+    if (cap.x < need.x || cap.y < need.y)
+    {
+        const Ivector2 grown{ _max(cap.x, need.x), _max(cap.y, need.y) };
+        list->SetStartCellsCapacity(grown);
+    }
+    return list->CanSetItem(ci);
+}
+
 void CUIActorMenu::InitCellForSlot(u16 slot_idx)
 {
     //VERIFY(KNIFE_SLOT <= slot_idx && slot_idx <= LAST_SLOT);
@@ -402,7 +428,18 @@ void CUIActorMenu::InitCellForSlot(u16 slot_idx)
     if (!curr_list)
         return;
     CUICellItem* cell_item = create_cell_item(item);
-    curr_list->SetItem(cell_item);
+    // [DA_PORT] A Dead Air slot cell can be authored smaller than the item it must hold (the slot-14
+    // binocular cell reused for hand grenades: a grenade's inv grid can exceed the binocular cell).
+    // That made SetItem() assert "no free room" (UIDragDropListEx.cpp:566) -> hard crash on menu open.
+    // Grow the cell's grid capacity to fit the item before placing it, so the item shows instead.
+    if (DA_GrowSlotCellToFit(curr_list, cell_item))
+        curr_list->SetItem(cell_item);
+    else
+    {
+        // Still won't fit (cell somehow occupied / unexpected grid): don't SetItem -> it would R_ASSERT and
+        // crash. Show the item in the bag instead so nothing is lost and the menu opens.
+        m_pLists[eInventoryBagList]->SetItem(cell_item);
+    }
     if (m_currMenuMode == mmTrade && m_pPartnerInvOwner)
         ColorizeItem(cell_item, !CanMoveToPartner(item));
 
@@ -506,14 +543,22 @@ bool CUIActorMenu::TryActiveSlot(CUICellItem* itm)
 
     if (slot == GRENADE_SLOT)
     {
-        PIItem prev_iitem = m_pActorInvOwner->inventory().ItemFromSlot(slot);
-        if (prev_iitem && (prev_iitem->object().cNameSect() != iitem->object().cNameSect()))
+        // [DA_PORT] Dead Air shares engine slot 14 between the hand grenade and the binocular. Double-
+        // clicking either from the bag must cleanly REPLACE whatever occupies the slot: move the current
+        // occupant back to the bag with the real ToBag(), then equip the new item with ToSlot(). Using the
+        // proper move calls (NOT SendEvent_Item2Ruck/Item2Slot, which only fire network events and left the
+        // items' CurrPlace out of sync) keeps state consistent, so neither item ends up phantom-"in slot".
+        // That stale state was the root of the bugs: context menu offered "unequip" for a bagged item, and
+        // the force ToSlot / drag swap bailed at its UI==engine occupant check. TryActiveSlot only gets bag
+        // items (the dbl-click dispatch routes a slotted item straight to ToBag via case iActorSlot).
+        CUIDragDropListEx* slot_list = GetSlotList(slot);
+        if (slot_list && slot_list->ItemsCount())
         {
-            SendEvent_Item2Ruck(prev_iitem, m_pActorInvOwner->object_id());
-            SendEvent_Item2Slot(iitem, m_pActorInvOwner->object_id(), slot);
+            CUICellItem* prev_cell = slot_list->GetItemIdx(0);
+            if (prev_cell && prev_cell != itm)
+                ToBag(prev_cell, false);
         }
-        SendEvent_ActivateSlot(slot, m_pActorInvOwner->object_id());
-        return true;
+        return ToSlot(itm, false, slot);
     }
     if (slot == DETECTOR_SLOT)
     {
@@ -550,11 +595,26 @@ bool CUIActorMenu::ToSlot(CUICellItem* itm, bool force_place, u16 slot_id)
     CUIDragDropListEx* old_owner = itm->OwnerList();
     PIItem iitem = (PIItem)itm->m_pData;
 
+    // item's section, the target slot, its config-derived BaseSlot (config "slot" + 1), whether the
+    // inventory accepts it there, and whether a UI drop-list exists for that slot. A null slot-list
+    // makes ToSlot return true at the "Alundaio" branch below WITHOUT visually placing the item ->
+    // looks like "won't equip". Also flags a BaseSlot != target mismatch (bad/absent config "slot").
+    {
+        PIItem occ = m_pActorInvOwner->inventory().ItemFromSlot(slot_id);
+    }
+
     bool b_own_item = (iitem->parent_id() == m_pActorInvOwner->object_id());
     if (slot_id == HELMET_SLOT)
     {
         CCustomOutfit* pOutfit = m_pActorInvOwner->GetOutfit();
         if (pOutfit && !pOutfit->bIsHelmetAvaliable)
+            return false;
+    }
+    // [DA_PORT] block equipping a backpack (incl. force/drag) when the worn outfit forbids it.
+    if (slot_id == BACKPACK_SLOT)
+    {
+        CCustomOutfit* pOutfit = m_pActorInvOwner->GetOutfit();
+        if (pOutfit && !pOutfit->bIsBackpackAvaliable)
             return false;
     }
 
@@ -595,7 +655,16 @@ bool CUIActorMenu::ToSlot(CUICellItem* itm, bool force_place, u16 slot_id)
             old_owner->SetItem(child);
         }
 
-        new_owner->SetItem(i);
+        // [DA_PORT] same slot-cell-too-small guard as InitCellForSlot: grow the target cell to fit the
+        // equipped item (binocular/pistol -> small slot-14/slot-5 cell) so SetItem doesn't R_ASSERT. If it
+        // still won't fit, put it in the bag instead of crashing.
+        if (DA_GrowSlotCellToFit(new_owner, i))
+            new_owner->SetItem(i);
+        else
+        {
+            CUIDragDropListEx* bag = GetListByType(iActorBag);
+            (bag ? bag : new_owner)->SetItem(i);
+        }
 
         SendEvent_Item2Slot(iitem, m_pActorInvOwner->object_id(), slot_id);
 
@@ -748,6 +817,12 @@ bool CUIActorMenu::ToBelt(CUICellItem* itm, bool b_use_cursor_pos)
     PIItem iitem = (PIItem)itm->m_pData;
     bool b_own_item = (iitem->parent_id() == m_pActorInvOwner->object_id());
 
+    // [DA_PORT] Dead Air backpacks are artefact-class (belt=true) but must never go on the artefact belt.
+    // CanPutInBelt already rejects them, but a drag lands in the "belt busy" swap branch below which then
+    // mishandles the empty/oversized cell and crashes. Bail out early for any BACKPACK_SLOT item.
+    if (iitem->BaseSlot() == BACKPACK_SLOT)
+        return false;
+
     if (m_pActorInvOwner->inventory().CanPutInBelt(iitem))
     {
         CUIDragDropListEx* old_owner = itm->OwnerList();
@@ -824,10 +899,29 @@ CUIDragDropListEx* CUIActorMenu::GetSlotList(u16 slot_idx)
 
     case DETECTOR_SLOT: return m_pLists[eInventoryDetectorList]; break;
 
+    // [DA_PORT] engine slot 14 = Dead Air's binocular/grenade utility slot (GRENADE_SLOT == 14). Route
+    // it to the dragdrop_binocular cell so the equipped grenade/binocular is visible. InitCellForSlot
+    // grows the cell to fit the item first (the cell is authored for a binocular; a grenade grid can be
+    // bigger, which previously asserted "no free room"). Falls back to the bag if the cell is absent.
+    case GRENADE_SLOT:
+        if (m_pLists[eInventoryBinocularList])
+            return m_pLists[eInventoryBinocularList];
+        break;
+
+    // [DA_PORT] engine slot 5 = Dead Air's sidearm slot: every pistol and the binocular item live here
+    // (config slot 4 -> base 5). Route to the dragdrop_sidearm cell so the equipped pistol/binocular is
+    // visible. InitCellForSlot grows the cell to fit the item first. Falls back to the bag if the cell is
+    // absent from the loaded actor_menu xml (older/4:3 layouts).
+    case BINOCULAR_SLOT:
+        if (m_pLists[eInventorySidearmList])
+            return m_pLists[eInventorySidearmList];
+        if (m_currMenuMode == mmTrade)
+            return m_pLists[eTradeActorBagList];
+        return m_pLists[eInventoryBagList];
+
     case PDA_SLOT:
     case TORCH_SLOT:
     case ARTEFACT_SLOT:
-    case BINOCULAR_SLOT:
 
     default:
         if (m_currMenuMode == mmTrade)
@@ -996,7 +1090,16 @@ void CUIActorMenu::PropertiesBoxForSlots(PIItem item, bool& b_show)
     bool bAlreadyDressed = false;
     u16 cur_slot = item->BaseSlot();
 
-    if (!pOutfit && !pHelmet && cur_slot != NO_ACTIVE_SLOT && !inv.SlotIsPersistent(cur_slot) &&
+    // [DA_PORT] hide "move to slot" for a backpack the worn outfit forbids (scientific suit) - equipping is
+    // blocked anyway, so the menu entry would be a no-op. Mirrors how the helmet dress option is gated.
+    bool daBackpackBlocked = false;
+    if (cur_slot == BACKPACK_SLOT)
+    {
+        CCustomOutfit* worn = m_pActorInvOwner->GetOutfit();
+        daBackpackBlocked = worn && !worn->bIsBackpackAvaliable;
+    }
+
+    if (!pOutfit && !pHelmet && !daBackpackBlocked && cur_slot != NO_ACTIVE_SLOT && !inv.SlotIsPersistent(cur_slot) &&
         inv.ItemFromSlot(cur_slot) != item /*&& inv.CanPutInSlot(item, cur_slot)*/)
     {
         m_UIPropertiesBox->AddItem("st_move_to_slot", NULL, INVENTORY_TO_SLOT_ACTION);
@@ -1008,7 +1111,11 @@ void CUIActorMenu::PropertiesBoxForSlots(PIItem item, bool& b_show)
         b_show = true;
     }
 
-    if (item->Ruck() && inv.CanPutInRuck(item) && (cur_slot == NO_ACTIVE_SLOT || !inv.SlotIsPersistent(cur_slot)))
+    // [DA_PORT] Only offer "unequip / move to bag" for an item that is actually equipped (slot or belt).
+    // A bagged item sharing an occupied slot (binocular vs the grenade in slot 14) must never show it -
+    // guards against any residual UI<->engine desync leaving a ruck item looking slotted.
+    if (item->CurrPlace() != eItemPlaceRuck &&
+        item->Ruck() && inv.CanPutInRuck(item) && (cur_slot == NO_ACTIVE_SLOT || !inv.SlotIsPersistent(cur_slot)))
     {
         if (!pOutfit)
         {
@@ -1551,6 +1658,16 @@ void CUIActorMenu::UpdateOutfit()
             m_pLists[eInventoryHelmetList]->SetCellsCapacity({ 0, 0 });
         else
             m_pLists[eInventoryHelmetList]->SetCellsCapacity(m_pLists[eInventoryHelmetList]->MaxCellsCapacity());
+    }
+    // [DA_PORT] same blocker treatment for the backpack cell: shrink to 0 (draws backpack_over) when the
+    // worn outfit forbids a backpack, restore to full otherwise. Backpack grid (2x2) == cell cap, so this
+    // never fights DA_GrowSlotCellToFit.
+    if (m_pLists[eInventoryBackpackList])
+    {
+        if (outfit && !outfit->bIsBackpackAvaliable)
+            m_pLists[eInventoryBackpackList]->SetCellsCapacity({ 0, 0 });
+        else
+            m_pLists[eInventoryBackpackList]->SetCellsCapacity(m_pLists[eInventoryBackpackList]->MaxCellsCapacity());
     }
 
     if (m_OutfitInfo)

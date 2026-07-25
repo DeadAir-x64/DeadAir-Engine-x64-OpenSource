@@ -281,7 +281,10 @@ float CHelmet::HitThroughArmor(float hit_power, s16 element, float ap, bool& add
         }
         else
         {
-            float one = 0.1f;
+            // [DA_PORT] Same 10x nerf as in CCustomOutfit::HitThroughArmor — Dead Air drops the factor
+            // entirely here and subtracts the full protection value, which is what its helmet configs
+            // (radiation_protection / burn_protection / shock_protection) are balanced for.
+            float one = 1.0f; // was 0.1f
             if (hit_type == ALife::eHitTypeStrike ||
                 hit_type == ALife::eHitTypeWound ||
                 hit_type == ALife::eHitTypeWound_2 ||

@@ -39,6 +39,17 @@ void CActor::IR_OnKeyboardPress(int cmd)
     if (GamePersistent().GetHudTuner().is_active())
         return;
 
+    // [DA_PORT] item placement-preview mode: fire = confirm, use/reload = cancel; swallow the rest so
+    // the player positions the ghost without firing/using anything else.
+    if (m_item_placement_active)
+    {
+        if (cmd == kWPN_FIRE)
+            ConfirmItemPlacement();
+        else if (cmd == kUSE || cmd == kWPN_RELOAD)
+            CancelItemPlacement();
+        return;
+    }
+
     if (Remote())
         return;
 
@@ -117,7 +128,13 @@ void CActor::IR_OnKeyboardPress(int cmd)
     case kCAM_3: cam_Set(eacFreeLook); break;
     case kNIGHT_VISION:
     {
-        SwitchNightVision();
+        // [DA_PORT] Night vision is owned by the Lua script: itms_manager.script on_key_press catches
+        // kNIGHT_VISION and calls torch:enable_night_vision(not torch:night_vision_enabled()), which
+        // also gates it on the wpn_upd battery charge. The stock CoP C++ handler below ALSO toggled
+        // the torch's night vision on this same key, so BOTH fired per press and cancelled out — NV
+        // switched on then immediately back off (confirmed by the paired on=1/on=0 SwitchNightVision
+        // calls in one press), so it never stayed on. Defer entirely to the script (DA has no C++ NV
+        // key handling). SwitchNightVision() itself is kept for the debug no-clip path / other callers.
         break;
     }
     case kTORCH:
@@ -893,7 +910,7 @@ void CActor::SwitchTorch()
 
     CTorch* torch = smart_cast<CTorch*>(torch_item);
     if (torch)
-        torch->Switch();
+        torch->Switch2();
 }
 
 #ifndef MASTER_GOLD

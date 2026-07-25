@@ -192,10 +192,21 @@ float low_cover_in_direction(u32 level_vertex_id, const Fvector& direction)
 
 float rain_factor() { return (g_pGamePersistent->Environment().CurrentEnv.rain_density); }
 
-// Dead Air compat stub
-float get_rain_volume() { Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__); return 0.0f; }
+// [DA_PORT] Dead Air's name for the current rain intensity; it is the same 0..1 value rain_factor()
+// returns, which is how every caller treats it (utils.clamp(...,0,1), *100 for a percentage, etc).
+// This used to be a stub returning 0, which silently disabled everything driven by rain:
+// dinamic_hud.script:443 (the visor rain droplets), fallout_manager.script:279, and five spots in
+// level_weathers.script (rain sounds/vibrance/weather effects).
+float get_rain_volume() { return (g_pGamePersistent->Environment().CurrentEnv.rain_density); }
 u32 vertex_in_direction(u32 level_vertex_id, Fvector direction, float max_distance)
 {
+    // [DA_PORT] guard like xray-monolith: DA scripts feed stored/offline vertex ids here and
+    // an out-of-range id AV'd the whole game (raw stack crash in vertex_position+0x33).
+    if (!ai().level_graph().valid_vertex_id(level_vertex_id))
+    {
+        Msg("! [DA_PORT] vertex_in_direction: invalid level_vertex_id %u", level_vertex_id);
+        return level_vertex_id;
+    }
     direction.normalize_safe();
     direction.mul(max_distance);
     Fvector start_position = ai().level_graph().vertex_position(level_vertex_id);
@@ -205,7 +216,17 @@ u32 vertex_in_direction(u32 level_vertex_id, Fvector direction, float max_distan
     return (ai().level_graph().valid_vertex_id(result) ? result : level_vertex_id);
 }
 
-Fvector vertex_position(u32 level_vertex_id) { return (ai().level_graph().vertex_position(level_vertex_id)); }
+Fvector vertex_position(u32 level_vertex_id)
+{
+    // [DA_PORT] guard like xray-monolith (level_script.cpp:425): invalid id -> zero vector
+    // instead of an access violation. DA scripts hit this with stale stored vertex ids.
+    if (!ai().level_graph().valid_vertex_id(level_vertex_id))
+    {
+        Msg("! [DA_PORT] vertex_position: invalid level_vertex_id %u", level_vertex_id);
+        return Fvector{};
+    }
+    return (ai().level_graph().vertex_position(level_vertex_id));
+}
 void map_add_object_spot(u16 id, LPCSTR spot_type, LPCSTR text)
 {
     CMapLocation* ml = Level().MapManager().AddMapLocation(spot_type, id);

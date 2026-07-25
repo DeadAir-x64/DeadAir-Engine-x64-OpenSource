@@ -16,6 +16,10 @@
 #define effControllerAura2 (eStartEffectorID + 8)
 #define effBigMonsterHit (eStartEffectorID + 9)
 #define effActorDeath (eStartEffectorID + 10)
+// [DA_PORT] Fading vision as the actor dies — see CActorCondition::UpdateDyingVision.
+#define effDyingVision (eStartEffectorID + 11)
+// [DA_PORT] Vision affected by radiation sickness — see CActorCondition::UpdateRadiationVision.
+#define effRadiationVision (eStartEffectorID + 12)
 
 #define effPoltergeistTeleDetectStartEffect 2048
 // warning: ~50 constants after effPoltergeistTeleDetectStartEffect are reserved for poltergeists

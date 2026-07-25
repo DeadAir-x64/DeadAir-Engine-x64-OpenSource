@@ -369,13 +369,26 @@ LPCSTR InventoryUtilities::GetTimePeriodAsString(pstr _buff, u32 buff_sz, ALife:
     return _buff;
 }
 
+// [DA_PORT] Dead Air displays the actor's MaxWalkWeight (base [actor] max_walk_weight ~20kg + gear)
+// as the inventory "max kg", NOT MaxCarryWeight (base [inventory] max_weight = 5, which DA/CoC use only
+// as the soft overweight-walk-penalty threshold in Actor_Movement, not a shown cap). Verified in DA's
+// decompiled InventoryUtilities::UpdateWeightStr: its actor branch overrides the shown max with
+// MaxWalkWeight (FUN_100ea2c0 = conditions().MaxWalkWeight() + get_additional_weight()). Non-actor
+// owners (traders, corpses) keep MaxCarryWeight so their trade/loot caps are unaffected.
+static float DA_DisplayMaxWeight(CInventoryOwner* pInvOwner)
+{
+    if (CActor* pActor = smart_cast<CActor*>(pInvOwner))
+        return pActor->MaxWalkWeight();
+    return pInvOwner->MaxCarryWeight();
+}
+
 void InventoryUtilities::UpdateWeight(CUIStatic& wnd, CInventoryOwner* pInvOwner, bool withPrefix /*= false*/)
 {
     R_ASSERT(pInvOwner);
     string128 buf;
 
     float total = pInvOwner->inventory().CalcTotalWeight();
-    float max = pInvOwner->MaxCarryWeight();
+    float max = DA_DisplayMaxWeight(pInvOwner);
 
     string16 cl;
 
@@ -403,7 +416,7 @@ void InventoryUtilities::UpdateWeightStr(CUIStatic& wnd, CUIStatic& wnd_max, CIn
     string128 buf;
 
     float total = pInvOwner->inventory().CalcTotalWeight();
-    float max = pInvOwner->MaxCarryWeight();
+    float max = DA_DisplayMaxWeight(pInvOwner); // [DA_PORT] actor shows MaxWalkWeight (see helper above)
 
     LPCSTR kg_str = StringTable().translate("st_kg").c_str();
     xr_sprintf(buf, "%.1f %s", total, kg_str);

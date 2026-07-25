@@ -21,6 +21,7 @@
 using namespace ACTOR_DEFS;
 
 class CInfoPortion;
+class IRenderVisual; // [DA_PORT] item placement-preview ghost
 struct GAME_NEWS_DATA;
 class CActorCondition;
 class CCustomOutfit;
@@ -439,6 +440,9 @@ public:
     float m_fCrouchFactor;
     float m_fClimbFactor;
     float m_fSprintFactor;
+    // [DA_PORT] how hard the carried weapon / worn outfit cut into sprint speed (sprint_*_koef)
+    float m_fSprintWeaponFactor{};
+    float m_fSprintOutfitFactor{};
 
     float m_fWalk_StrafeFactor;
     float m_fRun_StrafeFactor;
@@ -487,11 +491,46 @@ public:
     float MaxWalkWeight() const;
     float get_additional_weight() const;
 
+    // [DA_PORT] "Установить" placement-preview mode (kerosene lamp etc.): a ghost of the item follows
+    // the crosshair until the player confirms (fire) or cancels (use). Triggered from
+    // itms_manager.inv_item_place via db.actor:start_item_placement(). Impl in Actor.cpp.
+    void StartItemPlacement(LPCSTR section, u16 item_id);
+    void UpdateItemPlacement();
+    void ConfirmItemPlacement();
+    void CancelItemPlacement();
+    bool IsItemPlacementActive() const { return m_item_placement_active; }
+
 protected:
+    // [DA_PORT] item placement-preview state
+    bool m_item_placement_active{ false };
+    shared_str m_item_placement_section;
+    u16 m_item_placement_item_id{ 0xffff };
+    IRenderVisual* m_item_placement_visual{ nullptr };
+    Fmatrix m_item_placement_xform;
+    // [DA_PORT] Ghost highlight. The model itself cannot be tinted from here — IRenderVisual does not
+    // expose its shader, and adding that to IRender would mean touching a shared header and rebuilding
+    // everything. A light plus a glow ride along with the ghost instead: they mark the spot, pulse to
+    // read as "not placed yet", and cost nothing outside placement mode.
+    ref_light m_item_placement_light;
+    ref_glow m_item_placement_glow;
+
     CFireDispertionController m_fdisp_controller;
     //если актер целится в прицел
     void SetZoomAimingMode(bool val) { m_bZoomAimingMode = val; }
     bool m_bZoomAimingMode;
+
+    // [DA_PORT] hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):
+    //  - m_fBreathKoef: while aiming, holding the accel/sprint ACTION multiplies aim sway by this
+    //    ([actor] breath_koef, DA=0.02 => strong steadying). Rebind-safe (reads mcAccel, not a key).
+    //  - m_fZoomInertionScale: extra sway factor scripts push via set_actor_zoom_inertion() (DA feeds
+    //    it from actor psy_health; cigarettes etc. lower it). 0 = no extra sway.
+    float m_fBreathKoef{0.02f};
+    float m_fZoomInertionScale{0.f};
+
+public:
+    void SetZoomInertionScale(float f) { m_fZoomInertionScale = f; }
+
+protected:
 
     //настройки аккуратности стрельбы
     //базовая дисперсия (когда игрок стоит на месте)

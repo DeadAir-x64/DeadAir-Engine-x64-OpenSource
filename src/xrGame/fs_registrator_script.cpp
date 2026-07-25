@@ -177,9 +177,73 @@ LPCSTR get_file_age_str(CLocatorAPI* fs, LPCSTR nm)
     return asctime(newtime);
 }
 
+// [DA_PORT] Dead Air's debug menu (ui_debug_main.script - the "Advanced"/animations tab, opened via
+// the "S" key with -dbgdev) calls lua_extensions.recurse_subdirectories_and_execute(path, {exts},
+// callback), a utility module that doesn't exist anywhere in this install (not in gamedata, not in
+// the engine's own default script pack) - it crashed the whole game with "attempt to call a nil
+// value". Implement it directly rather than adding a data file, walking the VFS the same way the
+// engine's own file_list/file_list_open calls already do elsewhere in this file.
+static void recurse_subdirectories_and_execute_impl(
+    pcstr path, const xr_vector<shared_str>& exts, const luabind::functor<void>& cb)
+{
+    FS_FileSet files;
+    FS.file_list(files, path, FS_ListFiles);
+    for (const FS_File& f : files)
+    {
+        pcstr dot = strrchr(f.name.c_str(), '.');
+        if (!dot)
+            continue;
+        pcstr ext = dot + 1;
+        bool matched = exts.empty();
+        for (const auto& e : exts)
+        {
+            if (0 == xr_stricmp(ext, e.c_str()))
+            {
+                matched = true;
+                break;
+            }
+        }
+        if (matched)
+            cb(path, f.name.c_str());
+    }
+
+    xr_vector<char*>* folders = FS.file_list_open(path, FS_ListFolders | FS_RootOnly);
+    if (folders)
+    {
+        for (char* folder_name : *folders)
+        {
+            string_path sub;
+            strconcat(sizeof(sub), sub, path, folder_name, "\\");
+            recurse_subdirectories_and_execute_impl(sub, exts, cb);
+        }
+        FS.file_list_close(folders);
+    }
+}
+
+void recurse_subdirectories_and_execute(
+    pcstr path, const luabind::object& ext_table, const luabind::functor<void>& cb)
+{
+    xr_vector<shared_str> exts;
+    if (luabind::type(ext_table) == LUA_TTABLE)
+    {
+        for (luabind::iterator it(ext_table), end; it != end; ++it)
+        {
+            pcstr s = luabind::object_cast<pcstr>(*it);
+            if (s)
+                exts.emplace_back(s);
+        }
+    }
+    recurse_subdirectories_and_execute_impl(path, exts, cb);
+}
+
 void fs_registrator::script_register(lua_State* luaState)
 {
     using namespace luabind;
+
+    module(luaState, "lua_extensions")
+    [
+        def("recurse_subdirectories_and_execute", &recurse_subdirectories_and_execute)
+    ];
 
     module(luaState)
     [

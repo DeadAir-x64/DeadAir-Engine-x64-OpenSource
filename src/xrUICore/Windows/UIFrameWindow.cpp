@@ -195,7 +195,14 @@ void CUIFrameWindow::DrawElements()
     u32 rect_count = 4; // lt+rt+lb+rb
     back_len.x = rect.width() - m_tex_rect[fmLT].width() - m_tex_rect[fmRT].width();
     back_len.y = rect.height() - m_tex_rect[fmLT].height() - m_tex_rect[fmRB].height();
-    R_ASSERT(back_len.x + EPS_L >= 0.0f && back_len.y + EPS_L >= 0.0f);
+    // [DA_PORT] Some Dead Air-defined windows (e.g. the debug menu from ui_debug_main.script) are
+    // sized smaller than this frame texture's corner pieces, making back_len negative - a data
+    // sizing mismatch, not something fixable by editing DA's data. This used to be a hard R_ASSERT
+    // FATAL; clamp instead so corners may overlap slightly rather than crashing the whole game.
+    if (back_len.x < 0.0f)
+        back_len.x = 0.0f;
+    if (back_len.y < 0.0f)
+        back_len.y = 0.0f;
 
     u32 cnt = 0;
     if (back_len.x > 0.0f) // top+bottom

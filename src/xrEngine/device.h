@@ -58,9 +58,18 @@ public:
     u32 dwPrecacheFrame{};
     u32 dwPrecacheTotal{};
 
-    // Rendering resolution
+    // Output resolution — the swap-chain / window size. The UI, HUD and the final present all use this.
     u32 dwWidth{};
     u32 dwHeight{};
+
+    // [DA_PORT] Internal resolution the 3D scene is actually rendered at, driven by "r__render_scale".
+    // It is the size of every scene render target, so the deferred pipeline works at this resolution and
+    // the final post-process pass stretches the result up to dwWidth x dwHeight. Equal to the output
+    // resolution when the scale is 100% — the groundwork FSR needs, and useful on its own for weak GPUs.
+    u32 dwRenderWidth{};
+    u32 dwRenderHeight{};
+
+    void UpdateRenderResolution();
 
     float fWidth_2{};
     float fHeight_2{};

@@ -11,7 +11,12 @@ enum
     KNIFE_SLOT = 1, // btn1			was (0)			!!!
     INV_SLOT_2, // btn2 PISTOL_SLOT	was (1)
     INV_SLOT_3, // btn3 RIFLE_SLOT	was (2)
-    GRENADE_SLOT, // btn4 GRENADE_SLOT	was (3)
+    // [DA_PORT] Stock CoP/OpenXRay puts hand grenades on this slot (=4, config slot 3). Dead Air
+    // RELOCATED hand grenades to engine slot 14 (grenade_f1 has config "slot = 13" -> base_slot 14,
+    // confirmed by in-game trace). No DA item uses config slot 3, so slot 4 is unused in DA. The real
+    // GRENADE_SLOT is redefined at 14 below so every grenade code path (throw activation, fake-for-
+    // grenade auto-slot, NPC combat, actor-menu grenade branch) targets the slot DA actually uses.
+    GRENADE_LEGACY_SLOT_4, // = 4, stock CoP grenade slot; UNUSED by DA data (kept for numbering/saves)
     BINOCULAR_SLOT, // btn5 BINOCULAR_SLOT
     BOLT_SLOT, // btn6 BOLT_SLOT
     OUTFIT_SLOT, // outfit
@@ -20,7 +25,18 @@ enum
     TORCH_SLOT, // torch
     ARTEFACT_SLOT, // artefact
     HELMET_SLOT,
-    BACKPACK_SLOT, // backpack
+    // [DA_PORT] Dead Air defines more inventory slots than stock CoC (system.ltx [inventory] has
+    // slot_persistent_1..15). NOTE the +1 offset in inventory_item.cpp:104 (base_slot_id = config
+    // "slot" + 1, SOC->CoP convention), so a config "slot = N" lands on engine slot N+1:
+    //   engine 13 (config slot 12) = knife-hit "script animation" items (anm_base)
+    //   engine 14 (config slot 13) = unused in DA data
+    //   engine 15 (config slot 14) = backpack (kit_hunt / backpack_light/heavy / exobackpack)
+    // Old CoC ended at BACKPACK_SLOT=13, so the backpack (engine 15) had no slot and couldn't be
+    // equipped (log: "slots_count = 14, but real slots count is 15"). Slots 0..12 keep their old
+    // indices, so saves stay compatible.
+    SCRIPT_ANIM_SLOT, // = 13
+    GRENADE_SLOT, // = 14, Dead Air's hand-grenade slot (config slot 13 -> base_slot 14); was RESERVED_SLOT_14
+    BACKPACK_SLOT, // = 15, backpack
     SLOTS_COUNT
 };
 

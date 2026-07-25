@@ -63,14 +63,43 @@
 - **Фикс:** ESC сначала закрывает UI-диалоги (TopInputReceiver→HideDialog), потом вызывает `Console->Execute("main_menu")`.
 - **Предыдущая попытка:** маппинг на `kPAUSE` → `Device.Pause()` не открывал меню. Исправлено на `main_menu`.
 
+### ASLR/High-Entropy-VA — глобальный фикс (2026-07-16)
+- **Файлы:** `cmake/XRay.Compiler.GNULike.cmake`, `src/xr_3da/CMakeLists.txt`
+- **Проблема:** После полной чистой пересборки (`ninja -t clean` + rebuild) все DLL
+  получили `HIGH_ENTROPY_VA` (DllCharacteristics=0x160), что вызывало
+  `Mingw-w64 runtime failure: 32 bit pseudo relocation out of range` при загрузке DLL.
+  Ранее (до clean) работало, потому что CMake не пересобирал неизменившиеся DLL.
+- **Фикс:** `--disable-dynamicbase --disable-high-entropy-va` перенесён из per-target
+  `xr_3da/CMakeLists.txt` в глобальный `XRay.Compiler.GNULike.cmake` → применяется ко
+  всем DLL + exe. Проверено: DllCharacteristics=0x100 для всех (HIGH_ENTROPY_VA сброшен).
+- **Результат:** Полная пересборка (2108/2108) + деплой + запуск — игра работает 40+ секунд
+  без краша, без pseudo-relocation error.
+
 ### Фонарик (flashlight)
-- **Файлы:** `src/xrGame/Torch.cpp`, `ActorInput.cpp`, `object_handler.cpp`
-- **Что сделано:**
-  1. `CActor::SwitchTorch()` (`ActorInput.cpp:888`) — ищет фонарь строго в `TORCH_SLOT` через `ItemFromSlot`, не перебирает все attached-объекты.
-  2. `CTorch::net_Spawn()` (`Torch.cpp:274`) — стартует выключенным для актёра: `start_on = torch->m_active && !smart_cast<CActor*>(H_Parent())`.
-  3. `CTorch::net_Import()` (`Torch.cpp:473`) — игнорирует `eTorchActive` из серверного пакета для актёра.
-- **ОСТАЁТСЯ ПРОБЛЕМА:** `CObjectHandler::OnItemTake()` (`object_handler.cpp:77`) и `CObjectHandler::attach()` (`object_handler.cpp:293`) вызывают `switch_torch(item, true)` — фонарь включается при экипировке. Нужно добавить проверку: не включать для актёра.
-- **Статус:** НЕ ЗАВЕРШЕНО — фонарь всё ещё всегда включён.
+- **Файлы:** `src/xrGame/Torch.cpp`, `Torch.h`, `ActorInput.cpp`, `script_game_object_inventory_owner.cpp`
+- **Что сделано (полная картина):**
+  1. Двухфонарная система (torch/torch2): `m_switched_on`/`light_omni` = "torch" (фоновый
+     омни-свет, DA-скрипт `itms_manager.actor_on_update` держит его ON каждый кадр);
+     `m_switched_on2`/`light_render` = "torch2" (реальный луч со спотом/тенью, который
+     игрок переключает клавишей L). Реализовано: `Switch()`/`Switch2()`, `torch_active()`/
+     `torch2_active()`, `net_Export`/`net_Import` с `eTorch2Active`, guard'ы в `net_Spawn`/
+     `net_Import` для актёра (не принимать серверный state torch/torch2).
+  2. `EnableTorch2` binding (НЕ stub): `CScriptGameObject::EnableTorch2` → `CTorch::Switch2`
+     (`script_game_object_inventory_owner.cpp:2257`).
+  3. `CActor::SwitchTorch()` (`ActorInput.cpp:888`) — ИСПРАВЛЕНО: теперь вызывает
+     `Switch2()` (torch2/beam), а не `Switch()` (torch/omni). Раньше движок дёргал `Switch()`
+     (который `actor_on_update` тут же возвращал обратно), а `Switch2()` (реальный луч) не
+     переключался вообще → фонарик "всегда включён".
+- **Статус:** Фикс применён, полная пересборка + деплой + запуск — игра работает.
+
+### xray-monolith как донор
+- **Файлы:** `scratchpad/xray-monolith/` (read-only референс, в .gitignore).
+- **Что:** Клон `themrdemonized/xray-monolith` (ветка `all-in-one-vs2022-wpo`, shallow).
+  Используется для grep'а реализаций DA-подобных методов. НЕ линковать в билд, НЕ копировать
+  целиком — только точечный перенос функций по 3-touch схеме.
+- **Аудит кластера A:** monolith НЕ имеет `enable_torch2` (DA-unique), но имеет
+  `enable_torch`/`torch_enabled`/`update_torch`. Torch setters (`torch_set_*`/`torch2_set_*`)
+  отсутствуют в monolith — это DA-unique, потребуют расширения `CTorch`.
 
 ### OpenGL рендерер
 - **Файлы (данные):** `gamedata/shaders/gl/` (358 файлов скопировано из `res/gamedata/shaders/gl/`)
@@ -99,7 +128,8 @@
 
 ## Незавершённые / Known Issues
 
-1. **Фонарик всегда включён** — `CObjectHandler::OnItemTake` и `attach` вызывают `switch_torch(item, true)` без проверки на актёра. Нужно добавить `smart_cast<CActor*>` проверку.
+1. **Фонарик** — фикс `CActor::SwitchTorch()` → `Switch2()` применён, ждёт деплоя+теста.
+   Torch setters (`torch_set_*`/`torch2_set_*`) — stub'ы, DA-unique, отложены.
 2. **R4 чёрный экран** — несовместимость шейдеров. Отложено.
 3. **alife_human_brain.cpp warning** — `Wstringop-overflow` на `m_cpEquipmentPreferences[5]` / `m_cpMainWeaponPreferences[4]` (FixedVector bounds). Не критично.
 4. **[DA_PORT] trace Msg** — отладочный scaffolding в ScriptExporter.cpp, script_engine.cpp, ai_space.cpp, r2.cpp, Device_create.cpp, x_ray.cpp, xrGame.cpp — нужно вычистить перед релизом.

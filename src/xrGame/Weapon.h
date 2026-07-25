@@ -33,8 +33,11 @@ public:
     virtual ~CWeapon();
 
     // Dead Air: weapon "break/condition type" tracked by scripts (items_condition.script).
+    // It is a 32-BIT BITMASK - each bit is a distinct malfunction (scripts test e.g. bit 28 via
+    // bit_and(get_weapon_condition_type(), 2^28) and loop bits 0..31). MUST be u32, not u8, or bits 8..31
+    // are silently truncated and the scope/repair/malfunction logic breaks.
     // Runtime-only for now (not net/save serialized — resets on load; TODO persist).
-    u8 m_weapon_condition_type{0};
+    u32 m_weapon_condition_type{0};
 
     // Generic
     virtual void Load(LPCSTR section);
@@ -126,6 +129,9 @@ public:
 
     BOOL IsMisfire() const;
     BOOL CheckForMisfire();
+    // [DA_PORT] Weapons Evolution compat: unjam_motion_mark.script clears the jam from an
+    // animation mark via wpn:SetMisfire(false) (same as xray-monolith's SetMisfireScript).
+    void SetMisfireScript(bool b) { bMisfire = b; }
 
     BOOL AutoSpawnAmmo() const { return m_bAutoSpawnAmmo; };
     bool IsTriStateReload() const { return m_bTriStateReload; }
@@ -363,6 +369,7 @@ protected:
     //вероятность осечки при максимальной изношености
     float misfireProbability;
     float misfireConditionK;
+    float fAmmoMisfire{ 0.f }; // DA: базовый шанс осечки из конфига патрона (misfire_chance)
     // modified by Peacemaker [17.10.08]
     bool  misfireUseOldFormula{};
     float misfireStartCondition; //изношенность, при которой появляется шанс осечки

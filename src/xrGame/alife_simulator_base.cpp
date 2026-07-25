@@ -89,6 +89,23 @@ void CALifeSimulatorBase::reload(LPCSTR section)
 CSE_Abstract* CALifeSimulatorBase::spawn_item(LPCSTR section, const Fvector& position, u32 level_vertex_id,
     GameGraph::_GRAPH_ID game_vertex_id, u16 parent_id, bool registration)
 {
+    // [DA_PORT] Scripted spawns (alife():create) reach here with whatever the script passed.
+    // A null/unknown section or an out-of-range game vertex used to AV deep inside (raw stack
+    // crash at a trader) - reject them loudly and return nullptr so Lua just gets nil.
+    if (!section || !*section || !pSettings->section_exist(section))
+    {
+        Msg("! [DA_PORT] spawn_item: invalid section '%s' - spawn rejected", section ? section : "(null)");
+        FlushLog();
+        return nullptr;
+    }
+    if (!ai().game_graph().valid_vertex_id(game_vertex_id))
+    {
+        Msg("! [DA_PORT] spawn_item: invalid game_vertex_id %u for section '%s' - spawn rejected",
+            u32(game_vertex_id), section);
+        FlushLog();
+        return nullptr;
+    }
+
     CSE_Abstract* abstract = F_entity_Create(section);
     R_ASSERT3(abstract, "Cannot find item with section", section);
 
@@ -115,6 +132,17 @@ CSE_Abstract* CALifeSimulatorBase::spawn_item(LPCSTR section, const Fvector& pos
 
     CSE_ALifeDynamicObject* dynamic_object = smart_cast<CSE_ALifeDynamicObject*>(abstract);
     VERIFY(dynamic_object);
+    // [DA_PORT] Release strips the VERIFY and the very next field write AV'd on null (found by
+    // disassembling a live crash): a section whose server class is not CSE_ALifeDynamicObject
+    // in this engine build. Reject loudly instead - the log names the section to fix its class.
+    if (!dynamic_object)
+    {
+        Msg("! [DA_PORT] spawn_item: section '%s' maps to a non-ALife server class - spawn rejected", section);
+        FlushLog();
+        server().FreeID(abstract->ID, 0);
+        F_entity_Destroy(abstract);
+        return nullptr;
+    }
 
     //оружие спавним с полным магазинои
     CSE_ALifeItemWeapon* weapon = smart_cast<CSE_ALifeItemWeapon*>(dynamic_object);

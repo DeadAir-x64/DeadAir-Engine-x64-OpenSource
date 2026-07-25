@@ -751,7 +751,6 @@ void xrServer::SendTo_LL(ClientID ID, void* data, u32 size, u32 dwFlags, u32 dwT
 }
 void xrServer::SendBroadcast(ClientID exclude, NET_Packet& P, u32 dwFlags)
 {
-    Msg("! [DA_PORT] xrServer::SendBroadcast: this=%p exclude=%u", this, exclude.value()); FlushLog();
     struct ClientExcluderPredicate
     {
         ClientID id_to_exclude;

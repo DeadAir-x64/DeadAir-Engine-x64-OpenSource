@@ -11,6 +11,11 @@ namespace xray::render::RENDER_NAMESPACE
 #define     r2_RT_MSAAdepth     "$user$msaadepth"   // MRT
 #define     r2_RT_P             "$user$position"    // MRT
 #define     r2_RT_N             "$user$normal"      // MRT
+#define     r2_RT_SSR           "$user$ssr"         // DA: screen-space reflections (R4)
+#define     r2_RT_taa_history   "$user$taa_history" // DA: previous resolved frame, for temporal AA (R4)
+#define     r2_RT_taa_scratch   "$user$taa_scratch" // DA: un-sharpened resolve, on its way into the history
+#define     r2_RT_taa_out       "$user$taa_out"     // DA: sharpened resolve, on its way back into rt_Color
+#define     r2_RT_velocity      "$user$velocity"    // DA: per-pixel screen-space motion, for FSR 2 (R4)
 #define     r2_RT_albedo        "$user$albedo"      // MRT
 
 // other

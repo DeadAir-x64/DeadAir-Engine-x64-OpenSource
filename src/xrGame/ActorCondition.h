@@ -45,6 +45,13 @@ public:
 
     virtual CWound* ConditionHit(SHit* pHDS);
     virtual void UpdateCondition();
+
+    // [DA_PORT] Vision fades and greys out as health runs out, so the player feels themselves dying
+    // instead of only watching a bar. Paired with the movement slowdown in Actor_Movement.cpp.
+    void UpdateDyingVision();
+
+    // [DA_PORT] Blurred and doubled vision from radiation sickness, before it starts eating health.
+    void UpdateRadiationVision();
     void UpdateBoosters();
 
     virtual void ChangeAlcohol(const float value);

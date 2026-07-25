@@ -431,17 +431,24 @@ void CAI_Stalker::update_best_item_info_impl()
     {
         CGameObject* cur_itm = smart_cast<CGameObject*>(m_best_item_to_kill);
         CScriptGameObject* GO = funct(lua_game_object(),cur_itm ? cur_itm->lua_game_object() : nullptr);
-        CInventoryItem* bw = GO ? smart_cast<CInventoryItem*>(&GO->object()): nullptr;
-        if (bw)
+        if (GO)
         {
-            m_best_item_to_kill = bw;
-            m_best_ammo = bw;
-            return;
+            CInventoryItem* bw = smart_cast<CInventoryItem*>(&GO->object());
+            if (bw)
+            {
+                // DA: скрипт форсировал оружие — зафиксировать и пометить актуальность
+                m_item_actuality = true;
+                m_best_item_to_kill = bw;
+                m_best_ammo = bw;
+                m_best_item_value = flt_max;
+                return;
+            }
         }
     }
 
     ai().ef_storage().alife_evaluation(false);
-    /* Alundaio: This is what causes stalkers to switch weapons during combat; It's stupid
+    // DA: возвращена проверка стабильности оружия (Alundaio отключал как «тупую») —
+    // сталкеры перестают дёргать ствол в бою при близких значениях эффективности
     if (m_item_actuality && m_best_item_to_kill && m_best_item_to_kill->can_kill())
     {
         if (!memory().enemy().selected())
@@ -455,7 +462,6 @@ void CAI_Stalker::update_best_item_info_impl()
         if (fsimilar(value, m_best_item_value))
             return;
     }
-    */
 
     // initialize parameters
     m_item_actuality = true;
@@ -775,7 +781,8 @@ void CAI_Stalker::update_can_kill_info()
 bool CAI_Stalker::undetected_anomaly()
 {
     return (
-        inside_anomaly() || brain().CStalkerPlanner::m_storage.property(StalkerDecisionSpace::eWorldPropertyAnomaly));
+        inside_anomaly() /* DA: полагаемся только на физическое нахождение в зоне, без planner-property
+        || brain().CStalkerPlanner::m_storage.property(StalkerDecisionSpace::eWorldPropertyAnomaly) */);
 }
 
 bool CAI_Stalker::inside_anomaly()
@@ -785,7 +792,8 @@ bool CAI_Stalker::inside_anomaly()
     for (; I != E; ++I)
     {
         CCustomZone* zone = smart_cast<CCustomZone*>(*I);
-        if (zone && (zone->restrictor_type() != RestrictionSpace::eRestrictorTypeNone))
+        // DA: считаем любую аномальную зону (без фильтра по restrictor_type) — стоковый фильтр пропускал часть аномалий
+        if (zone /* && (zone->restrictor_type() != RestrictionSpace::eRestrictorTypeNone) */)
         {
             if (smart_cast<CRadioactiveZone*>(zone))
                 continue;

@@ -56,6 +56,11 @@ public:
     ref_rt rt_Position; // 64bit,	fat	(x,y,z,?)				(eye-space)
     ref_rt rt_Normal; // 64bit,	fat	(x,y,z,hemi)			(eye-space)
     ref_rt rt_Color; // 64/32bit,fat	(r,g,b,specular-gloss)	(or decompressed MET-8-8-8-8)
+    ref_rt rt_SSR; // DA: screen-space reflections output (R4)
+    ref_rt rt_TAA_history; // DA: previous frame, kept for temporal reprojection (R4)
+    ref_rt rt_TAA_scratch; // DA: second output of the resolve — the copy that goes into the history
+    ref_rt rt_TAA_out;     // DA: first output of the resolve — the copy that goes back on screen
+    ref_rt rt_Velocity;    // DA: screen-space motion vectors, RG16F (R4). Groundwork for FSR 2.
 
     //
     ref_rt rt_Accumulator; // 64bit		(r,g,b,specular)
@@ -139,6 +144,7 @@ private:
     ref_rt rt_ssao_temp;
     ref_rt rt_half_depth;
     ref_shader s_ssao;
+    ref_shader s_taa; // DA: temporal AA resolve
     ref_shader s_ssao_msaa[8];
     ref_shader s_hdao_cs;      // HDAO compute shader
 
@@ -256,6 +262,7 @@ public:
     void phase_occq();
     void phase_ssao();
     void phase_hdao();
+    void phase_taa(); // DA: temporal AA resolve
     void phase_downsamp();
     void phase_wallmarks();
 

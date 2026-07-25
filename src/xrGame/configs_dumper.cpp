@@ -82,7 +82,9 @@ static active_objects_t::size_type get_active_objects(active_objects_t& dest)
 
     dest.push_back(tmp_actor);
 
-    for (u16 i = KNIFE_SLOT; i <= GRENADE_SLOT; ++i)
+    // [DA_PORT] Iterate the low quick-access weapon slots (1..4). This used GRENADE_SLOT as the upper
+    // bound back when it was slot 4; GRENADE_SLOT now = 14 (DA relocation), so pin the bound explicitly.
+    for (u16 i = KNIFE_SLOT; i <= GRENADE_LEGACY_SLOT_4; ++i)
     {
         VERIFY(dest.capacity() != dest.size());
         if (dest.capacity() == dest.size())

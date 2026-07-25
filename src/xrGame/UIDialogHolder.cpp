@@ -38,6 +38,8 @@ void CDialogHolder::StartMenu(CUIDialogWnd* pDialog, bool bDoHideIndicators)
 {
     R_ASSERT(!pDialog->IsShown());
 
+    FlushLog();
+
     AddDialogToRender(pDialog);
     SetMainInputReceiver(pDialog, false);
 
@@ -81,6 +83,8 @@ void CDialogHolder::StartMenu(CUIDialogWnd* pDialog, bool bDoHideIndicators)
 void CDialogHolder::StopMenu(CUIDialogWnd* pDialog)
 {
     R_ASSERT(pDialog->IsShown());
+
+    FlushLog();
 
     if (TopInputReceiver() == pDialog)
     {

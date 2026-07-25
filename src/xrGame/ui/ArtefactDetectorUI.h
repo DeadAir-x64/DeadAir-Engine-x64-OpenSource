@@ -7,6 +7,7 @@ class CUIDetectorWave;
 class CSimpleDetector;
 class CAdvancedDetector;
 class CEliteDetector;
+class CCustomDetector;
 class CUIXml;
 class CLAItem;
 class CBoneInstance;
@@ -92,6 +93,46 @@ public:
     void RegisterItemToDraw(const Fvector& p, const shared_str& palette_idx);
 
     pcstr GetDebugType() override { return "CUIArtefactDetectorElite"; }
+};
+
+// [DA_PORT] Generic hud_ui 3D screen: renders artefact blips on a device screen
+// attached to a configurable bone. Driven by hud_ui_* keys in the HUD section
+// (hud_ui_xml_tag_name / hud_ui_attach_bone / hud_ui_pos / hud_ui_rot) + hud_ui_3d.xml.
+// Mirrors the proven CUIArtefactDetectorElite dots pipeline, but parameterized so the
+// simple/advanced/craft detectors (which lack ui_p/ui_r) can show a screen too.
+class CUIArtefactDetectorHudUI final : public CUIArtefactDetectorBase, public CUIWindow
+{
+    typedef CUIArtefactDetectorBase inherited;
+
+    CUIWindow* m_wrk_area{};
+
+    xr_map<shared_str, CUIStatic*> m_palette;
+
+    struct SDrawOneItem
+    {
+        SDrawOneItem(CUIStatic* s, const Fvector& p) : pStatic(s), pos(p) {}
+        CUIStatic* pStatic;
+        Fvector pos;
+    };
+    xr_vector<SDrawOneItem> m_items_to_draw;
+    CCustomDetector* m_parent{};
+    Fmatrix m_map_attach_offset;
+    shared_str m_attach_bone;
+
+    void GetUILocatorMatrix(Fmatrix& _m);
+
+public:
+    CUIArtefactDetectorHudUI() : CUIWindow(CUIArtefactDetectorHudUI::GetDebugType()) {}
+
+    void update() override;
+    void Draw() override;
+
+    // returns false if the asset or tag is missing (caller then skips hud_ui rendering)
+    bool construct(CCustomDetector* p, const shared_str& hud_section, const shared_str& xml_tag);
+    void Clear();
+    void RegisterItemToDraw(const Fvector& p, const shared_str& palette_idx);
+
+    pcstr GetDebugType() override { return "CUIArtefactDetectorHudUI"; }
 };
 
 class CUIArtefactDetectorAdv final : public CUIArtefactDetectorBase

@@ -354,6 +354,11 @@ bool CScriptEngine::do_file(LPCSTR caScriptName, LPCSTR caNameSpaceName)
         return false;
     }
     strconcat(sizeof(l_caLuaFileName), l_caLuaFileName, "@", caScriptName);
+    // [DA_PORT] permanent load trace: which scripts actually load and in what order (cheap -
+    // fires once per script file). Flush only in trace mode to keep normal runs fast.
+    Msg("* [DA_LUA] load: %s -> %s", caScriptName, caNameSpaceName ? caNameSpaceName : "");
+    if (da_lua_trace())
+        FlushLog();
     if (!load_buffer(lua(), static_cast<LPCSTR>(l_tpFileReader->pointer()), l_tpFileReader->length(),
         l_caLuaFileName, caNameSpaceName))
     {
@@ -671,10 +676,24 @@ void CScriptEngine::lua_error(lua_State* L)
 #endif
 }
 
+// [DA_PORT] "-da_lua_trace" launch flag: whole-mod engine->script dispatch tracing
+bool CScriptEngine::da_lua_trace()
+{
+    static const bool enabled = !!strstr(Core.Params, "-da_lua_trace");
+    return enabled;
+}
+
 int CScriptEngine::lua_pcall_failed(lua_State* L)
 {
     print_output(L, "", LUA_ERRRUN);
     on_error(L);
+
+    // [DA_PORT] this pcall error handler runs BEFORE the stack unwinds - the only moment the
+    // full Lua traceback of a runtime error is still available. Always print + flush it, so
+    // every script error in any Dead Air script lands in the log even if the game dies next.
+    if (CScriptEngine* se = GetInstance(L))
+        se->print_stack(L);
+    FlushLog();
 
     luabind::detail::stack_pop pop{ L, lua_isstring(L, -1) ? 1 : 0 };
 

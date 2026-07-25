@@ -8,6 +8,7 @@
 #include "FLOD.h"
 
 extern ENGINE_API float psHUD_FOV;
+extern ENGINE_API float g_hud_fov_current; // [DA_PORT] nearwall: == psHUD_FOV unless modulated
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -28,12 +29,21 @@ bool cmp_ssa(const T &lhs, const T &rhs)
 }
 
 // Sorting by SSA and changes minimizations
+// [DA_PORT] This used to be `if (equal) return false; return left.ssa >= right.ssa;`, which is not a
+// strict weak ordering: for two different passes with the same ssa it reported BOTH cmp(a,b) and
+// cmp(b,a) as true. std::sort is undefined with such a comparator — introsort's partition loop has no
+// bounds check and relies on the comparator to stop it, so once enough passes share an ssa value it
+// walks off the end of the vector and dereferences garbage as an SPass*. That crashed inside
+// SPass::equal (stack: CRender::Render -> render_graph -> std::sort -> introsort -> cmp_pass ->
+// SPass::equal), and only after tens of thousands of frames, because it needs the data to line up.
+// Ordering by ssa with the pass pointer as tie-break is a proper strict weak ordering and keeps the
+// original intent: front-to-back by ssa, identical passes (deduplicated, so same pointer) adjacent.
 template <typename T>
 bool cmp_pass(const T& left, const T& right)
 {
-    if (left->first->equal(*right->first))
-        return false;
-    return left->second.ssa >= right->second.ssa;
+    if (left->second.ssa != right->second.ssa)
+        return left->second.ssa > right->second.ssa;
+    return left->first < right->first;
 }
 
 void R_dsgraph_structure::render_graph(u32 _priority)
@@ -170,7 +180,7 @@ public:
         // https://github.com/ShokerStlk/xray-16-SWM/commit/869de0b6e74ac05990f541e006894b6fe78bd2a5#diff-4199ef700b18ce4da0e2b45dee1924d0R83
 
         Fmatrix prj_new;
-        prj_new.build_projection(deg2rad(psHUD_FOV * Device.fFOV /* *Device.fASPECT*/), Device.fASPECT,
+        prj_new.build_projection(deg2rad(g_hud_fov_current * Device.fFOV /* *Device.fASPECT*/), Device.fASPECT,
             HUD_VIEWPORT_NEAR, g_pGamePersistent->Environment().CurrentEnv.far_plane);
         cmd_list.set_xform_project(prj_new);
 

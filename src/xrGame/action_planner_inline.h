@@ -87,8 +87,12 @@ void CPlanner::update()
 		Msg("! ERROR: there is no action sequence, which can transfer current world state to the target one: action[%s]", current_action().m_action_name);
 #endif
 
-    THROW(!this->solution().empty());
 	//Alundaio:
+	// [DA_PORT] The THROW(!solution().empty()) that used to sit here crashed the game whenever an
+	// NPC's action planner transiently has no solution (routinely happens for freshly-spawned NPCs
+	// on a brand new game, before their goal search settles) - the graceful empty-solution handling
+	// right below already covers this case, so the hard throw above it was dead weight that only
+	// ever fired the crash instead of letting this early-return run.
 	if (this->solution().empty())
 		return;
 	//-Alundaio

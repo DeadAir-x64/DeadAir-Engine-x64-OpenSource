@@ -29,13 +29,15 @@ static const float OPTIMIZATION_DISTANCE = 100.f;
 
 CTorch::CTorch()
     : fBrightness(1.f), lanim(nullptr), guid_bone(BI_NONE),
-      m_delta_h(0), m_switched_on(false),
+      m_delta_h(0), m_switched_on(false), m_switched_on2(false),
       light_render(GEnv.Render->light_create()),
       light_omni(GEnv.Render->light_create()),
       glow_render(GEnv.Render->glow_create()),
-      m_bNightVisionEnabled(false), m_bNightVisionOn(false), m_night_vision(nullptr)
+      m_bNightVisionEnabled(false), m_bNightVisionOn(false), m_night_vision(nullptr),
+      m_da_use_spot(true)
 {
     m_prev_hp.set(0, 0);
+    m_da_color.set(1.f, 1.f, 1.f, 1.f); // [DA_PORT] default white; overridden per item by torch_set_color_*
 
     light_render->set_type(IRender_Light::SPOT);
     light_render->set_shadow(true);
@@ -124,6 +126,7 @@ void CTorch::SwitchNightVision(bool vision_on, bool use_sounds)
     CHelmet* pHelmet = smart_cast<CHelmet*>(pA->inventory().ItemFromSlot(HELMET_SLOT));
     CCustomOutfit* pOutfit = smart_cast<CCustomOutfit*>(pA->inventory().ItemFromSlot(OUTFIT_SLOT));
 
+
     if (pHelmet && pHelmet->m_NightVisionSect.size() && !b_allow)
     {
         m_night_vision->OnDisabled(pA, use_sounds);
@@ -173,30 +176,48 @@ void CTorch::Switch()
 
 void CTorch::Switch(bool light_on)
 {
+    // [DA_PORT] "torch" - dim companion light only (light_omni). Dead Air's itms_manager.script
+    // forces this on every actor_on_update tick; it must stay silent/harmless. The real,
+    // player-toggled flashlight beam is Switch2()/light_render below.
+    m_switched_on = light_on;
+    if (can_use_dynamic_lights())
+        // [DA_PORT] Spot items (flashlight) must NOT light the omni companion - it floods the whole area
+        // with a dim glow even while the beam is off. Only omni-glow items (glowstick/lighter) use
+        // light_omni as their actual light. itms_manager.script forces enable_torch(true) every tick.
+        light_omni->set_active(light_on && !m_da_use_spot);
+}
+
+void CTorch::Switch2()
+{
+    if (OnClient())
+        return;
+    bool bActive = !m_switched_on2;
+    Switch2(bActive);
+}
+
+void CTorch::Switch2(bool light_on)
+{
+    // [DA_PORT] "torch2" - the real flashlight beam (light_render, spot+shadow), toggled
+    // deliberately by the player via the torch key. Owns the on/off sounds, glow sprite and
+    // the visible bulb bone, since this is the light the player actually sees switch state.
     CActor* pActor = smart_cast<CActor*>(H_Parent());
     if (pActor)
     {
-        if (light_on && !m_switched_on)
+        if (light_on && !m_switched_on2)
         {
             if (m_sounds.FindSoundItem("SndTurnOn", false))
                 m_sounds.PlaySound("SndTurnOn", pActor->Position(), NULL, !!pActor->HUDview());
         }
-        else if (!light_on && m_switched_on)
+        else if (!light_on && m_switched_on2)
         {
             if (m_sounds.FindSoundItem("SndTurnOff", false))
                 m_sounds.PlaySound("SndTurnOff", pActor->Position(), NULL, !!pActor->HUDview());
         }
     }
 
-    m_switched_on = light_on;
+    m_switched_on2 = light_on;
     if (can_use_dynamic_lights())
-    {
         light_render->set_active(light_on);
-
-        // CActor *pA = smart_cast<CActor *>(H_Parent());
-        // if(!pA)
-        light_omni->set_active(light_on);
-    }
     glow_render->set_active(light_on);
 
     if (light_trace_bone.c_str())
@@ -210,6 +231,7 @@ void CTorch::Switch(bool light_on)
     }
 }
 bool CTorch::torch_active() const { return (m_switched_on); }
+bool CTorch::torch2_active() const { return (m_switched_on2); }
 bool CTorch::net_Spawn(CSE_Abstract* DC)
 {
     CSE_Abstract* e = (CSE_Abstract*)(DC);
@@ -290,6 +312,7 @@ bool CTorch::net_Spawn(CSE_Abstract* DC)
 void CTorch::net_Destroy()
 {
     Switch(false);
+    Switch2(false);
     SwitchNightVision(false);
 
     inherited::net_Destroy();
@@ -306,16 +329,73 @@ void CTorch::OnH_B_Independent(bool just_before_destroy)
     inherited::OnH_B_Independent(just_before_destroy);
 
     Switch(false);
+    Switch2(false);
     SwitchNightVision(false);
 
     m_sounds.StopAllSounds();
+}
+
+// [DA_PORT] --- Dead Air per-item torch light tuning (driven by xr_actor.script apply_torch_type) ---
+// DA reconfigures the single device_torch for each equipped light item. We apply to both the spot
+// (light_render) and omni (light_omni) since only the active one is rendered.
+void CTorch::TorchSetRange(float r)
+{
+    light_render->set_range(r);
+    light_omni->set_range(r);
+    if (r > 0.001f)
+        m_delta_h = PI_DIV_2 - atan((r * 0.5f) / _abs(TORCH_OFFSET.x));
+}
+
+void CTorch::TorchSetRadius(float deg) { light_render->set_cone(deg2rad(deg)); }
+
+void CTorch::TorchSetInertion(float /*i*/) {} // reserved: beam inertia is fixed by TORCH_INERTION_* for now
+
+void CTorch::TorchApplyDAColor()
+{
+    light_render->set_color(m_da_color);
+    light_omni->set_color(m_da_color);
+    glow_render->set_color(m_da_color);
+}
+
+void CTorch::TorchSetColorR(float v) { m_da_color.r = v; TorchApplyDAColor(); }
+void CTorch::TorchSetColorG(float v) { m_da_color.g = v; TorchApplyDAColor(); }
+void CTorch::TorchSetColorB(float v) { m_da_color.b = v; TorchApplyDAColor(); }
+void CTorch::TorchSetColorA(float v) { m_da_color.a = v; TorchApplyDAColor(); }
+
+void CTorch::TorchSetAnimation(LPCSTR name)
+{
+    // "empty" (or none) => no color animator, so the script's torch_set_color_* stays applied
+    // (glowstick/lighter green/orange). A real animator (e.g. "light_torch_01") drives the color
+    // itself each frame in UpdateCL (flashlight/headlamp white).
+    if (!name || !name[0] || 0 == xr_stricmp(name, "empty"))
+        lanim = nullptr;
+    else
+        lanim = LALib.FindItem(name);
+}
+
+void CTorch::TorchSetTexture(LPCSTR name)
+{
+    if (name && name[0])
+        light_render->set_texture(name);
+}
+
+void CTorch::TorchSwitchSpot(bool spot)
+{
+    m_da_use_spot = spot;
+    if (!can_use_dynamic_lights())
+        return;
+    if (spot)
+        light_omni->set_active(false);  // [DA_PORT] spot item (flashlight): kill the omni flood; light is the beam only
+    else
+        light_render->set_active(false); // omni-glow item (glowstick/lighter): no spot beam
 }
 
 void CTorch::UpdateCL()
 {
     inherited::UpdateCL();
 
-    if (!m_switched_on)
+    // [DA_PORT] Either light (torch/omni or torch2/spot) being on needs position/rotation updates.
+    if (!m_switched_on && !m_switched_on2)
         return;
 
     CBoneInstance& BI = smart_cast<IKinematics*>(Visual())->LL_GetBoneInstance(guid_bone);
@@ -410,13 +490,14 @@ void CTorch::UpdateCL()
             M.mul(XFORM(), BI.mTransform);
 
             m_switched_on = false;
+            m_switched_on2 = false;
             light_render->set_active(false);
             light_omni->set_active(false);
             glow_render->set_active(false);
         } // if (getVisible() && m_pPhysicsShell)
     }
 
-    if (!m_switched_on)
+    if (!m_switched_on && !m_switched_on2)
         return;
 
     // calc color animator
@@ -449,6 +530,7 @@ void CTorch::net_Export(NET_Packet& P)
     u8 F = 0;
     F |= (m_switched_on ? eTorchActive : 0);
     F |= (m_bNightVisionOn ? eNightVisionActive : 0);
+    F |= (m_switched_on2 ? eTorch2Active : 0);
     const CActor* pA = smart_cast<const CActor*>(H_Parent());
     if (pA)
     {
@@ -466,12 +548,15 @@ void CTorch::net_Import(NET_Packet& P)
     u8 F = P.r_u8();
     bool new_m_switched_on = !!(F & eTorchActive);
     bool new_m_bNightVisionOn = !!(F & eNightVisionActive);
+    bool new_m_switched_on2 = !!(F & eTorch2Active);
 
-    // [DA_PORT] Actor's torch must stay OFF until the player presses the torch key.
+    // [DA_PORT] Actor's torch/torch2 must stay under local key-press control, not server state.
     // Server packets may carry m_active=true (e.g. spawned or saved that way),
-    // so ignore the eTorchActive flag for the player actor.
+    // so ignore the eTorchActive/eTorch2Active flags for the player actor.
     if (new_m_switched_on != m_switched_on && !smart_cast<CActor*>(H_Parent()))
         Switch(new_m_switched_on);
+    if (new_m_switched_on2 != m_switched_on2 && !smart_cast<CActor*>(H_Parent()))
+        Switch2(new_m_switched_on2);
     if (new_m_bNightVisionOn != m_bNightVisionOn)
     {
         //		Msg("CTorch::net_Import - NV[%d]", new_m_bNightVisionOn);
@@ -496,14 +581,20 @@ void CTorch::afterDetach()
 {
     inherited::afterDetach();
     Switch(false);
+    Switch2(false);
 }
 
 void CTorch::enable(bool value)
 {
     inherited::enable(value);
 
-    if (!enabled() && m_switched_on)
-        Switch(false);
+    if (!enabled())
+    {
+        if (m_switched_on)
+            Switch(false);
+        if (m_switched_on2)
+            Switch2(false);
+    }
 }
 
 CNightVisionEffector::CNightVisionEffector(const shared_str& section) : m_pActor(NULL)

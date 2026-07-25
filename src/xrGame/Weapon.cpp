@@ -104,7 +104,8 @@ CWeapon::CWeapon()
 
     eHandDependence = hdNone;
 
-    m_zoom_params.m_fCurrentZoomFactor = g_fov;
+    // [DA_PORT] multiplier domain (CoC lineage): identity magnification, not fov degrees
+    m_zoom_params.m_fCurrentZoomFactor = 1.0f;
     m_zoom_params.m_fZoomRotationFactor = 0.f;
     m_zoom_params.m_pVision = nullptr;
     m_zoom_params.m_pNight_vision = nullptr;
@@ -594,6 +595,10 @@ bool CWeapon::net_Spawn(CSE_Abstract* DC)
 
     VERIFY((u32)iAmmoElapsed == m_magazine.size());
     m_bAmmoWasSpawned = false;
+
+    // DA (misfire): базовый шанс осечки берём из конфига текущего патрона (misfire_chance)
+    if (m_ammoType < m_ammoTypes.size())
+        fAmmoMisfire = READ_IF_EXISTS(pSettings, r_float, m_ammoTypes[m_ammoType].c_str(), "misfire_chance", 0.f);
 
     if (m_bLightShotEnabled)
         Light_Create();
@@ -1204,6 +1209,11 @@ int CWeapon::GetAmmoCount_forType(shared_str const& ammo_type) const
         }
     }
 
+    // [DA_PORT] Dead Air belt-only reload for the actor: backpack ammo can't be chambered,
+    // so the HUD/briefing counters must not advertise it either. NPC keep the full count.
+    if (const_cast<CWeapon*>(this)->ParentIsActor())
+        return res;
+
     itb = m_pInventory->m_ruck.begin();
     ite = m_pInventory->m_ruck.end();
     for (; itb != ite; ++itb)
@@ -1249,8 +1259,25 @@ BOOL CWeapon::CheckForMisfire()
         return FALSE;
 
     float rnd = ::Random.randF(0.f, 1.f);
-    float mp = GetConditionMisfireProbability();
-    if (rnd < mp)
+    // DA: шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type).
+    // Биты 9,14..23 задаются скриптами малфункций (items_condition/death_manager); все ≥8 — потому поле u32.
+    float mfire = fAmmoMisfire;
+
+    if (m_weapon_condition_type & (1 << 15)) mfire += 0.01f;
+    if (m_weapon_condition_type & (1 << 16)) mfire += 0.02f;
+    if (m_weapon_condition_type & (1 << 18)) mfire += 0.01f;
+    if (m_weapon_condition_type & (1 << 19)) mfire += 0.02f;
+
+    if (m_weapon_condition_type & (1 << 21)) mfire += 0.03f;
+    if (m_weapon_condition_type & (1 << 22)) mfire += 0.07f;
+    if (m_weapon_condition_type & (1 << 23)) mfire += 0.10f;
+
+    if (m_weapon_condition_type & (1 << 9))  mfire += 0.99f;
+    if (m_weapon_condition_type & (1 << 14)) mfire += 0.99f;
+    if (m_weapon_condition_type & (1 << 17)) mfire += 0.99f;
+    if (m_weapon_condition_type & (1 << 20)) mfire += 0.99f;
+
+    if ((rnd < mfire) && (GetAmmoElapsed() > 1))
     {
         FireEnd();
 
@@ -1442,7 +1469,8 @@ void CWeapon::OnZoomOut()
 {
     m_zoom_params.m_bIsZoomModeNow = false;
     m_fRTZoomFactor = GetZoomFactor(); // store current
-    m_zoom_params.m_fCurrentZoomFactor = g_fov;
+    // [DA_PORT] multiplier domain: back to identity magnification (was g_fov degrees)
+    m_zoom_params.m_fCurrentZoomFactor = 1.0f;
 
     // Включаем инерцию (также заменено  GetInertionFactor())
     // EnableHudInertion	(TRUE);

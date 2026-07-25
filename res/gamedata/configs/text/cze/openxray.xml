@@ -49,7 +49,13 @@
 		<text>Zobrazit fáze naèítání</text>
 	</string>
 	<string id="renderer_rgl">
-		<text>Pokroèilé dynamické osvìtlení (OpenGL)</text>
+		<text>OpenGL</text>
+	</string>
+	<string id="renderer_r2.5">
+		<text>R2.5 DX10</text>
+	</string>
+	<string id="renderer_r4">
+		<text>R4.0 DX11</text>
 	</string>
 	<string id="ui_mm_window_mode">
 		<text>Režim okna</text>

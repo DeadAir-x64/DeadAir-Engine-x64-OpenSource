@@ -5,6 +5,11 @@
 //-----------------------------------------------------------------------------------------------------------
 namespace xray::render::RENDER_NAMESPACE
 {
+// [DA_PORT] True only while the hardware gamma ramp is genuinely in effect, i.e. exclusive fullscreen
+// on DXGI. Everywhere else the post-process pass has to apply gamma/brightness/contrast itself, and it
+// reads this flag to avoid applying them twice. See CGammaControl::Update.
+extern bool g_da_gamma_ramp_active;
+
 class CGammaControl
 {
     float fGamma;

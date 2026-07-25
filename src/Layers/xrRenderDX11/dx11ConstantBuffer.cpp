@@ -50,8 +50,15 @@ dx11ConstantBuffer::dx11ConstantBuffer(ID3DShaderReflectionConstantBuffer* pTabl
 
     R_CHK(BufferUtils::CreateConstantBuffer(&m_pBuffer, Desc.Size));
     VERIFY(m_pBuffer);
+    // [DA_PORT] xr_malloc does not zero memory. Constant buffers with the same layout are
+    // shared/reused across different shaders (see comment above), and a given shader may only
+    // set a subset of a buffer's members - any never-written bytes were leaking whatever
+    // garbage happened to be in that heap allocation straight into shader constants (observed
+    // as colorful "rainbow" noise, most visible right after a level load when shader/buffer
+    // reuse patterns churn). Zero it once up front so unset members are always 0, not garbage.
     m_pBufferData = xr_malloc(Desc.Size);
     VERIFY(m_pBufferData);
+    ZeroMemory(m_pBufferData, Desc.Size);
 
 #ifdef DEBUG
     if (m_pBuffer)

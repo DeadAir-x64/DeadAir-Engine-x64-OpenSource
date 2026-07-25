@@ -46,7 +46,13 @@
 		<text>Postêp wczytywania</text>
 	</string>
 	<string id="renderer_rgl">
-		<text>Rozsz. pe³ne oœw. dynam. (OpenGL)</text>
+		<text>OpenGL</text>
+	</string>
+	<string id="renderer_r2.5">
+		<text>R2.5 DX10</text>
+	</string>
+	<string id="renderer_r4">
+		<text>R4.0 DX11</text>
 	</string>
 	<string id="ui_mm_window_mode">
 		<text>Tryb wyœwietlania</text>

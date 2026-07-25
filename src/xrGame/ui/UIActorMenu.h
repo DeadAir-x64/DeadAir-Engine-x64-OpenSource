@@ -94,6 +94,14 @@ protected:
 
         eInventoryBeltList,
         eInventoryDetectorList,
+        // [DA_PORT] Dead Air's actor_menu.xml "dragdrop_binocular" cell is engine slot 14 (GRENADE_SLOT).
+        // DA's hand grenade (grenade_f1 config slot 13 -> base 14) is equipped here, so this cell shows
+        // an equipped grenade. Stock OpenXRay never created it -> item fell into the bag.
+        eInventoryBinocularList,
+        // [DA_PORT] Dead Air's "dragdrop_sidearm" cell is engine slot 5 (BINOCULAR_SLOT). DA puts every
+        // pistol AND the binocular item there (all config slot 4 -> base 5), so this small cell holds the
+        // equipped sidearm/binocular. Stock OpenXRay routed slot 5 to the bag -> pistols had no equip cell.
+        eInventorySidearmList,
 
         eInventoryBagList,
 
@@ -183,6 +191,7 @@ protected:
     CUI3tButton* m_trade_button{};
     CUI3tButton* m_trade_buy_button{};
     CUI3tButton* m_trade_sell_button{};
+    CUI3tButton* m_trade_barter_button{}; // [DA_PORT] Dead Air barter (goods-for-goods)
     CUI3tButton* m_takeall_button{};
     CUI3tButton* m_exit_button{};
 
@@ -352,7 +361,8 @@ protected:
     u32 CalcItemsPrice(CUIDragDropListEx* pList, CTrade* pTrade, bool bBuying);
     void UpdatePrices();
     bool CanMoveToPartner(PIItem pItem);
-    void TransferItems(CUIDragDropListEx* pSellList, CUIDragDropListEx* pBuyList, CTrade* pTrade, bool bBuying);
+    void TransferItems(CUIDragDropListEx* pSellList, CUIDragDropListEx* pBuyList, CTrade* pTrade, bool bBuying,
+        bool bFree = false); // [DA_PORT] bFree: barter transfer, no money movement
 
 public:
     CUIActorMenu();
@@ -390,6 +400,7 @@ public:
     void OnBtnPerformTrade(CUIWindow* w, void* d);
     void OnBtnPerformTradeBuy(CUIWindow* w, void* d);
     void OnBtnPerformTradeSell(CUIWindow* w, void* d);
+    void OnBtnPerformTradeBarter(CUIWindow* w, void* d); // [DA_PORT] Dead Air barter
     void OnBtnExitClicked(CUIWindow* w, void* d);
     void TakeAllFromPartner(CUIWindow* w, void* d);
     void StoreAllToPartner(CUIWindow* w, void* d);

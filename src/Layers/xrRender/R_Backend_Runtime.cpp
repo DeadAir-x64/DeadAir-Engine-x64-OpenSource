@@ -8,6 +8,11 @@
 #include <DirectXMath.h>
 #endif
 
+// [DA_PORT] Defined in the engine (xr_ioc_cmd.cpp). Declared out here: an extern written inside
+// namespace xray::render::render_r4 would be looking for a symbol in that namespace.
+extern ENGINE_API int ps_r__taa;
+extern ENGINE_API int ps_r__taa_mipbias;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 void CBackend::OnFrameEnd()
@@ -447,7 +452,25 @@ void CBackend::SetupStates()
     set_CullMode(CULL_CCW);
 #if defined(USE_DX11)
     SSManager.SetMaxAnisotropy(ps_r__tf_Anisotropic);
-    SSManager.SetMipLODBias(ps_r__tf_Mipbias);
+
+    // [DA_PORT] Compensate the mip selection for r__render_scale. Rendering the scene smaller makes the
+    // hardware pick coarser mip levels, so on top of simply having fewer pixels the textures themselves
+    // arrive pre-blurred — which is what reads as "mushy" after upscaling. Shifting the bias by
+    // log2(render / output) asks for the mips the full-resolution image would have used; this is the
+    // standard companion to any upscaler. At 100% the term is 0 and the user's own bias is untouched.
+    float mip_bias = ps_r__tf_Mipbias;
+    if (Device.dwRenderWidth > 0 && Device.dwRenderWidth < Device.dwWidth)
+        mip_bias += log2f(float(Device.dwRenderWidth) / float(Device.dwWidth));
+
+    // [DA_PORT] With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection
+    // assumes one sample per pixel, and temporal accumulation gives several. It does buy back distant
+    // detail — but only where the history actually holds, and on dense vegetation it holds poorly, so
+    // the aliasing the standard bias was suppressing comes straight back as shimmer. Off by default;
+    // r__taa_mipbias is in hundredths of a mip level.
+    if (::ps_r__taa && ::ps_r__taa_mipbias)
+        mip_bias -= float(::ps_r__taa_mipbias) / 100.f;
+
+    SSManager.SetMipLODBias(mip_bias);
 #elif defined(USE_OGL)
     // TODO: OGL: Implement SetupStates().
 #else
