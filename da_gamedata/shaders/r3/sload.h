@@ -171,7 +171,16 @@ surface_bumped sload_i( p_bumped I)
 	float4 NDetailX		= s_detailBumpX.Sample( smp_base, I.tcdbump);
 	// [DA_PORT] Damped where the detail bump has gone finer than a pixel - see the top of this file.
 	float3 da_dN		= NDetail.wzy + NDetailX.xyz - 1.0h; //	(Nu.wzyx - .5h) + (E-.5)
-	float  da_inst		= da_detail_instability( da_dN );
+	// [DA_PORT] Weighted by the material's OWN gloss, and that is the whole point of the measure.
+	// Detail textures are high-frequency everywhere by design, so frequency alone marks the entire
+	// world and damping it is just a global loss of detail - measured 26.07, every surface went to
+	// full weight at once. What separates the surfaces that break from the ones that do not is the
+	// specular lobe: on metal it is narrow enough that a sub-pixel shift in the sample lands on a
+	// different part of it and the pixel changes brightness every frame; on wood or brick the same
+	// wobble is spread across a wide lobe and disappears. Verified by capture: with the camera held
+	// still the barrel changed 5.4/255 per frame - as much as trees moving in the wind - while the
+	// fence beside it, same detail texture, same distance, sat at 0.17 and had fully converged.
+	float  da_inst		= da_detail_instability( da_dN ) * saturate(S.gloss);
 	float  da_wn		= 1.0h - saturate(da_inst * da_detail_fix.y);	// weight on the normal
 	float  da_wg		= 1.0h - saturate(da_inst * da_detail_fix.x);	// weight on the gloss
 	// Hard overrides, so which half is guilty can be settled without first calibrating a scale.
@@ -259,7 +268,16 @@ surface_bumped sload_i( p_bumped I, float2 pixeloffset )
 	float4 NDetailX		= s_detailBumpX.Sample( smp_base, I.tcdbump);
 	// [DA_PORT] Damped where the detail bump has gone finer than a pixel - see the top of this file.
 	float3 da_dN		= NDetail.wzy + NDetailX.xyz - 1.0h; //	(Nu.wzyx - .5h) + (E-.5)
-	float  da_inst		= da_detail_instability( da_dN );
+	// [DA_PORT] Weighted by the material's OWN gloss, and that is the whole point of the measure.
+	// Detail textures are high-frequency everywhere by design, so frequency alone marks the entire
+	// world and damping it is just a global loss of detail - measured 26.07, every surface went to
+	// full weight at once. What separates the surfaces that break from the ones that do not is the
+	// specular lobe: on metal it is narrow enough that a sub-pixel shift in the sample lands on a
+	// different part of it and the pixel changes brightness every frame; on wood or brick the same
+	// wobble is spread across a wide lobe and disappears. Verified by capture: with the camera held
+	// still the barrel changed 5.4/255 per frame - as much as trees moving in the wind - while the
+	// fence beside it, same detail texture, same distance, sat at 0.17 and had fully converged.
+	float  da_inst		= da_detail_instability( da_dN ) * saturate(S.gloss);
 	float  da_wn		= 1.0h - saturate(da_inst * da_detail_fix.y);	// weight on the normal
 	float  da_wg		= 1.0h - saturate(da_inst * da_detail_fix.x);	// weight on the gloss
 	// Hard overrides, so which half is guilty can be settled without first calibrating a scale.

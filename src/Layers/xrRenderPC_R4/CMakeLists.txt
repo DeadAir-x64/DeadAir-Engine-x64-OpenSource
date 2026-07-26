@@ -11,10 +11,16 @@ target_sources(xrRenderPC_R4 PRIVATE
     r4_rendertarget_phase_taa.cpp
     da_fsr2.cpp
     da_fsr2.h
+    da_fsr3.cpp
+    da_fsr3.h
+    da_fsr3_api.h
     da_xess.cpp
     da_xess.h
     da_upscaler.h
     r4_rendertarget_phase_fsr2.cpp
+    r4_rendertarget_phase_fsr3.cpp
+    r4_rendertarget_phase_velocity_guard.cpp
+    r4_rendertarget_phase_reactive.cpp
     r4_rendertarget_phase_xess.cpp
     r4_rendertarget_u_set_rt.cpp
     r4_shaders.cpp
@@ -258,10 +264,13 @@ target_link_libraries(xrRenderPC_R4
 # The sources compile with GCC after three small fixes (see Externals/ffx-fsr2-api/README.md).
 target_include_directories(xrRenderPC_R4 PRIVATE
     "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr2-api/include"
+    "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr3/include"
 )
 target_link_libraries(xrRenderPC_R4 PRIVATE
     "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr2-api/lib/libffx_fsr2_api_dx11_x64.a"
     "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr2-api/lib/libffx_fsr2_api_x64.a"
+    # [DA_PORT] FSR 3 upscaler, DX11 - see Externals/ffx-fsr3/README.md
+    "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr3/lib/libffx_fsr3_dx11_x64.a"
 )
 
 # [DA_PORT] Intel XeSS, second temporal upscaler. Unlike FSR 2 this one needs no building: Intel ships

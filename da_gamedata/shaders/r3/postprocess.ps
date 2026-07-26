@@ -154,13 +154,31 @@ float3 da_debug_velocity(float2 uv)
 	return float3(saturate(v.x), saturate(-v.x), saturate(abs(v.y)));
 }
 
+// [DA_PORT] The reactive mask itself, switched on with "r__motion_vectors 4". White is where the
+// upscalers have been told not to trust their history. Worth looking at directly rather than inferring
+// from the picture: a mask that misses a moving figure and a mask that covers it but is ignored look
+// exactly the same on screen, and every attempt to tell them apart by tuning numbers is wasted.
+Texture2D s_reactive;
+
+float3 da_debug_reactive(float2 uv)
+{
+	const float r = s_reactive.Sample(smp_rtlinear, uv).x;
+	// Red is the honest value; green is the same thing amplified twentyfold. A mask holding a few
+	// hundredths and a mask holding nothing at all are the same black in plain grey, and those two
+	// call for opposite fixes - so the view has to separate them by itself.
+	return float3(saturate(r), saturate(r * 20.0), 0.0);
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 // Pixel
 float4 main( p_postpr I ) : SV_Target
 {
 //	float3	t_0 	= tex2D		(s_base0,I.tc0);
 //	float3	t_1 	= tex2D		(s_base1,I.tc1);
-	// [DA_PORT] Debug view of the velocity buffer, before anything else touches the frame.
+	// [DA_PORT] Debug views, before anything else touches the frame. 4 is the reactive mask; 2 and 3
+	// both read the velocity buffer, 3 only fills it with shader ids instead of vectors.
+	if (da_upscale.y > 3.5)
+		return float4(da_debug_reactive(I.Tex0), 1.0h);
 	if (da_upscale.y > 1.5)
 		return float4(da_debug_velocity(I.Tex0), 1.0h);
 

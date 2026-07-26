@@ -95,7 +95,13 @@ bool da_fsr2::draw(const draw_params& p)
     // it produces either shimmer or smear. This is the only correct answer to that - the vectors are
     // not wrong, the pixel genuinely changes.
     d.reactive = ffxGetResourceDX11(&m_context, p.reactive, L"FSR2_Reactive");
-    d.transparencyAndComposition = ffxGetResourceDX11(&m_context, nullptr, L"FSR2_TransparencyAndComposition");
+    // [DA_PORT] Transparency-and-composition mask. Fed the SAME buffer as the reactive one, on a
+    // switch, because the two masks answer different questions about the same pixels: reactive says
+    // "this pixel legitimately changed", T&C says "this pixel was composed, treat its history with
+    // suspicion". Alpha-tested foliage is arguably both. Sharing the buffer costs nothing and lets
+    // the idea be judged before building a second render target for it.
+    d.transparencyAndComposition = ffxGetResourceDX11(&m_context,
+        p.tandc ? p.tandc : nullptr, L"FSR2_TransparencyAndComposition");
     d.output = ffxGetResourceDX11(&m_context, p.output, L"FSR2_Output", FFX_RESOURCE_STATE_UNORDERED_ACCESS);
 
     d.jitterOffset.x = p.jitter_x;

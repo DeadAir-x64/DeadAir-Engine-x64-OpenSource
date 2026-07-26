@@ -1,0 +1,57 @@
+#include "common.h"
+
+// [DA_PORT] Second half of the reactive mask: spread the marks da_reactive.ps left along one axis.
+//
+// Why the spreading exists at all. The ghost behind a walking figure does not sit on the figure - the
+// figure has motion vectors of its own and reprojects correctly. It sits on the ground the figure has
+// just uncovered, which is static, has no motion to be marked by, and whose history still holds the
+// figure that stood there. Only a moving NEIGHBOUR can identify those pixels, so the mark has to reach
+// out to them, and it has to reach as far as the figure travels between two frames.
+//
+// Why along one axis at a time. That distance is around five pixels at very high frame rates and over
+// twenty at sixty, where most people will actually play. A square neighbourhood of radius twenty is
+// two thousand reads per pixel and out of the question. But the maximum over a square is the maximum
+// of the maxima over its rows, so running the same pass twice - once across, once down - gives the
+// identical result for 2r+1 reads each time. Ninety-four instead of two thousand.
+//
+// The falloff is what keeps it from being crude. A hard maximum would paint a solid rectangle around
+// everything that moves, and a reactive pixel is one the upscaler stops accumulating on, so a hard
+// edge trades the ghost for a visible border of noise. Subtracting distance as it spreads leaves the
+// mark strongest where the movement is and fading to nothing at the rim.
+
+uniform float4 da_dilate;   // xy = step in texels, z = radius, w = 1 on the pass that folds in the base
+
+Texture2D s_motion;         // what the previous pass wrote
+Texture2D s_reactive;       // the mask the G-buffer left; read only on the second axis
+
+struct vf
+{
+	float2 tc0   : TEXCOORD0;
+	float4 hpos  : SV_Position;
+};
+
+float4 main(vf I) : SV_Target
+{
+	const int3 px = int3(I.hpos.xy, 0);
+	const int r = int(da_dilate.z);
+	const int2 stride = int2(da_dilate.xy);
+
+	// Reaches zero exactly at the rim, whatever the radius, so widening the band never also weakens it.
+	const float decay = 1.0 / float(r + 1);
+
+	float m = 0.0;
+	for (int i = -r; i <= r; ++i)
+	{
+		// Out of bounds reads come back zero, which is the identity for a maximum - so the frame edge
+		// needs no special case.
+		const float v = s_motion.Load(int3(px.xy + stride * i, 0)).x;
+		m = max(m, v - abs(float(i)) * decay);
+	}
+
+	// Foliage and gloss ask for reactivity for reasons of their own, and those reasons are about the
+	// pixel itself rather than its neighbourhood - so they join at full strength and unspread.
+	if (da_dilate.w > 0.5)
+		m = max(m, s_reactive.Load(px).x);
+
+	return float4(saturate(m), 0, 0, 0);
+}

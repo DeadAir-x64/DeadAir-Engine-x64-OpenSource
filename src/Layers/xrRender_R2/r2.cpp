@@ -19,11 +19,17 @@
 // extern written inside xray::render::render_r4 would look for the symbol in that namespace instead.
 extern ENGINE_API int ps_r__motion_vectors;
 extern ENGINE_API int ps_r__fsr2;
+extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API float ps_r__reactive_foliage;
+extern ENGINE_API float ps_r__reactive_motion;
 extern ENGINE_API float ps_r__detail_gloss_fix;
 extern ENGINE_API float ps_r__detail_normal_fix;
 extern ENGINE_API float ps_r__detail_albedo_fix;
 extern ENGINE_API int ps_r__detail_debug;
+extern ENGINE_API float ps_r__reactive_gloss;
+extern ENGINE_API float ps_r__reactive_gloss_min;
+extern ENGINE_API float ps_r__foliage_velocity;
+extern ENGINE_API float ps_r__grass_velocity;
 extern ENGINE_API Fvector2 g_da_taa_jitter;
 extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 extern ENGINE_API Fmatrix g_da_taa_unjittered_VP;
@@ -188,6 +194,25 @@ static class cl_taa_jitter : public R_constant_setup
 // [DA_PORT] Detail-bump damping weights, see xr_ioc_cmd.cpp for what they are for. An ordinary pass
 // binder is correct here: both values are global settings with nothing object-specific in them, so the
 // once-per-pass evaluation that broke the motion-vector matrices is harmless.
+// [DA_PORT] Gloss-driven reactive mask, see xr_ioc_cmd.cpp. x = weight, y = gloss threshold.
+static class cl_gloss_reactive : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_r__reactive_gloss, ::ps_r__reactive_gloss_min,
+            1.f - ::ps_r__foliage_velocity, 1.f - ::ps_r__grass_velocity);
+    }
+} binder_gloss_reactive;
+
+// [DA_PORT] Motion-driven reactivity, see da_motion_reactive in common_functions.h.
+static class cl_reactive_motion : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_r__reactive_motion, 0.f, 0.f, 0.f);
+    }
+} binder_reactive_motion;
+
 static class cl_detail_fix : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
@@ -581,7 +606,13 @@ void CRender::create()
     // target count from what the shaders were compiled for.
 #if RENDER == R_R4
     // FSR 2 cannot work without motion vectors, so switching it on switches them on too.
-    o.velocity = !!::ps_r__motion_vectors || !!::ps_r__fsr2;
+    // [DA_PORT] Every consumer of the velocity buffer has to be listed here, FSR 3 included. Missing
+    // one does not disable a feature quietly - it decides whether the G-buffer shaders are compiled
+    // with DA_VELOCITY at all, i.e. whether the vertex stage emits the interpolators the pixel stage
+    // declares. Get it wrong and the two disagree; D3D11 reports "Signatures between stages are
+    // incompatible" and draws garbage, which on screen looks like models losing their textures and
+    // standing in a T-pose - nothing that points back at an upscaler.
+    o.velocity = !!::ps_r__motion_vectors || !!::ps_r__fsr2 || !!::ps_r__fsr3;
     // [DA_PORT] Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every
     // G-buffer shader writes a fixed identifier instead of a motion vector. Answers "what actually
     // draws this object" directly, instead of guessing from pass names in the log.
@@ -653,6 +684,8 @@ void CRender::create()
     Resources->RegisterConstantSetup("m_VP_nojit_ws", &binder_vp_nojit_ws); // [DA_PORT] world-space geometry
     Resources->RegisterConstantSetup("m_VP_old_ws", &binder_vp_old_ws); // [DA_PORT] world-space geometry
     Resources->RegisterConstantSetup("da_detail_fix", &binder_detail_fix); // [DA_PORT] detail-bump damping
+    Resources->RegisterConstantSetup("da_reactive_motion", &binder_reactive_motion); // [DA_PORT]
+    Resources->RegisterConstantSetup("da_gloss_reactive", &binder_gloss_reactive); // [DA_PORT] gloss opts out of history
 #if defined(USE_DX11)
     Resources->RegisterConstantSetup("triLOD", &binder_LOD);
 #endif

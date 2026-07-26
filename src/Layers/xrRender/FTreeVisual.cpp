@@ -7,6 +7,11 @@
 #include "FTreeVisual.h"
 #include "Common/OGF_GContainer_Vertices.hpp"
 
+// [DA_PORT] Vegetation sway scale, 0 = frozen. Defined in the engine; declared outside the namespace
+// on purpose - written inside it, the extern would look for the symbol in that namespace instead.
+extern ENGINE_API float ps_r__wind_scale;
+extern ENGINE_API int ps_r__wind_shadow;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 shared_str m_xform;
@@ -173,7 +178,8 @@ struct FTreeVisual_setup
 
         wind.set(_sin(tm_rot), 0, _cos(tm_rot), 0);
         wind.normalize();
-        wind.mul(desc.m_fTreeAmplitude); // dir1*amplitude
+        // [DA_PORT] r__wind_scale: 0 freezes the trees. See xr_ioc_cmd.cpp for why it exists.
+        wind.mul(desc.m_fTreeAmplitude * ps_r__wind_scale); // dir1*amplitude
 
         scale = 1.f / float(FTreeVisual_quant);
 
@@ -221,10 +227,31 @@ void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
     float s = ps_r__Tree_SBC;
     cmd_list.tree.set_m_xform(xform); // matrix
     cmd_list.tree.set_consts(tvs.scale, tvs.scale, 0, 0); // consts/scale
+    // [DA_PORT] Foliage stands still in the SHADOW pass, while swaying normally on screen.
+    //
+    // Measured in game: metal breaks into iridescent mottling under the upscaler, and freezing the
+    // vegetation with r__wind_scale 0 leaves the same metal clean with nothing else changed. Marking
+    // the metal reactive did NOT help, which rules out the reconstruction - the mottling is already in
+    // the frame being rendered. That leaves only one route from the wind to the surface: the shadow the
+    // leaves cast on it. A shadow map is a hard, aliased edge, so a leaf moving by a fraction of a
+    // texel flips whole pixels of the metal between lit and shadowed every frame, and a narrow specular
+    // lobe turns that into the colour noise seen on screen.
+    //
+    // The cost is that a tree's shadow no longer sways with the tree. Dappled foliage shade is diffuse
+    // and moves subtly, so this reads as far less wrong than the metal boiling - and it is a common
+    // trade in engines with sharp shadow maps. Costs nothing per frame either way.
+    Fvector4 wind = tvs.wind;
+    Fvector4 wind_old = tvs.wind_old;
+    if (ps_r__wind_shadow == 0 && RImplementation.get_context(cmd_list.context_id).o.phase == CRender::PHASE_SMAP)
+    {
+        wind.set(0.f, 0.f, 0.f, 0.f);
+        wind_old.set(0.f, 0.f, 0.f, 0.f);
+    }
+
     cmd_list.tree.set_wave(tvs.wave); // wave
-    cmd_list.tree.set_wind(tvs.wind); // wind
+    cmd_list.tree.set_wind(wind); // wind
     cmd_list.tree.set_wave_old(tvs.wave_old); // [DA_PORT] motion vectors
-    cmd_list.tree.set_wind_old(tvs.wind_old); // [DA_PORT] motion vectors
+    cmd_list.tree.set_wind_old(wind_old); // [DA_PORT] motion vectors
 #if RENDER != R_R1
     s *= 1.3333f;
     cmd_list.tree.set_c_scale(s * c_scale.rgb.x, s * c_scale.rgb.y, s * c_scale.rgb.z, s * c_scale.hemi); // scale

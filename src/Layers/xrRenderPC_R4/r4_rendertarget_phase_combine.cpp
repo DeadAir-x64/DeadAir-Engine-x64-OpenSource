@@ -7,6 +7,8 @@
 
 namespace xray::render::RENDER_NAMESPACE
 {
+// [DA_PORT] Defined in dx11HW.cpp - see the note there on why the layer needs draining by hand.
+void da_d3d_debug_drain();
 
 float hclip(float v, float dim) { return 2.f * v / dim - 1.f; }
 
@@ -491,8 +493,12 @@ void CRenderTarget::phase_combine()
         // while every jitter sign, every motion-vector sign and the vectors themselves changed nothing —
         // all of them only ever affected an output nobody displayed.
         PIX_EVENT(DA_phase_fsr2);
+        phase_reactive(); // [DA_PORT] reads the honest velocity, so it goes before the guard touches it
+        phase_velocity_guard(); // [DA_PORT] must run BEFORE any upscaler reads the buffer
         phase_fsr2();
-        phase_xess(); // [DA_PORT] the other upscaler; only one is ever enabled
+        phase_fsr3(); // [DA_PORT]
+        phase_xess();
+        da_d3d_debug_drain(); // [DA_PORT] validation layer output, see dx11HW.cpp // [DA_PORT] the other upscaler; only one is ever enabled
 
         PIX_EVENT(phase_pp);
         phase_pp();

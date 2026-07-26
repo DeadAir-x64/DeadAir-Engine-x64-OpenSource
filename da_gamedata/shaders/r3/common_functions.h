@@ -3,6 +3,27 @@
 
 #include "da_shader_ids.h"
 
+// [DA_PORT] How strongly a moving pixel should distrust its own history. x = scale, driven by
+// r__reactive_motion; zero disables the whole thing and the mask stays what it was.
+uniform float4 da_reactive_motion;
+
+// Reactivity from how far a pixel travelled on screen this frame.
+//
+// A temporal upscaler ghosts on things that move against a still background: the history it fetches is
+// correct in position yet belongs to whatever the object has just uncovered, and blending the two drags
+// a faint copy along behind. The reactive mask is the intended answer - it tells the upscaler to lean on
+// the current frame - and motion is the honest signal for it: no per-object marking, no shader knowing
+// what it is drawing, and it covers characters, vehicles and swaying branches alike.
+//
+// Deliberately NOT binary. Full reactivity trades the ghost for shimmer, so a fast-moving pixel leans
+// on the present while a slow one keeps most of its history.
+float da_motion_reactive( float2 velocity )
+{
+	return saturate( length(velocity) * da_reactive_motion.x );
+}
+
+
+
 //	contrast function
 float Contrast(float Input, float ContrastPower)
 {
@@ -250,6 +271,7 @@ f_deffer pack_gbuffer( float4 norm, float4 pos, float4 col, uint imask )
 	// [DA_PORT] Default for the reactive mask: trust the history. Set here, in the one function every
 	// deferred shader builds its output through, so that adding the field cannot leave any of the 48
 	// blenders writing an uninitialised value into the target.
+	//
 	res.reactive = 0.0h;
 #endif
 

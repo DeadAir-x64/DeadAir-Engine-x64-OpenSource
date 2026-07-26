@@ -44,6 +44,8 @@ f_deffer main ( p_bumped I )
 	O.velocity = DA_ID_BUMP;
 #else
 	O.velocity = I.hpos_curr.xy / I.hpos_curr.w - I.hpos_old.xy / I.hpos_old.w;
+	// [DA_PORT] Moving pixels distrust their history - see da_motion_reactive.
+	O.reactive = max( O.reactive, da_motion_reactive(O.velocity) );
 #endif
 #endif
 

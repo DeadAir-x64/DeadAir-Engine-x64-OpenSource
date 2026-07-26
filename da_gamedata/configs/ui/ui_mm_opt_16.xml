@@ -1,4 +1,4 @@
-<w>
+﻿<w>
 	<background x="0" y="0" width="1024" height="768" stretch="1">
 			<texture x="0" y="0" width="1920" height="1080">ui\ui_static_mm_back_00</texture>
 	</background>
@@ -160,7 +160,7 @@
 		<cap_upscaler x="240" y="352" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_upscaler</text>
 		</cap_upscaler>
-		<list_upscaler x="320" y="350" width="165" height="21" list_length="4">
+		<list_upscaler x="320" y="350" width="165" height="21" list_length="5">
 			<options_item entry="r__upscaler" group="mm_opt_video" depend="restart"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
@@ -846,7 +846,7 @@
 		
 		<cap_keyboardsetup x="0" y="75" width="10" height="10">
 			<texture a="0">ui_brokenline</texture>
-			<text> </text>
+			<text>В </text>
 		</cap_keyboardsetup>
 
         <key_binding x="238" y="160" width="280" height="380">
@@ -923,3 +923,4 @@
         <texture>ui_button_ordinary</texture>
     </btn_cancel_download>
 </w>
+

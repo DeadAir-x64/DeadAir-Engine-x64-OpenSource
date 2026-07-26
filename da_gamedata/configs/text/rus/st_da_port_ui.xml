@@ -120,4 +120,7 @@
 	<string id="ui_mm_upq_ultra_performance">
 		<text>Ультра-производительность</text>
 	</string>
+	<string id="ui_mm_upscaler_fsr3">
+		<text>FSR 3.0</text>
+	</string>
 </string_table>

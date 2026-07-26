@@ -5,6 +5,7 @@
 // [DA_PORT] Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__upscale_sharpness;
+extern ENGINE_API int ps_r__foliage_tandc;
 extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
 namespace xray::render::RENDER_NAMESPACE
@@ -54,6 +55,8 @@ bool CRenderTarget::phase_fsr2()
         p.velocity = velocity;
         p.output = output;
         p.reactive = reactive;
+        // [DA_PORT] Same buffer, second input - see da_fsr2.cpp.
+        p.tandc = ps_r__foliage_tandc ? reactive : nullptr;
 
         p.render_width = Device.dwRenderWidth;
         p.render_height = Device.dwRenderHeight;

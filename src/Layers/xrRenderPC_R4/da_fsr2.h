@@ -36,6 +36,7 @@ public:
         ID3D11Resource* velocity{};
         ID3D11Resource* output{};   // upscaled result, at display resolution
         ID3D11Resource* reactive{}; // [DA_PORT] 1 where the history must not be trusted
+        ID3D11Resource* tandc{};    // [DA_PORT] transparency-and-composition, null to disable
 
         u32 render_width{};
         u32 render_height{};

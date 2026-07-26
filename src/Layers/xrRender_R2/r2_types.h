@@ -16,7 +16,10 @@ namespace xray::render::RENDER_NAMESPACE
 #define     r2_RT_taa_scratch   "$user$taa_scratch" // DA: un-sharpened resolve, on its way into the history
 #define     r2_RT_taa_out       "$user$taa_out"     // DA: sharpened resolve, on its way back into rt_Color
 #define     r2_RT_velocity      "$user$velocity"    // DA: per-pixel screen-space motion, for FSR 2 (R4)
+#define     r2_RT_velocity_guard "$user$velocity_guard" // DA: velocity after the guard pass (R4)
 #define     r2_RT_reactive      "$user$reactive"    // DA: reactive mask for the upscalers (R4)
+#define     r2_RT_reactive_scratch "$user$reactive_scratch" // DA: reactive, first axis of the dilate (R4)
+#define     r2_RT_reactive_scratch2 "$user$reactive_scratch2" // DA: reactive, motion in and result out (R4)
 #define     r2_RT_fsr2_out      "$user$fsr2_out"    // DA: FSR 2 result, at OUTPUT resolution (R4)
 #define     r2_RT_albedo        "$user$albedo"      // MRT
 

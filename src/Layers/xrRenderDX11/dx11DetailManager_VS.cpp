@@ -4,6 +4,11 @@
 #include "xrEngine/Environment.h"
 #include "Layers/xrRender/BufferUtils.h"
 
+// [DA_PORT] Vegetation sway scale, 0 = frozen. Defined in the engine; declared outside the namespace
+// on purpose - written inside it, the extern would look for the symbol in that namespace instead.
+extern ENGINE_API float ps_r__wind_scale;
+extern ENGINE_API int ps_r__wind_shadow;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 namespace detail_manager
@@ -79,14 +84,36 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
     float tm_rot1 = m_time_rot_1;
     float tm_rot2 = m_time_rot_2;
 
+    // [DA_PORT] r__wind_scale: 0 freezes the grass. Applied to the previous-frame copies too, so the
+    // motion vectors keep describing the same sway the current frame is drawn with.
+    float da_wind = ps_r__wind_scale;
+
+    // [DA_PORT] r__wind_shadow 0: grass stands still in the SHADOW pass while swaying on screen.
+    //
+    // Grass goes into the sun's shadow map (render_phase_sun.cpp, gated by r2_sun_details), and a
+    // shadow map is a hard edge sitting on a texel boundary. A blade moving by a fraction of a texel
+    // flips whole pixels of whatever it shades between lit and unlit every frame. Matte surfaces
+    // absorb that; a narrow specular lobe answers to illumination sharply and turns it into the colour
+    // noise seen on metal - which is why the artefact picks out barrels and cars and leaves the wooden
+    // fence beside them alone.
+    //
+    // The tree half of this lives in FTreeVisual::Render. Freezing only the trees was not a test of the
+    // idea: objects standing in grass are shadowed by the grass, not by the canopy.
+    if (ps_r__wind_shadow == 0 &&
+        RImplementation.get_context(cmd_list.context_id).o.phase == CRender::PHASE_SMAP)
+        da_wind = 0.f;
+
+    const float da_amp1 = swing_current.amp1 * da_wind;
+    const float da_amp2 = swing_current.amp2 * da_wind;
+
     Fvector4 dir1, dir2;
-    dir1.set(_sin(tm_rot1), 0, _cos(tm_rot1), 0).normalize().mul(swing_current.amp1);
-    dir2.set(_sin(tm_rot2), 0, _cos(tm_rot2), 0).normalize().mul(swing_current.amp2);
+    dir1.set(_sin(tm_rot1), 0, _cos(tm_rot1), 0).normalize().mul(da_amp1);
+    dir2.set(_sin(tm_rot2), 0, _cos(tm_rot2), 0).normalize().mul(da_amp2);
 
     // [DA_PORT] The same directions one frame back, built exactly the same way.
     Fvector4 dir1_old, dir2_old;
-    dir1_old.set(_sin(m_time_rot_1_old), 0, _cos(m_time_rot_1_old), 0).normalize().mul(swing_current.amp1);
-    dir2_old.set(_sin(m_time_rot_2_old), 0, _cos(m_time_rot_2_old), 0).normalize().mul(swing_current.amp2);
+    dir1_old.set(_sin(m_time_rot_1_old), 0, _cos(m_time_rot_1_old), 0).normalize().mul(da_amp1);
+    dir2_old.set(_sin(m_time_rot_2_old), 0, _cos(m_time_rot_2_old), 0).normalize().mul(da_amp2);
 
     // Setup geometry and DMA
     cmd_list.set_Geometry(hw_Geom);

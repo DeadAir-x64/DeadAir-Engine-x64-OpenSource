@@ -237,7 +237,11 @@ float ps_r2_sun_tsm_projection = 0.3f; // 0.18f
 float ps_r2_sun_tsm_bias = -0.2f;
 float ps_r2_sun_near = 20.f; // 12.0f
 float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
-float ps_r2_sun_far = 100.f; // 180.f
+// [DA_PORT] 180, the value beside it, which is the author's and also the console maximum. At 100 the
+// far shadow cascade ends well inside open country, and the step in brightness where it ends reads as
+// a flickering line across a distant slope that slides away as the player walks towards it. Verified
+// in game: raising it to 180 removes that line outright.
+float ps_r2_sun_far = 180.f;
 float ps_r2_sun_depth_far_scale = 1.00000f; // 1.00001f
 float ps_r2_sun_depth_far_bias = -0.00002f; // -0.0000f
 float ps_r2_sun_depth_near_scale = 1.0000f; // 1.00001f

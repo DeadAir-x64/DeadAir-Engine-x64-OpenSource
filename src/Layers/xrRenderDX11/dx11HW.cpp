@@ -1,5 +1,8 @@
 #include "stdafx.h"
 
+// [DA_PORT] Defined in the engine (xr_ioc_cmd.cpp).
+extern ENGINE_API int ps_r__d3d_debug;
+
 #include "dx11HW.h"
 
 #include "StateManager/dx11SamplerStateCache.h"
@@ -119,6 +122,20 @@ void CHW::CreateDevice(SDL_Window* sdlWnd)
         createDeviceFlags |= D3D_CREATE_DEVICE_DEBUG;
 #endif
 
+    // [DA_PORT] The validation layer, on a console variable and available in Release.
+    //
+    // It answers a whole class of question nothing else can: a resource bound for writing while a
+    // shader reads it, a slot that does not match what the shader declares, a view created against the
+    // wrong format. D3D11 does none of that by default - it returns success and hands the shader zeros,
+    // which is why these faults show up as a wrong picture rather than an error, and why guessing at
+    // them is hopeless. Requires the "Graphics Tools" optional Windows feature; without it device
+    // creation with this flag fails, so the failure is caught and the flag dropped rather than fatal.
+    if (::ps_r__d3d_debug)
+    {
+        createDeviceFlags |= D3D_CREATE_DEVICE_DEBUG;
+        Msg("* [DA_PORT] D3D11 validation layer requested (r__d3d_debug)");
+    }
+
     HRESULT R;
 
     D3D_FEATURE_LEVEL featureLevels[] =
@@ -158,13 +175,50 @@ void CHW::CreateDevice(SDL_Window* sdlWnd)
             D3D11_SDK_VERSION, &pDevice, &FeatureLevel, &pContext);
     };
 
-    if (DX10Only)
-        R = createDevice(featureLevels3, std::size(featureLevels3));
-    else
+    const auto createDeviceAll = [&]()
     {
-        R = createDevice(featureLevels, std::size(featureLevels));
-        if (FAILED(R))
-            R = createDevice(featureLevels2, std::size(featureLevels2));
+        if (DX10Only)
+            return createDevice(featureLevels3, std::size(featureLevels3));
+        HRESULT r = createDevice(featureLevels, std::size(featureLevels));
+        if (FAILED(r))
+            r = createDevice(featureLevels2, std::size(featureLevels2));
+        return r;
+    };
+
+    R = createDeviceAll();
+
+    // [DA_PORT] The validation layer is refused outright when the "Graphics Tools" Windows feature is
+    // not installed, and the whole device creation fails with it. Drop the flag and try again rather
+    // than leave the game unable to start because of a diagnostic setting.
+    if (FAILED(R) && (createDeviceFlags & D3D_CREATE_DEVICE_DEBUG))
+    {
+        Msg("! [DA_PORT] device creation failed WITH the validation layer - is the 'Graphics Tools' "
+            "Windows feature installed? Retrying without it.");
+        createDeviceFlags &= ~u32(D3D_CREATE_DEVICE_DEBUG);
+        R = createDeviceAll();
+    }
+
+    // [DA_PORT] Drain the validation layer into our own log.
+    //
+    // Its messages otherwise go to the debugger output, which does not exist when the game is started
+    // normally - so the layer would be enabled and still tell us nothing. Pulled once per frame from
+    // da_d3d_debug_drain(); this only sets up the filter.
+    if (SUCCEEDED(R) && (createDeviceFlags & D3D_CREATE_DEVICE_DEBUG))
+    {
+        ID3D11InfoQueue* iq = nullptr;
+        if (SUCCEEDED(pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), reinterpret_cast<void**>(&iq))) && iq)
+        {
+            // The steady per-frame chatter is not what we are after; corruption shows up as warnings
+            // and errors, and letting INFO through buries them thousands deep.
+            D3D11_INFO_QUEUE_FILTER filter{};
+            D3D11_MESSAGE_SEVERITY allow[] = { D3D11_MESSAGE_SEVERITY_CORRUPTION,
+                D3D11_MESSAGE_SEVERITY_ERROR, D3D11_MESSAGE_SEVERITY_WARNING };
+            filter.AllowList.NumSeverities = 3;
+            filter.AllowList.pSeverityList = allow;
+            iq->PushStorageFilter(&filter);
+            iq->Release();
+            Msg("* [DA_PORT] validation layer active, messages will appear in this log");
+        }
     }
 
     if (SUCCEEDED(R))
@@ -566,4 +620,51 @@ DeviceState CHW::GetDeviceState()
 
     return DeviceState::Normal;
 }
+
+// [DA_PORT] Pull whatever the validation layer has to say into the engine log, once per frame.
+//
+// Without this the layer is enabled and still tells us nothing: its messages go to the debugger, and
+// there is no debugger attached when the game is started normally.
+//
+// Capped per run, not per frame: a genuine state fault repeats every frame and would otherwise fill
+// the log with thousands of identical lines and slow the game to a crawl. The first occurrences are
+// the informative ones.
+void da_d3d_debug_drain()
+{
+    if (!::ps_r__d3d_debug || !HW.pDevice)
+        return;
+
+    static u32 s_reported = 0;
+    static const u32 s_limit = 200;
+    if (s_reported > s_limit)
+        return;
+
+    ID3D11InfoQueue* iq = nullptr;
+    if (FAILED(HW.pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), reinterpret_cast<void**>(&iq))) || !iq)
+        return;
+
+    const UINT64 count = iq->GetNumStoredMessages();
+    for (UINT64 i = 0; i < count && s_reported < s_limit; ++i)
+    {
+        SIZE_T len = 0;
+        if (FAILED(iq->GetMessage(i, nullptr, &len)) || !len)
+            continue;
+        auto* msg = static_cast<D3D11_MESSAGE*>(xr_malloc(len));
+        if (SUCCEEDED(iq->GetMessage(i, msg, &len)) && msg->pDescription)
+        {
+            Msg("~ [D3D11] %s", msg->pDescription);
+            ++s_reported;
+        }
+        xr_free(msg);
+    }
+    iq->ClearStoredMessages();
+    iq->Release();
+
+    if (s_reported >= s_limit)
+    {
+        Msg("~ [D3D11] message limit reached, further validation output suppressed");
+        ++s_reported;
+    }
+}
+
 } // namespace xray::render::RENDER_NAMESPACE

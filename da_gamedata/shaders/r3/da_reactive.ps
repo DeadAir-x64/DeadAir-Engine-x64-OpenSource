@@ -1,0 +1,118 @@
+#include "common.h"
+
+// [DA_PORT] Mark the neighbourhood of genuinely moving objects as reactive, against the ghost that
+// trails an NPC.
+//
+// Two things had to be got right, and the first one is what the earlier attempt got wrong.
+//
+// WHICH MOTION COUNTS. A motion vector holds the camera's movement and the object's added together,
+// and only the second is a reason to distrust history. Marking on the raw vector meant that turning
+// the camera - when every pixel on screen moves - marked the entire frame reactive, which is exactly
+// when an upscaler most needs its accumulated history. So the camera's share is subtracted
+// analytically here: depth plus the previous camera matrix give where a STATIC surface at this pixel
+// would have been last frame, and the difference from where the buffer says it was is what the object
+// itself did. A world standing still under any camera movement yields zero everywhere, however fast
+// the player spins.
+//
+// WHERE TO MARK. Not on the figure - the figure reprojects correctly, its vectors describe it. The
+// ghost sits on the ground BEHIND it, on pixels the figure has just uncovered: static ground whose
+// history still holds the figure that was standing there. Those pixels have no motion of their own to
+// be found by, only a moving neighbour, so the mark is widened by a few pixels. That widening is what
+// actually removes the trail; the scale alone never could.
+
+uniform float4x4 m_prev_VP;  // eye-space -> previous frame's un-jittered clip space (see da_taa.ps)
+uniform float4 da_reactive;  // x = scale, y = dilate radius in px, z = deadzone, w = debug view
+
+// s_position and s_diffuse come from common.h and must NOT be redeclared - HLSL treats a second
+// declaration as a redefinition, the shader fails to compile, and the engine answers by silently
+// substituting stub_default.
+Texture2D s_velocity;
+Texture2D s_reactive;
+
+// Matches da_fullscreen.vs exactly: the field order is what binds the two stages together.
+struct vf
+{
+	float2 tc0   : TEXCOORD0;
+	float4 hpos  : SV_Position;
+};
+
+// How far the surface at this texel travelled through the world this frame, in NDC.
+float da_object_motion(int2 p)
+{
+	const int3 px = int3(p, 0);
+
+	// Eye-space position, rebuilt the same way every deferred shader rebuilds it: the ray through
+	// this pixel, scaled by the depth stored in the G-buffer.
+	const float2 sp = float2(p) + 0.5;
+	const float3 ray = float3(sp * pos_decompression_params.zw - pos_decompression_params.xy, 1.0);
+	const float eye_z = s_position.Load(px).z;
+
+	// .z == 0 is sky - no geometry wrote there, and nothing in it moves through the world.
+	if (abs(eye_z) < 0.001)
+		return 0.0;
+
+	const float4 prev = mul(m_prev_VP, float4(ray * eye_z, 1.0));
+	if (prev.w <= 0.0001)
+		return 0.0;
+
+	// Current NDC straight out of the ray, without needing the resolution: pos_decompression_params.xy
+	// is the tangent of the half-FOV, which is precisely what the ray was scaled by. The y sign flips
+	// because pixel rows count downwards and clip space counts up.
+	const float2 ndc_now = float2(ray.x / pos_decompression_params.x, -ray.y / pos_decompression_params.y);
+	const float2 ndc_cam = prev.xy / prev.w;
+
+	// What the buffer says minus what the camera alone explains.
+	const float2 v = s_velocity.Load(px).xy;
+	return length(v - (ndc_now - ndc_cam));
+}
+
+float4 main(vf I) : SV_Target
+{
+	const int3 px = int3(I.hpos.xy, 0);
+
+	// [DA_PORT] The engine skips this pass altogether when the scale is zero, so a zero arriving here
+	// cannot mean "switched off" - it can only mean the constant never reached the shader. Answering
+	// that case with a value nothing else here produces makes it name itself in a readback, instead of
+	// looking exactly like an ordinary empty mask. It doubles as proof that the draw lands where it is
+	// meant to: a frame that comes back 0.125 throughout is a frame this shader definitely rendered.
+	//
+	// Written before anything else on purpose. This test used to sit above the diagnostics and return
+	// the mask unchanged, which meant a missing constant made every diagnostic return zero as well -
+	// the one failure that hides the evidence identifying it.
+	if (da_reactive.x <= 0.0)
+		return float4(0.125, 0, 0, 0);
+
+	const float base = s_reactive.Load(px).x;
+
+	// [DA_PORT] Each input on its own, written where the mask goes so that "r__motion_vectors 4" shows
+	// it. When a pass produces zero, every one of its inputs is an equally good suspect and they are
+	// indistinguishable from the outside - so each gets shown rather than reasoned about.
+	if (da_reactive.w > 0.5)
+	{
+		if (da_reactive.w < 1.5)
+			return float4(base, 0, 0, 0);                                   // the G-buffer's own mask
+		if (da_reactive.w < 2.5)
+			return float4(length(s_velocity.Load(px).xy) * 200.0, 0, 0, 0);  // the motion vector
+		if (da_reactive.w < 3.5)
+			return float4(abs(s_position.Load(px).z) * 0.02, 0, 0, 0);       // eye-space depth
+		return float4(da_object_motion(px.xy) * 250.0, 0, 0, 0);             // motion through the world
+	}
+
+	// This pixel only. The widening used to happen here, as nine taps spaced by the radius, and that
+	// was a mistake worth recording: spacing the taps rather than filling the gap meant a wide setting
+	// sampled a wide area sparsely instead of covering it, so the band could never grow past about
+	// eight pixels without breaking into a lattice. At sixty frames a second the trail is over twenty
+	// pixels wide and the mark simply could not reach across it.
+	//
+	// It now costs one evaluation instead of nine, and da_reactive_dilate.ps spreads the result along
+	// each axis in turn - a maximum over a square being the maximum of maxima over its rows.
+	const float m = da_object_motion(px.xy);
+
+	// Deadzone first, then scale: swaying vegetation moves through the world too, and marking every
+	// leaf costs the accumulation that keeps the sway smooth.
+	//
+	// The G-buffer's own mask is deliberately NOT folded in here. It would then be widened along with
+	// everything else, and alpha-tested foliage covers half the screen: spreading that by twenty pixels
+	// would leave almost nothing accumulating. It joins on the last axis instead, undilated.
+	return float4(saturate((m - da_reactive.z) * da_reactive.x), 0, 0, 0);
+}

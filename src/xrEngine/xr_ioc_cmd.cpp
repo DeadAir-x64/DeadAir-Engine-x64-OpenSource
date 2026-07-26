@@ -371,6 +371,7 @@ xr_token qxess_token[] = {
 // Adding a new upscaler is one line in the table below; everything else follows from it.
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__xess;
+extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API u32 ps_r__upscale_preset;
 
 struct da_upscaler_entry
@@ -381,6 +382,7 @@ struct da_upscaler_entry
 
 static const da_upscaler_entry da_upscalers[] = {
     { (u32*)&ps_r__fsr2, "r__fsr2" },
+    { (u32*)&ps_r__fsr3, "r__fsr3" },
     { (u32*)&ps_r__xess, "r__xess" },
     { &ps_r__upscale_preset, "r__upscale_preset" }, // FSR 1.0 - spatial, but it owns the render scale
 };
@@ -414,7 +416,8 @@ ENGINE_API xr_token qupscaler_token[] = {
     { "ui_mm_upscaler_off", 0 },
     { "ui_mm_upscaler_fsr1", 1 },
     { "ui_mm_upscaler_fsr2", 2 },
-    { "ui_mm_upscaler_xess", 3 },
+    { "ui_mm_upscaler_fsr3", 3 },
+    { "ui_mm_upscaler_xess", 4 },
     { nullptr, 0 },
 };
 
@@ -442,6 +445,7 @@ static void da_apply_upscaler()
     const u32 q = (ps_r__upscaler_quality < 5) ? ps_r__upscaler_quality : 1;
 
     ps_r__fsr2 = 0;
+    ps_r__fsr3 = 0;
     ps_r__xess = 0;
     ps_r__upscale_preset = 0;
 
@@ -456,7 +460,11 @@ static void da_apply_upscaler()
         ps_r__fsr2 = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
         break;
-    case 3: // XeSS - temporal reconstruction, Intel Arc only on D3D11
+    case 3: // FSR 3 - temporal reconstruction, community DX11 backend
+        ps_r__fsr3 = int(q + 1);
+        ps_r__render_scale = da_upscaler_scale[q];
+        break;
+    case 4: // XeSS - temporal reconstruction, Intel Arc only on D3D11
         ps_r__xess = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
         break;
@@ -1021,11 +1029,123 @@ ENGINE_API int ps_r__fsr2 = 0;
 // [DA_PORT] Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
 // context at renderer start for a fixed pair of resolutions, so they are chosen before that point.
 ENGINE_API int ps_r__xess = 0;
+// [DA_PORT] FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
+// their contexts independently at renderer start, and having both live means comparing them
+// costs one restart rather than two. Only whichever is selected ever dispatches.
+ENGINE_API int ps_r__fsr3 = 0;
+
+// [DA_PORT] D3D11 validation layer, plus draining its messages into the engine log. Off by
+// default and needs a restart: the flag is passed at device creation. Requires the 'Graphics
+// Tools' Windows feature; without it the device falls back to creating without the layer.
+ENGINE_API int ps_r__d3d_debug = 0;
+
+// [DA_PORT] Halves the FSR 3 path so the damage can be attributed without a validation layer.
+// 0 = normal. 1 = context is created and its resources exist, but nothing is dispatched and the
+// upscaled frame is never claimed, so the engine falls back to the plain stretch. If models break
+// at 1 as well, the fault is in creation or in the resources FSR 3 holds; if they survive, it is
+// the dispatch that disturbs the pipeline.
+ENGINE_API int ps_r__fsr3_debug = 0;
 // [DA_PORT] How much the upscalers should distrust their history on alpha-tested foliage. Not a switch
 // but a weight: 0 accumulates normally (shimmer on thin branches), 1 ignores history entirely (no
 // shimmer, but the sway loses its smoothness because nothing is left to accumulate). The useful value
 // is somewhere between and is a matter of taste, hence a slider rather than a constant.
 ENGINE_API float ps_r__reactive_foliage = 0.5f;
+
+// [DA_PORT] Reactivity from screen-space motion, against ghosting behind moving objects. The
+// scale is in reactive units per NDC unit of travel: at 8 a pixel crossing a hundredth of the
+// screen in one frame is already fully reactive. 0 disables it.
+//
+// Superseded by r__reactive_object below and off by default because it cannot tell the two kinds of
+// motion apart: a camera turn moves every pixel on screen, so this marked the WHOLE frame reactive
+// whenever the player looked around - precisely when an upscaler most needs its history. Kept as a
+// cvar so the old behaviour can still be compared against directly.
+ENGINE_API float ps_r__reactive_motion = 0.f;
+
+// [DA_PORT] Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
+//
+// The distinction from r__reactive_motion above is the whole point. What a pixel's motion vector
+// records is the camera's movement and the object's added together, and the first of those is not a
+// reason to distrust history at all. The pass subtracts the camera's share analytically - depth plus
+// the previous camera matrix give exactly where a STATIC surface would have been - and what remains
+// is what the object itself did. A static world under a moving camera then yields zero everywhere.
+//
+// Scale is in reactive units per NDC unit of that residual travel. Set from measurement rather than
+// guessed: a readback of a frame with someone walking through it put the largest residual at 0.0016,
+// so 250 could only ever have reached a fifth of full reactivity. 700 measured 0.67 on that figure,
+// which is where this sits.
+//
+// It was briefly raised to 1000 to chase softness on moving figures. That softness turned out to be
+// two temporal filters running one after the other (see phase_taa), and nothing to do with this at
+// all - so the extra strength was only ever buying shimmer on glossy surfaces, which is what too
+// little accumulation looks like on a narrow specular highlight.
+ENGINE_API float ps_r__reactive_object = 700.f;
+
+// The band, in pixels, that the mark is widened by. This is what addresses the ghost rather than the
+// figure: the trail sits on the ground the figure has just uncovered, and those pixels are static -
+// they have no motion of their own to be marked by, only a moving neighbour. Their history is the
+// unreliable one, because it still holds the figure.
+// Stated at the reference frame rate and widened from there as frames get slower, since the trail is
+// as wide as whatever made it travels between two frames. Kept modest even so: every pixel it marks
+// is a pixel the upscaler stops accumulating on, and that is paid for in shimmer.
+ENGINE_API int ps_r__reactive_dilate = 3;
+
+// Residual motion below this is ignored. Vegetation also moves through the world, and marking every
+// swaying leaf reactive costs the accumulation that keeps the sway smooth - the same trade
+// r__reactive_foliage already governs deliberately.
+//
+// Also measured rather than guessed. A static world under a still camera leaves a residual of about
+// 5e-6 - half-float storage and the sub-pixel jitter, not real movement - so the floor only has to
+// clear that. The first value, 0.0008, was set before there was anything to measure and sat halfway
+// up the useful range, discarding most of the signal along with the noise.
+ENGINE_API float ps_r__reactive_deadzone = 0.00025f;
+
+// [DA_PORT] Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
+// shows it directly. A pass whose output is zero can have any of its inputs at fault and they all look
+// the same from outside, so each one gets shown on its own rather than guessed at.
+//   1 = the mask the G-buffer left    2 = the raw motion vector
+//   3 = eye-space depth               4 = motion through the world, before the deadzone
+ENGINE_API int ps_r__reactive_debug = 0;
+
+// [DA_PORT] One-shot readback of the pass's inputs and output into the log, with figures rather than a
+// picture. Clears itself after the frame it runs on - it stalls the pipeline to map the targets.
+ENGINE_API int ps_r__reactive_selftest = 0;
+
+// [DA_PORT] The frame rate the three settings above are stated at.
+//
+// They are all measured in travel PER FRAME, which makes every one of them frame-rate dependent: at
+// half the frame rate everything on screen moves twice as far between frames, so the same threshold
+// admits twice as much, and the same band covers half of what it should. Tuned on one machine they
+// would misbehave on every other - foliage marked reactive here, half the trail left behind there.
+//
+// So the pass converts them against this reference before use: the numbers keep meaning what they
+// meant when they were measured, and the conversion absorbs the difference.
+//
+// 280 because that is the rate the settings above were actually tuned at, measured rather than
+// assumed - the first guess of 120 silently rescaled every one of them and narrowed the band from
+// five pixels to two, which read as the trail coming back.
+ENGINE_API int ps_r__reactive_ref_fps = 280;
+
+// [DA_PORT] Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
+// velocity dilation stops dragging grass movement onto the metal behind it. Local by design - in
+// open country nothing is damped at all. See da_velocity_guard.ps.
+ENGINE_API float ps_r__vguard_strength = 1.f;   // 0 = pass skipped entirely
+// Gloss above which a surface is worth protecting. Lowered from 0.5: the artefact is plainest on
+// barrels and car panels, and half is a lot of gloss to demand before a surface counts at all.
+ENGINE_API float ps_r__vguard_gloss = 0.25f;
+
+// Neighbourhood, in pixels - and one is not a timid setting here, it is the right one.
+//
+// This is not a blur where wider means stronger. It exists to undo FSR's velocity dilation, and that
+// dilation looks one pixel out: it takes the motion vector of the nearest-depth neighbour within a
+// three-by-three. So the vegetation that steals a metal surface's vector is always immediately
+// adjacent to it, and the search only has to reach that far. The nine taps here are SPACED by this
+// radius rather than filling it, so the previous value of 2 sampled at plus and minus two and skipped
+// the immediately neighbouring pixels entirely - the only ones that could have been at fault.
+ENGINE_API int ps_r__vguard_radius = 1;
+// How quickly the guard fades out once the protected surface starts moving on screen. At 1000 a
+// surface travelling a thousandth of the screen in one frame - roughly one pixel - already
+// disables it, which is what keeps camera movement untouched.
+ENGINE_API float ps_r__vguard_still = 1000.f;
 
 // [DA_PORT] ---- Detail-bump stability under a temporal upscaler --------------------------------
 // Measured 26.07: the iridescent mottling that appears on metal (barrels, cars) and on distant ground
@@ -1057,6 +1177,50 @@ ENGINE_API float ps_r__detail_albedo_fix = 0.f;
 // guess its magnitude in advance - a slider whose useful range is unknown is indistinguishable from a
 // slider that is not connected at all. With this the calibration takes one look instead of a sweep.
 ENGINE_API int ps_r__detail_debug = 0;
+
+// [DA_PORT] Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
+// leaving everything else - time, weather, lighting - running, which is the only way to ask whether a
+// temporal artefact is being driven by movement in the scene or lives entirely in the shading of the
+// surface it appears on. Amplitude rather than speed, so the previous-frame copies the motion vectors
+// are built from stay consistent with the current ones.
+ENGINE_API float ps_r__wind_scale = 1.f;
+
+// [DA_PORT] ---- Glossy surfaces opt out of temporal accumulation -------------------------------
+// Measured 26.07: metal breaks up under FSR 2 not because of anything on the metal, but because of
+// what moves AROUND it - freezing the vegetation with r__wind_scale 0 makes the surface clean and
+// sharp with nothing else changed. Swaying foliage keeps disturbing the light reaching the surface,
+// and a narrow specular lobe turns that into a large change in every pixel every frame, which the
+// reconstruction then blends into iridescent mush.
+//
+// So the surface is told to stop accumulating: the reactive mask already exists as an input to both
+// FSR 2 and XeSS, and it means exactly "do not trust the history here". Alpha-tested foliage uses it
+// already; this extends it to gloss. The trade is deliberate - a reactive pixel shows the current
+// frame instead of a blend, so metal becomes sharper and noisier rather than smeared.
+//
+// weight: how strongly glossy pixels reject history, 0 disables the whole thing.
+// threshold: gloss below this is left alone entirely, so wood, brick and ground never qualify.
+// [DA_PORT] 0 = vegetation stands still in the shadow map while still swaying on screen. See
+// FTreeVisual::Render for the measurement behind it.
+ENGINE_API int ps_r__wind_shadow = 1;
+
+// [DA_PORT] 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
+// nearest-depth neighbour, so grass and branches standing in front of a static surface can push their
+// own motion onto it; the surface then has its history fetched as though it had moved with them.
+// This is the only remaining path by which wind reaches metal, all the shading routes having been
+// ruled out by measurement.
+// [DA_PORT] Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
+// reactive one. The two ask different questions of the same pixels, and alpha-tested vegetation
+// arguably answers yes to both.
+ENGINE_API int ps_r__foliage_tandc = 0;
+
+// Trees and grass separately: the contamination comes overwhelmingly from grass, which grows right
+// against objects and is always the nearer surface, while trees usually stand clear of anything.
+// So grass can be silenced without paying for it on the canopy.
+ENGINE_API float ps_r__foliage_velocity = 1.f;   // trees
+ENGINE_API float ps_r__grass_velocity = 1.f;     // grass and bushes
+
+ENGINE_API float ps_r__reactive_gloss = 0.f;
+ENGINE_API float ps_r__reactive_gloss_min = 0.5f;
 
 // [DA_PORT] Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
 // 3 = (-x,-y). The engine stores the jitter in clip space (y up), the library wants pixels (y down),
@@ -1148,8 +1312,20 @@ void CCC_Register()
     // [DA_PORT] What the options menu shows. The three per-vendor variables above stay for the console.
     CMD3(CCC_Upscaler, "r__upscaler", &ps_r__upscaler, qupscaler_token);
     CMD3(CCC_Upscaler, "r__upscaler_quality", &ps_r__upscaler_quality, qupscaler_quality_token);
-    CMD4(CCC_Integer, "r__motion_vectors", &ps_r__motion_vectors, 0, 3); // 2 = show buffer, 3 = map which shader drew what
+    // 2 = show the velocity buffer, 3 = map which shader drew what, 4 = show the reactive mask
+    CMD4(CCC_Integer, "r__motion_vectors", &ps_r__motion_vectors, 0, 4);
     CMD4(CCC_Float, "r__reactive_foliage", &ps_r__reactive_foliage, 0.f, 1.f);
+    CMD4(CCC_Float, "r__reactive_motion", &ps_r__reactive_motion, 0.f, 200.f);
+    CMD4(CCC_Float, "r__reactive_object", &ps_r__reactive_object, 0.f, 2000.f);
+    CMD4(CCC_Integer, "r__reactive_dilate", &ps_r__reactive_dilate, 0, 16);
+    CMD4(CCC_Float, "r__reactive_deadzone", &ps_r__reactive_deadzone, 0.f, 0.02f);
+    CMD4(CCC_Integer, "r__reactive_debug", &ps_r__reactive_debug, 0, 4);
+    CMD4(CCC_Integer, "r__reactive_selftest", &ps_r__reactive_selftest, 0, 1);
+    CMD4(CCC_Integer, "r__reactive_ref_fps", &ps_r__reactive_ref_fps, 30, 300);
+    CMD4(CCC_Float, "r__vguard_strength", &ps_r__vguard_strength, 0.f, 1.f);
+    CMD4(CCC_Float, "r__vguard_gloss", &ps_r__vguard_gloss, 0.f, 1.f);
+    CMD4(CCC_Integer, "r__vguard_radius", &ps_r__vguard_radius, 1, 8);
+    CMD4(CCC_Float, "r__vguard_still", &ps_r__vguard_still, 0.f, 20000.f);
     // [DA_PORT] Detail-bump damping, see the declarations. Sensitivity and strength in one number:
     // the weight is saturate(rate_of_change * value), so 0 is off and larger bites sooner.
     // Ceiling deliberately far above any sane setting: the units are a screen-space rate of change and
@@ -1160,8 +1336,14 @@ void CCC_Register()
     // 1/2 paint the damping weight, 3 paints every detail-bump pixel red, 4/5 drop the detail's
     // contribution to the normal / to the gloss outright - see the shader for why 3..5 exist.
     CMD4(CCC_Integer, "r__detail_debug", &ps_r__detail_debug, 0, 9);
+    CMD4(CCC_Float, "r__wind_scale", &ps_r__wind_scale, 0.f, 4.f); // 0 = vegetation frozen
+    CMD4(CCC_Integer, "r__wind_shadow", &ps_r__wind_shadow, 0, 1); // 0 = still foliage in shadow map
+    CMD4(CCC_Integer, "r__foliage_tandc", &ps_r__foliage_tandc, 0, 1);
     CMD3(CCC_XESS, "r__xess", (u32*)&ps_r__xess, qxess_token);
-    CMD3(CCC_FSR2, "r__fsr2", (u32*)&ps_r__fsr2, qfsr2_token); // sets r__render_scale to match; needs a renderer restart
+    CMD3(CCC_FSR2, "r__fsr2", (u32*)&ps_r__fsr2, qfsr2_token);
+    CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
+    CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
+    CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer restart
     CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
     CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]

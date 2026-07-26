@@ -8,6 +8,8 @@
 extern ENGINE_API int ps_r__taa;
 extern ENGINE_API int ps_r__taa_sharp;
 extern ENGINE_API int ps_r__fsr2;
+extern ENGINE_API int ps_r__fsr3;
+extern ENGINE_API int ps_r__xess;
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -18,11 +20,16 @@ void CRenderTarget::phase_taa()
     if (!ps_r__taa || !s_taa || RImplementation.o.msaa)
         return;
 
-    // [DA_PORT] Not alongside FSR 2. That is a temporal resolve in its own right, working from the same
-    // jittered samples and the same motion vectors, and it expects the raw frame: accumulating here
-    // first hands it an image that has already been blended with history, which shows up as extra
-    // softness and doubled edges on movement. Only one temporal filter may own the frame.
-    if (ps_r__fsr2)
+    // [DA_PORT] Not alongside an upscaler. Each of them is a temporal resolve in its own right, working
+    // from the same jittered samples and the same motion vectors, and each expects the raw frame:
+    // accumulating here first hands it an image that has already been blended with history, which shows
+    // up as extra softness and doubled edges on movement. Only one temporal filter may own the frame.
+    //
+    // Every upscaler has to be named here, and the list is the whole point. It read "FSR 2" alone while
+    // FSR 3 and XeSS were added around it, so selecting either of those left two temporal filters
+    // running one after the other - which is exactly the softness on moving figures it exists to
+    // prevent. Same omission, and same symptom, as the velocity buffer's own consumer list in r2.cpp.
+    if (ps_r__fsr2 || ps_r__fsr3 || ps_r__xess)
         return;
 
     // Not while the menu is up. The menu is drawn inside the combine pass, i.e. BEFORE this one, so it

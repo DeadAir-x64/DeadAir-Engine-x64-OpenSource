@@ -61,7 +61,12 @@ public:
     ref_rt rt_TAA_scratch; // DA: second output of the resolve — the copy that goes into the history
     ref_rt rt_TAA_out;     // DA: first output of the resolve — the copy that goes back on screen
     ref_rt rt_Velocity;    // DA: screen-space motion vectors, RG16F (R4). Groundwork for FSR 2.
+    // [DA_PORT] Velocity after the guard pass - see phase_velocity_guard.
+    ref_rt rt_Velocity_guard;
     ref_rt rt_Reactive;    // DA: reactive mask for the upscalers, R8 — 1 where history must not be trusted
+    // [DA_PORT] Working pair for the reactive widening - see phase_reactive.
+    ref_rt rt_Reactive_scratch;
+    ref_rt rt_Reactive_scratch2;
     u32 da_velocity_cleared_frame{}; // DA: phase_scene_begin runs twice per frame when the scene is split
     ref_rt rt_FSR2_out;    // DA: FSR 2 output, at OUTPUT resolution and writable from a compute shader
 
@@ -148,6 +153,10 @@ private:
     ref_rt rt_half_depth;
     ref_shader s_ssao;
     ref_shader s_taa; // DA: temporal AA resolve
+    ref_shader s_velocity_guard; // DA: damps vegetation motion next to glossy surfaces
+    ref_shader s_reactive; // DA: marks pixels around genuinely moving objects as reactive
+    ref_shader s_reactive_dilate_h; // DA: widens that mark, horizontally
+    ref_shader s_reactive_dilate_v; // DA: and vertically, folding in the mask the G-buffer left
     ref_shader s_ssao_msaa[8];
     ref_shader s_hdao_cs;      // HDAO compute shader
 
@@ -276,6 +285,9 @@ public:
     void phase_hdao();
     void phase_taa(); // DA: temporal AA resolve
     bool phase_fsr2();
+    void phase_velocity_guard(); // [DA_PORT] damp vegetation motion next to glossy surfaces
+    void phase_reactive(); // [DA_PORT] widen the reactive mask around moving objects, against ghosting
+    bool phase_fsr3(); // [DA_PORT] FSR 3 upscaler, same slot in the frame
     bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // DA: FSR 2 upscale; false when it did not run, so the caller can fall back
     void phase_downsamp();
     void phase_wallmarks();

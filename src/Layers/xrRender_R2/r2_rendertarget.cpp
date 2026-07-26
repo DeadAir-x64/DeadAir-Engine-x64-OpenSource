@@ -13,9 +13,11 @@
 #include "Layers/xrRender/blenders/blender_taa.h" // DA: temporal AA
 #if RENDER == R_R4
 #include "Layers/xrRenderPC_R4/da_fsr2.h" // DA: FSR 2
-#include "Layers/xrRenderPC_R4/da_xess.h" // DA: Intel XeSS
+#include "Layers/xrRenderPC_R4/da_xess.h"
+#include "Layers/xrRenderPC_R4/da_fsr3_api.h" // DA: Intel XeSS
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__xess;
+extern ENGINE_API int ps_r__fsr3;
 #endif
 
 #include "Layers/xrRender/blenders/dx11MSAABlender.h"
@@ -383,7 +385,19 @@ CRenderTarget::CRenderTarget()
         // single-channel texture, which is why it cannot simply be a spare channel of rt_Velocity.
         // R16F rather than an 8-bit format: the engine's D3DFORMAT list has no single-channel 8-bit
         // entry, and the extra byte per pixel is not worth adding one for.
+        // [DA_PORT] Same format and size as the velocity buffer: the guard pass writes here and the
+        // upscaler reads here, because a pass cannot read and write one target at once.
+        rt_Velocity_guard.create(r2_RT_velocity_guard, w, h, D3DFMT_G16R16F, 1);
+
         rt_Reactive.create(r2_RT_reactive, w, h, D3DFMT_R16F, 1);
+
+        // [DA_PORT] Working pair for phase_reactive. Widening happens one axis at a time - a maximum
+        // over a square is the maximum of maxima over its rows, so a band of radius r costs 2r+1 reads
+        // twice instead of the (2r+1) squared a single square pass would - and each axis needs a
+        // destination that is not also its source. scratch2 carries the motion in and the result out,
+        // scratch the half-finished pass between them.
+        rt_Reactive_scratch.create(r2_RT_reactive_scratch, w, h, D3DFMT_R16F, 1);
+        rt_Reactive_scratch2.create(r2_RT_reactive_scratch2, w, h, D3DFMT_R16F, 1);
 
         // [DA_PORT] FSR 2 writes its result here. Two things set it apart from every other target:
         // it is at the OUTPUT resolution rather than the scene's (that is the whole point of an
@@ -411,15 +425,26 @@ CRenderTarget::CRenderTarget()
             // [DA_PORT] Intel XeSS, the alternative. Created alongside rather than instead: both are
             // cheap while idle, and having them both live means switching upscaler needs one restart
             // rather than two. Only whichever is enabled ever dispatches.
-            if (::ps_r__xess)
-            {
-                da_xess::init_params xe;
-                xe.display_width = Device.dwWidth;
-                xe.display_height = Device.dwHeight;
-                xe.quality = u32(::ps_r__xess);
-                xe.device = HW.pDevice;
-                g_da_xess.create(xe);
-            }
+        }
+
+        // [DA_PORT] Intel XeSS. Was nested inside the FSR 2 branch above, which meant it could only
+        // ever be created while FSR 2 was ALSO enabled - and since selecting one upscaler now switches
+        // the others off, that made XeSS impossible to create at all. Independent, like the others.
+        if (::ps_r__xess)
+        {
+            da_xess::init_params xe;
+            xe.display_width = Device.dwWidth;
+            xe.display_height = Device.dwHeight;
+            xe.quality = u32(::ps_r__xess);
+            xe.device = HW.pDevice;
+            g_da_xess.create(xe);
+        }
+
+        // [DA_PORT] FSR 3. Same reasoning as FSR 2 for the sizes: maxRenderSize is declared as the full
+        // output, so r__render_scale can move without recreating the context.
+        if (::ps_r__fsr3)
+        {
+            da_fsr3_create(Device.dwWidth, Device.dwHeight, Device.dwWidth, Device.dwHeight, HW.pDevice);
         }
 #endif
 
@@ -692,6 +717,15 @@ CRenderTarget::CRenderTarget()
         {
             CBlender_TAA b_taa;
             s_taa.create(&b_taa, "r2" DELIMITER "taa");
+            // [DA_PORT] Script blender, unlike the TAA one - it needs no textures beyond two
+            // render targets and is simpler to keep in the shader tree.
+            s_velocity_guard.create("da_velocity_guard");
+            // [DA_PORT] Object-motion reactivity, see phase_reactive. Two blenders share one pixel
+            // shader and differ only in which buffer they read - that is what lets the widening run
+            // along one axis and then the other without a target ever being its own source.
+            s_reactive.create("da_reactive");
+            s_reactive_dilate_h.create("da_reactive_dilate_h");
+            s_reactive_dilate_v.create("da_reactive_dilate_v");
         }
 #endif
     }
