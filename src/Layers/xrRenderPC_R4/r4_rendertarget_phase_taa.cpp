@@ -7,6 +7,7 @@
 // the projection.
 extern ENGINE_API int ps_r__taa;
 extern ENGINE_API int ps_r__taa_sharp;
+extern ENGINE_API int ps_r__fsr2;
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -15,6 +16,13 @@ void CRenderTarget::phase_taa()
     // MSAA: the final combine reads the multisampled rt_Generic_0_r, not the resolved copy this pass
     // writes, so the result would simply be discarded. s_taa is not created in that case either.
     if (!ps_r__taa || !s_taa || RImplementation.o.msaa)
+        return;
+
+    // [DA_PORT] Not alongside FSR 2. That is a temporal resolve in its own right, working from the same
+    // jittered samples and the same motion vectors, and it expects the raw frame: accumulating here
+    // first hands it an image that has already been blended with history, which shows up as extra
+    // softness and doubled edges on movement. Only one temporal filter may own the frame.
+    if (ps_r__fsr2)
         return;
 
     // Not while the menu is up. The menu is drawn inside the combine pass, i.e. BEFORE this one, so it

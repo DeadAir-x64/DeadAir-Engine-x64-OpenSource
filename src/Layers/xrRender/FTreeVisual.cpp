@@ -112,15 +112,64 @@ struct FTreeVisual_setup
     Fvector4 wave;
     Fvector4 wind;
 
-    FTreeVisual_setup(): dwFrame(0), scale(0) {}
+    // [DA_PORT] The same two as they were on the previous frame, for motion vectors. Without them the
+    // sway is invisible to the upscaler: the previous position is rebuilt from the vertex as it stands
+    // NOW, already displaced, so foliage reports "I did not move" while it visibly does. The history is
+    // then fetched by the camera offset alone, lands on a different leaf, and gets accepted or rejected
+    // depending on how well it happens to match - which reads as trees and bushes blinking.
+    Fvector4 wave_old;
+    Fvector4 wind_old;
+    bool seeded;
+
+    // [DA_PORT] Sway phase, accumulated rather than derived from the clock. See calculate().
+    float phase_pos, phase_rot, time_old;
+
+    FTreeVisual_setup(): dwFrame(0), scale(0), seeded(false), phase_pos(0), phase_rot(0), time_old(0) {}
+
 
     void calculate()
     {
+        // Both are functions of global time and are recomputed once per frame, so remembering the
+        // previous frame's pair costs one copy.
+        if (seeded)
+        {
+            wave_old.set(wave);
+            wind_old.set(wind);
+        }
         dwFrame = Device.dwFrame;
         CEnvDescriptor& desc = g_pGamePersistent->Environment().CurrentEnv;
 
+        // [DA_PORT] The phase is ACCUMULATED, not computed as time * speed.
+        //
+        // Both m_fTreeSpeed and m_fTreeRotation come from the weather descriptor and are interpolated
+        // between keyframes, so they drift continuously through the day. Multiplying them by
+        // fTimeGlobal - which is thousands of seconds by then - turns a drift of a thousandth into a
+        // phase jump of many whole turns: the tree is instantly somewhere else in its swing, which
+        // looks exactly like it snapping back to its rest position. Visible at native resolution too,
+        // so it was never an upscaler problem; a temporal filter merely makes it more obvious.
+        //
+        // CDetailManager already does it this way for grass (m_time_pos += dt * speed), which is why
+        // grass never showed the artefact. Same treatment here.
+        float dt = Device.fTimeGlobal - time_old;
+        if (dt < 0.f || dt > 1.f) // first frame, or a pause / level load
+            dt = 0.03f;
+        time_old = Device.fTimeGlobal;
+
+        phase_rot += PI_MUL_2 * dt / desc.m_fTreeRotation;
+        phase_pos += dt * desc.m_fTreeSpeed;
+
+        // [DA_PORT] Wrapped to one turn. The phase is fed to periodic functions (calc_cyclic in the
+        // shader, sin/cos here), so a full turn is worth nothing to them - but it is worth a great deal
+        // to a float. Left to grow, the phase reaches thousands within minutes of play, where float32
+        // resolves about a thousandth - the same size as one frame's increment at 300 FPS. The phase
+        // then advances in visible steps instead of smoothly, which is the jumping that appears "after
+        // a while" and never at the start. Wrapping keeps every value small and exact.
+        // Safe for the previous-frame copies too: they feed the same periodic functions.
+        phase_rot = fmodf(phase_rot, PI_MUL_2);
+        phase_pos = fmodf(phase_pos, PI_MUL_2);
+
         // Calc wind-vector3, scale
-        float tm_rot = PI_MUL_2 * Device.fTimeGlobal / desc.m_fTreeRotation;
+        float tm_rot = phase_rot;
 
         wind.set(_sin(tm_rot), 0, _cos(tm_rot), 0);
         wind.normalize();
@@ -129,15 +178,39 @@ struct FTreeVisual_setup
         scale = 1.f / float(FTreeVisual_quant);
 
         // setup constants
-        wave.set(desc.m_fTreeWave.x, desc.m_fTreeWave.y, desc.m_fTreeWave.z, Device.fTimeGlobal * desc.m_fTreeSpeed); // wave
+        wave.set(desc.m_fTreeWave.x, desc.m_fTreeWave.y, desc.m_fTreeWave.z, phase_pos); // wave
         wave.div(PI_MUL_2);
+
+        if (!seeded)
+        {
+            // First frame: no previous sway to speak of. Seeding with the current one reports no motion,
+            // which beats reporting the whole displacement as if it happened in a single frame.
+            wave_old.set(wave);
+            wind_old.set(wind);
+            seeded = true;
+        }
     }
 };
 
 void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
 {
     static FTreeVisual_setup tvs;
-    if (tvs.dwFrame != Device.dwFrame)
+    // [DA_PORT] Exactly once per frame, and provably so.
+    //
+    // The plain "if (dwFrame != current) calculate()" this replaces was safe only while calculate() was
+    // a pure function of the clock: several command lists render trees in parallel (scene plus shadow
+    // cascades), two of them can pass that test in the same frame, and recomputing the same numbers
+    // twice cost nothing. Once the sway phase became ACCUMULATED and the previous frame's wind started
+    // being remembered here, a second entry stopped being harmless: it advances the phase twice in one
+    // frame, and it overwrites wave_old/wind_old with the values just computed - so the previous frame's
+    // wind equals the current one and every tree reports zero motion for that frame.
+    //
+    // Which is why the artefact was intermittent (the race is not won every frame), grew more frequent
+    // the more trees were on screen (more draws, more chances), and never appeared in the original: the
+    // race was always there, it just had nothing to corrupt.
+    static std::atomic<u32> s_frame{ 0 };
+    u32 seen = s_frame.load(std::memory_order_relaxed);
+    if (seen != Device.dwFrame && s_frame.compare_exchange_strong(seen, Device.dwFrame))
         tvs.calculate();
 // setup constants
 #if RENDER != R_R1
@@ -150,6 +223,8 @@ void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
     cmd_list.tree.set_consts(tvs.scale, tvs.scale, 0, 0); // consts/scale
     cmd_list.tree.set_wave(tvs.wave); // wave
     cmd_list.tree.set_wind(tvs.wind); // wind
+    cmd_list.tree.set_wave_old(tvs.wave_old); // [DA_PORT] motion vectors
+    cmd_list.tree.set_wind_old(tvs.wind_old); // [DA_PORT] motion vectors
 #if RENDER != R_R1
     s *= 1.3333f;
     cmd_list.tree.set_c_scale(s * c_scale.rgb.x, s * c_scale.rgb.y, s * c_scale.rgb.z, s * c_scale.hemi); // scale

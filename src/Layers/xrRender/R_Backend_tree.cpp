@@ -13,6 +13,8 @@ void R_tree::unmap()
     c_consts = nullptr;
     c_wave = nullptr;
     c_wind = nullptr;
+    c_wave_old = nullptr; // [DA_PORT]
+    c_wind_old = nullptr; // [DA_PORT]
     c_c_scale = nullptr;
     c_c_bias = nullptr;
     c_c_sun = nullptr;
@@ -64,5 +66,16 @@ void R_tree::set_c_sun(float x, float y, float z, float w)
 {
     if (c_c_sun)
         cmd_list.set_c(c_c_sun, x, y, z, w);
+}
+void R_tree::set_wave_old(Fvector4& vec) // [DA_PORT] motion vectors
+{
+    if (c_wave_old)
+        cmd_list.set_c(c_wave_old, vec);
+}
+
+void R_tree::set_wind_old(Fvector4& vec) // [DA_PORT] motion vectors
+{
+    if (c_wind_old)
+        cmd_list.set_c(c_wind_old, vec);
 }
 } // namespace xray::render::RENDER_NAMESPACE

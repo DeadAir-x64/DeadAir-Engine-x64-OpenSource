@@ -13,14 +13,17 @@ v2p_bumped _main( v_model I, float4 P_old )
 	v2p_bumped 	O;
 	O.hpos 		= mul( m_WVP, w_pos	);
 
-	// [DA_PORT] Motion vectors: the object's own movement, via its previous world matrix. Skinning is
-	// NOT included - limbs report the movement of the figure as a whole. Two attempts at a second bone
-	// array (beside the existing one, and in its own cbuffer) both broke the skinning itself: the
-	// current array is sized to fill the old 256-register space exactly, and the engine writes it by
-	// offsets that assume that layout. Doing this properly needs the bones in a buffer/texture instead.
+	// [DA_PORT] Motion vectors: the object's previous world matrix carries the movement of the figure as
+	// a whole, and P_old adds the limb's own - it arrives already posed with the previous frame's bones
+	// (see skinning_prev_* in skin.h), or equal to the current position for anything unskinned.
 #ifdef DA_VELOCITY
 	O.hpos_curr	= mul( m_VP_nojit, w_pos );
 	O.hpos_old	= mul( m_WVP_old, P_old );
+#endif
+#ifdef DA_VELOCITY
+	// [DA_PORT] Jitter applied here, after the positions the motion vectors are built from,
+	// so those stay clean. Zero unless FSR 2 is running.
+	O.hpos.xy += m_taa_jitter.xy * O.hpos.w;
 #endif
 	float2 	tc 	= I.tc;
 	float3	Pe	= mul( m_WV, w_pos );

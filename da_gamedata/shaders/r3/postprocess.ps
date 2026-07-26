@@ -144,6 +144,10 @@ float3 da_apply_gamma(float3 c)
 // blue for vertical. Still geometry reads black, and that is the point of looking at it.
 Texture2D s_velocity;
 
+// [DA_PORT] FSR 2 output. When the upscaler ran, the frame is already at output resolution and
+// reconstructed - it must be sampled 1:1, with no bicubic stretch of our own on top.
+Texture2D s_fsr2;
+
 float3 da_debug_velocity(float2 uv)
 {
 	float2 v = s_velocity.Sample(smp_rtlinear, uv).xy * 200.0;
@@ -160,13 +164,33 @@ float4 main( p_postpr I ) : SV_Target
 	if (da_upscale.y > 1.5)
 		return float4(da_debug_velocity(I.Tex0), 1.0h);
 
+#ifdef DA_VELOCITY
+	// [DA_PORT] With FSR 2 active the picture comes from its output, at full resolution already.
+	float3 image;
+	if (da_upscale.z > 0.5)
+	{
+		image = s_fsr2.Sample(smp_rtlinear, I.Tex0).rgb;
+	}
+	else
+	{
+		float3	t_0 = da_fetch_scene(s_base0, I.Tex0);
+		float3	t_1 = da_fetch_scene(s_base1, I.Tex1);
+		image = (t_0+t_1)*.5;
+	}
+#else
 	float3	t_0 	= da_fetch_scene(s_base0, I.Tex0);	// [DA_PORT] was a plain bilinear Sample
 	float3	t_1 	= da_fetch_scene(s_base1, I.Tex1);	// [DA_PORT] both read $user$albedo
 	float3 	image	= (t_0+t_1)*.5;					// add_d2
+#endif
 
 	// [DA_PORT] Sharpen only when the scene was actually upscaled - at native resolution there is
 	// nothing to recover and this would just add crunch.
-	if (da_upscale.x > 0.001 && pos_decompression_params2.x < screen_res.x - 0.5)
+	// [DA_PORT] Not when FSR 2 produced the frame (da_upscale.z): it runs RCAS itself, off the same
+	// slider, and this pass would apply the identical sharpening a second time. It also samples s_base0,
+	// the low-resolution scene, while the picture on screen came from the upscaler's full-resolution
+	// output - so the second pass sharpens against the wrong image as well as too much. The ground
+	// grows a crunchy speckle that reads as "too sharp" when the setting itself is fine.
+	if (da_upscale.x > 0.001 && da_upscale.z < 0.5 && pos_decompression_params2.x < screen_res.x - 0.5)
 		image = da_sharpen_upscaled(s_base0, I.Tex0, image, da_upscale.x);
 	float	gray 	= dot		(image,I.Gray);			// dp3
 			image 	= lerp 		(gray,image,I.Gray.w);		// mul/mad

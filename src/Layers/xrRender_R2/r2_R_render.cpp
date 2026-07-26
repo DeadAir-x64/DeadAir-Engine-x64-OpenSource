@@ -398,6 +398,10 @@ void CRender::Render()
         Target->phase_combine();
     }
 
+    // [DA_PORT] FSR 2 used to be dispatched here, which looked like "after the frame is assembled but
+    // before post-process". It is not: phase_pp runs inside phase_combine above, so this was a pass too
+    // late and its output was never displayed. Moved into phase_combine, immediately ahead of phase_pp.
+
     // [DA_PORT] Remember this frame's camera for the next one. Temporal effects reproject a pixel into
     // the previous frame from its depth and this matrix; it has to be captured after the frame is fully
     // rendered, so that the next frame compares against the camera the picture was actually drawn with.

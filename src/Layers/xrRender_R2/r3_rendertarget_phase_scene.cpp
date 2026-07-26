@@ -92,14 +92,18 @@ void CRenderTarget::phase_scene_begin()
         {
             constexpr float zero[4] = { 0.f, 0.f, 0.f, 0.f };
             HW.get_context(RCache.context_id)->ClearRenderTargetView(rt_Velocity->pRT, zero);
+            // The reactive mask rides the same guard: zero means "trust the history here", which is the
+            // right answer for every pixel no shader marks, including the sky.
+            if (rt_Reactive && rt_Reactive->pRT)
+                HW.get_context(RCache.context_id)->ClearRenderTargetView(rt_Reactive->pRT, zero);
             da_velocity_cleared_frame = Device.dwFrame;
         }
 #endif
 
         if (RImplementation.o.albedo_wo)
-            u_setrt(RCache, rt_Position, rt_Accumulator, rt_Velocity, rt_MSAADepth);
+            u_setrt(RCache, rt_Position, rt_Accumulator, rt_Velocity, rt_Reactive, rt_MSAADepth);
         else
-            u_setrt(RCache, rt_Position, rt_Color, rt_Velocity, rt_MSAADepth);
+            u_setrt(RCache, rt_Position, rt_Color, rt_Velocity, rt_Reactive, rt_MSAADepth);
     }
     else
     {

@@ -3,6 +3,9 @@
 uniform float4 		consts; // {1/quant,1/quant,diffusescale,ambient}
 uniform float4 		wave; 	// cx,cy,cz,tm
 uniform float4 		dir2D; 
+// [DA_PORT] Same pair one frame back, so the sway itself reaches the motion vectors. Rebuilding the
+// previous position from the CURRENT, already-bent blade makes grass claim it never moved.
+uniform float4 		wave_old, dir2D_old;
 //uniform float4 		array	[200] : register(c12);
 //tbuffer DetailsData
 //{
@@ -33,6 +36,8 @@ v2p_flat 	main (v_detail v)
 	float 	frac 	= v.misc.z*consts.x;		// fractional
 	float 	inten 	= H * dp;
 	float2 	result	= calc_xz_wave	(dir2D.xz*inten,frac);
+	// [DA_PORT] Keep the unbent position: the previous frame's bend is applied to it below.
+	float4	pos_flat = pos;
 	pos		= float4(pos.x+result.x, pos.y, pos.z+result.y, 1);
 
 	// Normal in world coords
@@ -52,7 +57,16 @@ v2p_flat 	main (v_detail v)
 	// wave time.
 #ifdef DA_VELOCITY
 	O.hpos_curr	= mul( m_VP_nojit, pos );
-	O.hpos_old	= mul( m_WVP_old, pos );
+	// [DA_PORT] The bend rebuilt with the previous frame's wind - same arithmetic, other constants.
+	float 	dp_old	= calc_cyclic   (dot(pos_flat,wave_old));
+	float2 	res_old	= calc_xz_wave  (dir2D_old.xz*((pos_flat.y-base)*dp_old), frac);
+	float4	pos_old	= float4(pos_flat.x+res_old.x, pos_flat.y, pos_flat.z+res_old.y, 1);
+	O.hpos_old	= mul( m_WVP_old, pos_old );
+#endif
+#ifdef DA_VELOCITY
+	// [DA_PORT] Jitter applied here, after the positions the motion vectors are built from,
+	// so those stay clean. Zero unless FSR 2 is running.
+	O.hpos.xy += m_taa_jitter.xy * O.hpos.w;
 #endif
 	O.N 		= mul		(m_WV,  normalize(norm)	);
 	float3	Pe	= mul		(m_WV,  pos				);

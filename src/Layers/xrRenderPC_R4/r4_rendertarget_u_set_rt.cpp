@@ -45,6 +45,11 @@ void CRenderTarget::u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& 
         cmd_list.set_RT(_3->pRT, 2);
     else
         cmd_list.set_RT(NULL, 2);
+    // [DA_PORT] Slot 3 must be released here. The scene pass binds four targets (the reactive mask is
+    // the fourth), and every later pass goes through this three-target form - which used to leave slot 3
+    // still pointing at rt_Reactive. It stayed bound as a render target for the whole rest of the frame,
+    // including the lighting accumulation, and the picture came out flat and unlit.
+    cmd_list.set_RT(NULL, 3);
     cmd_list.set_ZB(zb);
 
     // [DA_PORT] NOTE: deliberately does NOT set the viewport, unlike CBackend::set_pass_targets.
@@ -55,6 +60,19 @@ void CRenderTarget::u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& 
     // itself and the luminance chain it calls. Anything added here that needs a specific viewport
     // should do the same rather than changing this shared path.
 
+}
+
+// [DA_PORT] Four colour targets: the G-buffer plus motion vectors plus the reactive mask. Same body as
+// the three-target form, one slot longer - kept separate rather than defaulted so existing call sites
+// cannot accidentally leave a stale target bound in slot 3.
+void CRenderTarget::u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& _2, const ref_rt& _3,
+    const ref_rt& _4, ID3DDepthStencilView* zb)
+{
+    u_setrt(cmd_list, _1, _2, _3, zb); // clears slot 3, hence the order: bind it after
+    if (_4)
+        cmd_list.set_RT(_4->pRT, 3);
+    else
+        cmd_list.set_RT(NULL, 3);
 }
 
 void CRenderTarget::u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& _2, ID3DDepthStencilView* zb)

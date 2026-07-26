@@ -246,6 +246,13 @@ f_deffer pack_gbuffer( float4 norm, float4 pos, float4 col, uint imask )
 	res.C			   = col;
 #endif
 
+#ifdef DA_VELOCITY
+	// [DA_PORT] Default for the reactive mask: trust the history. Set here, in the one function every
+	// deferred shader builds its output through, so that adding the field cannot leave any of the 48
+	// blenders writing an uninitialised value into the target.
+	res.reactive = 0.0h;
+#endif
+
 #ifdef EXTEND_F_DEFFER
    res.mask = imask;
 #endif

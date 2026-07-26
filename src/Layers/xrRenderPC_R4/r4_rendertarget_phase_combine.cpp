@@ -480,6 +480,20 @@ void CRenderTarget::phase_combine()
         // the render-scale upscale all act on the stabilised picture.
         phase_taa();
 
+        // [DA_PORT] FSR 2 belongs HERE, not after phase_combine returns. phase_pp is called from inside
+        // this function, so a dispatch placed after the call ran a whole pass too late: post-process
+        // asked "did the upscaler produce this frame?", found only the previous frame's stamp, and fell
+        // back to stretching the low-resolution scene every single time. The reconstructed image was
+        // computed correctly and then thrown away, unseen.
+        //
+        // That is what the shaking was. What reached the screen was the raw jittered render, so the
+        // wobble tracked the applied jitter exactly (r__fsr2_jitter_scale 0 froze it, 10 made it violent)
+        // while every jitter sign, every motion-vector sign and the vectors themselves changed nothing —
+        // all of them only ever affected an output nobody displayed.
+        PIX_EVENT(DA_phase_fsr2);
+        phase_fsr2();
+        phase_xess(); // [DA_PORT] the other upscaler; only one is ever enabled
+
         PIX_EVENT(phase_pp);
         phase_pp();
     }

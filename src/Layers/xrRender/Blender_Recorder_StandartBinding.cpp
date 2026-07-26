@@ -24,6 +24,8 @@ BIND_DECLARE(p);
 BIND_DECLARE(wv);
 BIND_DECLARE(vp);
 BIND_DECLARE(wvp);
+BIND_DECLARE(wvp_old); // [DA_PORT] motion vectors
+BIND_DECLARE(wvp_nojit); // [DA_PORT] motion vectors
 
 #define DECLARE_TREE_BIND(c)\
     class cl_tree_##c : public R_constant_setup\
@@ -37,6 +39,8 @@ DECLARE_TREE_BIND(m_xform);
 DECLARE_TREE_BIND(consts);
 DECLARE_TREE_BIND(wave);
 DECLARE_TREE_BIND(wind);
+DECLARE_TREE_BIND(wave_old); // [DA_PORT]
+DECLARE_TREE_BIND(wind_old); // [DA_PORT]
 DECLARE_TREE_BIND(c_scale);
 DECLARE_TREE_BIND(c_bias);
 DECLARE_TREE_BIND(c_sun);
@@ -391,12 +395,19 @@ void CBlender_Compile::SetMapping()
     r_Constant("m_WV", &binder_wv);
     r_Constant("m_VP", &binder_vp);
     r_Constant("m_WVP", &binder_wvp);
+    // [DA_PORT] Motion vectors. Registered here, with the transforms, rather than as ordinary
+    // constant-setup binders: those run once per shader pass, while the scene graph draws many
+    // objects per pass. Only the transform path is re-evaluated for every draw call.
+    r_Constant("m_WVP_old", &binder_wvp_old);
+    r_Constant("m_VP_nojit", &binder_wvp_nojit); // shader-facing name kept as it was
 
     r_Constant("m_xform_v", &tree_binder_m_xform_v);
     r_Constant("m_xform", &tree_binder_m_xform);
     r_Constant("consts", &tree_binder_consts);
     r_Constant("wave", &tree_binder_wave);
     r_Constant("wind", &tree_binder_wind);
+    r_Constant("wave_old", &tree_binder_wave_old); // [DA_PORT] motion vectors
+    r_Constant("wind_old", &tree_binder_wind_old); // [DA_PORT] motion vectors
     r_Constant("c_scale", &tree_binder_c_scale);
     r_Constant("c_bias", &tree_binder_c_bias);
     r_Constant("c_sun", &tree_binder_c_sun);

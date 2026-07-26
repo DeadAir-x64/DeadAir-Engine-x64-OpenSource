@@ -188,7 +188,13 @@ bool CRenderDevice::BeforeFrame()
 // NDC. g_da_taa_unjittered_VP is what mFullTransform would have been without it: temporal reprojection
 // has to compare frames on a common, un-jittered grid, otherwise the jitter itself reads as camera
 // motion and the history lands half a pixel off every frame.
+extern int ps_r__fsr2;
 ENGINE_API Fvector2 g_da_taa_jitter = { 0.f, 0.f };
+
+// [DA_PORT] The same jitter in PIXELS, which is the form FSR 2 takes it in. Kept separately
+// rather than converted at the point of use: the conversion has a sign flip in it, and having it
+// in one place is what finally stopped the picture shaking.
+ENGINE_API Fvector2 g_da_fsr2_jitter_px = { 0.f, 0.f };
 ENGINE_API Fmatrix g_da_taa_unjittered_VP = Fidentity;
 
 void CRenderDevice::OnCameraUpdated()
@@ -218,7 +224,11 @@ void CRenderDevice::OnCameraUpdated()
 
     // [DA_PORT] see g_da_taa_unjittered_VP above. The jitter is two entries of the projection matrix, so
     // undoing it costs one matrix copy and one multiply, and only when TAA is actually on.
-    if (g_da_taa_jitter.x != 0.f || g_da_taa_jitter.y != 0.f)
+    // Under FSR 2 the jitter never reaches mProject at all — the scene shaders apply it themselves —
+    // so mFullTransform is ALREADY un-jittered and subtracting the offset here would bake a phantom
+    // negative jitter into every motion vector. That is a residual shake proportional to the jitter,
+    // which is exactly what survived moving the jitter into the shaders.
+    if (!ps_r__fsr2 && (g_da_taa_jitter.x != 0.f || g_da_taa_jitter.y != 0.f))
     {
         Fmatrix unjittered_project = mProject;
         unjittered_project._31 -= g_da_taa_jitter.x;

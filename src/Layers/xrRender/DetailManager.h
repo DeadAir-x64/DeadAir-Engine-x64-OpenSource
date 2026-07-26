@@ -137,6 +137,14 @@ public:
     float m_time_rot_1;
     float m_time_rot_2;
     float m_time_pos;
+
+    // [DA_PORT] The same three phases as of the previous frame, for motion vectors. Grass sway is
+    // rebuilt in the vertex shader from these; without the previous set the shader would derive the
+    // previous position from the blade as it stands NOW, already bent, and report that it never moved.
+    // A temporal upscaler then fetches history by the camera offset alone and lands on a different
+    // blade, which shows up as shimmer across the whole ground.
+    float m_time_rot_1_old, m_time_rot_2_old, m_time_pos_old;
+    bool m_swing_seeded;
     float m_global_time_old;
 
     IReader* dtFS;
@@ -197,7 +205,8 @@ public:
     void hw_Load_Shaders();
     void hw_Unload();
     void hw_Render(CBackend& cmd_list);
-    void hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, const Fvector4& wave, const Fvector4& wind, u32 var_id, u32 lod_id);
+    void hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, const Fvector4& wave,
+        const Fvector4& wind, const Fvector4& wave_old, const Fvector4& wind_old, u32 var_id, u32 lod_id);
 
     // get unpacked slot
     DetailSlot& QueryDB(int sx, int sz);

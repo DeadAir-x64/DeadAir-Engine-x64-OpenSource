@@ -344,6 +344,220 @@ public:
 // [DA_PORT] Internal render resolution, as a percentage of the output. Every scene render target is
 // built from it, so applying the change means recreating them — hence the device reset, the same thing
 // a resolution change does. The UI keeps drawing at the output resolution either way.
+extern ENGINE_API int ps_r__render_scale; // declared further down too; needed here
+
+// [DA_PORT] FSR 2 quality mode. Setting it also sets the render scale, because the two are not free
+// to disagree: each quality mode is defined by a fixed ratio the reconstruction was tuned for, and the
+// scene must be rendered at exactly that size. Leaving them as two independent numbers meant every
+// change had to be made twice, and any mismatch degraded the picture silently rather than complaining.
+//
+// AMD's ratios per dimension: quality 1.5x, balanced 1.7x, performance 2.0x, ultra performance 3.0x.
+xr_token qxess_token[] = {
+    { "ui_mm_xess_off", 0 },
+    { "ui_mm_xess_ultra_quality", 1 },
+    { "ui_mm_xess_quality", 2 },
+    { "ui_mm_xess_balanced", 3 },
+    { "ui_mm_xess_performance", 4 },
+    { "ui_mm_xess_ultra_performance", 5 },
+    { nullptr, 0 },
+};
+
+// [DA_PORT] ---- Upscaler registry: only one may be on ------------------------------------------
+// A frame can be reconstructed by exactly one upscaler. Leaving two switched on does not merely waste
+// work - they share the jitter and the velocity buffer, so the picture shakes, and the cause is nearly
+// impossible to guess from the symptom. It cost several measurements during development, and it would
+// reach players too, because the options menu offers each upscaler as its own separate setting.
+//
+// Adding a new upscaler is one line in the table below; everything else follows from it.
+extern ENGINE_API int ps_r__fsr2;
+extern ENGINE_API int ps_r__xess;
+extern ENGINE_API u32 ps_r__upscale_preset;
+
+struct da_upscaler_entry
+{
+    u32* value;
+    pcstr name;
+};
+
+static const da_upscaler_entry da_upscalers[] = {
+    { (u32*)&ps_r__fsr2, "r__fsr2" },
+    { (u32*)&ps_r__xess, "r__xess" },
+    { &ps_r__upscale_preset, "r__upscale_preset" }, // FSR 1.0 - spatial, but it owns the render scale
+};
+
+// Switches off every upscaler except the one being selected. Call it BEFORE the caller applies its own
+// render scale, so that the winner's ratio is the one left standing.
+static void da_upscaler_make_exclusive(const void* chosen)
+{
+    for (const auto& e : da_upscalers)
+    {
+        if (e.value == chosen || *e.value == 0)
+            continue;
+        Msg("! [DA_PORT] %s switched off - only one upscaler may reconstruct a frame, and two at once "
+            "make the image shake.", e.name);
+        *e.value = 0;
+    }
+}
+
+// [DA_PORT] ---- What the menu actually shows: which upscaler, and how hard -----------------------
+// Two controls instead of one per vendor. The old layout exposed FSR 1.0 and FSR 2 as separate lists
+// plus a raw render-scale percentage, which asked the player to know that the three interact, that
+// only one may be on, and which percentage belongs to which mode. These two say what a player wants
+// to say: what to upscale with, and how much quality to trade.
+//
+// The per-vendor variables below stay exactly as they were and remain usable from the console - this
+// layer only writes them, so nothing that already works had to be rewritten.
+extern ENGINE_API int ps_r__upscale_sharpness;
+
+ENGINE_API u32 ps_r__upscaler = 0;
+ENGINE_API xr_token qupscaler_token[] = {
+    { "ui_mm_upscaler_off", 0 },
+    { "ui_mm_upscaler_fsr1", 1 },
+    { "ui_mm_upscaler_fsr2", 2 },
+    { "ui_mm_upscaler_xess", 3 },
+    { nullptr, 0 },
+};
+
+// Five steps, shared by all three backends. XeSS has exactly these five; FSR 2 is given a 1.3x step of
+// its own (see da_fsr2::render_size_for); FSR 1.0 is only a scale plus sharpening, so it follows them
+// directly. Same wording everywhere, so the choice means the same thing whichever backend is picked.
+ENGINE_API u32 ps_r__upscaler_quality = 1; // default "quality" when an upscaler is first switched on
+ENGINE_API xr_token qupscaler_quality_token[] = {
+    { "ui_mm_upq_ultra_quality", 0 },
+    { "ui_mm_upq_quality", 1 },
+    { "ui_mm_upq_balanced", 2 },
+    { "ui_mm_upq_performance", 3 },
+    { "ui_mm_upq_ultra_performance", 4 },
+    { nullptr, 0 },
+};
+
+// Render scale per quality step, in percent of the output: 1.3x, 1.5x, 1.7x, 2.0x, 3.0x per dimension.
+static const int da_upscaler_scale[5] = { 77, 67, 59, 50, 33 };
+// FSR 1.0 has no reconstruction to recover detail with, so it leans harder on sharpening the lower the
+// source resolution gets. The temporal upscalers do their own and ignore this.
+static const int da_upscaler_sharpen[5] = { 35, 40, 45, 55, 60 };
+
+static void da_apply_upscaler()
+{
+    const u32 q = (ps_r__upscaler_quality < 5) ? ps_r__upscaler_quality : 1;
+
+    ps_r__fsr2 = 0;
+    ps_r__xess = 0;
+    ps_r__upscale_preset = 0;
+
+    switch (ps_r__upscaler)
+    {
+    case 1: // FSR 1.0 - spatial, applied to the finished frame
+        ps_r__upscale_preset = q + 1;
+        ps_r__render_scale = da_upscaler_scale[q];
+        ps_r__upscale_sharpness = da_upscaler_sharpen[q];
+        break;
+    case 2: // FSR 2 - temporal reconstruction
+        ps_r__fsr2 = int(q + 1);
+        ps_r__render_scale = da_upscaler_scale[q];
+        break;
+    case 3: // XeSS - temporal reconstruction, Intel Arc only on D3D11
+        ps_r__xess = int(q + 1);
+        ps_r__render_scale = da_upscaler_scale[q];
+        break;
+    default:
+        ps_r__render_scale = 100;
+        ps_r__upscale_sharpness = 0;
+        break;
+    }
+
+    Device.UpdateRenderResolution();
+    if (Device.b_is_Ready)
+        Device.Reset();
+
+    Msg("* [DA_PORT] upscaler %d, quality step %d: scene renders at %d%% of the output", ps_r__upscaler,
+        q, ps_r__render_scale);
+}
+
+class CCC_Upscaler : public CCC_Token
+{
+public:
+    CCC_Upscaler(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        const u32 was = *value;
+        CCC_Token::Execute(args);
+        if (*value == was)
+            return;
+        da_apply_upscaler();
+    }
+};
+
+// [DA_PORT] Same idea as CCC_FSR2 below: the quality mode also sets the render scale, because Intel's
+// ratios are what the reconstruction was tuned for and the two must not disagree.
+class CCC_XESS : public CCC_Token
+{
+public:
+    CCC_XESS(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        const u32 was = *value;
+        CCC_Token::Execute(args);
+        if (*value == was)
+            return;
+
+        if (*value)
+            da_upscaler_make_exclusive(value);
+
+        switch (*value)
+        {
+        case 1: ps_r__render_scale = 77; break; // ultra quality, 1.3x
+        case 2: ps_r__render_scale = 67; break; // quality, 1.5x
+        case 3: ps_r__render_scale = 59; break; // balanced, 1.7x
+        case 4: ps_r__render_scale = 50; break; // performance, 2.0x
+        case 5: ps_r__render_scale = 33; break; // ultra performance, 3.0x
+        default: ps_r__render_scale = 100; break;
+        }
+        Device.UpdateRenderResolution();
+        Msg("* [DA_PORT] XeSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+    }
+};
+
+// Token names double as the localisation ids the options menu shows (st_da_port_ui.xml).
+xr_token qfsr2_token[] = {
+    { "ui_mm_fsr2_off", 0 },
+    { "ui_mm_fsr2_quality", 1 },
+    { "ui_mm_fsr2_balanced", 2 },
+    { "ui_mm_fsr2_performance", 3 },
+    { "ui_mm_fsr2_ultra", 4 },
+    { nullptr, 0 },
+};
+
+class CCC_FSR2 : public CCC_Token
+{
+public:
+    CCC_FSR2(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        const u32 was = *value;
+        CCC_Token::Execute(args);
+        if (*value == was)
+            return;
+
+        if (*value)
+            da_upscaler_make_exclusive(value);
+
+        switch (*value)
+        {
+        case 1: ps_r__render_scale = 67; break; // quality
+        case 2: ps_r__render_scale = 59; break; // balanced
+        case 3: ps_r__render_scale = 50; break; // performance
+        case 4: ps_r__render_scale = 33; break; // ultra performance
+        default: ps_r__render_scale = 100; break; // off - render at native size again
+        }
+        Device.UpdateRenderResolution();
+        Msg("* [DA_PORT] FSR 2 mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+    }
+};
+
 class CCC_RenderScale : public CCC_Integer
 {
 public:
@@ -378,6 +592,9 @@ public:
     void Execute(pcstr args) override
     {
         CCC_Token::Execute(args);
+
+        if (*value)
+            da_upscaler_make_exclusive(value);
 
         const int was = ps_r__render_scale;
         switch (*value)
@@ -796,6 +1013,63 @@ ENGINE_API int ps_r__upscale_sharpness = 40;
 // number of targets the scene pass binds and the shader option the G-buffer shaders are compiled with.
 ENGINE_API int ps_r__motion_vectors = 0;
 
+// [DA_PORT] AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
+// 4 ultra performance. Unlike the spatial upscale (r__render_scale), this one reconstructs detail
+// from the history of previous frames, which is why it needs the motion vector buffer — and why
+// enabling it turns that buffer on. Read when the renderer starts.
+ENGINE_API int ps_r__fsr2 = 0;
+// [DA_PORT] Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
+// context at renderer start for a fixed pair of resolutions, so they are chosen before that point.
+ENGINE_API int ps_r__xess = 0;
+// [DA_PORT] How much the upscalers should distrust their history on alpha-tested foliage. Not a switch
+// but a weight: 0 accumulates normally (shimmer on thin branches), 1 ignores history entirely (no
+// shimmer, but the sway loses its smoothness because nothing is left to accumulate). The useful value
+// is somewhere between and is a matter of taste, hence a slider rather than a constant.
+ENGINE_API float ps_r__reactive_foliage = 0.5f;
+
+// [DA_PORT] ---- Detail-bump stability under a temporal upscaler --------------------------------
+// Measured 26.07: the iridescent mottling that appears on metal (barrels, cars) and on distant ground
+// under FSR 2 comes from the detail bump, and from nothing else - turning it off with r2_detail_bump
+// removes it completely, while sharpening, mip bias, render scale, steep parallax, the reactive mask
+// and the motion vectors were each ruled out by measurement.
+//
+// The mechanism: on top of tinting the albedo, the detail bump tilts the SURFACE NORMAL at the detail
+// texture's own frequency and modulates gloss. A narrow specular lobe riding a normal that changes
+// from one pixel to the next answers differently every time the sampling point moves, and the jitter
+// moves it every frame. The upscaler then rectifies its history per colour channel, which is why the
+// result is coloured fringing rather than ordinary white sparkle.
+//
+// These two damp that instability where it exists and leave the rest of the surface alone: the weight
+// is driven by how fast the detail normal changes ACROSS THE SCREEN, so a wall seen up close, where the
+// detail is properly resolved, keeps the author's look untouched. Two separate controls because the
+// detail bump does two things and only measurement can say which one matters here.
+// Zero disables each path entirely - the shader is then bit-identical to what it was.
+ENGINE_API float ps_r__detail_gloss_fix = 0.f;
+ENGINE_API float ps_r__detail_normal_fix = 0.f;
+// Albedo is the third path, and on the surfaces that actually show the artefact it is the ONLY one that
+// runs: metal props take the branch without a detail bump map, where a coloured detail texture is
+// multiplied into the albedo. Verified in game, not assumed - see r__detail_debug 6/7.
+ENGINE_API float ps_r__detail_albedo_fix = 0.f;
+
+// [DA_PORT] Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
+// 2 = the weight the gloss path applies. Bright means "fully damped here", black means "untouched".
+// This exists because the weight is a rate of change measured in screen space, and there was no way to
+// guess its magnitude in advance - a slider whose useful range is unknown is indistinguishable from a
+// slider that is not connected at all. With this the calibration takes one look instead of a sweep.
+ENGINE_API int ps_r__detail_debug = 0;
+
+// [DA_PORT] Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
+// 3 = (-x,-y). The engine stores the jitter in clip space (y up), the library wants pixels (y down),
+// and which axis ends up needing the flip depends on conventions on both sides. Getting it wrong
+// leaves part of the jitter uncompensated and the whole picture shakes, so this is switchable rather
+// than guessed: one command instead of a rebuild per attempt.
+
+// [DA_PORT] Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
+// 3 = (+x,-y). Our buffer stores "current minus previous", while FSR 2 wants the vector pointing back
+// to where the pixel was — an opposite sign — and on top of that the two disagree about which way the
+// vertical axis runs. Getting this wrong makes the upscaler pull history the wrong way, which looks
+// exactly like the picture shaking, and is indistinguishable by eye from a jitter problem.
+
 // [DA_PORT] One control instead of two. The pair that actually drives the upscale — render scale and
 // sharpening — means nothing to a player, and the whole point of this feature is the people running the
 // mod on old hardware. The preset writes both; the individual console variables still work for tuning.
@@ -871,7 +1145,23 @@ void CCC_Register()
     // idle at 1080p, so spare GPU time is better spent on image quality than left unused.
     CMD4(CCC_RenderScale, "r__render_scale", &ps_r__render_scale, 25, 200);
     CMD3(CCC_UpscalePreset, "r__upscale_preset", &ps_r__upscale_preset, qupscale_preset_token);
+    // [DA_PORT] What the options menu shows. The three per-vendor variables above stay for the console.
+    CMD3(CCC_Upscaler, "r__upscaler", &ps_r__upscaler, qupscaler_token);
+    CMD3(CCC_Upscaler, "r__upscaler_quality", &ps_r__upscaler_quality, qupscaler_quality_token);
     CMD4(CCC_Integer, "r__motion_vectors", &ps_r__motion_vectors, 0, 3); // 2 = show buffer, 3 = map which shader drew what
+    CMD4(CCC_Float, "r__reactive_foliage", &ps_r__reactive_foliage, 0.f, 1.f);
+    // [DA_PORT] Detail-bump damping, see the declarations. Sensitivity and strength in one number:
+    // the weight is saturate(rate_of_change * value), so 0 is off and larger bites sooner.
+    // Ceiling deliberately far above any sane setting: the units are a screen-space rate of change and
+    // nobody knows the scale until it is measured, so the slider must be able to overshoot obviously.
+    CMD4(CCC_Float, "r__detail_gloss_fix", &ps_r__detail_gloss_fix, 0.f, 4096.f);
+    CMD4(CCC_Float, "r__detail_normal_fix", &ps_r__detail_normal_fix, 0.f, 4096.f);
+    CMD4(CCC_Float, "r__detail_albedo_fix", &ps_r__detail_albedo_fix, 0.f, 4096.f);
+    // 1/2 paint the damping weight, 3 paints every detail-bump pixel red, 4/5 drop the detail's
+    // contribution to the normal / to the gloss outright - see the shader for why 3..5 exist.
+    CMD4(CCC_Integer, "r__detail_debug", &ps_r__detail_debug, 0, 9);
+    CMD3(CCC_XESS, "r__xess", (u32*)&ps_r__xess, qxess_token);
+    CMD3(CCC_FSR2, "r__fsr2", (u32*)&ps_r__fsr2, qfsr2_token); // sets r__render_scale to match; needs a renderer restart
     CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
     CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]

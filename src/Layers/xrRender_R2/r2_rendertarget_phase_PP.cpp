@@ -5,6 +5,7 @@
 extern ENGINE_API int ps_r__upscale_sharpness;
 extern ENGINE_API float ps_gamma, ps_brightness, ps_contrast;
 extern ENGINE_API int ps_r__motion_vectors;
+extern ENGINE_API int ps_r__fsr2;
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -207,7 +208,16 @@ void CRenderTarget::phase_pp()
     // [DA_PORT] Sharpening strength for the upscale (RCAS, the second half of FSR 1.0).
     // y carries the motion-vector mode so that 2 shows the velocity buffer instead of the frame.
     static shared_str s_upscale = "da_upscale";
-    RCache.set_c(s_upscale, float(::ps_r__upscale_sharpness) / 100.f, float(::ps_r__motion_vectors), 0.f, 0.f);
+    // z = 1 when FSR 2 produced this frame, so the shader takes it from the upscaler's output at 1:1
+    // instead of stretching the low-resolution scene itself.
+#if RENDER == R_R4
+    extern u32 g_da_fsr2_frame;
+    const float fsr2_active = (g_da_fsr2_frame == Device.dwFrame) ? 1.f : 0.f;
+#else
+    const float fsr2_active = 0.f;
+#endif
+    RCache.set_c(s_upscale, float(::ps_r__upscale_sharpness) / 100.f, float(::ps_r__motion_vectors),
+        fsr2_active, 0.f);
 
     // [DA_PORT] Gamma / brightness / contrast. These reach the screen through the hardware gamma ramp,
     // which on DX11 only works in exclusive fullscreen — in borderless or windowed mode the sliders do

@@ -39,6 +39,11 @@ v2p_flat 	main (v_detail v)
 	O.hpos_curr	= mul( m_VP_nojit, pos );
 	O.hpos_old	= mul( m_WVP_old, pos );
 #endif
+#ifdef DA_VELOCITY
+	// [DA_PORT] Jitter applied here, after the positions the motion vectors are built from,
+	// so those stay clean. Zero unless FSR 2 is running.
+	O.hpos.xy += m_taa_jitter.xy * O.hpos.w;
+#endif
 	O.N 		= mul		(m_WV,  normalize(norm)	);
 	float3	Pe	= mul		(m_WV,  pos				);
 	O.tcdh 		= float4	((v.misc * consts).xyyy	);

@@ -18,7 +18,9 @@
 // [DA_PORT] TAA: defined in xr_ioc_cmd.cpp / device.cpp — see the jitter block in ApplyDevice below.
 extern ENGINE_API int ps_r__taa;
 extern ENGINE_API int ps_r__taa_jitter;
+extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API Fvector2 g_da_taa_jitter;
+extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
 float psCamInert = 0.f;
 float psCamSlideInert = 0.25f;
@@ -350,19 +352,58 @@ void CCameraManager::ApplyDevice()
     // there is nothing for the jitter to resolve here.
     const bool menu_up = g_pGamePersistent && g_pGamePersistent->m_pMainMenu && g_pGamePersistent->m_pMainMenu->IsActive();
 
-    if (ps_r__taa && ps_r__taa_jitter && !menu_up && Device.dwRenderWidth && Device.dwRenderHeight)
+    // [DA_PORT] FSR 2 needs the jitter just as much as our own temporal AA does — it is what gives it
+    // sub-pixel samples to reconstruct from, and it is told the exact offset each frame. So the jitter
+    // follows either consumer being active, not just r__taa.
+    if ((ps_r__taa || ps_r__fsr2) && ps_r__taa_jitter && !menu_up && Device.dwRenderWidth && Device.dwRenderHeight)
     {
-        static constexpr float halton_x[8] = { 0.5f, 0.25f, 0.75f, 0.125f, 0.625f, 0.375f, 0.875f, 0.0625f };
-        static constexpr float halton_y[8] = { 1.f / 3.f, 2.f / 3.f, 1.f / 9.f, 4.f / 9.f, 7.f / 9.f, 2.f / 9.f, 5.f / 9.f, 8.f / 9.f };
+        // [DA_PORT] Generated exactly the way FSR 2 specifies, because it has to undo this offset and
+        // will only do so correctly if both sides agree on the sequence AND on the sign convention.
+        // Feeding it our own 8-phase Halton left part of the jitter uncompensated and the whole picture
+        // shook — and no combination of signs on the hand-off fixed it, because the mismatch was in the
+        // sequence itself.
+        //
+        // The phase count grows with the upscaling ratio: reconstructing more output pixels from each
+        // rendered one needs proportionally more sub-pixel positions to sample. AMD's formula is
+        // 8 * (display/render)^2, so at 70% it is about 16 phases rather than 8.
+        const float ratio = float(Device.dwWidth) / float(Device.dwRenderWidth);
+        const int phase_count = std::max(8, int(8.f * ratio * ratio));
+        const int index = int(Device.dwFrame % u32(phase_count)) + 1;
 
-        const u32 phase = Device.dwFrame & 7;
-        // Halton is in [0,1); centre it on the pixel, then convert pixels to NDC (the [-1,1] cube spans
-        // the whole target, so one pixel is 2/width).
-        g_da_taa_jitter.set((halton_x[phase] - 0.5f) * 2.f / float(Device.dwRenderWidth),
-            (halton_y[phase] - 0.5f) * 2.f / float(Device.dwRenderHeight));
+        // Halton, computed rather than tabulated: the phase count is no longer a fixed 8.
+        auto halton = [](int i, int base)
+        {
+            float f = 1.f, r = 0.f;
+            while (i > 0)
+            {
+                f /= float(base);
+                r += f * float(i % base);
+                i /= base;
+            }
+            return r;
+        };
 
-        Device.mProject._31 += g_da_taa_jitter.x;
-        Device.mProject._32 += g_da_taa_jitter.y;
+        // In PIXELS, centred on the pixel — this is the form FSR 2 is handed.
+        g_da_fsr2_jitter_px.set(halton(index, 2) - 0.5f, halton(index, 3) - 0.5f);
+
+        // The same offset expressed for the projection matrix, where the whole target spans 2.
+        // Fixed, deliberately: the projection and the value handed to FSR 2 must describe the SAME
+        // shift, so the sign experiment belongs on the hand-off (r__fsr2_jitter_sign, applied in
+        // phase_fsr2) and not here. Flipping it here changed what was applied while leaving what
+        // was reported untouched, which pulled the two apart instead of aligning them.
+        g_da_taa_jitter.set(2.f * g_da_fsr2_jitter_px.x / float(Device.dwRenderWidth),
+            2.f * g_da_fsr2_jitter_px.y / float(Device.dwRenderHeight));
+
+        // [DA_PORT] Only our own temporal AA gets the jitter through the projection matrix. FSR 2 must
+        // not: that matrix drives shadow cascades, particles and the HUD as well, while the upscaler
+        // compensates the scene alone — everything else would then dither with nothing to undo it, and
+        // the whole picture reads as shaking. Under FSR 2 the scene shaders apply it themselves, from
+        // the m_taa_jitter constant.
+        if (!ps_r__fsr2)
+        {
+            Device.mProject._31 += g_da_taa_jitter.x;
+            Device.mProject._32 += g_da_taa_jitter.y;
+        }
     }
 
     if (g_pGamePersistent && g_pGamePersistent->m_pMainMenu->IsActive())

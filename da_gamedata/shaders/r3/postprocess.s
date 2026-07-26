@@ -15,6 +15,8 @@ function normal		(shader, t_base, t_second, t_detail)
 	shader:dx10texture	("s_noise", "fx\\fx_noise2")
 	-- [DA_PORT] motion vectors, for the "r__motion_vectors 2" debug view
 	shader:dx10texture	("s_velocity", "$user$velocity")
+	-- [DA_PORT] FSR 2 result, already at output resolution
+	shader:dx10texture	("s_fsr2", "$user$fsr2_out")
 
 	shader:dx10sampler	("smp_rtlinear")
 	shader:dx10sampler	("smp_linear")

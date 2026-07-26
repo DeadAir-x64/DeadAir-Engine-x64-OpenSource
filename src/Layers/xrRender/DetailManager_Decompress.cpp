@@ -282,6 +282,34 @@ gray255[3]						=	255.f*float(c_pal->a3)/15.f;
                     Item.vis_ID = 0;
                 else
                 {
+                    // [DA_PORT] REVERTED - kept as a note, do not re-apply without measuring first.
+                    //
+                    // The reasoning below still looks sound, but putting it in made the artefact worse,
+                    // and two mechanisms could explain that: Item_P may not be bit-identical across
+                    // decompressions, so quantising it does not actually give a stable answer; and
+                    // deriving the choice from position makes neighbours agree, so whole patches now
+                    // share a wave and move as one, which is far more noticeable than scattered plants.
+                    // Either way it was never verified that re-decompression is what reassigns the wave.
+                    // Measure that first: log vis_ID against a plant's position across a re-visit.
+                    /*
+                    // Derived from the item's own position, not from the global generator.
+                    //
+                    // Slots are decompressed again whenever the player comes back to them, and every
+                    // other random here is drawn from a per-slot seeded generator (r_pos, r_yaw,
+                    // r_scale) so the plant lands in exactly the same place with the same size and
+                    // rotation each time. This one was not: it came from ::Random, which has no idea
+                    // which slot it is serving. So a bush that was on the first wave could come back on
+                    // the second - or stop waving altogether - and it visibly snapped from wherever the
+                    // sway had bent it to its rest position. That is the "jumped back to default"
+                    // artefact, and it only starts once enough ground has been re-decompressed, which
+                    // is why it is never there at the start of a session.
+                    //
+                    // The position is stable across decompressions, so this keeps the same 1-in-4 split
+                    // while making each plant's choice permanent.
+                    const u32 h = u32(iFloor(Item_P.x * 37.f)) * 73856093u ^
+                        u32(iFloor(Item_P.z * 37.f)) * 19349663u;
+                    Item.vis_ID = ((h >> 3) & 3) == 0 ? 2 : 1; // second wave : first wave
+                    */
                     if (::Random.randI(0, 3) == 0)
                         Item.vis_ID = 2; // Second wave
                     else

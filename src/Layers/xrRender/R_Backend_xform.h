@@ -20,6 +20,19 @@ public:
     // instead of a garbage vector. Movers call set_W_old right after set_W to supply the real one.
     Fmatrix m_w_old;
 
+    // [DA_PORT] The two motion-vector matrices, kept here rather than behind R_constant_setup binders.
+    // Those binders run from set_Pass, i.e. ONCE per shader element - and the scene graph batches by
+    // shader, setting the pass once and then drawing dozens of objects, changing only the world matrix.
+    // So every object in a batch was handed whichever world matrix happened to be current when the pass
+    // was set. Static geometry never noticed: its world matrix is identity throughout, so the stale
+    // value was the right one by accident. Characters got a stranger's transform, which is what tore
+    // them apart under the upscaler. Following m_wvp instead means they are recomputed per draw call.
+    Fmatrix m_wvp_old;   // previous frame's world-view-projection for this object
+    Fmatrix m_wvp_nojit; // current one, without the temporal jitter
+
+    R_constant* c_wvp_old;
+    R_constant* c_wvp_nojit;
+
     R_constant* c_w;
     R_constant* c_invw;
     R_constant* c_v;
@@ -35,7 +48,7 @@ public:
     explicit R_xforms(CBackend& cmd_list_in);
     void unmap();
     void set_W(const Fmatrix& m);
-    void set_W_old(const Fmatrix& m) { m_w_old.set(m); } // [DA_PORT] motion vectors
+    void set_W_old(const Fmatrix& m); // [DA_PORT] motion vectors
     void set_V(const Fmatrix& m);
     void set_P(const Fmatrix& m);
     const Fmatrix& get_W() { return m_w; }
@@ -48,6 +61,8 @@ public:
     IC void set_c_wv(R_constant* C);
     IC void set_c_vp(R_constant* C);
     IC void set_c_wvp(R_constant* C);
+    IC void set_c_wvp_old(R_constant* C); // [DA_PORT]
+    IC void set_c_wvp_nojit(R_constant* C); // [DA_PORT]
 
 private:
     void apply_invw();

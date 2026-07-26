@@ -140,7 +140,20 @@ float ps_r__WallmarkSHIFT_V = 0.0001f;
 
 float ps_r__GLOD_ssa_start = 256.f;
 float ps_r__GLOD_ssa_end = 64.f;
-float ps_r__LOD = 1.0f; // [DA_PORT] was 0.75f — the author raised geometry LOD distance
+// [DA_PORT] The author's value; governs STATIC visuals - trees and bushes, grass is unaffected by it.
+// Higher means models hold their detail further out before the simplified version takes over.
+//
+// This spent a day at the stock 0.75 because trees were snapping into their rest pose as they crossed
+// the LOD boundary, and lowering it made that rarer. It was treating a symptom: the real cause was the
+// race for the shared phase object in FTreeVisual, where a second command list overwrote the previous
+// frame's wind. With that fixed, 1.5 was verified clean in game, so the author's default is safe and
+// the detail loss at range was being paid for nothing.
+//
+// Not raised to the 1.5/2.0 found in the reference x32 installs: those are values the engine wrote out
+// on exit, they disagree with each other and match no preset, so they show that high values are safe
+// rather than what the author intended. 1.0 also sits inside the range the quality presets use
+// (0.5 to 1.2), which keeps the menu from silently lowering detail the first time it is touched.
+float ps_r__LOD = 1.0f;
 //float ps_r__LOD_Power = 1.5f;
 float ps_r__ssaDISCARD = 3.5f; // RO
 float ps_r__ssaDONTSORT = 32.f; // RO
@@ -170,7 +183,11 @@ int ps_r1_SoftwareSkinning = 0; // r1-only
 bool ps_r2_sun_static = false;
 bool ps_r2_advanced_pp = true; // advanced post process and effects
 
-float ps_r2_ssaLOD_A = 96.f; // [DA_PORT] was 64.f — models keep their detail further out
+// [DA_PORT] 64 is what the original actually rendered with, not merely the stock value: the author's
+// code default of 96 never took effect, because his own user.ltx wrote 64 back over it on every exit.
+// Verified against the reference x32 installs. Grass, unlike trees, keys off this one - at 96 the LOD
+// switch landed where the grass lives and it flickered.
+float ps_r2_ssaLOD_A = 64.f;
 float ps_r2_ssaLOD_B = 48.f;
 
 // R2-specific
@@ -484,10 +501,25 @@ public:
 // Selecting a level rewrites the working thresholds; the render graph itself only ever reads the
 // o_optimize_* values, so switching quality costs nothing per frame.
 // NB the author's own inconsistency, kept deliberately: the level reads as 1 ("low") while the working
-// thresholds start at MED. Until the console command runs, MED is what the original actually rendered
-// with, so matching his behaviour means keeping the initialisers as they are rather than "fixing" them.
-u32 ps_r_optimize_static = 1;
-u32 ps_r_optimize_dynamic = 1;
+// thresholds start at MED. Until the console command runs, MED is what his build rendered with, so
+// matching his behaviour means keeping the initialisers as they are rather than "fixing" them.
+//
+// [DA_PORT] Both levels default to off, unlike the author's 1/1. This subsystem comes from his
+// unfinished x64 alpha and never shipped: the reference x32 installs have no r__optimize_* keys in
+// user.ltx at all, so the released mod drew everything the frustum passed. Turning it on drops small
+// geometry outright once it is far enough, which read as plants blinking out and back in.
+//
+// ⚠ The two levels do NOT switch the whole thing off. The shadow-map branch is gated on
+// ps_r_high_optimize_sun_shad instead, so with the defaults below a player who sees "cut-off: off"
+// still gets the harshest (ULT) thresholds applied to the sun cascades. That is the author's own
+// coupling, faithfully ported - but he shipped 1/1/1, whereas 0/0/1 is a state he never had. It is
+// kept because the shadow pass is where nearly all of the saving is and the audience runs weak GPUs;
+// for behaviour identical to the released x32, set this to 0 as well.
+//
+// The far-cascade cut-off is safe by construction: r2_sun_far is clamped to 180 by its console
+// command, so the 192 below can never clip a cascade that is actually being rendered.
+u32 ps_r_optimize_static = 0;
+u32 ps_r_optimize_dynamic = 0;
 int ps_r_high_optimize_sun_shad = 1;
 float ps_r2_sun_shadows_far_casc = 192.f;
 
@@ -1034,7 +1066,10 @@ void xrRender_initconsole()
     CMD3(CCC_Mask, "r2_allow_r1_lights", &ps_r2_ls_flags, R2FLAG_R1LIGHTS);
 
     //- Mad Max
-    CMD4(CCC_Float, "r2_gloss_factor", &ps_r2_gloss_factor, .0f, 10.f);
+    // [DA_PORT] The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
+    // point, set the floor at 1. Zero is not a darker setting but a broken one - it collapses the
+    // specular term and the whole scene reads as flat and dead, which cost half a session once already.
+    CMD4(CCC_Float, "r2_gloss_factor", &ps_r2_gloss_factor, 1.0f, 100.f);
 //- Mad Max
 
 #ifdef DEBUG
@@ -1095,7 +1130,13 @@ void xrRender_initconsole()
     CMD4(CCC_Float, "r2_ls_depth_bias", &ps_r2_ls_depth_bias, -0.5, +0.5);
 
     CMD4(CCC_Float, "r2_parallax_h", &ps_r2_df_parallax_h, .0f, .5f);
-    //  CMD4(CCC_Float,     "r2_parallax_range",    &ps_r2_df_parallax_range,   5.0f,   175.0f  );
+    // [DA_PORT] Un-commented: this drives r_dtex_range, the distance over which the detail texture
+    // is blended in (see r2_R_calculate.cpp), and that is the current suspect for the woven
+    // pattern crawling over large surfaces under FSR 2. Cannot be measured without a way to
+    // change it. Minimum stays 5, NOT 0: the value is used as a DIVISOR - binder_parallax hands the
+    // shader 1/r_dtex_range - so zero becomes infinity and then NaN, which smears the ground into flat
+    // bands. The original lower bound was there for that reason, not arbitrarily.
+    CMD4(CCC_Float, "r2_parallax_range", &ps_r2_df_parallax_range, 5.0f, 175.0f);
 
     CMD4(CCC_Float, "r2_slight_fade", &ps_r2_slight_fade, .2f, 1.f);
     CMD3(CCC_Token, "r2_smap_size", &ps_r2_smapsize, qsmapsize_token);

@@ -100,6 +100,12 @@ CDetailManager::CDetailManager() : xrc("detail manager")
     m_time_rot_2 = 0;
     m_time_pos = 0;
     m_global_time_old = 0;
+    // [DA_PORT] motion vectors: no previous sway yet, and an uninitialised flag here would let the very
+    // first frame treat uninitialised phases as the previous ones.
+    m_time_rot_1_old = 0;
+    m_time_rot_2_old = 0;
+    m_time_pos_old = 0;
+    m_swing_seeded = false;
 
     // KD: variable detail radius
     dm_size = dm_current_size;

@@ -61,7 +61,9 @@ public:
     ref_rt rt_TAA_scratch; // DA: second output of the resolve — the copy that goes into the history
     ref_rt rt_TAA_out;     // DA: first output of the resolve — the copy that goes back on screen
     ref_rt rt_Velocity;    // DA: screen-space motion vectors, RG16F (R4). Groundwork for FSR 2.
+    ref_rt rt_Reactive;    // DA: reactive mask for the upscalers, R8 — 1 where history must not be trusted
     u32 da_velocity_cleared_frame{}; // DA: phase_scene_begin runs twice per frame when the scene is split
+    ref_rt rt_FSR2_out;    // DA: FSR 2 output, at OUTPUT resolution and writable from a compute shader
 
     //
     ref_rt rt_Accumulator; // 64bit		(r,g,b,specular)
@@ -230,6 +232,15 @@ public:
     ID3DDepthStencilView* get_base_zb() { return rt_Base_Depth->pZRT[CHW::IMM_CTX_ID]; }
 
     void u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& _2, const ref_rt& _3, ID3DDepthStencilView* zb);
+    void u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& _2, const ref_rt& _3, const ref_rt& _4,
+        ID3DDepthStencilView* zb); // [DA_PORT] reactive mask as a fourth target
+    // [DA_PORT] Convenience form taking the depth buffer as a render target, mirroring the three-target
+    // pair above - that is how every call site in the scene pass writes it.
+    void u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& _2, const ref_rt& _3, const ref_rt& _4,
+        const ref_rt& _zb)
+    {
+        u_setrt(cmd_list, _1, _2, _3, _4, _zb ? _zb->pZRT[cmd_list.context_id] : nullptr);
+    }
     void u_setrt(CBackend& cmd_list, const ref_rt& _1, const ref_rt& _2, const ref_rt& _3, const ref_rt& _zb)
     {
         u_setrt(cmd_list, _1, _2, _3, _zb ? _zb->pZRT[cmd_list.context_id] : nullptr);
@@ -264,6 +275,8 @@ public:
     void phase_ssao();
     void phase_hdao();
     void phase_taa(); // DA: temporal AA resolve
+    bool phase_fsr2();
+    bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // DA: FSR 2 upscale; false when it did not run, so the caller can fall back
     void phase_downsamp();
     void phase_wallmarks();
 

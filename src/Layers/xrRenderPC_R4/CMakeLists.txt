@@ -9,6 +9,13 @@ target_sources(xrRenderPC_R4 PRIVATE
     r4_rendertarget_phase_combine.cpp
     r4_rendertarget_phase_hdao.cpp
     r4_rendertarget_phase_taa.cpp
+    da_fsr2.cpp
+    da_fsr2.h
+    da_xess.cpp
+    da_xess.h
+    da_upscaler.h
+    r4_rendertarget_phase_fsr2.cpp
+    r4_rendertarget_phase_xess.cpp
     r4_rendertarget_u_set_rt.cpp
     r4_shaders.cpp
     R_Backend_LOD.cpp
@@ -242,6 +249,29 @@ target_link_libraries(xrRenderPC_R4
     $<$<BOOL:${WIN32}>:dxguid>
     xrMaterialSystem
     $<$<BOOL:${MINGW}>:gomp>
+)
+
+# [DA_PORT] AMD FidelityFX Super Resolution 2, with the DX11 backend.
+#
+# Built from source rather than taken from the NuGet package the reference integrations use: that
+# package ships MSVC .lib files, and this project is built with MinGW, whose C++ ABI is incompatible.
+# The sources compile with GCC after three small fixes (see Externals/ffx-fsr2-api/README.md).
+target_include_directories(xrRenderPC_R4 PRIVATE
+    "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr2-api/include"
+)
+target_link_libraries(xrRenderPC_R4 PRIVATE
+    "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr2-api/lib/libffx_fsr2_api_dx11_x64.a"
+    "${CMAKE_SOURCE_DIR}/Externals/ffx-fsr2-api/lib/libffx_fsr2_api_x64.a"
+)
+
+# [DA_PORT] Intel XeSS, second temporal upscaler. Unlike FSR 2 this one needs no building: Intel ships
+# a DX11 path with prebuilt binaries. Their import library is MSVC-produced, but the whole XeSS API is
+# extern "C", so there is no C++ ABI to clash with and MinGW links it directly.
+target_include_directories(xrRenderPC_R4 PRIVATE
+    "${CMAKE_SOURCE_DIR}/Externals/xess/inc"
+)
+target_link_libraries(xrRenderPC_R4 PRIVATE
+    "${CMAKE_SOURCE_DIR}/Externals/xess/lib/libxess_dx11.lib"
 )
 
 target_compile_definitions(xrRenderPC_R4

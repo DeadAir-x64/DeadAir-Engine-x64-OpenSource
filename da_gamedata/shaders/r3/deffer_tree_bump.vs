@@ -4,6 +4,10 @@ uniform float3x4	m_xform		;
 uniform float3x4	m_xform_v	;
 uniform float4 		consts; 	// {1/quant,1/quant,???,???}
 uniform float4 		c_scale,c_bias,wind,wave;
+// [DA_PORT] Same two as of the previous frame, so the sway itself lands in the motion
+// vectors. Rebuilding the previous position from the CURRENT, already-displaced vertex
+// makes foliage claim it never moved, and the upscaler blinks on it.
+uniform float4 		wind_old, wave_old;
 uniform float2 		c_sun;		// x=*, y=+
 
 v2p_bumped 	main 	(v_tree I)
@@ -36,12 +40,22 @@ v2p_bumped 	main 	(v_tree I)
 	O.tcdh 			= float4	(tc.xyyy			);
 	O.hpos 			= mul		(m_VP,	w_pos		);
 
-	// [DA_PORT] Motion vectors. w_pos is already in world space, so the previous frame's
-	// view-projection is exactly what is needed. The tree's own sway is not undone - see the note in
-	// deffer_detail_w_flat.vs; branch movement is slow enough that camera motion dominates.
+	// [DA_PORT] Motion vectors. The position is already in world space, so the plain view-projection
+	// pair is what is needed - no world matrix, which trees never set anyway.
 #ifdef DA_VELOCITY
-	O.hpos_curr		= mul( m_VP_nojit, w_pos );
-	O.hpos_old		= mul( m_WVP_old, w_pos );
+	O.hpos_curr		= mul( m_VP_nojit_ws, w_pos );
+	// [DA_PORT] The sway rebuilt with the PREVIOUS frame's wind, so the vector carries the
+	// foliage's own movement and not just the camera's. Same arithmetic as above, only the
+	// two wind constants differ.
+	float 	dp_old 	= calc_cyclic  (wave_old.w+dot(pos,(float3)wave_old));
+	float2 	res_old	= calc_xz_wave (wind_old.xz*(H*dp_old), frac);
+	float4 	w_pos_old = float4(pos.x+res_old.x, pos.y, pos.z+res_old.y, 1);
+	O.hpos_old		= mul( m_VP_old_ws, w_pos_old );
+#endif
+#ifdef DA_VELOCITY
+	// [DA_PORT] Jitter applied here, after the positions the motion vectors are built from,
+	// so those stay clean. Zero unless FSR 2 is running.
+	O.hpos.xy += m_taa_jitter.xy * O.hpos.w;
 #endif
 	O.position		= float4	(Pe, 	hemi		);
 

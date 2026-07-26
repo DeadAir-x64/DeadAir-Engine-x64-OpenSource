@@ -101,6 +101,12 @@ S.base.xyz = Vibrance(S.base.xyz, 1.3);
 #endif
 #endif
 
+
+	// [DA_PORT] Alpha-tested foliage - see deffer_base_aref_flat.ps for why this pixel must not be
+	// blended with its own history.
+#ifdef DA_VELOCITY
+	O.reactive = m_taa_jitter.z; // [DA_PORT] r__reactive_foliage
+#endif
 	return 	O	;
 }
 

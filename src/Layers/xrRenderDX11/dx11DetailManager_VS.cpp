@@ -41,9 +41,38 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
         fDelta = 0.03f;
     m_global_time_old = Device.fTimeGlobal;
 
+    // [DA_PORT] Remember where the sway was before this frame advances it - see DetailManager.h.
+    if (m_swing_seeded)
+    {
+        m_time_rot_1_old = m_time_rot_1;
+        m_time_rot_2_old = m_time_rot_2;
+        m_time_pos_old = m_time_pos;
+    }
+
     m_time_rot_1 += (PI_MUL_2 * fDelta / swing_current.rot1);
     m_time_rot_2 += (PI_MUL_2 * fDelta / swing_current.rot2);
     m_time_pos += fDelta * swing_current.speed;
+
+    // [DA_PORT] Wrapped to one turn. The phase is fed to periodic functions (calc_cyclic in the
+    // shader, sin/cos here), so a full turn is worth nothing to them - but it is worth a great deal
+    // to a float. Left to grow, the phase reaches thousands within minutes of play, where float32
+    // resolves about a thousandth - the same size as one frame's increment at 300 FPS. The phase
+    // then advances in visible steps instead of smoothly, which is the jumping that appears "after
+    // a while" and never at the start. Wrapping keeps every value small and exact.
+    // Safe for the previous-frame copies too: they feed the same periodic functions.
+    m_time_rot_1 = fmodf(m_time_rot_1, PI_MUL_2);
+    m_time_rot_2 = fmodf(m_time_rot_2, PI_MUL_2);
+    m_time_pos = fmodf(m_time_pos, PI_MUL_2);
+
+    if (!m_swing_seeded)
+    {
+        // First frame: no previous sway. Seeding with the current one reports no movement, which beats
+        // reporting the whole bend as if it had happened between two frames.
+        m_time_rot_1_old = m_time_rot_1;
+        m_time_rot_2_old = m_time_rot_2;
+        m_time_pos_old = m_time_pos;
+        m_swing_seeded = true;
+    }
 
     // float		tm_rot1		= (PI_MUL_2*Device.fTimeGlobal/swing_current.rot1);
     // float		tm_rot2		= (PI_MUL_2*Device.fTimeGlobal/swing_current.rot2);
@@ -53,6 +82,11 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
     Fvector4 dir1, dir2;
     dir1.set(_sin(tm_rot1), 0, _cos(tm_rot1), 0).normalize().mul(swing_current.amp1);
     dir2.set(_sin(tm_rot2), 0, _cos(tm_rot2), 0).normalize().mul(swing_current.amp2);
+
+    // [DA_PORT] The same directions one frame back, built exactly the same way.
+    Fvector4 dir1_old, dir2_old;
+    dir1_old.set(_sin(m_time_rot_1_old), 0, _cos(m_time_rot_1_old), 0).normalize().mul(swing_current.amp1);
+    dir2_old.set(_sin(m_time_rot_2_old), 0, _cos(m_time_rot_2_old), 0).normalize().mul(swing_current.amp2);
 
     // Setup geometry and DMA
     cmd_list.set_Geometry(hw_Geom);
@@ -71,7 +105,9 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
     // RCache.set_c			(&*hwc_wind,	dir1); //
     // wind-dir
     // hw_Render_dump			(&*hwc_array,	1, 0, c_hdr );
-    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir1, 1, 0);
+    Fvector4 wave_old;
+    wave_old.set(1.f / 5.f, 1.f / 7.f, 1.f / 3.f, m_time_pos_old);
+    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir1, wave_old.div(PI_MUL_2), dir1_old, 1, 0);
 
     // Wave1
     // wave.set				(1.f/3.f,		1.f/7.f,	1.f/5.f,	Device.fTimeGlobal*swing_current.speed);
@@ -80,24 +116,28 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
     // RCache.set_c			(&*hwc_wind,	dir2); //
     // wind-dir
     // hw_Render_dump			(&*hwc_array,	2, 0, c_hdr );
-    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir2, 2, 0);
+    wave_old.set(1.f / 3.f, 1.f / 7.f, 1.f / 5.f, m_time_pos_old);
+    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir2, wave_old.div(PI_MUL_2), dir2_old, 2, 0);
 
     // Still
     consts.set(scale, scale, scale, 1.f);
     // RCache.set_c			(&*hwc_s_consts,scale,		scale,		scale,				1.f);
     // RCache.set_c			(&*hwc_s_xform,	Device.mFullTransform);
     // hw_Render_dump			(&*hwc_s_array,	0, 1, c_hdr );
-    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir2, 0, 1);
+    // The "still" batch does not sway at all, so its previous sway is its current one.
+    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir2, wave.div(1.f), dir2, 0, 1);
 }
 
-void CDetailManager::hw_Render_dump(CBackend& cmd_list,
-    const Fvector4& consts, const Fvector4& wave, const Fvector4& wind, u32 var_id, u32 lod_id)
+void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, const Fvector4& wave,
+    const Fvector4& wind, const Fvector4& wave_old, const Fvector4& wind_old, u32 var_id, u32 lod_id)
 {
     ZoneScoped;
 
     static shared_str strConsts("consts");
     static shared_str strWave("wave");
     static shared_str strDir2D("dir2D");
+    static shared_str strWaveOld("wave_old"); // [DA_PORT] motion vectors
+    static shared_str strDir2DOld("dir2D_old"); // [DA_PORT] motion vectors
     static shared_str strArray("array");
     static shared_str strXForm("xform");
 
@@ -135,6 +175,8 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list,
                 cmd_list.set_c(strConsts, consts);
                 cmd_list.set_c(strWave, wave);
                 cmd_list.set_c(strDir2D, wind);
+                cmd_list.set_c(strWaveOld, wave_old); // [DA_PORT]
+                cmd_list.set_c(strDir2DOld, wind_old); // [DA_PORT]
                 cmd_list.set_c(strXForm, Device.mFullTransform);
 
                 // ref_constant constArray = RCache.get_c(strArray);

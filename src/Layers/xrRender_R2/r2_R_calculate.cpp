@@ -69,7 +69,17 @@ void CRender::Calculate()
 
     // Transfer to global space to avoid deep pointer access
     float fov_factor = _sqr(90.f / Device.fFOV);
-    g_fSCREEN = float(Target->get_width(RCache) * Target->get_height(RCache)) * fov_factor * (EPS_S + ps_r__LOD);
+    // [DA_PORT] The OUTPUT size, not the render target's. Every level-of-detail threshold below is
+    // divided by this area, so taking it from the scene target made them scale with r__render_scale:
+    // at 67% the area is less than half, thresholds are more than twice as strict, and r_ssaDISCARD -
+    // below which a visual is not drawn AT ALL - starts eating characters. Their shadows stayed,
+    // because the shadow pass skips these tests, which is what made it look like the models had
+    // vanished rather than been culled.
+    //
+    // Conceptually the output size is the right one regardless: an object covers the same fraction of
+    // what the player sees no matter what resolution the scene was rendered at internally, so enabling
+    // an upscaler must not quietly lower the level of detail everywhere.
+    g_fSCREEN = float(Device.dwWidth * Device.dwHeight) * fov_factor * (EPS_S + ps_r__LOD);
     r_ssaDISCARD = _sqr(ps_r__ssaDISCARD) / g_fSCREEN;
     r_ssaDONTSORT = _sqr(ps_r__ssaDONTSORT / 3) / g_fSCREEN;
     r_ssaLOD_A = _sqr(ps_r2_ssaLOD_A / 3) / g_fSCREEN;

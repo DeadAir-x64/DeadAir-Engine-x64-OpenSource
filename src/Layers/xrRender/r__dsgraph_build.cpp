@@ -102,6 +102,13 @@ IC bool da_is_valuable_dynamic(dxRender_Visual* pVisual, const Fmatrix& xform, u
 
     if (smap)
     {
+        // Same reasoning as the static path, except the author applies it to dynamics regardless of
+        // their size: nothing past the last cascade can cast a shadow that lands in the frame, and a
+        // stalker walking 300 m away is no exception. This line was missed in the first pass of the
+        // port, so distant NPCs and physics props were still being pushed through every cascade.
+        if (d > ps_r2_sun_shadows_far_casc)
+            return false;
+
         if (sphere_volume < O_D_L1_S_ULT && d > O_D_L1_D_ULT) return false;
         if (sphere_volume < O_D_L2_S_ULT && d > O_D_L2_D_ULT) return false;
         if (sphere_volume < O_D_L3_S_ULT && d > O_D_L3_D_ULT) return false;

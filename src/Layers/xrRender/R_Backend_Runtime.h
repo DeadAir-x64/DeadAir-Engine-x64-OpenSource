@@ -52,6 +52,18 @@ IC void R_xforms::set_c_wvp(R_constant* C)
     cmd_list.set_c(C, m_wvp);
 };
 
+// [DA_PORT] see R_Backend_xform.h - these follow m_wvp so they are correct per object, not per pass.
+IC void R_xforms::set_c_wvp_old(R_constant* C)
+{
+    c_wvp_old = C;
+    cmd_list.set_c(C, m_wvp_old);
+};
+IC void R_xforms::set_c_wvp_nojit(R_constant* C)
+{
+    c_wvp_nojit = C;
+    cmd_list.set_c(C, m_wvp_nojit);
+};
+
 IC void CBackend::set_xform_world(const Fmatrix& M) { xforms.set_W(M); }
 IC void CBackend::set_xform_view(const Fmatrix& M) { xforms.set_V(M); }
 IC void CBackend::set_xform_project(const Fmatrix& M) { xforms.set_P(M); }

@@ -303,7 +303,13 @@ struct	v_static_color
 // buffer's layout is shared with the engine side, and growing it would change the offsets of matrices
 // every vertex shader already relies on.
 #ifdef DA_VELOCITY
+// [DA_PORT] Sub-pixel jitter, applied by the shader rather than baked into the projection.
+// Zero unless FSR 2 is running - see cl_taa_jitter in r2.cpp.
+uniform float4		m_taa_jitter;
 uniform float4x4	m_WVP_old;
+// [DA_PORT] Same pair without any world part, for geometry already in world space (trees).
+uniform float4x4	m_VP_nojit_ws;
+uniform float4x4	m_VP_old_ws;
 // Current frame WITHOUT the TAA jitter - motion vectors must be measured between two
 // un-jittered positions, otherwise the jitter itself shows up as motion.
 uniform float4x4	m_VP_nojit;
@@ -339,6 +345,10 @@ struct                  f_deffer
 	float4	C		  : SV_Target1;        // r, g, b,  gloss
 #ifdef DA_VELOCITY
 	float2	velocity: SV_Target2;        // [DA_PORT] screen-space motion, NDC units
+	// [DA_PORT] Reactive mask. 1 means "do not trust the temporal history for this pixel". Defaulted to
+	// 0 inside pack_gbuffer, so every shader gets a sane value without being touched; only the ones that
+	// genuinely need it raise the flag afterwards.
+	float	reactive: SV_Target3;
 #endif
 #ifdef EXTEND_F_DEFFER
    uint     mask    : SV_COVERAGE;

@@ -113,6 +113,16 @@ f_deffer 	main	( p_flat I )
 #endif
 #endif
 
+
+	// [DA_PORT] This shader draws alpha-tested foliage - the file's own header says so: leaves on trees
+	// and grass. A branch thinner than a pixel passes or fails clip() depending on where the sub-pixel
+	// jitter landed the sample, so the pixel honestly changes every frame. Blending that with history
+	// gives shimmer if the history is rejected and smear if it is accepted, and no amount of correct
+	// motion vectors helps, because nothing is moving incorrectly. Marking it reactive tells the
+	// upscaler to lean on the current frame here and keep accumulating everywhere else.
+#ifdef DA_VELOCITY
+	O.reactive = m_taa_jitter.z; // [DA_PORT] r__reactive_foliage
+#endif
   return O;
 }
 

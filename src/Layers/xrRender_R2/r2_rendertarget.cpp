@@ -11,6 +11,12 @@
 #include "Layers/xrRender/blenders/blender_luminance.h"
 #include "Layers/xrRender/blenders/blender_ssao.h"
 #include "Layers/xrRender/blenders/blender_taa.h" // DA: temporal AA
+#if RENDER == R_R4
+#include "Layers/xrRenderPC_R4/da_fsr2.h" // DA: FSR 2
+#include "Layers/xrRenderPC_R4/da_xess.h" // DA: Intel XeSS
+extern ENGINE_API int ps_r__fsr2;
+extern ENGINE_API int ps_r__xess;
+#endif
 
 #include "Layers/xrRender/blenders/dx11MSAABlender.h"
 #include "Layers/xrRender/blenders/dx11RainBlender.h"
@@ -365,6 +371,56 @@ CRenderTarget::CRenderTarget()
         // analytically from depth plus the previous camera matrix (one full-screen pass, no blender
         // changes), and only genuinely moving things need to draw into this on top.
         rt_Velocity.create(r2_RT_velocity, w, h, D3DFMT_G16R16F, 1);
+
+        // [DA_PORT] Reactive mask: one channel, 1 where the pixel belongs to something a temporal
+        // upscaler must not trust its history on. Alpha-tested foliage is the case that forced it -
+        // a branch thinner than a pixel passes or fails the alpha test depending on where the jitter
+        // put the sample, so the pixel legitimately changes every frame and blending it with history
+        // produces either shimmer or smear, with nothing in between. Marking it reactive lets the
+        // upscaler lean on the current frame there and keep accumulating everywhere else.
+        //
+        // Render resolution, like the rest of the G-buffer. Both FSR 2 and XeSS take it as a separate
+        // single-channel texture, which is why it cannot simply be a spare channel of rt_Velocity.
+        // R16F rather than an 8-bit format: the engine's D3DFORMAT list has no single-channel 8-bit
+        // entry, and the extra byte per pixel is not worth adding one for.
+        rt_Reactive.create(r2_RT_reactive, w, h, D3DFMT_R16F, 1);
+
+        // [DA_PORT] FSR 2 writes its result here. Two things set it apart from every other target:
+        // it is at the OUTPUT resolution rather than the scene's (that is the whole point of an
+        // upscaler), and it needs unordered access, because FSR 2 is a compute shader and writes
+        // through a UAV rather than as a render target.
+        rt_FSR2_out.create(r2_RT_fsr2_out, Device.dwWidth, Device.dwHeight, D3DFMT_A16B16G16R16F, 1,
+            { CRT::CreateUAV });
+
+        // The upscaler is told both resolutions once, at creation: it allocates its history buffers for
+        // them. Changing either means recreating the context, which is why r__fsr2 needs a restart.
+        if (::ps_r__fsr2)
+        {
+            da_fsr2::init_params fsr;
+            // maxRenderSize, not the current one: the library sizes its history buffers by this, and
+            // anything rendered larger than it was told is undefined. Declaring the full output size
+            // means r__render_scale can be changed at will without recreating the context — worth the
+            // extra memory, since otherwise every change of the slider needs a restart to take effect.
+            fsr.render_width = Device.dwWidth;
+            fsr.render_height = Device.dwHeight;
+            fsr.display_width = Device.dwWidth;
+            fsr.display_height = Device.dwHeight;
+            fsr.device = HW.pDevice;
+            g_da_fsr2.create(fsr);
+
+            // [DA_PORT] Intel XeSS, the alternative. Created alongside rather than instead: both are
+            // cheap while idle, and having them both live means switching upscaler needs one restart
+            // rather than two. Only whichever is enabled ever dispatches.
+            if (::ps_r__xess)
+            {
+                da_xess::init_params xe;
+                xe.display_width = Device.dwWidth;
+                xe.display_height = Device.dwHeight;
+                xe.quality = u32(::ps_r__xess);
+                xe.device = HW.pDevice;
+                g_da_xess.create(xe);
+            }
+        }
 #endif
 
         if (!options.msaa)

@@ -62,6 +62,8 @@ protected:
     bool OnControllerAction(int axis, const ControllerAxisState& state, EUIMessages controller_action) override;
     virtual void OnBtnClicked();
     void ShowList(bool bShow);
+    // [DA_PORT] Raise this control above its siblings while its list is open, and put it back after.
+    void da_bring_to_front(bool front);
     void OnListItemSelect();
     virtual void Update();
     virtual void Draw();
@@ -72,6 +74,10 @@ public:
     u32 GetSize() const;
 
 protected:
+    // [DA_PORT] Where this control sat among its parent's children before its list was opened, so the
+    // original order can be put back when it closes. -1 when the list is closed. See ShowList.
+    int m_da_sibling_index{ -1 };
+
     int m_iListHeight;
     int m_itoken_id;
     int m_opt_backup_value;

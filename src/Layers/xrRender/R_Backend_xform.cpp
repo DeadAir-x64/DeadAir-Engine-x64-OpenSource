@@ -3,8 +3,16 @@
 
 #include "R_Backend_xform.h"
 
+// [DA_PORT] Camera matrices for motion vectors, owned by the engine. Declared outside the namespace:
+// an extern written inside xray::render would look for the symbol in that namespace instead.
+extern ENGINE_API Fmatrix g_da_taa_unjittered_VP;
+
 namespace xray::render::RENDER_NAMESPACE
 {
+// Previous frame's view-projection, captured at the end of each frame (r2_R_render.cpp).
+extern Fmatrix g_da_prev_VP;
+
+
 void R_xforms::set_W(const Fmatrix& m)
 {
     m_w.set(m);
@@ -15,6 +23,15 @@ void R_xforms::set_W(const Fmatrix& m)
     m_w_old.set(m);
     m_wv.mul_43(m_v, m_w);
     m_wvp.mul(m_p, m_wv);
+    // [DA_PORT] Rebuilt for THIS object, on the same footing as m_wvp - see the header for why they
+    // cannot be constant-setup binders. With m_w_old just defaulted to the current world, both describe
+    // an object that has not moved of its own accord; a mover corrects the first one via set_W_old.
+    m_wvp_old.mul(g_da_prev_VP, m_w_old);
+    m_wvp_nojit.mul(g_da_taa_unjittered_VP, m_w);
+    if (c_wvp_old)
+        cmd_list.set_c(c_wvp_old, m_wvp_old);
+    if (c_wvp_nojit)
+        cmd_list.set_c(c_wvp_nojit, m_wvp_nojit);
     if (c_w)
         cmd_list.set_c(c_w, m_w);
     if (c_wv)
@@ -26,6 +43,16 @@ void R_xforms::set_W(const Fmatrix& m)
         apply_invw();
     cmd_list.set_xform(D3DTS_WORLD, m);
 }
+// [DA_PORT] Supplies the real previous-frame transform for something that moves. Always called right
+// after set_W, which has already defaulted it, so only the one derived matrix needs redoing.
+void R_xforms::set_W_old(const Fmatrix& m)
+{
+    m_w_old.set(m);
+    m_wvp_old.mul(g_da_prev_VP, m_w_old);
+    if (c_wvp_old)
+        cmd_list.set_c(c_wvp_old, m_wvp_old);
+}
+
 void R_xforms::set_V(const Fmatrix& m)
 {
     m_v.set(m);
@@ -79,6 +106,8 @@ void R_xforms::unmap()
     c_wv = nullptr;
     c_vp = nullptr;
     c_wvp = nullptr;
+    c_wvp_old = nullptr; // [DA_PORT]
+    c_wvp_nojit = nullptr; // [DA_PORT]
 }
 R_xforms::R_xforms(CBackend& cmd_list_in)
     : cmd_list(cmd_list_in)
@@ -92,6 +121,8 @@ R_xforms::R_xforms(CBackend& cmd_list_in)
     m_wv.identity();
     m_vp.identity();
     m_wvp.identity();
+    m_wvp_old.identity(); // [DA_PORT]
+    m_wvp_nojit.identity(); // [DA_PORT]
     m_bInvWValid = true;
 }
 } // namespace xray::render::RENDER_NAMESPACE

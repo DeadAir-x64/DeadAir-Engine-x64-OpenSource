@@ -85,8 +85,13 @@ void CUIComboBox::InitComboBox(Fvector2 pos, float width)
         m_list_box.SetSelectionTexture("ui_cb_listline");
 
     // frame(texture) for list
-    if (!m_list_frame.InitTexture("ui_inGame2_combobox", false))
-        m_list_frame.InitTexture("ui_cb_listbox", false);
+    // [DA_PORT] Order swapped, and it is not cosmetic. Both texture sets are complete in this mod's
+    // data, so the first one asked for is always the one taken - and ui_inGame2_combobox is the in-game
+    // control, drawn over the HUD and translucent by design. In the menus that made an expanded list
+    // see-through: the caption and the next combo below it read straight through the open list, which
+    // looks exactly like a z-order fault and is not one. ui_cb_listbox is the opaque menu list plate.
+    if (!m_list_frame.InitTexture("ui_cb_listbox", false))
+        m_list_frame.InitTexture("ui_inGame2_combobox", false);
 
     m_list_frame.SetWndSize(Fvector2().set(width, m_list_box.GetItemHeight() * m_iListHeight));
     m_list_frame.SetWndPos(Fvector2().set(0.0f, CB_HEIGHT));
@@ -247,6 +252,49 @@ bool CUIComboBox::SetNextItemSelected(bool next, bool loop)
 }
 
 void CUIComboBox::OnBtnClicked() { ShowList(!m_list_frame.IsShown()); }
+
+// [DA_PORT] An expanded list has to cover whatever sits below it, and by default it does not: windows
+// draw their children in the order those children were attached (CUIWindow::Draw), so every control
+// declared after this one in the .xml paints straight over the open list. In the video options that
+// meant the next caption and its own combo showing through the list being read - the same on every
+// dialog with more than one list, which is most of them.
+//
+// Fixed by order rather than by a separate top-most pass: while the list is open this control moves to
+// the end of its parent's child list, and goes back where it was when the list closes. Nothing else
+// about the window changes, so hit-testing, focus and the existing deferred draw all keep working.
+void CUIComboBox::da_bring_to_front(bool front)
+{
+    CUIWindow* parent = GetParent();
+    if (!parent)
+        return;
+
+    WINDOW_LIST& siblings = parent->GetChildWndList();
+
+    if (front)
+    {
+        if (m_da_sibling_index >= 0) // already raised
+            return;
+        const auto it = std::find(siblings.begin(), siblings.end(), this);
+        if (it == siblings.end())
+            return;
+        m_da_sibling_index = int(std::distance(siblings.begin(), it));
+        siblings.erase(it);
+        siblings.push_back(this);
+    }
+    else
+    {
+        if (m_da_sibling_index < 0)
+            return;
+        const auto it = std::find(siblings.begin(), siblings.end(), this);
+        if (it != siblings.end())
+            siblings.erase(it);
+        // The list can have changed size while the control was open, so clamp rather than trust it.
+        const int at = std::min(m_da_sibling_index, int(siblings.size()));
+        siblings.insert(siblings.begin() + at, this);
+        m_da_sibling_index = -1;
+    }
+}
+
 void CUIComboBox::ShowList(bool bShow)
 {
     if (bShow)
@@ -256,6 +304,7 @@ void CUIComboBox::ShowList(bool bShow)
         m_eState = LIST_EXPANDED;
         GetParent()->SetCapture(this, true);
         UI().Focus().LockToWindow(&m_list_frame);
+        da_bring_to_front(true);
     }
     else
     {
@@ -265,6 +314,7 @@ void CUIComboBox::ShowList(bool bShow)
         GetParent()->SetCapture(this, false);
         if (UI().Focus().GetLocker() == &m_list_frame)
             UI().Focus().Unlock();
+        da_bring_to_front(false);
     }
 }
 

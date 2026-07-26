@@ -18,6 +18,14 @@
 // [DA_PORT] Defined in the engine (xr_ioc_cmd.cpp). Declared outside the namespace on purpose: an
 // extern written inside xray::render::render_r4 would look for the symbol in that namespace instead.
 extern ENGINE_API int ps_r__motion_vectors;
+extern ENGINE_API int ps_r__fsr2;
+extern ENGINE_API float ps_r__reactive_foliage;
+extern ENGINE_API float ps_r__detail_gloss_fix;
+extern ENGINE_API float ps_r__detail_normal_fix;
+extern ENGINE_API float ps_r__detail_albedo_fix;
+extern ENGINE_API int ps_r__detail_debug;
+extern ENGINE_API Fvector2 g_da_taa_jitter;
+extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 extern ENGINE_API Fmatrix g_da_taa_unjittered_VP;
 
 namespace xray::render::RENDER_NAMESPACE
@@ -132,18 +140,6 @@ static class cl_prev_vp : public R_constant_setup
 // Objects with a world matrix of their own (models, NPCs, doors) need it multiplied in here; that is
 // the next step and needs the engine to remember each object's previous transform. Until then they are
 // treated as static, i.e. their vectors account for camera movement but not for their own.
-static class cl_wvp_old : public R_constant_setup
-{
-    void setup(CBackend& cmd_list, R_constant* C) override
-    {
-        // Previous frame's world-view-projection for whatever is being drawn: the object's own previous
-        // transform followed by the previous camera. For static level geometry the world part is
-        // identity and this reduces to the previous view-projection.
-        Fmatrix wvp_old;
-        wvp_old.mul(g_da_prev_VP, cmd_list.xforms.m_w_old);
-        cmd_list.set_c(C, wvp_old);
-    }
-} binder_wvp_old;
 
 // [DA_PORT] Current frame's view-projection WITHOUT the temporal-AA jitter. Motion vectors have to be
 // computed between two un-jittered positions: m_WVP carries the sub-pixel offset TAA adds every frame,
@@ -153,15 +149,70 @@ static class cl_wvp_old : public R_constant_setup
 // NB despite the name this is the full world-view-projection, just without the jitter — it has to
 // mirror m_WVP_old exactly, and that one carries the object's world matrix too. For static geometry the
 // world part is identity, so the two readings coincide.
-static class cl_vp_nojitter : public R_constant_setup
+// [DA_PORT] The projection jitter, for shaders to apply themselves.
+//
+// With FSR 2 the jitter must NOT go into Device.mProject: that matrix feeds everything — shadow
+// cascades, particles, the HUD — while the upscaler only ever compensates the scene. Everything else
+// then dithers uncompensated, and the whole picture reads as shaking no matter how the offset is
+// reported. So under FSR 2 the matrix stays clean and scene geometry shifts itself by this constant,
+// exactly the way IX-Ray does it.
+//
+// Zero when the jitter is already baked into the projection (our own temporal AA), so the same shader
+// line is correct in both modes.
+static class cl_taa_jitter : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
     {
-        Fmatrix wvp_nojit;
-        wvp_nojit.mul(::g_da_taa_unjittered_VP, cmd_list.xforms.m_w);
-        cmd_list.set_c(C, wvp_nojit);
+        if (::ps_r__fsr2)
+        {
+            // [DA_PORT] Converted to clip space HERE, from the pixel offset the upscaler is handed, so
+            // the two can never describe different shifts. Device.dwRenderWidth is the scene size at
+            // this point in the frame — the same reason cl_pos_decompress_params reads it from here.
+            //
+            // Y is negated: AMD's sample builds the jittered projection with +2*jx/width and MINUS
+            // 2*jy/height, because clip space points up and their pixel offset points down. X keeps its
+            // sign. Only the relative sign against the reported offset matters, and this is the pairing
+            // FSR 2 expects.
+            const float jx = ::g_da_fsr2_jitter_px.x * 2.f / float(Device.dwRenderWidth);
+            const float jy = ::g_da_fsr2_jitter_px.y * -2.f / float(Device.dwRenderHeight);
+            // z carries the foliage reactive weight - the aref shaders read it from here rather
+            // than through a constant of their own, so it costs no extra binding.
+            cmd_list.set_c(C, jx, jy, ::ps_r__reactive_foliage, 0.f);
+        }
+        else
+            cmd_list.set_c(C, 0.f, 0.f, ::ps_r__reactive_foliage, 0.f);
     }
-} binder_vp_nojitter;
+} binder_taa_jitter;
+
+
+// [DA_PORT] Detail-bump damping weights, see xr_ioc_cmd.cpp for what they are for. An ordinary pass
+// binder is correct here: both values are global settings with nothing object-specific in them, so the
+// once-per-pass evaluation that broke the motion-vector matrices is harmless.
+static class cl_detail_fix : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_r__detail_gloss_fix, ::ps_r__detail_normal_fix, float(::ps_r__detail_debug),
+            ::ps_r__detail_albedo_fix);
+    }
+} binder_detail_fix;
+
+// [DA_PORT] Motion-vector camera matrices WITHOUT any world part, for geometry that is already in world
+// space by the time the vertex shader has it. Trees are the case: they carry their own transform in
+// m_xform and draw as mul(m_VP, f_pos), never setting a world matrix of their own — so they inherited
+// whichever one the last model left behind, and their vectors described a stranger's movement.
+//
+// These are per-frame camera matrices with nothing object-specific in them, so unlike m_WVP_old and
+// m_VP_nojit they are safe as ordinary pass binders.
+static class cl_vp_nojit_ws : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override { cmd_list.set_c(C, ::g_da_taa_unjittered_VP); }
+} binder_vp_nojit_ws;
+
+static class cl_vp_old_ws : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override { cmd_list.set_c(C, g_da_prev_VP); }
+} binder_vp_old_ws;
 
 static class cl_pos_decompress_params2 : public R_constant_setup
 {
@@ -529,11 +580,22 @@ void CRender::create()
     // has no upscaler to consume them. Latched here so a mid-game toggle cannot desynchronise the bound
     // target count from what the shaders were compiled for.
 #if RENDER == R_R4
-    o.velocity = !!::ps_r__motion_vectors;
+    // FSR 2 cannot work without motion vectors, so switching it on switches them on too.
+    o.velocity = !!::ps_r__motion_vectors || !!::ps_r__fsr2;
     // [DA_PORT] Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every
     // G-buffer shader writes a fixed identifier instead of a motion vector. Answers "what actually
     // draws this object" directly, instead of guessing from pass names in the log.
     o.velocity_debug_ids = (::ps_r__motion_vectors == 3);
+    // [DA_PORT] The debug map and an upscaler must not run together: FSR 2 reads the very buffer the
+    // stamps overwrite, so it receives identifiers where vectors should be - about fifty pixels per
+    // frame - and reconstructs every pixel from the wrong place. The picture then shakes and smears,
+    // which is easy to mistake for a fault in whatever is being investigated. It cost one wasted
+    // measurement, hence the warning rather than a silent override: the mode is still useful with the
+    // upscaler off, and the choice stays with whoever is debugging.
+    if (o.velocity_debug_ids && !!::ps_r__fsr2)
+        Msg("! [DA_PORT] r__motion_vectors 3 with FSR 2 enabled: the upscaler is being fed shader "
+            "identifiers instead of motion vectors. Expect the whole image to shake - set r__fsr2 0 "
+            "while mapping shaders, and remember both are latched at renderer start.");
 #else
     o.velocity = 0;
     o.velocity_debug_ids = 0;
@@ -587,8 +649,10 @@ void CRender::create()
     Resources->RegisterConstantSetup("pos_decompression_params2", &binder_pos_decompress_params2);
     Resources->RegisterConstantSetup("m_AlphaRef", &binder_alpha_ref);
     Resources->RegisterConstantSetup("m_prev_VP", &binder_prev_vp); // [DA_PORT] temporal reprojection
-    Resources->RegisterConstantSetup("m_WVP_old", &binder_wvp_old); // [DA_PORT] motion vectors
-    Resources->RegisterConstantSetup("m_VP_nojit", &binder_vp_nojitter); // [DA_PORT] motion vectors
+    Resources->RegisterConstantSetup("m_taa_jitter", &binder_taa_jitter); // [DA_PORT] jitter for shaders
+    Resources->RegisterConstantSetup("m_VP_nojit_ws", &binder_vp_nojit_ws); // [DA_PORT] world-space geometry
+    Resources->RegisterConstantSetup("m_VP_old_ws", &binder_vp_old_ws); // [DA_PORT] world-space geometry
+    Resources->RegisterConstantSetup("da_detail_fix", &binder_detail_fix); // [DA_PORT] detail-bump damping
 #if defined(USE_DX11)
     Resources->RegisterConstantSetup("triLOD", &binder_LOD);
 #endif

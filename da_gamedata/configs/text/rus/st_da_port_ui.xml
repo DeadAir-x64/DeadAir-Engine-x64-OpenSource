@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+	<!-- [DA_PORT] added by the x64 port: Dead Air had no menu entry for water reflections -->
+	<string id="ui_mm_water_refl">
+		<text>Отражения на воде</text>
+	</string>
+	<string id="ui_mm_water_refl_desc">
+		<text>Качество отражений на воде (SSR). Выше — отражения дальше и полнее, но нагрузка на видеокарту больше. Требует перезапуска.</text>
+	</string>
+	<!-- [DA_PORT] ready-made colour grading profiles -->
+	<string id="ui_mm_grade_preset">
+		<text>Цветовой профиль</text>
+	</string>
+	<string id="ui_mm_grade_original">
+		<text>Оригинал</text>
+	</string>
+	<string id="ui_mm_grade_default">
+		<text>По умолчанию</text>
+	</string>
+	<string id="ui_mm_grade_autumn">
+		<text>Золотая осень</text>
+	</string>
+	<string id="ui_mm_grade_cold">
+		<text>Холодная Зона</text>
+	</string>
+	<string id="ui_mm_grade_faded">
+		<text>Выцветшая плёнка</text>
+	</string>
+	<string id="ui_mm_grade_vivid">
+		<text>Насыщенный</text>
+	</string>
+	<!-- [DA_PORT] FSR 1.0 upscaling -->
+	<string id="ui_mm_upscale_preset">
+		<text>Масштабирование</text>
+	</string>
+	<string id="st_da_upscale_off">
+		<text>Выкл</text>
+	</string>
+	<string id="st_da_upscale_quality">
+		<text>Качество</text>
+	</string>
+	<string id="st_da_upscale_balanced">
+		<text>Баланс</text>
+	</string>
+	<string id="st_da_upscale_performance">
+		<text>Производительность</text>
+	</string>
+	<!-- [DA_PORT] FSR 2.0 quality mode -->
+	<string id="ui_mm_fsr2">
+		<text>FSR 2.0</text>
+	</string>
+	<string id="ui_mm_fsr2_off">
+		<text>Выкл</text>
+	</string>
+	<string id="ui_mm_fsr2_quality">
+		<text>Качество</text>
+	</string>
+	<string id="ui_mm_fsr2_balanced">
+		<text>Баланс</text>
+	</string>
+	<string id="ui_mm_fsr2_performance">
+		<text>Производительность</text>
+	</string>
+	<string id="ui_mm_fsr2_ultra">
+		<text>Ультра-производительность</text>
+	</string>
+	<!-- [DA_PORT] Intel XeSS quality mode -->
+	<string id="ui_mm_xess">
+		<text>XeSS</text>
+	</string>
+	<string id="ui_mm_xess_off">
+		<text>Выкл</text>
+	</string>
+	<string id="ui_mm_xess_ultra_quality">
+		<text>Ультра-качество</text>
+	</string>
+	<string id="ui_mm_xess_quality">
+		<text>Качество</text>
+	</string>
+	<string id="ui_mm_xess_balanced">
+		<text>Баланс</text>
+	</string>
+	<string id="ui_mm_xess_performance">
+		<text>Производительность</text>
+	</string>
+	<string id="ui_mm_xess_ultra_performance">
+		<text>Ультра-производительность</text>
+	</string>
+	<!-- [DA_PORT] Upscaling: which upscaler, and how hard. Replaces the separate FSR 1.0 / FSR 2 lists. -->
+	<string id="ui_mm_upscaler">
+		<text>Масштабирование</text>
+	</string>
+	<string id="ui_mm_upscaler_off">
+		<text>Выкл</text>
+	</string>
+	<string id="ui_mm_upscaler_fsr1">
+		<text>FSR 1.0</text>
+	</string>
+	<string id="ui_mm_upscaler_fsr2">
+		<text>FSR 2.0</text>
+	</string>
+	<string id="ui_mm_upscaler_xess">
+		<text>XeSS</text>
+	</string>
+	<string id="ui_mm_upscaler_quality">
+		<text>Качество</text>
+	</string>
+	<string id="ui_mm_upq_ultra_quality">
+		<text>Ультра-качество</text>
+	</string>
+	<string id="ui_mm_upq_quality">
+		<text>Качество</text>
+	</string>
+	<string id="ui_mm_upq_balanced">
+		<text>Баланс</text>
+	</string>
+	<string id="ui_mm_upq_performance">
+		<text>Производительность</text>
+	</string>
+	<string id="ui_mm_upq_ultra_performance">
+		<text>Ультра-производительность</text>
+	</string>
+</string_table>

@@ -135,7 +135,16 @@ void CKinematics::da_store_world_matrix(const Fmatrix& world)
         return;
 
     const u16 bones = LL_BoneCount();
-    const bool first = (da_last_render_frame == 0);
+
+    // [DA_PORT] "Previous" only means anything if the visual was actually drawn on the previous frame.
+    // A model that spent a few frames off-screen — behind the player, culled, occluded — still holds the
+    // pose it had when it was last seen, and the moment it comes back into view that stale pose is
+    // subtracted from the current one. The bones then appear to have travelled the whole gap in a single
+    // frame; measured in combat this reached 1.17 m per frame, which at 300 FPS is 350 m/s. A temporal
+    // upscaler follows that vector honestly and fetches history from the far side of the screen, which
+    // is what shredded characters into blocks whenever the camera turned. Treat a gap as a fresh start:
+    // reporting no movement is wrong by a few pixels, reporting a metre is wrong by half the screen.
+    const bool first = (da_last_render_frame == 0) || (Device.dwFrame - da_last_render_frame > 1);
 
     if (da_bones_tmp.size() != bones)
     {
@@ -152,6 +161,15 @@ void CKinematics::da_store_world_matrix(const Fmatrix& world)
     {
         da_world_tmp.set(world);
         da_world_old.set(world);
+
+        // [DA_PORT] The bones have to be seeded here too, not just the world matrix. Leaving them alone
+        // keeps whatever pose was last stored — which for a visual returning after a gap is precisely
+        // the stale one this branch exists to discard, and the enormous vectors would survive the fix.
+        for (u16 i = 0; i < bones; ++i)
+        {
+            da_bones_tmp[i].set(LL_GetBoneInstance(i).mRenderTransform);
+            da_bones_old[i].set(da_bones_tmp[i]);
+        }
     }
     else
     {
