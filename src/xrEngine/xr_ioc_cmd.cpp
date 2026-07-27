@@ -373,6 +373,8 @@ extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__xess;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API u32 ps_r__upscale_preset;
+// Defined further down this file; needed up here now that our own temporal AA is one of the choices.
+extern ENGINE_API int ps_r__taa;
 
 struct da_upscaler_entry
 {
@@ -385,6 +387,10 @@ static const da_upscaler_entry da_upscalers[] = {
     { (u32*)&ps_r__fsr3, "r__fsr3" },
     { (u32*)&ps_r__xess, "r__xess" },
     { &ps_r__upscale_preset, "r__upscale_preset" }, // FSR 1.0 - spatial, but it owns the render scale
+    // [DA_PORT] Our own temporal AA belongs here too: it owns the frame's history exactly as the
+    // reconstructing upscalers do, and two of those at once is what softened every moving figure until
+    // it was found. Setting any upscaler from the console now switches it off, the same as the menu.
+    { (u32*)&ps_r__taa, "r__taa" },
 };
 
 // [DA_PORT] Is a TEMPORAL upscaler reconstructing this frame?
@@ -428,12 +434,23 @@ static void da_upscaler_make_exclusive(const void* chosen)
 extern ENGINE_API int ps_r__upscale_sharpness;
 
 ENGINE_API u32 ps_r__upscaler = 0;
+// [DA_PORT] Our own temporal AA belongs in this list, not beside it.
+//
+// It is the same kind of thing as the others - a filter that owns the frame's history - and only one
+// of them may. The engine already enforces that (phase_taa stands down under any upscaler), but with
+// two separate controls in the menu a player could still ask for both and get an image blended twice,
+// which is exactly the softness on moving figures that took an afternoon to trace. One list, one
+// choice, and the question cannot be asked.
+//
+// Values renumbered to put it in a sensible order. Safe: the config stores the token NAME, not the
+// number, so existing settings keep meaning what they meant.
 ENGINE_API xr_token qupscaler_token[] = {
     { "ui_mm_upscaler_off", 0 },
-    { "ui_mm_upscaler_fsr1", 1 },
-    { "ui_mm_upscaler_fsr2", 2 },
-    { "ui_mm_upscaler_fsr3", 3 },
-    { "ui_mm_upscaler_xess", 4 },
+    { "ui_mm_upscaler_taa", 1 },
+    { "ui_mm_upscaler_fsr1", 2 },
+    { "ui_mm_upscaler_fsr2", 3 },
+    { "ui_mm_upscaler_fsr3", 4 },
+    { "ui_mm_upscaler_xess", 5 },
     { nullptr, 0 },
 };
 
@@ -460,27 +477,36 @@ static void da_apply_upscaler()
 {
     const u32 q = (ps_r__upscaler_quality < 5) ? ps_r__upscaler_quality : 1;
 
+    // Everything off first, one thing on after - including our own temporal AA, which is now a choice
+    // in the same list. Keeping the reset complete is the whole point of the shape: a case that forgets
+    // to switch off what it replaces is precisely how two temporal filters came to run at once.
     ps_r__fsr2 = 0;
     ps_r__fsr3 = 0;
     ps_r__xess = 0;
+    ps_r__taa = 0;
     ps_r__upscale_preset = 0;
 
     switch (ps_r__upscaler)
     {
-    case 1: // FSR 1.0 - spatial, applied to the finished frame
+    case 1: // Our own temporal AA - no upscaling, so the scene renders at full size
+        ps_r__taa = 1;
+        ps_r__render_scale = 100;
+        ps_r__upscale_sharpness = 0;
+        break;
+    case 2: // FSR 1.0 - spatial, applied to the finished frame
         ps_r__upscale_preset = q + 1;
         ps_r__render_scale = da_upscaler_scale[q];
         ps_r__upscale_sharpness = da_upscaler_sharpen[q];
         break;
-    case 2: // FSR 2 - temporal reconstruction
+    case 3: // FSR 2 - temporal reconstruction
         ps_r__fsr2 = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
         break;
-    case 3: // FSR 3 - temporal reconstruction, community DX11 backend
+    case 4: // FSR 3 - temporal reconstruction, community DX11 backend
         ps_r__fsr3 = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
         break;
-    case 4: // XeSS - temporal reconstruction, Intel Arc only on D3D11
+    case 5: // XeSS - temporal reconstruction, Intel Arc only on D3D11
         ps_r__xess = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
         break;
@@ -1281,6 +1307,9 @@ ENGINE_API xr_token qupscale_preset_token[] = {
 // part of the technique, not a cosmetic extra.
 ENGINE_API int ps_r__taa_sharp = 20;
 
+// [DA_PORT] Show the temporal resolve where it fetches history from - see da_taa.ps.
+ENGINE_API int ps_r__taa_debug = 0;
+
 // [DA_PORT] Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
 // distant textures, but it also hands the temporal filter more aliasing than it can absorb on foliage.
 ENGINE_API int ps_r__taa_mipbias = 0;
@@ -1343,7 +1372,7 @@ void CCC_Register()
     CMD3(CCC_Upscaler, "r__upscaler", &ps_r__upscaler, qupscaler_token);
     CMD3(CCC_Upscaler, "r__upscaler_quality", &ps_r__upscaler_quality, qupscaler_quality_token);
     // 2 = show the velocity buffer, 3 = map which shader drew what, 4 = show the reactive mask
-    CMD4(CCC_Integer, "r__motion_vectors", &ps_r__motion_vectors, 0, 4);
+    CMD4(CCC_Integer, "r__motion_vectors", &ps_r__motion_vectors, 0, 5); // 5 = eye-space depth
     CMD4(CCC_Float, "r__reactive_foliage", &ps_r__reactive_foliage, 0.f, 1.f);
     CMD4(CCC_Float, "r__reactive_motion", &ps_r__reactive_motion, 0.f, 200.f);
     CMD4(CCC_Float, "r__reactive_object", &ps_r__reactive_object, 0.f, 2000.f);
@@ -1385,6 +1414,7 @@ void CCC_Register()
     CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer restart
     CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
     CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
+    CMD4(CCC_Integer, "r__taa_debug", &ps_r__taa_debug, 0, 1);
     CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]

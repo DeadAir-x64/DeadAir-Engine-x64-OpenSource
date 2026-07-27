@@ -17,6 +17,8 @@ function normal		(shader, t_base, t_second, t_detail)
 	shader:dx10texture	("s_velocity", "$user$velocity")
 	-- [DA_PORT] reactive mask, for the "r__motion_vectors 4" debug view
 	shader:dx10texture	("s_reactive", "$user$reactive")
+	-- [DA_PORT] eye-space depth, for the "r__motion_vectors 5" view
+	shader:dx10texture	("s_position", "$user$position")
 	-- [DA_PORT] FSR 2 result, already at output resolution
 	shader:dx10texture	("s_fsr2", "$user$fsr2_out")
 

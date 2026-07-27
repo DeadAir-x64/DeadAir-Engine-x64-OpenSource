@@ -69,6 +69,34 @@ void CRenderTarget::phase_scene_begin()
     constexpr bool da_velocity = false;
 #endif
 
+    // [DA_PORT] Clear the position target too, once per frame, whatever else is switched on.
+    //
+    // The sky writes nothing into it, and stock X-Ray does not care: the deferred lighting skips those
+    // pixels by depth and never reads what is there. Our temporal work does read it, and reads it as
+    // the answer to "is this pixel sky" - da_taa.ps, da_sky_velocity.ps and da_reactive.ps all take a
+    // zero eye-space z to mean nothing was drawn.
+    //
+    // Left uncleared it holds whatever the last frame that DID have geometry there wrote. So the moment
+    // the camera turns and sky arrives where a wall used to be, the sky is reprojected as though it sat
+    // twenty metres away instead of at infinity, its history is fetched from the wrong place, and the
+    // horizon shimmers - visibly, and only while turning, which is exactly how it was reported.
+    //
+    // Same once-per-frame guard as the velocity clear below, and for the same reason: with the scene
+    // split in two this function runs twice, and a second clear would wipe the first half's work.
+// [DA_PORT] REVERTED - clearing it here made every model vanish: NPCs, the weapon in hand, the actor.
+// The reasoning above still stands (nothing writes the sky's position, and our temporal work reads a
+// zero there as "sky"), but this is the wrong place or the wrong way to do it, and it did not fix the
+// shimmer either. Left as a note rather than deleted, so the next attempt starts from what is known:
+// find out what else reads this target between here and the lighting before clearing it again.
+#if 0
+    if (rt_Position && rt_Position->pRT && da_position_cleared_frame != Device.dwFrame)
+    {
+        constexpr float zero[4] = { 0.f, 0.f, 0.f, 0.f };
+        HW.get_context(RCache.context_id)->ClearRenderTargetView(rt_Position->pRT, zero);
+        da_position_cleared_frame = Device.dwFrame;
+    }
+#endif
+
     if (!RImplementation.o.gbuffer_opt)
     {
         if (RImplementation.o.albedo_wo)

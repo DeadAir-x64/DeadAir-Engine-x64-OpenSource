@@ -347,6 +347,25 @@ float4 skinning_prev_4(v_model_skinned_4 v)
 
 	return skinning_pos(v.P, m0, m1, m2);
 }
+#else
+// [DA_PORT] Stand-ins for when motion vectors are off.
+//
+// deffer_model_bump.vs and deffer_model_flat.vs name these in their entry points UNCONDITIONALLY -
+// the result is passed to _main and only used inside its own #ifdef - so with DA_VELOCITY off the
+// declarations vanished while the calls stayed, every model shader failed to compile, and the engine
+// answered by substituting stub_default. In game that is the player, his weapon and every NPC simply
+// not drawn, with nothing said about it outside the log.
+//
+// It stayed hidden all the while an upscaler was always selected, because that is what switches the
+// velocity buffer on. Choosing our own temporal AA - which needs no velocity - was the first time the
+// other branch had ever been compiled.
+//
+// The value is never read in this configuration, so the current pose is as good an answer as any.
+float4 skinning_prev_0(v_model_skinned_0 v) { return u_position(v.P); }
+float4 skinning_prev_1(v_model_skinned_1 v) { return u_position(v.P); }
+float4 skinning_prev_2(v_model_skinned_2 v) { return u_position(v.P); }
+float4 skinning_prev_3(v_model_skinned_3 v) { return u_position(v.P); }
+float4 skinning_prev_4(v_model_skinned_4 v) { return u_position(v.P); }
 #endif
 
 #endif

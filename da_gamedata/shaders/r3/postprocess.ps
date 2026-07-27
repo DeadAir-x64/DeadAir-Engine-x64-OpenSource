@@ -160,6 +160,20 @@ float3 da_debug_velocity(float2 uv)
 // exactly the same on screen, and every attempt to tell them apart by tuning numbers is wasted.
 Texture2D s_reactive;
 
+// [DA_PORT] Eye-space depth, switched on with "r__motion_vectors 5".
+//
+// For the one question that keeps deciding things: what is in the position buffer where the sky is?
+// Our temporal work all reads a zero there as "nothing was drawn here", and nothing ever writes the
+// sky's position - so if that buffer is not cleared, it holds whatever the last frame that DID have
+// geometry there left, and the sky gets reprojected as though it sat at that distance.
+//
+// Green means the pixel reads as sky. Red is the depth itself. A sky that comes up red is the bug.
+float3 da_debug_depth(float2 uv)
+{
+	const float z = s_position.Sample(smp_nofilter, uv).z;
+	return float3(saturate(abs(z) * 0.02), abs(z) < 0.001 ? 1.0 : 0.0, 0.0);
+}
+
 float3 da_debug_reactive(float2 uv)
 {
 	const float r = s_reactive.Sample(smp_rtlinear, uv).x;
@@ -177,6 +191,8 @@ float4 main( p_postpr I ) : SV_Target
 //	float3	t_1 	= tex2D		(s_base1,I.tc1);
 	// [DA_PORT] Debug views, before anything else touches the frame. 4 is the reactive mask; 2 and 3
 	// both read the velocity buffer, 3 only fills it with shader ids instead of vectors.
+	if (da_upscale.y > 4.5)
+		return float4(da_debug_depth(I.Tex0), 1.0h);
 	if (da_upscale.y > 3.5)
 		return float4(da_debug_reactive(I.Tex0), 1.0h);
 	if (da_upscale.y > 1.5)

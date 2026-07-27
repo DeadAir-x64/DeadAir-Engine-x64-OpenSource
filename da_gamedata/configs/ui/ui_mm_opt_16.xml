@@ -160,7 +160,7 @@
 		<cap_upscaler x="240" y="352" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_upscaler</text>
 		</cap_upscaler>
-		<list_upscaler x="320" y="350" width="165" height="21" list_length="5">
+		<list_upscaler x="320" y="350" width="165" height="21" list_length="6">
 			<options_item entry="r__upscaler" group="mm_opt_video" depend="restart"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>

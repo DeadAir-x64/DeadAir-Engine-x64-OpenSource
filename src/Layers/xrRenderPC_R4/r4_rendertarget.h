@@ -68,6 +68,8 @@ public:
     ref_rt rt_Reactive_scratch;
     ref_rt rt_Reactive_scratch2;
     u32 da_velocity_cleared_frame{}; // DA: phase_scene_begin runs twice per frame when the scene is split
+    // [DA_PORT] Same guard for the position clear - see phase_scene_begin.
+    u32 da_position_cleared_frame{};
     ref_rt rt_FSR2_out;    // DA: FSR 2 output, at OUTPUT resolution and writable from a compute shader
 
     //

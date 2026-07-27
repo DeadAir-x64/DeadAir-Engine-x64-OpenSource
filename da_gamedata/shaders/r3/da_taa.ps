@@ -198,6 +198,24 @@ _out main(vf I)
 	float2 prev_tc = lerp(near_tc, far_tc, parallax_fade);
 	prev_tc = prev_tc * float2(0.5, -0.5) + 0.5;
 
+	// [DA_PORT] Show where this pass goes looking for history, switched on with "r__taa_debug 1".
+	//
+	// The sky is reported as travelling with the camera, and the depth it is given is already known to
+	// be right - the sky reads as sky, measured. So the remaining question is whether the reprojection
+	// moves at all, and that is not something to reason about a second time: red and green are the two
+	// directions of the offset, blue marks a pixel whose history was rejected outright. A sky that comes
+	// up black while the camera turns means the pass is sampling history from where the pixel already
+	// is, which is exactly what "moves with me" looks like.
+	if (taa_params.y > 0.5)
+	{
+		const float2 offset = (prev_tc - tc) / texel; // in texels, so the reading does not depend on resolution
+		const bool rejected = near_clip.w <= 0.0 || far_clip.w <= 0.0 ||
+			prev_tc.x < 0.0 || prev_tc.x > 1.0 || prev_tc.y < 0.0 || prev_tc.y > 1.0;
+		O.history = float4(current, 1.0);
+		O.screen = float4(saturate(abs(offset.x) * 0.1), saturate(abs(offset.y) * 0.1), rejected ? 1.0 : 0.0, 1.0);
+		return O;
+	}
+
 	const bool reprojected = near_clip.w > 0.0 && far_clip.w > 0.0 &&
 		prev_tc.x >= 0.0 && prev_tc.x <= 1.0 && prev_tc.y >= 0.0 && prev_tc.y <= 1.0;
 

@@ -45,6 +45,8 @@ function opt_video:InitControls(x, y, xml, handler)
 	-- render scale together, so these two controls cannot be put into a contradictory state.
 	xml:InitStatic("tab_video:cap_upscaler", self)
 	handler.combo_upscaler = xml:InitComboBox("tab_video:list_upscaler", self)
+	-- [DA_PORT] registered so the quality steps can be greyed out for the choices that have none
+	handler:Register(handler.combo_upscaler, "list_upscaler")
 
 	xml:InitStatic("tab_video:cap_upscaler_quality", self)
 	handler.combo_upscaler_quality = xml:InitComboBox("tab_video:list_upscaler_quality", self)

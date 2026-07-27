@@ -93,6 +93,9 @@
 	<string id="ui_mm_upscaler_off">
 		<text>Выкл</text>
 	</string>
+	<string id="ui_mm_upscaler_taa">
+		<text>TAA</text>
+	</string>
 	<string id="ui_mm_upscaler_fsr1">
 		<text>FSR 1.0</text>
 	</string>

@@ -7,6 +7,7 @@
 // the projection.
 extern ENGINE_API int ps_r__taa;
 extern ENGINE_API int ps_r__taa_sharp;
+extern ENGINE_API int ps_r__taa_debug;
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API int ps_r__xess;
@@ -64,7 +65,9 @@ void CRenderTarget::phase_taa()
 
     RCache.set_Element(s_taa->E[0]);
     RCache.set_Geometry(g_combine);
-    RCache.set_c("taa_params", float(ps_r__taa_sharp) / 100.f, 0.f, 0.f, 0.f);
+    // y carries the debug switch: with it on the pass draws where it fetches history from instead of
+    // the resolved frame. See da_taa.ps.
+    RCache.set_c("taa_params", float(ps_r__taa_sharp) / 100.f, float(ps_r__taa_debug), 0.f, 0.f);
     RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 
     // Put the resolved image back where the rest of the frame expects it, and keep the un-sharpened
