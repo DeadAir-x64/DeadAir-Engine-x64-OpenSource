@@ -81,10 +81,23 @@ void CALifeGraphRegistry::setup_current_level()
         }
 
     {
+        // [DA_PORT] The loop above has already added everything the graph points hold for this level.
+        // m_temp collects objects registered while there was no level registry to put them in - and
+        // nothing stops an object being in both lists, because add() chooses between them on the state
+        // the object had at the time, and that state changes as it goes online and offline. Adding it
+        // a second time is a hard assert, which is how a level change could end the game outright.
         xr_vector<CSE_ALifeDynamicObject*>::const_iterator I = m_temp.begin();
         xr_vector<CSE_ALifeDynamicObject*>::const_iterator E = m_temp.end();
         for (; I != E; ++I)
+        {
+            if (level().object((*I)->ID, true))
+            {
+                Msg("! [DA_PORT] ALife: object [%s][%d] already on the level registry - skipping",
+                    (*I)->name_replace(), (*I)->ID);
+                continue;
+            }
             level().add(*I);
+        }
 
         m_temp.clear();
     }
@@ -181,8 +194,24 @@ void CALifeGraphRegistry::add(CSE_ALifeDynamicObject* object, GameGraph::_GRAPH_
     if (!object->m_bOnline && object->used_ai_locations() /**&& object->interactive()**/)
     {
         VERIFY(ai().game_graph().valid_vertex_id(game_vertex_id));
-        m_objects[game_vertex_id].objects().add(object->ID, object);
-        object->m_tGraphID = game_vertex_id;
+
+        // [DA_PORT] Registering the same object at the same graph point twice is a hard assert inside
+        // the registry, and it took down the game on a level change. The second registration is a
+        // no-op for an object already there, so it is skipped rather than fatal - but it is reported,
+        // because arriving here at all means something registered an object it had not unregistered,
+        // and the log line is what identifies who. Crashing instead tells nobody anything.
+        const auto& registered = m_objects[game_vertex_id].objects().objects();
+        if (registered.find(object->ID) != registered.end())
+        {
+            Msg("! [DA_PORT] ALife: object [%s][%d] already registered at graph point %d - skipping",
+                object->name_replace(), object->ID, game_vertex_id);
+            object->m_tGraphID = game_vertex_id;
+        }
+        else
+        {
+            m_objects[game_vertex_id].objects().add(object->ID, object);
+            object->m_tGraphID = game_vertex_id;
+        }
     }
     else if (!m_level && update)
     {

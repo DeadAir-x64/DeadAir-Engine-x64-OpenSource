@@ -19,6 +19,8 @@
 extern ENGINE_API int ps_r__taa;
 extern ENGINE_API int ps_r__taa_jitter;
 extern ENGINE_API int ps_r__fsr2;
+// [DA_PORT] "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
+extern ENGINE_API bool da_upscaler_active();
 extern ENGINE_API Fvector2 g_da_taa_jitter;
 extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
@@ -352,10 +354,17 @@ void CCameraManager::ApplyDevice()
     // there is nothing for the jitter to resolve here.
     const bool menu_up = g_pGamePersistent && g_pGamePersistent->m_pMainMenu && g_pGamePersistent->m_pMainMenu->IsActive();
 
-    // [DA_PORT] FSR 2 needs the jitter just as much as our own temporal AA does — it is what gives it
-    // sub-pixel samples to reconstruct from, and it is told the exact offset each frame. So the jitter
-    // follows either consumer being active, not just r__taa.
-    if ((ps_r__taa || ps_r__fsr2) && ps_r__taa_jitter && !menu_up && Device.dwRenderWidth && Device.dwRenderHeight)
+    // [DA_PORT] Every temporal upscaler needs the jitter just as much as our own temporal AA does — it
+    // is what gives them sub-pixel samples to reconstruct from, and each is told the exact offset every
+    // frame. So the jitter follows any consumer being active, not just r__taa.
+    //
+    // This read "ps_r__fsr2" while FSR 3 and XeSS were added beside it, so selecting either produced no
+    // jitter at all: the upscaler was handed an offset of zero and the same sub-pixel positions every
+    // frame, leaving it nothing to reconstruct from. Fine detail at a distance could then never resolve
+    // however long the camera stood still, which is what "objects in the distance smear" turned out to
+    // be. Now behind da_upscaler_active(), so the next upscaler cannot repeat it.
+    if ((ps_r__taa || da_upscaler_active()) && ps_r__taa_jitter && !menu_up && Device.dwRenderWidth &&
+        Device.dwRenderHeight)
     {
         // [DA_PORT] Generated exactly the way FSR 2 specifies, because it has to undo this offset and
         // will only do so correctly if both sides agree on the sequence AND on the sign convention.
@@ -394,12 +403,12 @@ void CCameraManager::ApplyDevice()
         g_da_taa_jitter.set(2.f * g_da_fsr2_jitter_px.x / float(Device.dwRenderWidth),
             2.f * g_da_fsr2_jitter_px.y / float(Device.dwRenderHeight));
 
-        // [DA_PORT] Only our own temporal AA gets the jitter through the projection matrix. FSR 2 must
-        // not: that matrix drives shadow cascades, particles and the HUD as well, while the upscaler
-        // compensates the scene alone — everything else would then dither with nothing to undo it, and
-        // the whole picture reads as shaking. Under FSR 2 the scene shaders apply it themselves, from
-        // the m_taa_jitter constant.
-        if (!ps_r__fsr2)
+        // [DA_PORT] Only our own temporal AA gets the jitter through the projection matrix. An upscaler
+        // must not: that matrix drives shadow cascades, particles and the HUD as well, while the
+        // upscaler compensates the scene alone — everything else would then dither with nothing to undo
+        // it, and the whole picture reads as shaking. Under an upscaler the scene shaders apply it
+        // themselves, from the m_taa_jitter constant.
+        if (!da_upscaler_active())
         {
             Device.mProject._31 += g_da_taa_jitter.x;
             Device.mProject._32 += g_da_taa_jitter.y;

@@ -22,6 +22,8 @@ extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API float ps_r__reactive_foliage;
 extern ENGINE_API float ps_r__reactive_motion;
+// [DA_PORT] "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
+extern ENGINE_API bool da_upscaler_active();
 extern ENGINE_API float ps_r__detail_gloss_fix;
 extern ENGINE_API float ps_r__detail_normal_fix;
 extern ENGINE_API float ps_r__detail_albedo_fix;
@@ -169,7 +171,10 @@ static class cl_taa_jitter : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
     {
-        if (::ps_r__fsr2)
+        // [DA_PORT] Any temporal upscaler, not FSR 2 alone - see da_upscaler_active(). While this named
+        // FSR 2 only, selecting FSR 3 or XeSS handed the scene shaders a shift of zero, so nothing was
+        // jittered and the upscaler had no sub-pixel samples to work from.
+        if (da_upscaler_active())
         {
             // [DA_PORT] Converted to clip space HERE, from the pixel offset the upscaler is handed, so
             // the two can never describe different shifts. Device.dwRenderWidth is the scene size at

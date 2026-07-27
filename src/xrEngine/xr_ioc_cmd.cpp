@@ -387,6 +387,22 @@ static const da_upscaler_entry da_upscalers[] = {
     { &ps_r__upscale_preset, "r__upscale_preset" }, // FSR 1.0 - spatial, but it owns the render scale
 };
 
+// [DA_PORT] Is a TEMPORAL upscaler reconstructing this frame?
+//
+// One function, deliberately, because the alternative kept failing. The same question was asked in
+// half a dozen places as "is FSR 2 on", each written when FSR 2 was the only one, and none of them
+// updated when FSR 3 and XeSS were added beside it. Every miss was silent and every symptom pointed
+// somewhere else: models drew in a T-pose (the velocity buffer's consumer list), moving figures went
+// soft (temporal AA ran on top of the upscaler), and distant detail never resolved at all (the camera
+// generated no sub-pixel jitter, so there was nothing to reconstruct from). Three separate hunts for
+// one omission. Anything asking this question should now call this and add its upscaler here once.
+//
+// FSR 1.0 is deliberately absent: it is a spatial filter with no history and no jitter of its own.
+ENGINE_API bool da_upscaler_active()
+{
+    return !!ps_r__fsr2 || !!ps_r__fsr3 || !!ps_r__xess;
+}
+
 // Switches off every upscaler except the one being selected. Call it BEFORE the caller applies its own
 // render scale, so that the winner's ratio is the one left standing.
 static void da_upscaler_make_exclusive(const void* chosen)

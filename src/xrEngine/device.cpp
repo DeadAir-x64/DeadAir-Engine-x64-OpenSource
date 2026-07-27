@@ -189,6 +189,8 @@ bool CRenderDevice::BeforeFrame()
 // has to compare frames on a common, un-jittered grid, otherwise the jitter itself reads as camera
 // motion and the history lands half a pixel off every frame.
 extern int ps_r__fsr2;
+// [DA_PORT] "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
+extern ENGINE_API bool da_upscaler_active();
 ENGINE_API Fvector2 g_da_taa_jitter = { 0.f, 0.f };
 
 // [DA_PORT] The same jitter in PIXELS, which is the form FSR 2 takes it in. Kept separately
@@ -224,11 +226,13 @@ void CRenderDevice::OnCameraUpdated()
 
     // [DA_PORT] see g_da_taa_unjittered_VP above. The jitter is two entries of the projection matrix, so
     // undoing it costs one matrix copy and one multiply, and only when TAA is actually on.
-    // Under FSR 2 the jitter never reaches mProject at all — the scene shaders apply it themselves —
-    // so mFullTransform is ALREADY un-jittered and subtracting the offset here would bake a phantom
-    // negative jitter into every motion vector. That is a residual shake proportional to the jitter,
-    // which is exactly what survived moving the jitter into the shaders.
-    if (!ps_r__fsr2 && (g_da_taa_jitter.x != 0.f || g_da_taa_jitter.y != 0.f))
+    // Under an upscaler the jitter never reaches mProject at all — the scene shaders apply it
+    // themselves — so mFullTransform is ALREADY un-jittered and subtracting the offset here would bake
+    // a phantom negative jitter into every motion vector. That is a residual shake proportional to the
+    // jitter, which is exactly what survived moving the jitter into the shaders.
+    //
+    // Named FSR 2 alone until FSR 3 and XeSS were added beside it; see da_upscaler_active().
+    if (!da_upscaler_active() && (g_da_taa_jitter.x != 0.f || g_da_taa_jitter.y != 0.f))
     {
         Fmatrix unjittered_project = mProject;
         unjittered_project._31 -= g_da_taa_jitter.x;
