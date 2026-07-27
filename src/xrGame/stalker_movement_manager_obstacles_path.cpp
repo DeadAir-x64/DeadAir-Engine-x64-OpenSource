@@ -169,7 +169,32 @@ void stalker_movement_manager_obstacles::build_level_path()
             if (!pure_search_result)
             {
 #ifndef MASTER_GOLD
-                Msg("! level_path().failed() during navigation");
+                // [DA_PORT] Say WHO, and stop saying it every frame.
+                //
+                // This fires when a path cannot be built even after every obstacle has been cleared and
+                // the search re-run, so each line already stands for two full A* searches thrown away.
+                // Six and a half thousand of them in one session is not a map with awkward corners, it
+                // is somebody stuck in a retry loop - but the message named no one, so there was no way
+                // to tell one hopeless stalker from a hundred ordinary failures. It also wrote to the
+                // log on every single occurrence, which is thousands of file writes for one stuck NPC.
+                //
+                // Throttled per object rather than globally: one talkative stalker must not hide the
+                // rest, and the suppressed count is what distinguishes "stuck" from "occasionally
+                // fails" at a glance.
+                {
+                    static xr_map<u32, std::pair<u32, u32>> s_last; // id -> (time of last report, suppressed)
+                    auto& entry = s_last[object().ID()];
+                    if (Device.dwTimeGlobal - entry.first > 5000)
+                    {
+                        Msg("! level_path().failed() during navigation: [%s] at (%3.1f, %3.1f, %3.1f)%s",
+                            object().cName().c_str(), VPUSH(object().Position()),
+                            entry.second ? make_string(", %d more suppressed", entry.second).c_str() : "");
+                        entry.first = Device.dwTimeGlobal;
+                        entry.second = 0;
+                    }
+                    else
+                        ++entry.second;
+                }
 #endif // #ifndef MASTER_GOLD
                 break;
             }
