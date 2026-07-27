@@ -316,9 +316,43 @@ void TaskManager::RunTask(Task& task)
 void TaskManager::Wait(const Task& task, bool updateSystemEvents /*= false*/) const
 {
     ZoneScoped;
+
+    // [DA_PORT] Give the core away while there is nothing to do here.
+    //
+    // This loop used to spin flat out: with no task to steal, ExecuteOneTask returns immediately and
+    // the thread simply asks again, as fast as it can. The idle worker threads do the right thing and
+    // block on an event, but whoever calls Wait - in practice the main thread, every frame - burns a
+    // full logical core for as long as the wait lasts.
+    //
+    // That is expensive here because the wait IS the frame: measured on the swamps, the parallel
+    // sequence takes essentially the whole of it while the main thread has nothing left to do. And on
+    // a CPU with SMT, a core spinning like this is not free to its sibling - it takes roughly half of
+    // the shared execution resources from whatever runs there. If the thread doing the parallel work
+    // happens to land on that sibling, it runs at about two thirds speed.
+    //
+    // Which is exactly the symptom that led here: the frame rate is not gradually sagging, it comes up
+    // either fast or slow AT LAUNCH and stays that way, and the ratio between the two is 1.49. Thread
+    // placement is decided once when the threads are created.
+    //
+    // _mm_pause tells the processor this is a spin and to yield its share of the pipeline - a few tens
+    // of cycles, so no latency worth measuring. The occasional yield on top is for the case where the
+    // waiting thread and the working thread really are on the same logical processor, where pausing
+    // alone would not let the other one run at all.
+    u32 idle_spins = 0;
     while (!task.IsFinished())
     {
-        ExecuteOneTask();
+        if (ExecuteOneTask())
+            idle_spins = 0;
+        else
+        {
+            _mm_pause();
+            if (++idle_spins >= 64)
+            {
+                idle_spins = 0;
+                std::this_thread::yield();
+            }
+        }
+
         if (s_tl_worker.id == 0 && (xrDebug::ProcessingFailure() || updateSystemEvents))
             SDL_PumpEvents(); // Necessary to prevent dead locks
     }

@@ -3,6 +3,22 @@
 
 XRCORE_API bool g_bEnableStatGather = false;
 
+// [DA_PORT] Counters for the GOAP planner, filled in problem_solver_inline.h and printed by the
+// performance dump. Live here because that header is included from several modules and the figures
+// have to add up across all of them.
+XRCORE_API double g_da_goap_actual_ms = 0.0;
+XRCORE_API double g_da_goap_search_ms = 0.0;
+XRCORE_API u32 g_da_goap_calls = 0;
+XRCORE_API u32 g_da_goap_searches = 0;
+XRCORE_API double g_da_goap_exec_ms = 0.0;
+XRCORE_API u32 g_da_goap_execs = 0;
+XRCORE_API double g_da_oh_ms = 0.0;
+XRCORE_API u32 g_da_oh_entries = 0;
+XRCORE_API u32 g_da_oh_alive = 0;
+XRCORE_API u32 g_da_oh_throws = 0;
+XRCORE_API double g_da_lpb_ms = 0.0;
+XRCORE_API u32 g_da_lpb_calls = 0;
+
 void CStatTimer::FrameStart()
 {
     accum = Duration();

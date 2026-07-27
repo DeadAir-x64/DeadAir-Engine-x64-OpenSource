@@ -747,8 +747,30 @@ void CAI_Stalker::net_Import(NET_Packet& P)
 
 void CAI_Stalker::update_object_handler()
 {
+    // [DA_PORT] Counted at the door, because the numbers stopped adding up: sixteen of these run per
+    // frame for eight milliseconds between them, yet the planner inside is entered three times and
+    // costs nothing. Either most of them turn back at the line below - dead stalkers cost nothing - or
+    // the time is going somewhere other than planning. The catch at the bottom is a candidate worth
+    // counting too: it runs the whole update a second time, and unwinding to reach it is not cheap.
+    ++g_da_oh_entries;
+    CTimer oh_timer;
+    if (g_bEnableStatGather)
+        oh_timer.Start();
+
     if (!g_Alive())
         return;
+
+    ++g_da_oh_alive;
+
+    struct oh_scope
+    {
+        CTimer& t;
+        ~oh_scope()
+        {
+            if (g_bEnableStatGather)
+                g_da_oh_ms += t.GetElapsed_sec() * 1000.0;
+        }
+    } scope{ oh_timer };
 
     try
     {
@@ -775,6 +797,7 @@ void CAI_Stalker::update_object_handler()
     }
     catch (...)
     {
+        ++g_da_oh_throws;
         CObjectHandler::set_goal(eObjectActionIdle);
         CObjectHandler::update();
     }

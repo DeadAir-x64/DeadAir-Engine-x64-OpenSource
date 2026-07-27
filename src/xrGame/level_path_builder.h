@@ -26,6 +26,9 @@ private:
     bool m_extrapolate_path;
     bool m_use_delay_after_fail;
 
+    // [DA_PORT] Consecutive failures, for the hopeless case - see process().
+    u32 m_consecutive_fails{};
+
 private:
     enum
     {
@@ -102,7 +105,50 @@ public:
         if (Device.dwTimeGlobal < m_last_fail_time + time_to_wait_after_fail)
             return;
 
-        m_object->build_level_path();
+        // [DA_PORT] Counted because this is the last unmeasured occupant of the parallel sequence, and
+        // the sequence is the frame. Note the delay above: after a failed search this is supposed to
+        // stand down for two seconds - but m_last_fail_time is only set in process_impl, while THIS
+        // path goes through build_level_path, which fails on its own without ever arming it. Three
+        // stalkers on the swamps fail a hundred times a second each, which is what that means in
+        // practice, and a failed search is the expensive kind: it has to exhaust the reachable set
+        // before it can conclude there is no way through.
+        if (g_bEnableStatGather)
+        {
+            CTimer t;
+            t.Start();
+            m_object->build_level_path();
+            g_da_lpb_ms += t.GetElapsed_sec() * 1000.0;
+            ++g_da_lpb_calls;
+        }
+        else
+            m_object->build_level_path();
+
+        // [DA_PORT] Back off only once a stalker has failed REPEATEDLY.
+        //
+        // Measured on the swamps: three stalkers who cannot reach their target ran three searches a
+        // frame, 12.3ms between them, against a 13ms frame. Ninety-five per cent of the frame spent
+        // discovering, sixty times a second, that there is still no way across the water. A failed
+        // search is the expensive kind - to conclude nothing is reachable it must visit everything
+        // that is.
+        //
+        // The engine already has a delay for this, and stalkers deliberately switch it off
+        // (stalker_movement_manager_obstacles.cpp). That is a reasonable call for an ordinary failure:
+        // a door swings shut, someone stands in a doorway, and waiting two seconds would just make the
+        // stalker look stupid. It is the wrong call for a stalker whose target is across water, where
+        // there is no moment worth waiting for and no arrival to be late to.
+        //
+        // So the two cases are separated by how often it has just failed, rather than by a flag set
+        // once at construction. A transient failure retries next frame exactly as before; twenty in a
+        // row earns a short rest, which is enough to take this from thirty searches a second to three.
+        // Deliberately not the full two seconds: half of one keeps them responsive if the world does
+        // open up.
+        if (m_object->level_path().failed())
+        {
+            if (++m_consecutive_fails >= 20)
+                m_last_fail_time = Device.dwTimeGlobal + time_to_wait_after_fail - 500;
+        }
+        else
+            m_consecutive_fails = 0;
     }
 
     IC void remove()

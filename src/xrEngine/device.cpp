@@ -24,6 +24,23 @@ ENGINE_API bool g_bBenchmark = false;
 string512 g_sBenchmarkName;
 
 int ps_fps_limit = 501;
+
+// [DA_PORT] Frames still to write into the log, see ProcessFrame. Counts itself down.
+ENGINE_API int ps_da_perf_dump = 0;
+
+// [DA_PORT] Frame-time watchdog: milliseconds above which a frame is worth a line in the log. Zero is
+// off. Unlike the dump this is meant to be left running while playing - it says nothing until a frame
+// actually misbehaves, then reports what it was doing, so the log names the interaction rather than
+// the clock. See ProcessFrame.
+ENGINE_API int ps_da_perf_watch = 0;
+
+// [DA_PORT] Filled by the parallel task, read after the wait - see ProcessFrame.
+static float g_da_perf_seq_ms = 0.f;
+static float g_da_perf_mt_ms = 0.f;
+static u32 g_da_perf_seq_count = 0;
+static float g_da_perf_seq_inner_ms = 0.f;
+static float g_da_perf_sleep_ms = 0.f;
+static float g_da_perf_total_ms = 0.f;
 int ps_fps_limit_in_menu = 60;
 
 bool g_bLoaded = false;
@@ -167,7 +184,15 @@ bool CRenderDevice::BeforeFrame()
         return false;
     }
 
-    if (psDeviceFlags.test(rsStatistic))
+    // [DA_PORT] The dump forces gathering on for its own duration. Without this the timers it prints
+    // are whatever they held when the overlay was last up, decaying quietly frame by frame - which is
+    // how a "wait" of 10.77ms came to be reported inside a 9.09ms frame. A measurement that cannot be
+    // wrong in that direction is worth the one extra condition.
+    // The watchdog belongs in this list too. Leaving it out cost a measurement: the GOAP counters live
+    // behind this flag, so a watch run reported them all as zero while the frame plainly spent twelve
+    // milliseconds in the object handlers, and that read as "the time is not in the planner" when it
+    // only meant the planner was not being counted.
+    if (psDeviceFlags.test(rsStatistic) || ps_da_perf_dump > 0 || ps_da_perf_watch > 0)
         g_bEnableStatGather = true; // XXX: why not use either rsStatistic or g_bEnableStatGather?
     else
         g_bEnableStatGather = false;
@@ -301,24 +326,161 @@ void CRenderDevice::ProcessFrame()
 
     const u64 frameStartTime = TimerGlobal.GetElapsed_ms();
 
+    // [DA_PORT] Own timers for the dump, because the engine's own are peak-hold, not per-frame:
+    // CStatTimer::FrameEnd jumps straight to any new maximum and then decays by one percent a frame.
+    // Every figure the overlay shows is therefore the worst frame in recent memory, which is useful for
+    // spotting hitches and useless for adding up - it reported a 9.28ms wait inside a 8.99ms frame, and
+    // that impossibility is what gave it away. These three are plain elapsed time, and they sum.
+    const bool perf = ps_da_perf_dump > 0 || ps_da_perf_watch > 0;
+    CTimer perf_timer;
+    float ms_move = 0.f, ms_render = 0.f, ms_wait = 0.f;
+    if (perf)
+        perf_timer.Start();
+
     FrameMove();
+
+    if (perf)
+        ms_move = perf_timer.GetElapsed_sec() * 1000.f;
 
     OnCameraUpdated();
 
-    const auto& processSeqParallel = TaskScheduler->AddTask([this]
+    const auto& processSeqParallel = TaskScheduler->AddTask([this, perf]
     {
         ZoneScopedN("ProcessParallelSequence");
-        for (u32 pit = 0; pit < seqParallel.size(); pit++)
+
+        // [DA_PORT] Split for the dump. This sequence turned out to be the frame - some eleven
+        // milliseconds of it against two for everything the main thread does itself - and it holds two
+        // quite different things: one entry per stalker for their object handlers, and then the sound
+        // renderer and network. Timing them apart is the difference between knowing where the frame
+        // goes and guessing at it.
+        CTimer t;
+        if (perf)
+            t.Start();
+
+        const u32 count = (u32)seqParallel.size();
+
+        // [DA_PORT] Sum the entries individually as well as timing the loop around them, because those
+        // two numbers answer different questions and only together do they say anything.
+        //
+        // The loop is wall time on whichever thread picked the task up. If that thread is descheduled -
+        // and there are sixteen workers plus a main thread that used to spin flat out - the wall time
+        // includes the time it was not running. The per-entry sum cannot include that: it only counts
+        // while an entry is actually executing. So a large loop total against a small sum means the
+        // work is not slow, the thread is starved; the two being equal means the work really is slow.
+        double inner = 0.0;
+        CTimer entry_timer;
+        for (u32 pit = 0; pit < count; pit++)
         {
+            if (perf)
+                entry_timer.Start();
             seqParallel[pit]();
+            if (perf)
+                inner += entry_timer.GetElapsed_sec() * 1000.0;
         }
         seqParallel.clear();
+        if (perf)
+            g_da_perf_seq_inner_ms = float(inner);
+
+        if (perf)
+        {
+            g_da_perf_seq_ms = t.GetElapsed_sec() * 1000.f;
+            g_da_perf_seq_count = count;
+            t.Start();
+        }
+
         seqFrameMT.Process();
+
+        if (perf)
+            g_da_perf_mt_ms = t.GetElapsed_sec() * 1000.f;
     });
+
+    if (perf)
+        perf_timer.Start();
 
     DoRender();
 
+    if (perf)
+    {
+        ms_render = perf_timer.GetElapsed_sec() * 1000.f;
+        perf_timer.Start();
+    }
+
+    // [DA_PORT] The frame has three parts and the statistics only count two of them. ENGINE times
+    // seqFrame.Process(), RENDER times the drawing including Present - and this wait, for the parallel
+    // sequence started above, belongs to neither. Whenever that parallel work outlasts the rendering,
+    // the frame stands still here and nothing on screen says so.
+    gTestTimer0.Begin();
     TaskScheduler->Wait(processSeqParallel);
+    gTestTimer0.End();
+
+    if (perf)
+        ms_wait = perf_timer.GetElapsed_sec() * 1000.f;
+
+    // [DA_PORT] The same figures the statistics overlay shows, written to the log for N frames.
+    //
+    // Reading them off a screenshot turned out to be worthless: the game saves the PNG inside the
+    // frame the key was pressed on, so every timer still open at that moment swallows the encode. It
+    // showed as the wait and the input costing thirteen milliseconds each - nearly the same number,
+    // which is what gave it away. This costs one line per frame and nothing is open while it writes.
+    if (perf)
+    {
+        const float ms_frame = fTimeDeltaReal * 1000.f;
+
+        // [DA_PORT] Watchdog: silent until a frame actually misbehaves.
+        //
+        // A dump of three hundred consecutive frames answers "what does a normal frame cost". It does
+        // not answer "what made it stutter just then", because the interesting frame is one in a
+        // thousand and nobody can press a key at the right moment. This runs while playing instead and
+        // writes only when a frame crosses the threshold, so the log ends up naming the interaction -
+        // opening the inventory, a fight starting, walking into a new area - rather than the clock.
+        //
+        // Rate-limited, because a real stall lasts many frames and one line per frame would bury the
+        // first one, which is the only interesting one.
+        bool watch_fires = false;
+        if (ps_da_perf_watch > 0 && ms_frame > float(ps_da_perf_watch))
+        {
+            static u32 last_report = 0;
+            if (dwTimeGlobal - last_report > 200)
+            {
+                last_report = dwTimeGlobal;
+                watch_fires = true;
+            }
+        }
+
+        if (ps_da_perf_dump > 0 || watch_fires)
+        {
+            // Name the part that took the most, so a line reads at a glance without arithmetic.
+            pcstr worst = "move";
+            float worst_ms = ms_move;
+            if (ms_render > worst_ms) { worst = "render"; worst_ms = ms_render; }
+            if (ms_wait > worst_ms) { worst = "wait"; worst_ms = ms_wait; }
+
+            // Object counts alongside the times: if the active count moves with the frame time, ALife
+            // bringing squads online is the answer, written in the same line.
+            const u32 objects = g_pGameLevel ? g_pGameLevel->Objects.o_count() : 0;
+            Msg("~ [DA_PERF]%s frame %5.2f | move %5.2f | render %5.2f | wait %5.2f | seq %5.2f (inner "
+                "%5.2f) x%u | mt %5.2f | goap: actual %5.2f x%u, search %5.2f x%u, exec %5.2f x%u | "
+                "oh: %5.2f in%u alive%u throw%u | path %5.2f x%u | obj %u | sleep %5.2f | total %5.2f | "
+                "worst: %s",
+                watch_fires ? " SPIKE" : "", ms_frame, ms_move, ms_render, ms_wait, g_da_perf_seq_ms,
+                g_da_perf_seq_inner_ms, g_da_perf_seq_count, g_da_perf_mt_ms, float(g_da_goap_actual_ms),
+                g_da_goap_calls, float(g_da_goap_search_ms), g_da_goap_searches, float(g_da_goap_exec_ms),
+                g_da_goap_execs, float(g_da_oh_ms), g_da_oh_entries, g_da_oh_alive, g_da_oh_throws,
+                float(g_da_lpb_ms), g_da_lpb_calls, objects, g_da_perf_sleep_ms, g_da_perf_total_ms,
+                worst);
+        }
+
+        if (ps_da_perf_dump > 0)
+        {
+            --ps_da_perf_dump;
+            if (ps_da_perf_dump == 0)
+                Msg("~ [DA_PERF] ---- done ----");
+        }
+
+        g_da_goap_actual_ms = g_da_goap_search_ms = g_da_goap_exec_ms = g_da_oh_ms = g_da_lpb_ms = 0.0;
+        g_da_goap_calls = g_da_goap_searches = g_da_goap_execs = 0;
+        g_da_oh_entries = g_da_oh_alive = g_da_oh_throws = g_da_lpb_calls = 0;
+    }
 
     const u64 frameEndTime = TimerGlobal.GetElapsed_ms();
     const u64 frameTime = frameEndTime - frameStartTime;
@@ -331,11 +493,33 @@ void CRenderDevice::ProcessFrame()
     else if (Paused() || g_pGameLevel == nullptr)
         updateDelta = 1000 / ps_fps_limit_in_menu;
 
+    // [DA_PORT] Time the sleep, and the whole of this function, because the parts measured above stopped
+    // adding up: a 22ms frame with 1.4 of processing, 3.0 of drawing and nothing waiting leaves
+    // eighteen milliseconds that belong to none of them. There are only two places left for them - this
+    // sleep, and whatever happens between one frame and the next outside this function.
+    //
+    // Worth knowing what this limiter actually does. updateDelta is 1000/ps_fps_limit in WHOLE
+    // milliseconds, and frameTime is integer milliseconds too, so at the maximum setting of 501 the
+    // budget rounds to 1ms and any frame whose work rounds to 0 sleeps. Sleep(1) on Windows does not
+    // return in a millisecond either - it returns on the next scheduler tick, which is 15.6ms unless
+    // some process on the machine has asked for a finer timer. Which process, and whether one is
+    // running at all, differs from launch to launch. That would fit the symptom exactly: a frame rate
+    // that comes up either fast or slow at startup and stays there.
+    CTimer sleep_timer;
+    if (perf)
+        sleep_timer.Start();
+
     if (frameTime < updateDelta)
         Sleep(updateDelta - frameTime);
 
     if (!b_is_Active)
         Sleep(1);
+
+    if (perf)
+    {
+        g_da_perf_sleep_ms = sleep_timer.GetElapsed_sec() * 1000.f;
+        g_da_perf_total_ms = float(TimerGlobal.GetElapsed_ms() - frameStartTime);
+    }
 }
 
 void CRenderDevice::ProcessEvent(const SDL_Event& event)

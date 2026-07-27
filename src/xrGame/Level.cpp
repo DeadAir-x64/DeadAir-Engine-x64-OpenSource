@@ -584,7 +584,16 @@ void CLevel::OnFrame()
     }
 }
 
-int psLUA_GCSTEP = 100; // 10
+// [DA_PORT] 10, which is what the author's Dead Air uses. OpenXRay raised it to 100 upstream and left
+// the old value in a comment; carrying that over made every frame do ten times as much Lua garbage
+// collection as the mod was built for.
+//
+// Measured on the swamps: 18.46ms per frame in lua_gc against 8.18ms for the whole engine and 4.24ms
+// for the renderer. That is also exactly the shape of the complaint - 200-300 fps right after a load,
+// sagging to 70 over ten or twenty seconds and staying there. The heap starts small and cheap to
+// sweep; as the scripts fill it to some thirty megabytes each step costs proportionally more, until
+// it settles at whatever the heap settles at.
+int psLUA_GCSTEP = 10;
 int psLUA_GCTIMEOUT = 1000;
 
 u32 ps_lua_gc_method = 1;

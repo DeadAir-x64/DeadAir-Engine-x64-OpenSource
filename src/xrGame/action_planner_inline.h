@@ -124,7 +124,20 @@ void CPlanner::update()
         Msg("DEBUG: Action [%s] executing", current_action().m_action_name);
     //-Alundaio: Debug Action
 
-    current_action().execute();
+    // [DA_PORT] The other half, and by elimination the expensive one. Planning turned out to cost
+    // nothing at all - three solves a frame, hundredths of a millisecond, no searches - while the
+    // seventeen object handlers together took ten. Everything after the solve is this call: whatever
+    // action the plan settled on, run again this frame.
+    if (g_bEnableStatGather)
+    {
+        CTimer t;
+        t.Start();
+        current_action().execute();
+        g_da_goap_exec_ms += t.GetElapsed_sec() * 1000.0;
+        ++g_da_goap_execs;
+    }
+    else
+        current_action().execute();
 }
 
 TEMPLATE_SPECIALIZATION

@@ -358,12 +358,35 @@ IC void CProblemSolverAbstract::solve()
 #ifndef AI_COMPILER
     m_solution_changed = false;
 
-    if (actual())
+    // [DA_PORT] Split the two halves of this apart, because they cost very differently and only one of
+    // them is obvious. actual() is not a cheap flag check: it walks every condition of the world state
+    // and calls the evaluator behind each one, every frame, for every stalker - and the search below it
+    // usually does not run at all. Measured on the swamps, seventeen stalkers spent 9.7ms a frame in
+    // here, which optimising the build did not touch, so the question is what that work IS rather than
+    // how fast it goes. These counters answer it; the dump prints and clears them each frame.
+    if (g_bEnableStatGather)
+    {
+        CTimer t;
+        t.Start();
+        const bool is_actual = actual();
+        g_da_goap_actual_ms += t.GetElapsed_sec() * 1000.0;
+        ++g_da_goap_calls;
+        if (is_actual)
+            return;
+    }
+    else if (actual())
         return;
 
     m_actuality = true;
     m_solution_changed = true;
     m_current_state.clear();
+
+    CTimer t_search;
+    if (g_bEnableStatGather)
+    {
+        ++g_da_goap_searches;
+        t_search.Start();
+    }
 
     // Call to ai() was replaced with GEnv.AISpace
     // XXX: looks bad!
@@ -371,6 +394,9 @@ IC void CProblemSolverAbstract::solve()
         reverse_search ? current_state() : target_state(), &m_solution,
         GraphEngineSpace::CSolverBaseParameters(
             GraphEngineSpace::_solver_dist_type(-1), GraphEngineSpace::_solver_condition_type(-1), 8000));
+
+    if (g_bEnableStatGather)
+        g_da_goap_search_ms += t_search.GetElapsed_sec() * 1000.0;
 #endif
 }
 

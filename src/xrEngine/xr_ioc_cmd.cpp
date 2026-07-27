@@ -1349,6 +1349,12 @@ void CCC_Register()
     CMD4(CCC_Integer, "r__reactive_selftest", &ps_r__reactive_selftest, 0, 1);
     CMD4(CCC_Integer, "r__reactive_ref_fps", &ps_r__reactive_ref_fps, 30, 300);
     CMD4(CCC_Integer, "ai_unstick", &ps_ai_unstick, 0, 1);
+    {
+        extern ENGINE_API int ps_da_perf_dump;
+        CMD4(CCC_Integer, "da_perf_dump", &ps_da_perf_dump, 0, 2000);
+        extern ENGINE_API int ps_da_perf_watch;
+        CMD4(CCC_Integer, "da_perf_watch", &ps_da_perf_watch, 0, 500);
+    }
     CMD4(CCC_Float, "ai_unstick_range", &ps_ai_unstick_range, 0.5f, 20.f);
     CMD4(CCC_Float, "r__vguard_strength", &ps_r__vguard_strength, 0.f, 1.f);
     CMD4(CCC_Float, "r__vguard_gloss", &ps_r__vguard_gloss, 0.f, 1.f);

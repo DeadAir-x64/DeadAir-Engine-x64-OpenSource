@@ -159,6 +159,20 @@ public:
 };
 
 extern XRCORE_API bool g_bEnableStatGather;
+
+// [DA_PORT] See FTimer.cpp - GOAP planner accounting for the performance dump.
+extern XRCORE_API double g_da_goap_actual_ms;
+extern XRCORE_API double g_da_goap_search_ms;
+extern XRCORE_API u32 g_da_goap_calls;
+extern XRCORE_API u32 g_da_goap_searches;
+extern XRCORE_API double g_da_goap_exec_ms;
+extern XRCORE_API u32 g_da_goap_execs;
+extern XRCORE_API double g_da_oh_ms;
+extern XRCORE_API u32 g_da_oh_entries;
+extern XRCORE_API u32 g_da_oh_alive;
+extern XRCORE_API u32 g_da_oh_throws;
+extern XRCORE_API double g_da_lpb_ms;
+extern XRCORE_API u32 g_da_lpb_calls;
 class XRCORE_API CStatTimer
 {
     using Duration = CTimerBase::Duration;
