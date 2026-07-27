@@ -8,6 +8,14 @@
 #include "XR_IOConsole.h"
 #include "xr_ioc_cmd.h"
 
+// [DA_PORT] See Engine.h for why this exists rather than a MasterGold build. Read once: the command
+// line cannot change while the game runs, and this is asked from console registration.
+ENGINE_API bool da_dev_mode()
+{
+    static const bool dev = Core.Params && strstr(Core.Params, "-dev") != nullptr;
+    return dev;
+}
+
 struct SoundProcessor final : public pureFrame
 {
     void OnFrame() override

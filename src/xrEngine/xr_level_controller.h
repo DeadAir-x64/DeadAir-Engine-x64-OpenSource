@@ -51,6 +51,12 @@ enum EGameActions : u32
     kWPN_4,
     kWPN_5,
     kWPN_6,
+    // [DA_PORT] Dead Air adds these two and binds wpn_7 to G in default_controls.ltx. Without them the
+    // key did nothing at all and the engine only said so in a non-retail build, so it read as a dead
+    // keybind rather than a missing feature. Placed exactly where the author has them, before
+    // kARTEFACT - bindings are stored by name, so the shifted numbering costs nothing.
+    kWPN_7,
+    kWPN_8,
     kARTEFACT,
     kWPN_NEXT,
     kWPN_FIRE,

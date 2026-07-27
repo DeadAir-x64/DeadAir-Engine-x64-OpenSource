@@ -1141,6 +1141,16 @@ ENGINE_API int ps_r__reactive_selftest = 0;
 // five pixels to two, which read as the trail coming back.
 ENGINE_API int ps_r__reactive_ref_fps = 280;
 
+// [DA_PORT] Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
+// to build a path a hundred times a second forever. Measured on the swamps: two stalkers doing exactly
+// that cost some two thousand wasted path searches a second between them.
+//
+// It is a snap to the nearest node to the stalker ITSELF, not a teleport to any fixed place - and it
+// only happens when that node is within range, so nobody is ever dragged across the map. A switch,
+// because moving an NPC is a real change to the world and should be possible to refuse.
+ENGINE_API int ps_ai_unstick = 1;
+ENGINE_API float ps_ai_unstick_range = 5.f; // metres; beyond this the stalker is left where it is
+
 // [DA_PORT] Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
 // velocity dilation stops dragging grass movement onto the metal behind it. Local by design - in
 // open country nothing is damped at all. See da_velocity_guard.ps.
@@ -1338,6 +1348,8 @@ void CCC_Register()
     CMD4(CCC_Integer, "r__reactive_debug", &ps_r__reactive_debug, 0, 4);
     CMD4(CCC_Integer, "r__reactive_selftest", &ps_r__reactive_selftest, 0, 1);
     CMD4(CCC_Integer, "r__reactive_ref_fps", &ps_r__reactive_ref_fps, 30, 300);
+    CMD4(CCC_Integer, "ai_unstick", &ps_ai_unstick, 0, 1);
+    CMD4(CCC_Float, "ai_unstick_range", &ps_ai_unstick_range, 0.5f, 20.f);
     CMD4(CCC_Float, "r__vguard_strength", &ps_r__vguard_strength, 0.f, 1.f);
     CMD4(CCC_Float, "r__vguard_gloss", &ps_r__vguard_gloss, 0.f, 1.f);
     CMD4(CCC_Integer, "r__vguard_radius", &ps_r__vguard_radius, 1, 8);

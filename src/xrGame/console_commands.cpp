@@ -1,4 +1,5 @@
 #include "pch_script.h"
+#include "xrEngine/Engine.h" // [DA_PORT] da_dev_mode()
 #include "xrEngine/XR_IOConsole.h"
 #include "xrEngine/xr_ioc_cmd.h"
 #include "xrEngine/CustomHUD.h"
@@ -2464,9 +2465,7 @@ void CCC_RegisterCommands()
     CMD1(CCC_ShowAnimationStats, "ai_show_animation_stats");
 #endif // DEBUG
 
-#ifndef MASTER_GOLD
-    CMD3(CCC_Mask, "ai_ignore_actor", &psAI_Flags, aiIgnoreActor);
-#endif // MASTER_GOLD
+    // ai_ignore_actor moved down to the developer block - it is a cheat like the rest.
 
     // Physics
     CMD1(CCC_PHFps, "ph_frequency");
@@ -2481,17 +2480,27 @@ void CCC_RegisterCommands()
     CMD4(CCC_FloatBlock, "ph_tri_query_ex_aabb_rate", &ph_console::ph_tri_query_ex_aabb_rate, 1.01f, 3.f);
 #endif // DEBUG
 
-#ifndef MASTER_GOLD
-    CMD1(CCC_JumpToLevel, "jump_to_level");
-    CMD3(CCC_Mask, "g_god", &psActorFlags, AF_GODMODE);
-    CMD1(CCC_ToggleNoClip, "g_no_clip");
-    CMD3(CCC_Mask, "g_unlimitedammo", &psActorFlags, AF_UNLIMITEDAMMO);
-    CMD1(CCC_Spawn, "g_spawn");
-    CMD1(CCC_SpawnToInventory, "g_spawn_to_inventory");
-    CMD1(CCC_Script, "run_script");
-    CMD1(CCC_ScriptCommand, "run_string");
-    CMD1(CCC_TimeFactor, "time_factor");
-#endif // MASTER_GOLD
+    // [DA_PORT] Developer commands: registered only when the game was started with "-dev".
+    //
+    // The original hid these by building ReleaseMasterGold, and that would work here too - but that
+    // configuration also compiles out exceptions, and with them the recovery from a Lua error, which
+    // for a mod of this size costs far more than the commands are worth. See da_dev_mode() in
+    // Engine.h. Not registering them gives the same result from the player's side: the console
+    // answers "unknown command".
+    if (da_dev_mode())
+    {
+        CMD1(CCC_JumpToLevel, "jump_to_level");
+        CMD3(CCC_Mask, "g_god", &psActorFlags, AF_GODMODE);
+        CMD1(CCC_ToggleNoClip, "g_no_clip");
+        CMD3(CCC_Mask, "g_unlimitedammo", &psActorFlags, AF_UNLIMITEDAMMO);
+        CMD1(CCC_Spawn, "g_spawn");
+        CMD1(CCC_SpawnToInventory, "g_spawn_to_inventory");
+        CMD1(CCC_Script, "run_script");
+        CMD1(CCC_ScriptCommand, "run_string");
+        CMD1(CCC_TimeFactor, "time_factor");
+        CMD3(CCC_Mask, "ai_ignore_actor", &psAI_Flags, aiIgnoreActor);
+        Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+    }
 
     CMD3(CCC_Mask, "g_autopickup", &psActorFlags, AF_AUTOPICKUP);
     CMD3(CCC_Mask, "g_dynamic_music", &psActorFlags, AF_DYNAMIC_MUSIC);

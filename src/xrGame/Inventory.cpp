@@ -749,6 +749,31 @@ bool CInventory::Action(u16 cmd, u32 flags)
         }
     }
     break;
+    // [DA_PORT] The mod's own key, bound to G. It is a TOGGLE rather than a select - press once to take
+    // the binoculars out, press again to put them away - which is what makes it worth having beside
+    // wpn_5, that slot's ordinary select. Taken from the author's sources, not invented.
+    case kWPN_7:
+    {
+        b_send_event = true;
+        if (flags & CMD_START)
+        {
+            if (GetActiveSlot() == BINOCULAR_SLOT && ActiveItem() /*&& IsGameTypeSingle()*/)
+            {
+                Activate(NO_ACTIVE_SLOT);
+            }
+            else
+            {
+                Activate(BINOCULAR_SLOT);
+            }
+        }
+    }
+    break;
+    // Reserved by the author and left empty there too: it forwards the event and nothing more.
+    case kWPN_8:
+    {
+        b_send_event = true;
+    }
+    break;
     case kARTEFACT:
     {
         b_send_event = true;

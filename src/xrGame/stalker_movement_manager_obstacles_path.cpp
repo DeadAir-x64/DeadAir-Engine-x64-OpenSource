@@ -21,6 +21,14 @@
 
 #ifndef MASTER_GOLD
 #include "ai_debug.h"
+#include "xrAICore/Navigation/level_graph.h"
+#include "PHMovementControl.h"
+#include "CharacterPhysicsSupport.h"
+
+// [DA_PORT] Putting a stalker that has slid off the navigation mesh back onto it - see below.
+// A switch, because it moves an NPC, and anything that moves an NPC should be possible to turn off.
+extern ENGINE_API int ps_ai_unstick;
+extern ENGINE_API float ps_ai_unstick_range;
 #endif // MASTER_GOLD
 
 static const float check_time_delta = 1.f;
@@ -168,6 +176,62 @@ void stalker_movement_manager_obstacles::build_level_path()
 
             if (!pure_search_result)
             {
+                // [DA_PORT] Put a stalker that has fallen off the navigation mesh back onto it.
+                //
+                // Measured on the swamps: two stalkers stood at one spot at height 0.2 and failed to
+                // build a path a hundred times a second each, for the whole session. A stalker standing
+                // where there is no mesh cannot path ANYWHERE, so it retries every frame forever - and
+                // every retry is two full A* searches, because the failure path clears the obstacles and
+                // searches again. Two of them cost some two thousand wasted searches a second.
+                //
+                // This is a SNAP, not a teleport: each one is moved to the nearest valid vertex to
+                // ITSELF, which for someone who has slid a step off the edge is a step back onto it.
+                // There is no shared destination and nothing to gather them into one place.
+                //
+                // Guarded three ways, because moving an NPC is a real change to the world:
+                //  - only after it has failed repeatedly, so an ordinary unreachable target never
+                //    triggers it;
+                //  - only if the mesh is within ai_unstick_range, so nobody is dragged across the map -
+                //    if there is nothing near, it is left where it is and said so;
+                //  - once, then a cooldown, so a genuinely hopeless case cannot turn into a warp loop.
+                if (ps_ai_unstick)
+                {
+                    static xr_map<u32, std::pair<u32, u32>> s_stuck; // id -> (failures, time of last snap)
+                    auto& st = s_stuck[object().ID()];
+                    ++st.first;
+
+                    if (st.first >= 20 && Device.dwTimeGlobal - st.second > 10000)
+                    {
+                        st.first = 0;
+                        st.second = Device.dwTimeGlobal;
+
+                        const Fvector position = object().Position();
+                        const u32 hint = object().ai_location().level_vertex_id();
+                        const u32 vertex_id = ai().level_graph().valid_vertex_id(hint) ?
+                            ai().level_graph().vertex(hint, position) :
+                            ai().level_graph().vertex_id(position);
+
+                        if (ai().level_graph().valid_vertex_id(vertex_id))
+                        {
+                            const Fvector target = ai().level_graph().vertex_position(vertex_id);
+                            const float distance = position.distance_to(target);
+                            if (distance <= ps_ai_unstick_range)
+                            {
+                                object().character_physics_support()->movement()->SetPosition(target);
+                                object().Position() = target;
+                                object().ai_location().level_vertex(vertex_id);
+                                Msg("~ [DA_PORT] AI: [%s] was off the navigation mesh, moved %.2fm back "
+                                    "onto it",
+                                    object().cName().c_str(), distance);
+                            }
+                            else
+                                Msg("! [DA_PORT] AI: [%s] is stuck off the navigation mesh and the "
+                                    "nearest node is %.1fm away - left alone",
+                                    object().cName().c_str(), distance);
+                        }
+                    }
+                }
+
 #ifndef MASTER_GOLD
                 // [DA_PORT] Say WHO, and stop saying it every frame.
                 //

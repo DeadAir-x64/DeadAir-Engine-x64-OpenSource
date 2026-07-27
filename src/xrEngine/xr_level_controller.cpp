@@ -65,6 +65,8 @@ game_action actions[] =
     { "wpn_4",                  kWPN_4,                     _both },
     { "wpn_5",                  kWPN_5,                     _both },
     { "wpn_6",                  kWPN_6,                     _both },
+    { "wpn_7",                  kWPN_7,                     _both }, // [DA_PORT] bound to G by the mod
+    { "wpn_8",                  kWPN_8,                     _both }, // [DA_PORT] reserved, as in the original
     { "artefact",               kARTEFACT,                  _both /*_mp*/ },
     { "wpn_next",               kWPN_NEXT,                  _both }, // means next ammo type
     { "wpn_fire",               kWPN_FIRE,                  _both },

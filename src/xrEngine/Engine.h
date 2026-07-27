@@ -44,3 +44,17 @@ public:
 };
 
 ENGINE_API extern CEngine Engine;
+
+// [DA_PORT] Was the game started with "-dev"?
+//
+// One build serves both audiences. Players get it without the flag: the cheat and developer console
+// commands are simply never registered, so the console answers "unknown command" the way a retail
+// build would. We start with the flag and have everything.
+//
+// Deliberately NOT the stock ReleaseMasterGold configuration, which is how the original hid the same
+// commands. That configuration also compiles exceptions out, and with them the recovery: a Lua error
+// currently throws and is caught in half a dozen places - the script binder clears the failed object
+// and play continues - whereas without exceptions the same error goes straight to xrDebug::Fatal and
+// closes the game. For a mod carrying several hundred scripts that trade is the wrong way round, so
+// stability stays for everyone and only the commands are hidden.
+ENGINE_API bool da_dev_mode();

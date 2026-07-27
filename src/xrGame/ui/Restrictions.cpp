@@ -12,6 +12,22 @@ shared_str g_ranks[_RANK_COUNT];
 
 u32 get_rank(const shared_str& section)
 {
+    // [DA_PORT] Answered once per section and remembered.
+    //
+    // Every call scans all the rank strings for a substring, and CAI_Stalker::can_take asks it about
+    // each weapon a stalker considers picking up - so the same handful of answers were recomputed
+    // constantly, and the miss below was logged every single time. Fifty-one lines for one pistol.
+    //
+    // Worth knowing what a miss actually means here: rank_N/available_items is multiplayer data, and
+    // the mod's own weapons are not in it, so they all land on rank 0. The rank comparison in can_take
+    // is therefore always a tie and drops out of the decision, leaving type, cost, condition and ammo
+    // to decide. That is a content gap, not an engine fault, and filling it would change how stalkers
+    // choose weapons - so the behaviour is left exactly as it was and only the noise is gone.
+    static xr_map<shared_str, u32> s_cache;
+    const auto cached = s_cache.find(section);
+    if (cached != s_cache.end())
+        return cached->second;
+
     int res = -1;
     if (g_ranks[0].size() == 0)
     { // load
@@ -34,11 +50,13 @@ u32 get_rank(const shared_str& section)
     //R_ASSERT3(res != -1, "cannot find rank for", section.c_str());
     if (res == -1)
     {
+        // Once per section now - see the cache above.
         Msg("! Setting rank to 0. Cannot find rank for: [%s]", section.c_str());
         // Xottab_DUTY: I'm not sure if it's save to leave it -1
         res = 0;
     }
 
+    s_cache.insert(std::make_pair(section, u32(res)));
     return res;
 }
 
