@@ -157,6 +157,7 @@ private:
     ref_shader s_reactive; // DA: marks pixels around genuinely moving objects as reactive
     ref_shader s_reactive_dilate_h; // DA: widens that mark, horizontally
     ref_shader s_reactive_dilate_v; // DA: and vertically, folding in the mask the G-buffer left
+    ref_shader s_sky_velocity; // DA: the sky writes no motion vectors of its own
     ref_shader s_ssao_msaa[8];
     ref_shader s_hdao_cs;      // HDAO compute shader
 
@@ -287,6 +288,7 @@ public:
     bool phase_fsr2();
     void phase_velocity_guard(); // [DA_PORT] damp vegetation motion next to glossy surfaces
     void phase_reactive(); // [DA_PORT] widen the reactive mask around moving objects, against ghosting
+    void phase_sky_velocity(); // [DA_PORT] motion vectors for the sky, which no shader writes
     bool phase_fsr3(); // [DA_PORT] FSR 3 upscaler, same slot in the frame
     bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // DA: FSR 2 upscale; false when it did not run, so the caller can fall back
     void phase_downsamp();

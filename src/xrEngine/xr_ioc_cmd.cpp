@@ -1141,6 +1141,10 @@ ENGINE_API int ps_r__reactive_selftest = 0;
 // five pixels to two, which read as the trail coming back.
 ENGINE_API int ps_r__reactive_ref_fps = 280;
 
+// [DA_PORT] Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
+// because it is a new pass over the velocity buffer and worth being able to rule out.
+ENGINE_API int ps_r__sky_velocity = 1;
+
 // [DA_PORT] Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
 // to build a path a hundred times a second forever. Measured on the swamps: two stalkers doing exactly
 // that cost some two thousand wasted path searches a second between them.
@@ -1348,6 +1352,7 @@ void CCC_Register()
     CMD4(CCC_Integer, "r__reactive_debug", &ps_r__reactive_debug, 0, 4);
     CMD4(CCC_Integer, "r__reactive_selftest", &ps_r__reactive_selftest, 0, 1);
     CMD4(CCC_Integer, "r__reactive_ref_fps", &ps_r__reactive_ref_fps, 30, 300);
+    CMD4(CCC_Integer, "r__sky_velocity", &ps_r__sky_velocity, 0, 1);
     CMD4(CCC_Integer, "ai_unstick", &ps_ai_unstick, 0, 1);
     {
         extern ENGINE_API int ps_da_perf_dump;

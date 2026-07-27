@@ -726,6 +726,7 @@ CRenderTarget::CRenderTarget()
             s_reactive.create("da_reactive");
             s_reactive_dilate_h.create("da_reactive_dilate_h");
             s_reactive_dilate_v.create("da_reactive_dilate_v");
+            s_sky_velocity.create("da_sky_velocity");
         }
 #endif
     }

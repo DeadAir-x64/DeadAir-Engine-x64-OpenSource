@@ -493,6 +493,7 @@ void CRenderTarget::phase_combine()
         // while every jitter sign, every motion-vector sign and the vectors themselves changed nothing —
         // all of them only ever affected an output nobody displayed.
         PIX_EVENT(DA_phase_fsr2);
+        phase_sky_velocity(); // [DA_PORT] fill the sky in before anything reads the velocity buffer
         phase_reactive(); // [DA_PORT] reads the honest velocity, so it goes before the guard touches it
         phase_velocity_guard(); // [DA_PORT] must run BEFORE any upscaler reads the buffer
         phase_fsr2();
