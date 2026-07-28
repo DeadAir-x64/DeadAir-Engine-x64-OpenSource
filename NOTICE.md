@@ -28,7 +28,7 @@
 же условиях, что и код OpenXRay, — **MIT**. Иначе и нельзя: это правки внутри их дерева.
 
 ```
-Copyright (c) 2026 Dead Air x64 port contributors
+Copyright (c) 2026 DanesCrai1 and Dead Air x64 port contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 associated documentation files (the "Software"), to deal in the Software without restriction,
