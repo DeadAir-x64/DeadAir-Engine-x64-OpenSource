@@ -94,7 +94,7 @@ flowchart TD
     RTCOLOR --> FLARES[блики от солнца]
     FLARES --> UPS{"[ПОРТ] какой временной<br/>фильтр включён?"}
     UPS -->|TAA| TAA["phase_taa<br/>темпоральное сглаживание"]
-    UPS -->|FSR 2/3, XeSS| FSR["апскейлер<br/>цвет + глубина + вектора"]
+    UPS -->|"FSR 2/3, XeSS, DLSS"| FSR["апскейлер<br/>цвет + глубина + вектора"]
     UPS -->|ничего| PP
     TAA --> PP["phase_pp<br/>зерно, цветокор, апскейл"]
     FSR --> PP

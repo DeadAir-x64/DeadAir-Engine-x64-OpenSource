@@ -28,7 +28,7 @@
 | `r__detail_debug`, `r__detail_*_fix` | **сразу**, прямо в игре |
 | `r2_gloss_factor`, `r2_parallax_range` | **сразу** |
 | `r2_detail_bump`, `r2_steep_parallax` | **перезаход на уровень** (меняется вариант шейдера) |
-| `r__upscaler`, `r__upscaler_quality`, `r__fsr2`, `r__xess` | **перезапуск игры** (контекст строится при старте рендера) |
+| `r__upscaler`, `r__upscaler_quality`, `r__fsr2`, `r__fsr3`, `r__xess`, `r__dlss` | **перезапуск игры** (контекст строится при старте рендера) |
 | `r__motion_vectors` | **перезапуск игры** (флаг защёлкивается при старте рендера) |
 | правка `.ps`/`.vs`/`.h` шейдера | **очистка** `appdata\shaders_cache_oxr` при закрытой игре |
 
