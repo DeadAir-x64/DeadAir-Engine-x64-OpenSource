@@ -1,0 +1,521 @@
+local item_by_community = {}
+local item_count = {}
+local always_keep_item = {}
+local item_by_story_id
+local death_ini = ini_file("misc\\death_generic.ltx")
+
+function init_drop_settings()
+	-- Create a list by community of the percent chance to spawn an item
+	local community_list = {
+	"stalker", 
+	"dolg", 
+	"freedom", 
+	"bandit", 
+	"army", 
+	"zombied", 
+	"ecolog", 
+	"killer", 
+	"monolith", 
+	"csky",
+
+	"stalker_novice", 
+	"stalker_trainee", 
+	"stalker_experienced", 
+	"stalker_professional", 
+	"stalker_veteran", 
+	"stalker_expert", 
+	"stalker_master", 
+	"stalker_legend", 
+	
+	"dolg_novice", 
+	"dolg_trainee", 
+	"dolg_experienced", 
+	"dolg_professional", 
+	"dolg_veteran", 
+	"dolg_expert", 
+	"dolg_master", 
+	"dolg_legend", 
+	
+	"freedom_novice", 
+	"freedom_trainee", 
+	"freedom_experienced", 
+	"freedom_professional", 
+	"freedom_veteran", 
+	"freedom_expert", 
+	"freedom_master", 
+	"freedom_legend", 
+	
+	"bandit_novice", 
+	"bandit_trainee", 
+	"bandit_experienced", 
+	"bandit_professional", 
+	"bandit_veteran", 
+	"bandit_expert", 
+	"bandit_master", 
+	"bandit_legend", 
+	
+	"army_novice", 
+	"army_trainee", 
+	"army_experienced", 
+	"army_professional", 
+	"army_veteran", 
+	"army_expert", 
+	"army_master", 
+	"army_legend", 
+
+	"zombied_novice", 
+	"zombied_trainee", 
+	"zombied_experienced", 
+	"zombied_professional", 
+	"zombied_veteran", 
+	"zombied_expert", 
+	"zombied_master", 
+	"zombied_legend", 
+	
+	"ecolog_novice", 
+	"ecolog_trainee", 
+	"ecolog_experienced", 
+	"ecolog_professional", 
+	"ecolog_veteran", 
+	"ecolog_expert", 
+	"ecolog_master", 
+	"ecolog_legend", 
+	
+	"killer_novice", 
+	"killer_trainee", 
+	"killer_experienced", 
+	"killer_professional", 
+	"killer_veteran", 
+	"killer_expert", 
+	"killer_master", 
+	"killer_legend", 
+	
+	"monolith_novice", 
+	"monolith_trainee", 
+	"monolith_experienced", 
+	"monolith_professional", 
+	"monolith_veteran", 
+	"monolith_expert", 
+	"monolith_master", 
+	"monolith_legend", 
+	
+	"csky_novice", 
+	"csky_trainee", 
+	"csky_experienced", 
+	"csky_professional", 
+	"csky_veteran", 
+	"csky_expert", 
+	"csky_master", 
+	"csky_legend"
+	}
+	
+	for k,v in pairs(community_list) do
+		item_by_community[v] = {}
+		if death_ini:section_exist(v) then
+			local n = death_ini:line_count(v)
+			local id, value = "", ""
+			for i=0,n-1 do
+				result, id, value	= death_ini:r_line_ex(v,i,"","")
+				item_by_community[v][id] = tonumber(value) or 0
+			end
+		end
+	end
+
+	local n = death_ini:line_count("item_count")
+	local id, value = "", ""
+	for i=0,n-1 do
+		local result, id, value	= death_ini:r_line_ex("item_count",i,"","")
+		local p = alun_utils.str_explode(value,",")
+		if (p) then
+			p[1] = tonumber(p[1]) or 0
+			p[2] = tonumber(p[2]) or p[1]
+			item_count[id] = {p[1],p[2]}
+		end
+	end
+	
+ 	-- Create a list of item sections that npc must keep
+	local n = death_ini:line_count("keep_items")
+	for i=0,n-1 do
+		local result, id, value	= death_ini:r_line_ex("keep_items",i,"","")
+		if value == "true" then
+			always_keep_item[id] = true
+		end
+	end
+	
+	-- Create a list of item sections that npc must keep
+	local n = death_ini:line_count("spawn_by_story_id")
+	for i=0,n-1 do
+		if not (item_by_story_id) then 
+			item_by_story_id = {}
+		end
+		local result, id, value	= death_ini:r_line_ex("spawn_by_story_id",i,"","")
+		item_by_story_id[id] = value
+	end
+end
+
+-- this will actually occur every time corpse spawn unless already looted
+function decide_items_to_keep(npc)
+	local death_dropped = utils.se_obj_load_var(npc:id(),npc:name(),"death_dropped")
+	if (death_dropped) then
+		return
+	end
+	npc:iterate_inventory(keep_item, npc)
+end
+
+function eat_items(npc)
+
+	local items_eaten = utils.se_obj_load_var(npc:id(),npc:name(),"items_eaten")
+	if (items_eaten) then
+		return
+	end
+
+	local ini = system_ini()
+
+	local function eat(temp,itm)
+		keep_item(npc,itm)
+		local section = itm:section()
+		
+		if (itms_manager.is_weapon(section) or itms_manager.is_outfit(section)) then
+			local cond = itm:condition()
+			
+			local cond_type = 1
+			if (itms_manager.is_weapon(section)) then
+				cond_type = itm:get_weapon_condition_type()
+			end
+			
+			local easy_bonus = IsGoodWpn() and 50 or 0
+			
+			if (cond_type == 0) or (cond > 0.50+easy_bonus/10) then
+				itm:set_condition(math.random(5+easy_bonus,50+easy_bonus)/100)
+				--printf("-eaten:"..section)
+				
+				local npc_faction = character_community(npc)
+				if ( npc_faction == "zombied" ) then
+					itm:set_condition(math.random(1+easy_bonus,20+easy_bonus)/100)
+				end
+				
+				if (itms_manager.is_weapon(section)) then
+					items_condition.break_weapon(itm)
+				end
+			end
+		end
+	end
+	
+	npc:iterate_inventory(eat,nil)
+	utils.se_obj_save_var(npc:id(),npc:name(),"items_eaten",true)
+end
+
+function create_release_item(npc)
+	local death_dropped = utils.se_obj_load_var(npc:id(),npc:name(),"death_dropped")
+	if (death_dropped) then
+		return
+	end
+	utils.se_obj_save_var(npc:id(),npc:name(),"death_dropped",true)
+	
+	decide_items_to_keep(npc)
+	
+	-- spawn items by story id
+	local sid = item_by_story_id and get_object_story_id(npc:id())
+	if (sid and item_by_story_id[sid]) then
+		local p = xr_logic.pick_section_from_condlist(db.actor,npc,alun_utils.parse_condlist(item_by_story_id[sid]))
+		--local p = alun_utils.str_explode(item_by_story_id[sid],",")
+		--printf("sid=%s p=%s",sid,p)
+		if (p and p ~= "" and p ~= "nil") then
+			create_items(npc, p, 1, 100)
+		end
+	end
+
+	local ini = npc:spawn_ini()
+	if ini and ini:section_exist("dont_spawn_loot") then
+		return
+	end
+	
+	local st = db.storage[npc:id()]
+	if (st and st.ini and st.section_logic and st.ini:line_exist(st.section_logic,"dont_spawn_loot")) then 
+		return
+	end
+
+	local rank = ranks.get_obj_rank_name(npc)
+	local comm = character_community(npc)
+	local sect = tostring(comm).."_"..tostring(rank)
+	--printf("-SECTION: "..sect)
+	
+	local spawn_items = item_by_community[sect]
+	if spawn_items == nil then
+		spawn_items = item_by_community[character_community(npc)]
+		if spawn_items == nil then
+			return
+		end
+	end
+	
+	try_spawn_ammo(npc,spawn_items)
+	
+	local grenade_classes = { 
+								["ammo_m209"] = true,
+								["ammo_vog-25"] = true,
+								["ammo_og-7b"] = true
+							}
+	for sec,v in pairs(spawn_items) do
+		if (v > 0 and item_count[sec] and not utils.is_ammo(sec) and not grenade_classes[sec]) then
+		
+			if (IsGoodLoot()) then
+				v = v*5
+			end
+		
+			local number = math.random(item_count[sec][1], item_count[sec][2])
+			create_items(npc, sec, number, v)
+		end
+	end
+end
+
+function try_spawn_ammo(npc,spawn_items)
+	
+
+	local ini = system_ini()
+	local class,ammo_class,sec,number
+	local function itr(npc,itm)
+		if (IsWeapon(nil,itm:clsid()) and not npc:marked_dropped(itm)) then
+		
+			
+		
+			class = system_ini():r_string_ex(itm:section(),"class")
+			ammo_class = alun_utils.parse_list(ini,itm:section(),"ammo_class")
+			if (class and class == "WP_KNIFE") then return end
+			-- randomly spawn only 1 ammo type per found weapon
+			
+			
+			if (#ammo_class > 0) then
+				sec = ammo_class[math.random(1,#ammo_class)]
+				if (sec) then 
+					if (item_count[sec]) then
+						number = math.random(item_count[sec][1], item_count[sec][2])
+					else 
+						number = 0
+					end
+					if (number > 0 and system_ini():section_exist(sec)) then
+						create_ammo(sec,npc:position(),npc:level_vertex_id(),npc:game_vertex_id(),npc:id(),number)
+					end
+				end
+			end
+			-- spawn grenade ammo if there is launcher attached
+			if (ini:r_float_ex(itm:section(),"grenade_launcher_status") > 0) then
+				ammo_class = alun_utils.parse_list(ini,itm:section(),"grenade_class")
+				for i=1,#ammo_class do
+					sec = ammo_class[i]
+					if (sec) then
+						if (item_count[sec]) then
+							number = math.random(item_count[sec][1], item_count[sec][2])
+						else 
+							number = math.random(0,2)
+						end
+						if (number > 0 and system_ini():section_exist(sec)) then 
+							create_ammo(sec,npc:position(),npc:level_vertex_id(),npc:game_vertex_id(),npc:id(),number)
+						end
+					end
+				end
+			end
+		end
+	end
+	npc:iterate_inventory(itr,npc)
+end
+
+local anm_obj_list = {
+	["bolt"] = true,
+	["medkit_script"] = true,
+	["bandage_script"] = true,
+	["wpn_binoc"] = true,
+	["anim_binoc"] = true,
+	["anim_knife"] = true,
+	["device_torch"] = true,
+	["device_pda"] = true,
+	["hand_radio"] = true,
+	["hand_radio_r"] = true,
+	["detector_fake"] = true,
+	["stick_bred"] = true,
+	["stick_kolbasa"] = true,
+	["stick_kolbasa_bred"] = true,
+	["cigarette"] = true,
+}
+
+local docs_from_labs = {
+	["main_story_1_quest_case"] = true,
+	["main_story_2_lab_x18_documents"] = true,
+	["main_story_3_lab_x16_documents"] = true,
+	["main_story_4_lab_x10_documents"] = true,
+	["main_story_5_lab_x8_documents"] = true,
+	["main_story_6_jup_ug_documents"] = true,
+	["main_story_7_mon_con_documents"] = true,
+}
+
+local given_pda = {
+	["device_pda"] = true,
+	["itm_pda_common"] = true,
+	["itm_pda_uncommon"] = true,
+	["itm_pda_rare"] = true,
+}
+
+local given_docs = {
+	["dok_1"] = true,
+	["dok_2"] = true,
+	["dok_3"] = true,
+	["dok_4"] = true,
+	["dok_5"] = true,
+	["dok_6"] = true,
+	["dok_7"] = true,
+	["dok_8"] = true,
+	["lab_diary_1"] = true,
+	["lab_diary_2"] = true,
+	["lab_diary_3"] = true,
+	["box_lab_1"] = true,
+}
+
+--' Функция вызывается для каждого предмета, если вернет false то предмет удалится.
+function keep_item(npc, item)
+
+	if not (item) then
+		return 
+	end 
+	
+	local section = item:section()
+	if (always_keep_item[section]) then 
+		return 
+	end 
+	
+	local se_item = alife_object(item:id())
+	if not (se_item) then 
+		return
+	end
+	
+	local ini = npc:spawn_ini()
+	if ini and ini:section_exist("dont_keep_items") then
+		alife():release(se_item, true)
+		return
+	end
+	
+	local st = db.storage[npc:id()]
+	if (st and st.ini and st.section_logic and st.ini:line_exist(st.section_logic,"dont_keep_items")) then
+		alife():release(se_item, true)
+		return
+	end 
+	
+	-- release all animation objects
+	if anm_obj_list[section] then
+		alife():release(se_item, true)
+		return 
+	end
+
+	local cls = item:clsid()
+	if IsWeapon(item,cls) and not(cls==clsid.wpn_grenade_rgd5_s or cls==clsid.wpn_grenade_f1_s) then
+		set_weapon_drop_condition(npc,item)
+		return
+	end
+
+	if (item:is_ammo()) then
+			alife():release(se_item, true)		
+		return
+	end				
+
+    local sid = get_object_story_id(npc:id())
+	if (sid) and (docs_from_labs[section] or given_pda[section] or given_docs[section]) then
+	    alife():release(se_item, true)
+		return 
+	end
+end
+
+function set_weapon_drop_condition(npc,itm)
+
+	if (IsWeapon(nil,itm:clsid()) and not npc:marked_dropped(itm)) then
+	
+		local easy_bonus = IsGoodWpn() and 50 or 0
+	
+		local rank = npc:character_rank()
+		local k = rank/520
+		local condition  = (math.random(1+easy_bonus,30+easy_bonus)+k)/100
+		local cond_type = itm:get_weapon_condition_type()
+		if (cond_type == 0) then
+		
+			local npc_faction = character_community(npc)
+			if ( npc_faction == "zombied" ) then
+				itm:set_condition(math.random(1+easy_bonus,30+easy_bonus)/100)
+			else
+				itm:set_condition(condition)
+			end
+			
+			if (itms_manager.is_weapon(itm:section())) then
+				items_condition.break_weapon(itm)
+			end
+		end
+	
+		local ini = system_ini()
+		local sec,number
+		local ammo_class = alun_utils.parse_list(ini,itm:section(),"ammo_class")
+		-- randomly spawn only 1 ammo type per found weapon
+		if (#ammo_class > 0) then
+			sec = ammo_class[math.random(1,#ammo_class)]
+			if (sec and item_count[sec]) then
+			
+				if (IsGoodWpn()) then
+					item_count[sec][1] = 1
+					item_count[sec][2] = 40
+				end
+			
+				number = math.random(item_count[sec][1], item_count[sec][2])
+				if (number > 0 and system_ini():section_exist(sec)) then
+					create_ammo(sec,npc:position(),npc:level_vertex_id(),npc:game_vertex_id(),npc:id(),number)
+				end
+			end
+		end
+		-- spawn grenade ammo if there is launcher attached
+		if (ini:r_float_ex(itm:section(),"grenade_launcher_status") > 0) then
+			ammo_class = alun_utils.parse_list(ini,itm:section(),"grenade_class")
+			for i=1,#ammo_class do
+				sec = ammo_class[i]
+				if (sec and item_count[sec]) then 
+				
+					number = math.random(item_count[sec][1], item_count[sec][2])
+					if (number > 0 and system_ini():section_exist(sec)) then 
+						create_ammo(sec,npc:position(),npc:level_vertex_id(),npc:game_vertex_id(),npc:id(),number)
+					end
+				end
+			end
+		end
+		
+		local ammo = itm:get_ammo_in_magazine()
+		
+		--printf("--Weapon: "..itm:section())
+		
+		--printf("--Ammo before edit: "..itm:get_ammo_in_magazine())
+		
+		if (ammo > 10) then
+			itm:set_ammo_elapsed(math.random(5,10))
+		else
+			itm:set_ammo_elapsed(math.random(0,ammo))
+		end
+		
+		--printf("--Ammo after edit: "..itm:get_ammo_in_magazine())
+		
+	end
+end
+
+--' Функция спавнит необходимое число предметов
+function create_items(npc, section, number, rnd)
+	if not (system_ini():section_exist(section)) then 
+		--printf("death_manager: ERROR: trying to spawn section that doesn't exist! %s",section)
+		return 
+	end 
+	
+	--printf("death_dropped: create %s=%s",section,number)
+	if (utils.is_ammo(section))then
+		if number > 0 then
+			create_ammo(section,npc:position(),npc:level_vertex_id(),npc:game_vertex_id(),npc:id(),number)
+		end
+	else
+		for i=1,number do
+			--' Проверяем вероятность появить каждый объект в отдельности
+			if (math.random(1,1000)/1000) <=  rnd then
+				alife():create(section,npc:position(),npc:level_vertex_id(),npc:game_vertex_id(),npc:id())
+				--printf("-CREATE ITEM: "..section)
+			end
+		end
+	end
+end

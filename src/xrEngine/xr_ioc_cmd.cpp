@@ -19,6 +19,15 @@ extern xr_map<u32, xr_vector<xr_token>> vid_mode_token;
 
 const xr_token vid_bpp_token[] = {{"16", 16}, {"32", 32}, {0, 0}};
 
+// [DA_PORT] Frame-rate cap offered as a list in the video options. The numeric token names are
+// their own labels - no string table entry needed; only the "unlimited" row has one.
+const xr_token fps_limit_token[] = {
+    {"st_opt_fps_unlimited", 1000},
+    {"30", 30}, {"60", 60}, {"75", 75}, {"90", 90}, {"120", 120}, {"150", 150},
+    {"165", 165}, {"180", 180}, {"200", 200}, {"240", 240}, {"260", 260}, {"300", 300},
+    {nullptr, 0},
+};
+
 void IConsole_Command::InvalidSyntax()
 {
     TInfo I;
@@ -371,6 +380,7 @@ xr_token qxess_token[] = {
 // Adding a new upscaler is one line in the table below; everything else follows from it.
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__xess;
+extern ENGINE_API int ps_r__dlss; // [DA_PORT]
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API u32 ps_r__upscale_preset;
 // Defined further down this file; needed up here now that our own temporal AA is one of the choices.
@@ -386,6 +396,7 @@ static const da_upscaler_entry da_upscalers[] = {
     { (u32*)&ps_r__fsr2, "r__fsr2" },
     { (u32*)&ps_r__fsr3, "r__fsr3" },
     { (u32*)&ps_r__xess, "r__xess" },
+    { (u32*)&ps_r__dlss, "r__dlss" },
     { &ps_r__upscale_preset, "r__upscale_preset" }, // FSR 1.0 - spatial, but it owns the render scale
     // [DA_PORT] Our own temporal AA belongs here too: it owns the frame's history exactly as the
     // reconstructing upscalers do, and two of those at once is what softened every moving figure until
@@ -406,7 +417,53 @@ static const da_upscaler_entry da_upscalers[] = {
 // FSR 1.0 is deliberately absent: it is a spatial filter with no history and no jitter of its own.
 ENGINE_API bool da_upscaler_active()
 {
-    return !!ps_r__fsr2 || !!ps_r__fsr3 || !!ps_r__xess;
+    return !!ps_r__fsr2 || !!ps_r__fsr3 || !!ps_r__xess || !!ps_r__dlss;
+}
+
+// [DA_PORT] ---- Сброс истории временных фильтров -------------------------------------------------
+//
+// Любой реконструирующий фильтр копит историю кадров и переносит её вперёд по векторам движения. Есть
+// моменты, когда переносить нечего: загрузка уровня, телепорт, склейка камеры. Прошлый кадр тогда
+// показывает совершенно другое место, вектора его не описывают, и фильтр несколько кадров тащит
+// поверх новой картинки куски старой.
+//
+// Раньше здесь стояло `Device.dwFrame < 3` в каждом из четырёх проходов. Это покрывает только запуск
+// сессии: dwFrame обнуляется при создании устройства и больше нигде, так что при переходе на другой
+// уровень история не сбрасывалась НИ РАЗУ. Симптом смазанный - грязь в первых кадрах после загрузки,
+// которую легко списать на прогрев кэшей.
+static u32 g_da_history_reset_frame = 0;
+
+ENGINE_API void da_upscaler_reset_history(pcstr why)
+{
+    g_da_history_reset_frame = Device.dwFrame;
+    if (why)
+        Msg("* [DA_PORT] temporal history discarded: %s", why);
+}
+
+ENGINE_API bool da_upscaler_history_reset()
+{
+    if (Device.dwFrame < 3)
+        return true; // истории ещё нет
+
+    // Телепорт уровень не перезагружает, поэтому ловим его по камере. Порог намеренно грубый: 25
+    // метров за кадр - это 1500 м/с при 60 к/с, столько в игре не двигается ничто, включая транспорт.
+    // Ложное срабатывание стоит одного мутного кадра, пропуск - нескольких кадров с чужой геометрией.
+    //
+    // По повороту камеры НЕ срабатываем сознательно: резкий разворот история переживает штатно, её
+    // репроецируют по матрице, а сброс на каждом быстром развороте был бы виден постоянно.
+    static u32 seen_frame = 0;
+    static Fvector last_pos{};
+    if (seen_frame != Device.dwFrame)
+    {
+        const Fvector now = Device.vCameraPosition;
+        if (seen_frame && now.distance_to(last_pos) > 25.f)
+            da_upscaler_reset_history("the camera jumped - teleport or a cut");
+        last_pos = now;
+        seen_frame = Device.dwFrame;
+    }
+
+    // Два кадра, а не один: фильтру нужен кадр, чтобы начать копить заново.
+    return Device.dwFrame <= g_da_history_reset_frame + 1;
 }
 
 // Switches off every upscaler except the one being selected. Call it BEFORE the caller applies its own
@@ -451,6 +508,7 @@ ENGINE_API xr_token qupscaler_token[] = {
     { "ui_mm_upscaler_fsr2", 3 },
     { "ui_mm_upscaler_fsr3", 4 },
     { "ui_mm_upscaler_xess", 5 },
+    { "ui_mm_upscaler_dlss", 6 }, // [DA_PORT]
     { nullptr, 0 },
 };
 
@@ -483,6 +541,7 @@ static void da_apply_upscaler()
     ps_r__fsr2 = 0;
     ps_r__fsr3 = 0;
     ps_r__xess = 0;
+    ps_r__dlss = 0;
     ps_r__taa = 0;
     ps_r__upscale_preset = 0;
 
@@ -508,6 +567,10 @@ static void da_apply_upscaler()
         break;
     case 5: // XeSS - temporal reconstruction, Intel Arc only on D3D11
         ps_r__xess = int(q + 1);
+        ps_r__render_scale = da_upscaler_scale[q];
+        break;
+    case 6: // DLSS - temporal reconstruction, RTX only
+        ps_r__dlss = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
         break;
     default:
@@ -568,6 +631,52 @@ public:
         Device.UpdateRenderResolution();
         Msg("* [DA_PORT] XeSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
     }
+};
+
+// [DA_PORT] DLSS. Устроен как XeSS выше, но коэффициенты свои: они замерены у самой NGX через
+// da_ngx_optimal_size, а не взяты из документации.
+//
+// ⚠️ Ступени 1 и 2 дают одинаковый масштаб, и это не опечатка: NGX не считает «ультра-качество»
+// отдельным режимом и на запрос отвечает тем же разрешением, что и на «качество». Оставлены обе,
+// чтобы номера ступеней совпадали с остальными апскейлерами — иначе одно и то же число в меню
+// означало бы разное качество в зависимости от выбранного бэкенда.
+class CCC_DLSS : public CCC_Token
+{
+public:
+    CCC_DLSS(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        const u32 was = *value;
+        CCC_Token::Execute(args);
+        if (*value == was)
+            return;
+
+        if (*value)
+            da_upscaler_make_exclusive(value);
+
+        switch (*value)
+        {
+        case 1: ps_r__render_scale = 67; break; // ультра-качество -> тот же 1.5x, см. выше
+        case 2: ps_r__render_scale = 67; break; // качество, 1.5x
+        case 3: ps_r__render_scale = 58; break; // сбалансированно, 1.72x
+        case 4: ps_r__render_scale = 50; break; // производительность, 2.0x
+        case 5: ps_r__render_scale = 33; break; // ультра-производительность, 3.0x
+        default: ps_r__render_scale = 100; break;
+        }
+        Device.UpdateRenderResolution();
+        Msg("* [DA_PORT] DLSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+    }
+};
+
+xr_token qdlss_token[] = {
+    { "ui_mm_dlss_off", 0 },
+    { "ui_mm_dlss_ultra_quality", 1 },
+    { "ui_mm_dlss_quality", 2 },
+    { "ui_mm_dlss_balanced", 3 },
+    { "ui_mm_dlss_performance", 4 },
+    { "ui_mm_dlss_ultra_performance", 5 },
+    { nullptr, 0 },
 };
 
 // Token names double as the localisation ids the options menu shows (st_da_port_ui.xml).
@@ -1071,6 +1180,22 @@ ENGINE_API int ps_r__fsr2 = 0;
 // [DA_PORT] Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
 // context at renderer start for a fixed pair of resolutions, so they are chosen before that point.
 ENGINE_API int ps_r__xess = 0;
+ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества
+
+// [DA_PORT] Отдавать ли DLSS нашу реактивную маску.
+//
+// Маска строилась под FSR 2, где она значит «этому пикселю не верь по истории». У NVIDIA параметр
+// называется иначе и значит не совсем то же: pInBiasCurrentColorMask смещает пиксель к текущему
+// кадру, и NVIDIA советует применять её скупо. На листве, которой в этом моде везде много, слишком
+// смелая маска даёт дрожание и шум там, где реконструкция справилась бы сама.
+//
+// Ручка, а не решение в коде, потому что на глаз это различают только сравнением: включить, выключить,
+// посмотреть на кусты в покое. Значение по умолчанию сохраняет прежнее поведение.
+ENGINE_API int ps_r__dlss_reactive = 1;
+
+// [DA_PORT] Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
+// Читает буфер обратно, поэтому останавливает конвейер — только на один кадр и только по команде.
+ENGINE_API int ps_r__dlss_selftest = 0;
 // [DA_PORT] FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
 // their contexts independently at renderer start, and having both live means comparing them
 // costs one restart rather than two. Only whichever is selected ever dispatches.
@@ -1308,7 +1433,33 @@ ENGINE_API xr_token qupscale_preset_token[] = {
 ENGINE_API int ps_r__taa_sharp = 20;
 
 // [DA_PORT] Show the temporal resolve where it fetches history from - see da_taa.ps.
+// 1 = reprojection offset, 2 = the sky mask this pass actually sees, 3 = how far the fetched history
+// is from the current pixel. The last two exist because the sky question was asked with tools that
+// measure a DIFFERENT pass at a DIFFERENT point in the frame, and agreement there proves nothing here.
 ENGINE_API int ps_r__taa_debug = 0;
+
+// [DA_PORT] How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
+// everything else has.
+//
+// Zero by default, which is a SUPPRESSION and not a diagnosis - worth being honest about, because the
+// difference decides whether anyone looks again.
+//
+// The sky trailing behind the camera survived every check of the reprojection: the maths in da_taa.ps
+// is the same analytic rotation-only reprojection that da_sky_velocity.ps uses, and that one
+// demonstrably fixed the identical symptom under the upscalers. So this started as a falsification
+// switch - at 0 the sky is the raw current frame and nothing else - and it came back positive: the
+// trail is made HERE, in the accumulation, and not upstream. Why a reprojection that checks out
+// analytically still fetches a wrong history on sky is still unanswered; r__taa_debug 3 is the tool
+// that would answer it.
+//
+// What zero costs: the sky is still jittered along with everything else (under our own temporal AA the
+// offset sits in Device.mProject, so the skybox does move sub-pixel every frame), and with no history
+// there is nothing left to average that jitter out. On the smooth gradient that is invisible. On the
+// sun, on cloud edges and along the horizon it is the shimmer this pass was extended to cover the sky
+// for in the first place. If that comes back, the middle ground is a partial value rather than 100:
+// the trail lasts about 1/(1-feedback) frames, so around 40 keeps two frames of averaging while
+// cutting the fourteen-frame smear that made this visible.
+ENGINE_API int ps_r__taa_sky = 0;
 
 // [DA_PORT] Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
 // distant textures, but it also hands the temporal filter more aliasing than it can absorb on foliage.
@@ -1320,8 +1471,8 @@ ENGINE_API int ps_r__taa_mipbias = 0;
 ENGINE_API int ps_r__taa_jitter = 1;
 ENGINE_API shared_str current_player_hud_sect{};
 
-extern int ps_fps_limit;
-extern int ps_fps_limit_in_menu;
+extern u32 ps_fps_limit;
+extern u32 ps_fps_limit_in_menu;
 
 void CCC_Register()
 {
@@ -1408,13 +1559,17 @@ void CCC_Register()
     CMD4(CCC_Integer, "r__wind_shadow", &ps_r__wind_shadow, 0, 1); // 0 = still foliage in shadow map
     CMD4(CCC_Integer, "r__foliage_tandc", &ps_r__foliage_tandc, 0, 1);
     CMD3(CCC_XESS, "r__xess", (u32*)&ps_r__xess, qxess_token);
+    CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
+    CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
+    CMD4(CCC_Integer, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
     CMD3(CCC_FSR2, "r__fsr2", (u32*)&ps_r__fsr2, qfsr2_token);
     CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
     CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
     CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer restart
     CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
     CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
-    CMD4(CCC_Integer, "r__taa_debug", &ps_r__taa_debug, 0, 1);
+    CMD4(CCC_Integer, "r__taa_debug", &ps_r__taa_debug, 0, 3);
+    CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
@@ -1422,8 +1577,8 @@ void CCC_Register()
 
     CMD1(CCC_Editor, "rs_editor");
 
-    CMD4(CCC_Integer, "rs_fps_limit", &ps_fps_limit, 30, 501);
-    CMD4(CCC_Integer, "rs_fps_limit_in_menu", &ps_fps_limit_in_menu, 30, 501);
+    CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
+    CMD4(CCC_Integer, "rs_fps_limit_in_menu", (int*)&ps_fps_limit_in_menu, 30, 501);
     CMD3(CCC_Mask, "rs_always_active", &psDeviceFlags, rsAlwaysActive);
     CMD3(CCC_Mask, "rs_v_sync", &psDeviceFlags, rsVSync);
     // CMD3(CCC_Mask, "rs_disable_objects_as_crows",&psDeviceFlags, rsDisableObjectsAsCrows );

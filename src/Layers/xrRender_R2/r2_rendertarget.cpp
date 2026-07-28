@@ -14,9 +14,11 @@
 #if RENDER == R_R4
 #include "Layers/xrRenderPC_R4/da_fsr2.h" // DA: FSR 2
 #include "Layers/xrRenderPC_R4/da_xess.h"
+#include "Layers/xrRenderPC_R4/da_dlss.h" // [DA_PORT] NVIDIA DLSS
 #include "Layers/xrRenderPC_R4/da_fsr3_api.h" // DA: Intel XeSS
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__xess;
+extern ENGINE_API int ps_r__dlss; // [DA_PORT]
 extern ENGINE_API int ps_r__fsr3;
 #endif
 
@@ -438,6 +440,24 @@ CRenderTarget::CRenderTarget()
             xe.quality = u32(::ps_r__xess);
             xe.device = HW.pDevice;
             g_da_xess.create(xe);
+        }
+
+        // [DA_PORT] NVIDIA DLSS. Независимо от остальных, по той же причине, что и XeSS: выбор одного
+        // апскейлера гасит другие, и вложенное условие сделало бы его несоздаваемым.
+        if (::ps_r__dlss)
+        {
+            da_dlss::init_params dl;
+            // Ровно те же числа, которыми созданы цели сцены выше (w, h) и которые phase_dlss отдаёт
+            // в evaluate. Здесь нельзя подставить Device.dwWidth, как это сделано у FSR 2: тот
+            // объявляет ПРЕДЕЛ размера рендера и допускает движение масштаба без пересоздания, а
+            // DLSS создаётся под конкретный размер.
+            dl.render_width = Device.dwRenderWidth;
+            dl.render_height = Device.dwRenderHeight;
+            dl.display_width = Device.dwWidth;
+            dl.display_height = Device.dwHeight;
+            dl.quality = u32(::ps_r__dlss);
+            dl.device = HW.pDevice;
+            g_da_dlss.create(dl);
         }
 
         // [DA_PORT] FSR 3. Same reasoning as FSR 2 for the sizes: maxRenderSize is declared as the full

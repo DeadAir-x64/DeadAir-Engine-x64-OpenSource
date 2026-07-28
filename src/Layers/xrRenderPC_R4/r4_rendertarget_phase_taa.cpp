@@ -8,9 +8,12 @@
 extern ENGINE_API int ps_r__taa;
 extern ENGINE_API int ps_r__taa_sharp;
 extern ENGINE_API int ps_r__taa_debug;
+extern ENGINE_API int ps_r__taa_sky;
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API int ps_r__xess;
+extern ENGINE_API bool da_upscaler_active(); // [DA_PORT]
+extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -30,7 +33,8 @@ void CRenderTarget::phase_taa()
     // FSR 3 and XeSS were added around it, so selecting either of those left two temporal filters
     // running one after the other - which is exactly the softness on moving figures it exists to
     // prevent. Same omission, and same symptom, as the velocity buffer's own consumer list in r2.cpp.
-    if (ps_r__fsr2 || ps_r__fsr3 || ps_r__xess)
+    // [DA_PORT] Через общий список: забытый здесь бэкенд оставляет ДВА временных фильтра на кадре.
+    if (da_upscaler_active())
         return;
 
     // Not while the menu is up. The menu is drawn inside the combine pass, i.e. BEFORE this one, so it
@@ -39,6 +43,28 @@ void CRenderTarget::phase_taa()
     // nothing to gain from accumulation anyway.
     if (g_pGamePersistent && g_pGamePersistent->m_pMainMenu && g_pGamePersistent->m_pMainMenu->IsActive())
         return;
+
+    // [DA_PORT] Склейка: истории нет, смешивать не с чем.
+    //
+    // У нашей TAA сброса не было вообще — она смешивала с историей всегда, а значит после загрузки
+    // уровня несколько кадров тянула поверх новой локации куски прошлой. Симптом смазанный, легко
+    // списать на прогрев кэшей, поэтому и жил долго.
+    //
+    // Вместо резолва просто засеиваем историю текущим кадром: со следующего накопление пойдёт как
+    // обычно. Цена — ровно один кадр без сглаживания, и он всё равно приходится на загрузочный экран
+    // или момент телепорта.
+    if (::da_upscaler_history_reset())
+    {
+#if defined(USE_DX11)
+        ID3DBaseTexture* fresh = rt_Color->pTexture->surface_get();
+        ID3DBaseTexture* stale = rt_TAA_history->pTexture->surface_get();
+        if (fresh && stale)
+            HW.get_context(CHW::IMM_CTX_ID)->CopyResource(stale, fresh);
+        _RELEASE(fresh);
+        _RELEASE(stale);
+#endif
+        return;
+    }
 
     PIX_EVENT(DA_phase_taa);
 
@@ -65,9 +91,11 @@ void CRenderTarget::phase_taa()
 
     RCache.set_Element(s_taa->E[0]);
     RCache.set_Geometry(g_combine);
-    // y carries the debug switch: with it on the pass draws where it fetches history from instead of
-    // the resolved frame. See da_taa.ps.
-    RCache.set_c("taa_params", float(ps_r__taa_sharp) / 100.f, float(ps_r__taa_debug), 0.f, 0.f);
+    // y carries the debug switch: with it on the pass draws what it is working from instead of the
+    // resolved frame. z is how much history the sky is allowed to keep, which is how the sky trail gets
+    // attributed to this pass or ruled out of it. See da_taa.ps.
+    RCache.set_c("taa_params", float(ps_r__taa_sharp) / 100.f, float(ps_r__taa_debug),
+        float(ps_r__taa_sky) / 100.f, 0.f);
     RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 
     // Put the resolved image back where the rest of the frame expects it, and keep the un-sharpened

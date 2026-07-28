@@ -577,6 +577,9 @@ bool CWeapon::net_Spawn(CSE_Abstract* DC)
     iAmmoElapsed = E->a_elapsed;
     m_flagsAddOnState = E->m_addon_flags.get();
     m_ammoType = E->ammo_type;
+    // [DA_PORT] pick the malfunction mask back up from the server object, which is what carried it
+    // through the save or through the weapon's time offline.
+    m_weapon_condition_type = E->condition_type;
     SetState(E->wpn_state);
     SetNextState(E->wpn_state);
 
@@ -639,6 +642,7 @@ void CWeapon::net_Export(NET_Packet& P)
     P.w_u8(m_ammoType);
     P.w_u8((u8)GetState());
     P.w_u8((u8)IsZoomed());
+    P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon
 }
 
 void CWeapon::net_Import(NET_Packet& P)
@@ -667,6 +671,10 @@ void CWeapon::net_Import(NET_Packet& P)
 
     u8 Zoom;
     P.r_u8(Zoom);
+
+    // [DA_PORT] must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would
+    // shift every byte after it and desync the whole packet.
+    P.r_u32(m_weapon_condition_type);
 
     if (H_Parent() && H_Parent()->Remote())
     {

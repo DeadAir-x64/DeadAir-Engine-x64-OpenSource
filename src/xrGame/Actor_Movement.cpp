@@ -230,13 +230,20 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector& vControlAccel, float& Ju
 
         if (CanJump() && (mstate_wf & mcJump))
         {
-            CBackpack* backpack = GetBackpack();
-            if (backpack)
-                m_fJumpSpeed *= backpack->m_fJumpSpeed;
+            // [DA_PORT] Scale a local copy, not the member.
+            //
+            // m_fJumpSpeed is read once from the config in CActor::Load and never restored, so the
+            // original "m_fJumpSpeed *= backpack->m_fJumpSpeed" compounded on every single jump - with a
+            // 0.9 backpack the actor's jump would decay to a tenth of its height within twenty jumps and
+            // never recover. Latent in Dead Air only because its backpacks are scripted artefacts and
+            // GetBackpack() never matches them; the same line is live for any engine CBackpack.
+            float jump_speed = m_fJumpSpeed;
+            if (CBackpack* backpack = GetBackpack())
+                jump_speed *= backpack->m_fJumpSpeed;
 
             mstate_real |= mcJump;
             m_bJumpKeyPressed = TRUE;
-            Jump = m_fJumpSpeed;
+            Jump = jump_speed;
             m_fJumpTime = s_fJumpTime;
 
             //уменьшить силу игрока из-за выполненого прыжка

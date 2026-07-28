@@ -1,0 +1,80 @@
+
+-- [DA_PORT] Keep played sounds alive until they finish.
+--
+-- Each sound below was created into a LOCAL, played, and then dropped: the variable leaves scope, Lua's
+-- collector takes the object, and CScriptSound's destructor calls destroy() on a sound that is still
+-- playing. The engine reports it itself - "Playing sound is not completed, but is destroying ..." - and
+-- audibly the sound is cut off part-way, at whatever moment the collector happens to run.
+--
+-- A ring rather than one slot: several of these overlap in practice, and a single variable would cut
+-- the previous sound the moment the next one starts. Bounded, so nothing accumulates.
+local da_snd_ring, da_snd_pos = {}, 0
+local function da_keep(snd)
+	da_snd_pos = da_snd_pos % 8 + 1
+	da_snd_ring[da_snd_pos] = snd
+	return snd
+end
+
+-- Script by OGSE Team. 
+-- Ported to Call of Pripyat by DDraig and some tweaks done by Swartz.
+function monolith_die()
+	local rnd_1=math.random(1,8)
+	local rnd_2=math.random(1,5)
+	local attack_snd=da_keep(sound_object("characters_voice\\human_01\\monolith\\fight\\attack\\attack_"..rnd_1))
+	local enemy_down_snd=da_keep(sound_object("characters_voice\\human_01\\monolith\\fight\\enemy_down\\enemy_down_"..rnd_2))
+	rnd = math.random(1,2)
+	if rnd == 1 and not attack_snd:playing() then
+		attack_snd:play_at_pos(actor, vector():set(0,0,0), 0, sound_object.s2d)
+	end
+	if rnd == 2 and not enemy_down_snd:playing() then
+		enemy_down_snd:play_at_pos(actor, vector():set(0,0,0), 0, sound_object.s2d)
+	end
+end
+
+old_corpses = {}
+
+local suicide_particle = particles_object("explosions\\explosion_01")
+local suicide_sound1 = da_keep(sound_object([[anomaly\anomaly_body_tear_1]]))
+local suicide_sound2 = da_keep(sound_object([[weapons\t_rgd5_explosion]]))
+
+function safely_destroy_creature(creature)
+	local se_obj = alife_object(creature:id())
+	if (se_obj) then
+		safe_release_manager.release(se_obj)
+	end
+end
+
+function monolith_explode(p_obj)
+if p_obj then
+	local posit = p_obj:position()
+	local enemy = p_obj:best_enemy()
+	local zh = hit()
+	zh.type = hit.explosion
+	zh:bone("pelvis")
+	zh.power = 4
+	zh.impulse = 6
+
+	suicide_particle:play_at_pos(p_obj:position())
+
+	if suicide_sound1 then
+		suicide_sound1:play_at_pos(p_obj, p_obj:position(), 0)
+	end
+	if suicide_sound2 then
+		suicide_sound2:play_at_pos(p_obj, p_obj:position(), 0)
+	end
+
+	if enemy and posit:distance_to(enemy:position()) < 5 then 
+		zh.draftsman = enemy
+		zh.direction = p_obj:position():sub(enemy:position())
+		enemy:hit(zh)
+	end
+
+	if not enemy and posit:distance_to(db.actor:position()) < 5 then
+		zh.draftsman = db.actor
+		zh.direction = p_obj:position():sub(db.actor:position())
+		db.actor:hit(zh)
+	end
+
+	safely_destroy_creature(p_obj)
+end
+end

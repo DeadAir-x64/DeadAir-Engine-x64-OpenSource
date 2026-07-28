@@ -7,6 +7,7 @@
 #include "ActorHelmet.h"
 #include "Inventory.h"
 #include "RadioactiveZone.h"
+#include "xrEngine/CustomHUD.h" // [DA_PORT] psHUD_Flags / HUD_DRAW_INFO
 #include "xrUICore/Static/UIStatic.h"
 #include "xrUICore/ProgressBar/UIProgressBar.h"
 #include "xrUICore/ProgressBar/UIProgressShape.h"
@@ -245,6 +246,14 @@ void CUIHudStatesWnd::Update()
     UpdateActiveItemInfo(actor);
     UpdateIndicators(actor);
 
+    // [DA_PORT] The bottom-left bars follow the "hud_draw_info" option, as they do in Dead Air. Their
+    // visibility is otherwise whatever the XML left them at, so the option had no effect on them.
+    const bool draw_info = !!psHUD_Flags.test(HUD_DRAW_INFO);
+    if (m_ui_health_bar)
+        m_ui_health_bar->Show(draw_info);
+    if (m_ui_stamina_bar)
+        m_ui_stamina_bar->Show(draw_info);
+
     UpdateZones();
 
     inherited::Update();
@@ -350,26 +359,30 @@ void CUIHudStatesWnd::UpdateActiveItemInfo(CActor* actor)
 
         item->GetBriefInfo(m_item_info);
 
+        // [DA_PORT] Ammo, fire mode and grenade count are part of the same readout as the health and
+        // stamina bars, so they follow "hud_draw_info" too - see Update().
+        const bool draw_info = !!psHUD_Flags.test(HUD_DRAW_INFO);
+
         //		UIWeaponBack.SetText		( str_name.c_str() );
         m_fire_mode->SetText(m_item_info.fire_mode.c_str());
         SetAmmoIcon(m_item_info.icon.c_str());
 
         if (m_ui_weapon_cur_ammo)
         {
-            m_ui_weapon_cur_ammo->Show(true);
+            m_ui_weapon_cur_ammo->Show(draw_info);
             m_ui_weapon_cur_ammo->SetText(m_item_info.cur_ammo.c_str());
         }
 
         if (m_ui_weapon_fmj_ammo)
         {
-            m_ui_weapon_fmj_ammo->Show(true);
+            m_ui_weapon_fmj_ammo->Show(draw_info);
             m_ui_weapon_fmj_ammo->SetText(m_item_info.fmj_ammo.c_str());
             m_ui_weapon_fmj_ammo->SetTextColor(color_rgba(238, 155, 23, 150));
         }
 
         if (m_ui_weapon_ap_ammo)
         {
-            m_ui_weapon_ap_ammo->Show(true);
+            m_ui_weapon_ap_ammo->Show(draw_info);
             m_ui_weapon_ap_ammo->SetText(m_item_info.ap_ammo.c_str());
             m_ui_weapon_ap_ammo->SetTextColor(color_rgba(238, 155, 23, 150));
         }
@@ -377,7 +390,7 @@ void CUIHudStatesWnd::UpdateActiveItemInfo(CActor* actor)
         //Alundaio: Third ammo type and also set text color for each ammo type
         if (m_ui_weapon_third_ammo)
         {
-            m_ui_weapon_third_ammo->Show(true);
+            m_ui_weapon_third_ammo->Show(draw_info);
             m_ui_weapon_third_ammo->SetText(m_item_info.third_ammo.c_str());
             m_ui_weapon_third_ammo->SetTextColor(color_rgba(238, 155, 23, 150));
         }
@@ -416,11 +429,11 @@ void CUIHudStatesWnd::UpdateActiveItemInfo(CActor* actor)
             }
         }
 
-        m_fire_mode->Show(true);
+        m_fire_mode->Show(draw_info);
 
         if (m_ui_grenade)
         {
-            m_ui_grenade->Show(true);
+            m_ui_grenade->Show(draw_info);
 
             m_ui_grenade->SetText(m_item_info.grenade.c_str());
 
@@ -474,7 +487,8 @@ void CUIHudStatesWnd::SetAmmoIcon(const shared_str& sect_name)
     if (!m_ui_weapon_icon)
         return;
 
-    if (!sect_name.size())
+    // [DA_PORT] The weapon icon belongs to the same readout as the ammo counts - see Update().
+    if (!(sect_name.size() && psHUD_Flags.test(HUD_DRAW_INFO)))
     {
         m_ui_weapon_icon->Show(false);
         return;

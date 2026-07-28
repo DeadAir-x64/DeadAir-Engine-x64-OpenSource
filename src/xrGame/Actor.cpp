@@ -2129,7 +2129,14 @@ float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
     {
         const auto artefact = smart_cast<CArtefact*>(it);
         if (artefact)
-            hit_power -= artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type);
+        {
+            // [DA_PORT] Scaled by wear, so that the protection actually granted matches the number the
+            // inventory shows. GetProtection_ArtefactsOnBelt (the display side, a few lines below) has
+            // always multiplied by GetCondition() while this path did not, so a worn artefact quietly
+            // protected at full strength. Dead Air degrades artefacts continuously through
+            // artefact_degradation.script, down to a condition of 0.01, which made the gap wide.
+            hit_power -= artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type) * artefact->GetCondition();
+        }
     }
     clamp(hit_power, 0.0f, flt_max);
 

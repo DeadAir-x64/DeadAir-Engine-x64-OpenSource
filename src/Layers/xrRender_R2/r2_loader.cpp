@@ -12,11 +12,19 @@
 #include "Layers/xrRenderDX11/3DFluid/dx113DFluidVolume.h"
 #endif
 
+// [DA_PORT] Объявляется СНАРУЖИ пространства имён: внутри линкер искал бы символ в
+// xray::render::RENDER_NAMESPACE и не нашёл бы. Грабля описана в docs/07_TROUBLESHOOTING.md.
+extern ENGINE_API void da_upscaler_reset_history(pcstr why);
+
 namespace xray::render::RENDER_NAMESPACE
 {
 void CRender::level_Load(IReader* fs)
 {
     ZoneScoped;
+
+    // [DA_PORT] История временных фильтров относится к прошлому уровню и переносить её некуда:
+    // прошлый кадр показывает другое место, а векторы движения этого не описывают.
+    ::da_upscaler_reset_history("level load");
 
     R_ASSERT(g_pGameLevel);
     R_ASSERT(!b_loaded);

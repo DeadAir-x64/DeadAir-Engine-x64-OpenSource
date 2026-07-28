@@ -1054,8 +1054,28 @@ u32 CScriptGameObject::accessible_nearest(const Fvector& position, Fvector& resu
     }
     if (monster->movement().restrictions().accessible(position))
     {
-        GEnv.ScriptEngine->script_log(LuaMessageType::Error,
-            "CRestrictedObject : you use accessible_nearest when position is already accessible!");
+        // [DA_PORT] An already-accessible position answers itself - return the vertex under it.
+        //
+        // Stock (and both reference trees) log "you use accessible_nearest when position is already
+        // accessible!" and return u32(-1). That is not a harmless complaint: Dead Air's scripts store the
+        // result and feed it back in on the next tick, so the invalid id reaches level.vertex_position(),
+        // which yields a zero vector - and the next query then asks for the nearest vertex to the map
+        // ORIGIN instead of to the NPC, gets -1 again, and the loop repeats. It cost 55 log lines per
+        // session and left stalkers unable to take cover near a corpse (xr_danger stage 6).
+        // Every script call site treats the result purely as a vertex id, none uses -1 as a sentinel,
+        // so answering with the real vertex is both correct and safe. -1 remains for an off-graph
+        // position, which is the only case where there genuinely is no answer.
+        // valid_vertex_position() first: vertex_id() opens with a VERIFY2 on it, which is stripped in
+        // this build but would fire in a debug one, and off the graph it can only answer -1 anyway.
+        if (ai().level_graph().valid_vertex_position(position))
+        {
+            const u32 vertex = ai().level_graph().vertex_id(position);
+            if (ai().level_graph().valid_vertex_id(vertex))
+            {
+                result = position;
+                return vertex;
+            }
+        }
         return (u32(-1));
     }
     return (monster->movement().restrictions().accessible_nearest(position, result));

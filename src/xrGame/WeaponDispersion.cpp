@@ -13,10 +13,38 @@
 #include "EffectorShot.h"
 #include "EffectorShotX.h"
 
-//возвращает 1, если оружие в отличном состоянии и >1 если повреждено
+// [DA_PORT] Dead Air replaced the stock formula entirely, and the port had kept the stock one.
+//
+// Stock scales dispersion by numeric wear: a gun at 50% condition simply shoots twice as wide, and a
+// pristine one returns 1.0 as a neutral multiplier. Dead Air throws that out and drives dispersion off
+// the MALFUNCTION MASK instead - a gun is accurate until something specific is actually broken, and
+// then it is the break that costs accuracy, not the wear percentage.
+//
+// That is why the return value changed meaning: this is now an ADDITIVE term in radians (0.0 when
+// nothing is broken), not a multiplier. GetBaseDispersion below adds it instead of multiplying - the
+// two changes only make sense together, and porting one without the other would either wipe out
+// dispersion entirely (0.0 as a multiplier) or add a permanent constant to every weapon.
+//
+// Bit numbers and weights are the author's, copied as-is from
+// _engine_diff/da_alpha/src_/xrGame/WeaponDispersion.cpp:18. The mask lives in m_weapon_condition_type
+// (u32 here, see the u8->u32 fix; the author calls it m_conditionType).
 float CWeapon::GetConditionDispersionFactor() const
 {
-    return (1.f + fireDispersionConditionFactor * (1.f - GetCondition()));
+    float cond = 0.f;
+
+    if (m_weapon_condition_type & (1 << 6))
+        cond += 0.025f;
+    if (m_weapon_condition_type & (1 << 7))
+        cond += 0.025f;
+    if (m_weapon_condition_type & (1 << 10))
+        cond += 0.025f;
+    if (m_weapon_condition_type & (1 << 11))
+        cond += 0.05f;
+    if (m_weapon_condition_type & (1 << 12))
+        cond += 0.1f;
+
+    return cond;
+    // Stock, kept for reference: return (1.f + fireDispersionConditionFactor * (1.f - GetCondition()));
 }
 
 float CWeapon::GetFireDispersion(bool with_cartridge, bool for_crosshair)
@@ -30,7 +58,9 @@ float CWeapon::GetFireDispersion(bool with_cartridge, bool for_crosshair)
 
 float CWeapon::GetBaseDispersion(float cartridge_k)
 {
-    return fireDispersionBase * cur_silencer_koef.fire_dispersion * cartridge_k * GetConditionDispersionFactor();
+    // [DA_PORT] PLUS, not times - see GetConditionDispersionFactor above. The factor is now an additive
+    // term that is zero on an unbroken weapon, so multiplying by it would collapse dispersion to nothing.
+    return fireDispersionBase * cur_silencer_koef.fire_dispersion * cartridge_k + GetConditionDispersionFactor();
 }
 
 //текущая дисперсия (в радианах) оружия с учетом используемого патрона

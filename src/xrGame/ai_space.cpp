@@ -43,9 +43,9 @@ void CAI_Space::init()
 
     if (!GEnv.isDedicatedServer)
     {
-        Msg("! [DA_PORT] CAI_Space::init: before AISpaceBase::Initialize"); FlushLog();
+        Msg("* [DA_PORT] CAI_Space::init: before AISpaceBase::Initialize"); FlushLog();
         AISpaceBase::Initialize();
-        Msg("! [DA_PORT] CAI_Space::init: after AISpaceBase::Initialize"); FlushLog();
+        Msg("* [DA_PORT] CAI_Space::init: after AISpaceBase::Initialize"); FlushLog();
 
         m_ef_storage = xr_make_unique<CEF_Storage>();
         m_cover_manager = xr_make_unique<CCoverManager>();
@@ -53,9 +53,9 @@ void CAI_Space::init()
 
         VERIFY(!GEnv.ScriptEngine);
         GEnv.ScriptEngine = xr_new<CScriptEngine>(false, true);
-        Msg("! [DA_PORT] CAI_Space::init: before RestartScriptEngine"); FlushLog();
+        Msg("* [DA_PORT] CAI_Space::init: before RestartScriptEngine"); FlushLog();
         RestartScriptEngine();
-        Msg("! [DA_PORT] CAI_Space::init: after RestartScriptEngine"); FlushLog();
+        Msg("* [DA_PORT] CAI_Space::init: after RestartScriptEngine"); FlushLog();
     }
 
     m_inited = true;
@@ -143,15 +143,15 @@ void CAI_Space::SetupScriptEngine()
 {
     ZoneScoped;
 
-    Msg("! [DA_PORT] SetupScriptEngine: before ScriptEngine->init"); FlushLog();
+    Msg("* [DA_PORT] SetupScriptEngine: before ScriptEngine->init"); FlushLog();
     GEnv.ScriptEngine->init(xray::script_export::node::export_all, true);
-    Msg("! [DA_PORT] SetupScriptEngine: after ScriptEngine->init, before RegisterScriptClasses"); FlushLog();
+    Msg("* [DA_PORT] SetupScriptEngine: after ScriptEngine->init, before RegisterScriptClasses"); FlushLog();
     RegisterScriptClasses();
-    Msg("! [DA_PORT] SetupScriptEngine: after RegisterScriptClasses, before register_script"); FlushLog();
+    Msg("* [DA_PORT] SetupScriptEngine: after RegisterScriptClasses, before register_script"); FlushLog();
     object_factory().register_script();
-    Msg("! [DA_PORT] SetupScriptEngine: after register_script, before LoadCommonScripts"); FlushLog();
+    Msg("* [DA_PORT] SetupScriptEngine: after register_script, before LoadCommonScripts"); FlushLog();
     LoadCommonScripts();
-    Msg("! [DA_PORT] SetupScriptEngine: after LoadCommonScripts"); FlushLog();
+    Msg("* [DA_PORT] SetupScriptEngine: after LoadCommonScripts"); FlushLog();
 
 #ifndef MASTER_GOLD
     g_object_factory->init_spawn_data();

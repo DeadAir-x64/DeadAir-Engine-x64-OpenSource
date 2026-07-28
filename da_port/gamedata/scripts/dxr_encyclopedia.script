@@ -1,0 +1,273 @@
+--------------------------------
+----- Written by Darryl123 -----
+--------------------------------
+
+---------------------
+----- Callbacks -----
+---------------------
+
+-- Initialises callbacks.
+function on_game_start()
+	RegisterScriptCallback("actor_on_item_take", actor_on_item_take)
+	RegisterScriptCallback("actor_on_first_update", on_first_update)
+end
+
+function actor_on_item_take(item)
+	if (item:section() == "letter_memoirs_1_of_2") and not (db.actor:has_info("encyclopedia_documents_letter_memoirs_1_of_2")) then
+		unlock_article("encyclopedia_documents_letter_memoirs_1_of_2")
+		give_info("encyclopedia_documents_letter_memoirs_1_of_2")
+	end
+	
+	if (item:section() == "letter_memoirs_2_of_2") and not (db.actor:has_info("encyclopedia_documents_letter_memoirs_2_of_2")) then
+		unlock_article("encyclopedia_documents_letter_memoirs_2_of_2")
+		give_info("encyclopedia_documents_letter_memoirs_2_of_2")
+	end
+	
+	if (item:section() == "letter_freedom_manual_1_of_2") and not (db.actor:has_info("encyclopedia_documents_freedom_manual_1_of_2")) then
+		unlock_article("encyclopedia_documents_freedom_manual_1_of_2")
+		give_info("encyclopedia_documents_freedom_manual_1_of_2")
+	end
+	
+	if (item:section() == "letter_freedom_manual_2_of_2") and not (db.actor:has_info("encyclopedia_documents_freedom_manual_2_of_2")) then
+		unlock_article("encyclopedia_documents_freedom_manual_2_of_2")
+		give_info("encyclopedia_documents_freedom_manual_2_of_2")
+	end
+	
+	if (item:section() == "letter_stalker_letter_1_of_2") and not (db.actor:has_info("encyclopedia_documents_stalker_letter_1_of_2")) then
+		unlock_article("encyclopedia_documents_stalker_letter_1_of_2")
+		give_info("encyclopedia_documents_stalker_letter_1_of_2")
+	end
+	
+	if (item:section() == "letter_stalker_letter_2_of_2") and not (db.actor:has_info("encyclopedia_documents_stalker_letter_2_of_2")) then
+		unlock_article("encyclopedia_documents_stalker_letter_2_of_2")
+		give_info("encyclopedia_documents_stalker_letter_2_of_2")
+	end
+	
+	if (item:section() == "letter_stalker_letter_3") and not (db.actor:has_info("encyclopedia_documents_letter_stalker_letter_3")) then
+		unlock_article("encyclopedia_documents_letter_stalker_letter_3")
+		give_info("encyclopedia_documents_letter_stalker_letter_3")
+	end
+	
+	if (item:section() == "letter_ecologist_report_1_of_3") and not (db.actor:has_info("encyclopedia_documents_ecologist_report_1_of_3")) then
+		unlock_article("encyclopedia_documents_ecologist_report_1_of_3")
+		give_info("encyclopedia_documents_ecologist_report_1_of_3")
+	end
+	
+	if (item:section() == "letter_ecologist_report_2_of_3") and not (db.actor:has_info("encyclopedia_documents_ecologist_report_2_of_3")) then
+		unlock_article("encyclopedia_documents_ecologist_report_2_of_3")
+		give_info("encyclopedia_documents_ecologist_report_2_of_3")
+	end
+	
+	if (item:section() == "letter_ecologist_report_3_of_3") and not (db.actor:has_info("encyclopedia_documents_ecologist_report_3_of_3")) then
+		unlock_article("encyclopedia_documents_ecologist_report_3_of_3")
+		give_info("encyclopedia_documents_ecologist_report_3_of_3")
+	end
+	
+	if (item:section() == "letter_monolith_prayer_1_of_3") and not (db.actor:has_info("encyclopedia_documents_monolith_prayer_1_of_3")) then
+		unlock_article("encyclopedia_documents_monolith_prayer_1_of_3")
+		give_info("encyclopedia_documents_monolith_prayer_1_of_3")
+	end
+	
+	if (item:section() == "letter_monolith_prayer_2_of_3") and not (db.actor:has_info("encyclopedia_documents_monolith_prayer_2_of_3")) then
+		unlock_article("encyclopedia_documents_monolith_prayer_2_of_3")
+		give_info("encyclopedia_documents_monolith_prayer_2_of_3")
+	end
+	
+	if (item:section() == "letter_monolith_prayer_3_of_3") and not (db.actor:has_info("encyclopedia_documents_monolith_prayer_3_of_3")) then
+		unlock_article("encyclopedia_documents_monolith_prayer_3_of_3")
+		give_info("encyclopedia_documents_monolith_prayer_3_of_3")
+	end
+	
+	if (item:section() == "letter_monolithian_thoughts") and not (db.actor:has_info("encyclopedia_documents_monolithian_thoughts")) then
+		unlock_article("encyclopedia_documents_monolithian_thoughts")
+		give_info("encyclopedia_documents_monolithian_thoughts")
+	end
+	
+	if (item:section() == "letter_letter_to_outside") and not (db.actor:has_info("encyclopedia_documents_letter_to_outside")) then
+		unlock_article("encyclopedia_documents_letter_to_outside")
+		give_info("encyclopedia_documents_letter_to_outside")
+	end
+
+end
+
+function on_first_update()
+	if (db.actor:has_info("encyclopedia_documents_letter_memoirs_1_of_2")) then
+		unlock_article_after_load("encyclopedia_documents_letter_memoirs_1_of_2")
+	end
+
+	if (db.actor:has_info("encyclopedia_documents_letter_memoirs_2_of_2")) then
+		unlock_article_after_load("encyclopedia_documents_letter_memoirs_2_of_2")
+	end
+
+	if (db.actor:has_info("encyclopedia_documents_freedom_manual_1_of_2")) then
+		unlock_article_after_load("encyclopedia_documents_freedom_manual_1_of_2")
+	end
+
+	if (db.actor:has_info("encyclopedia_documents_freedom_manual_2_of_2")) then
+		unlock_article_after_load("encyclopedia_documents_freedom_manual_2_of_2")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_stalker_letter_1_of_2")) then
+		unlock_article_after_load("encyclopedia_documents_stalker_letter_1_of_2")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_stalker_letter_2_of_2")) then
+		unlock_article_after_load("encyclopedia_documents_stalker_letter_2_of_2")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_letter_stalker_letter_3")) then
+		unlock_article_after_load("encyclopedia_documents_letter_stalker_letter_3")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_ecologist_report_1_of_3")) then
+		unlock_article_after_load("encyclopedia_documents_ecologist_report_1_of_3")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_ecologist_report_2_of_3")) then
+		unlock_article_after_load("encyclopedia_documents_ecologist_report_2_of_3")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_ecologist_report_3_of_3")) then
+		unlock_article_after_load("encyclopedia_documents_ecologist_report_3_of_3")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_monolith_prayer_1_of_3")) then
+		unlock_article_after_load("encyclopedia_documents_monolith_prayer_1_of_3")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_monolith_prayer_2_of_3")) then
+		unlock_article_after_load("encyclopedia_documents_monolith_prayer_2_of_3")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_monolith_prayer_3_of_3")) then
+		unlock_article_after_load("encyclopedia_documents_monolith_prayer_3_of_3")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_monolithian_thoughts")) then
+		unlock_article_after_load("encyclopedia_documents_monolithian_thoughts")
+	end
+	
+	if (db.actor:has_info("encyclopedia_documents_letter_to_outside")) then
+		unlock_article_after_load("encyclopedia_documents_letter_to_outside")
+	end
+end
+--------------------------------
+----- Article Manipulation -----
+--------------------------------
+
+-- Jumps straight to a specific article.
+function set_article(section)
+	-- Instance of the guide object.
+	local guide = ui_pda_encyclopedia_tab.get_ui()
+	
+	-- Return if no section or guide exist.
+	if not (section and guide) then
+		return
+	end
+	
+	-- Discover the category of the article.
+	local article = nil
+	local category = nil
+	for index1 = 1, #guide.categories do
+		category = guide.categories[index1]
+		-- Determine if the article is in this category.
+		if (category) then
+			for index2 = 1, #category.articles do
+				article = category.articles[index2]
+				-- Set the category and article if correct.
+				if (article and article == section) then
+					guide:SelectCategory(index1)
+					guide:SelectArticle(index1, index2)
+					return
+				end
+			end
+		end
+	end
+	
+end
+
+-- Unlocks an article for the player.
+-- A random one will be chosen if nothing is specified.
+function unlock_article(section)
+	-- Instance of the guide object.
+	local guide = ui_pda_encyclopedia_tab.get_ui()
+	
+	-- Instance of the locked and unlocked article tables.
+	local locked_articles = guide.locked
+	local unlocked_articles = xr_statistic.actor_statistic.guide_articles
+	
+	-- Return if all articles have been unlocked.
+	if (#locked_articles == 0) then
+		return
+	end
+	
+	local new_article = false
+	-- Select a random article if no section was provided.
+	local index = nil
+	if (not section) then
+		index = math.random(#locked_articles)
+		section = locked_articles[index]
+		
+	-- Otherwise determine the section index.
+	else for k, v in pairs(locked_articles) do
+			if (v == section) then
+				index = k
+				new_article = true
+				break
+			end
+		end
+	end
+	
+	if (new_article) then
+		-- Update the required tables.
+		table.remove(locked_articles, index)
+		table.insert(unlocked_articles, section)
+		
+		-- Notify the player and update the PDA selection.
+		xr_sound.set_sound_play(db.actor:id(), "pda_tips")
+		news_manager.send_tip(db.actor, "pda_btn_encyclopedia_notify", nil, "guide_unlock", nil, nil)
+		set_article(section)
+	end
+end
+
+function unlock_article_after_load(section)
+	-- Instance of the guide object.
+	local guide = ui_pda_encyclopedia_tab.get_ui()
+	
+	-- Instance of the locked and unlocked article tables.
+	local locked_articles = guide.locked
+	local unlocked_articles = xr_statistic.actor_statistic.guide_articles
+	
+	-- Return if all articles have been unlocked.
+	if (#locked_articles == 0) then
+		return
+	end
+	
+	local new_article = false
+	-- Select a random article if no section was provided.
+	local index = nil
+	if (not section) then
+		index = math.random(#locked_articles)
+		section = locked_articles[index]
+		
+	-- Otherwise determine the section index.
+	else for k, v in pairs(locked_articles) do
+			if (v == section) then
+				index = k
+				new_article = true
+				break
+			end
+		end
+	end
+	
+	if (new_article) then
+		-- Update the required tables.
+		table.remove(locked_articles, index)
+		table.insert(unlocked_articles, section)
+		
+		-- Notify the player and update the PDA selection.
+		--xr_sound.set_sound_play(db.actor:id(), "pda_tips")
+		--news_manager.send_tip(db.actor, "pda_btn_encyclopedia_notify", nil, "guide_unlock", nil, nil)
+		--set_article(section)
+	end
+end

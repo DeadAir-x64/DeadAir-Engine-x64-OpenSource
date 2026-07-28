@@ -10,6 +10,29 @@
 #include "player_hud.h"
 #include "UIHelper.h"
 
+// [DA_PORT] Armour condition as a percentage - the same rule the weapon side uses.
+//
+// Copied deliberately rather than shared: the author has two independent copies too, and the two
+// windows are built from different XML blocks with different lifetimes. Clamp to 99 and the space
+// before the sign are his; the colour repeats the number for reading at a glance.
+static void da_set_outfit_condition_text(CUIStatic& value_text, const CInventoryItem& item)
+{
+    int condition = int(item.GetConditionToShow() * 100.f);
+    clamp(condition, 0, 99);
+
+    if (condition > 66)
+        value_text.SetTextColor(color_rgba(0, 255, 0, 255));
+    else if (condition > 33)
+        value_text.SetTextColor(color_rgba(255, 255, 0, 255));
+    else
+        value_text.SetTextColor(color_rgba(255, 0, 0, 255));
+
+    string32 tmp;
+    xr_sprintf(tmp, sizeof(tmp), "%d %s", condition, "%");
+    value_text.SetText(tmp);
+}
+
+
 constexpr std::tuple<ALife::EHitType, cpcstr, cpcstr> immunity_names[] =
 {
     // { hit type,                 "immunity",               "immunity text" }
@@ -121,6 +144,15 @@ void CUIOutfitInfo::InitFromXml(CUIXml& xml_doc)
 
     CUIXmlInit::InitWindow(xml_doc, base_str, 0, this);
 
+    // [DA_PORT] Condition row: icon, label, value. All three optional - a layout without them is
+    // unchanged, which matters because the 4:3 and widescreen markups differ here.
+    AttachChild(&m_stCondition);
+    AttachChild(&m_textCondition);
+    AttachChild(&m_textCondition2);
+    CUIXmlInit::InitStatic(xml_doc, "outfit_info:static_condition", 0, &m_stCondition, false);
+    CUIXmlInit::InitStatic(xml_doc, "outfit_info:cap_condition", 0, &m_textCondition, false);
+    CUIXmlInit::InitStatic(xml_doc, "outfit_info:cap_condition2", 0, &m_textCondition2, false);
+
     string128 buf;
 
     strconcat(buf, base_str, ":caption");
@@ -195,6 +227,8 @@ void CUIOutfitInfo::UpdateInfo(CCustomOutfit* cur_outfit, CCustomOutfit* slot_ou
         }
         return;
     }
+
+    da_set_outfit_condition_text(m_textCondition2, *cur_outfit); // [DA_PORT]
 
     const bool is_cs_cop = cur_outfit->GetHitFracType() != SBoneProtections::HitFraction;
 

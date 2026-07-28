@@ -6,6 +6,8 @@
 extern ENGINE_API int ps_r__xess;
 extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
+extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // Shared with FSR 2 on purpose: only one upscaler reconstructs a given frame, and the post-process
@@ -55,7 +57,9 @@ bool CRenderTarget::phase_xess()
         p.jitter_x = ::g_da_fsr2_jitter_px.x;
         p.jitter_y = ::g_da_fsr2_jitter_px.y;
 
-        p.reset = (Device.dwFrame < 3);
+        // [DA_PORT] Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
+        // а прежнее `dwFrame < 3` покрывало только запуск сессии. См. xr_ioc_cmd.cpp.
+        p.reset = ::da_upscaler_history_reset();
 
         ok = g_da_xess.draw(p);
         if (ok)

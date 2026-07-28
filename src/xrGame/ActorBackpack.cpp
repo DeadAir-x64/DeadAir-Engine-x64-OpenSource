@@ -15,8 +15,9 @@ void CBackpack::Load(pcstr section)
     m_additional_weight = pSettings->r_float(section, "additional_inventory_weight");
     m_additional_weight2 = pSettings->r_float(section, "additional_inventory_weight2");
     m_fPowerRestoreSpeed = pSettings->read_if_exists<float>(section, "power_restore_speed", 0.0f);
-    m_fPowerLoss = pSettings->read_if_exists<float>(section, "power_loss", 1.0f);
-    clamp(m_fPowerLoss, EPS, 1.0f);
+    // [DA_PORT] Summand, not multiplier - see the note in ActorHelmet.cpp. Undeclared contributes nothing.
+    m_fPowerLoss = pSettings->read_if_exists<float>(section, "power_loss", 0.0f);
+    clamp(m_fPowerLoss, 0.0f, 1.0f);
 
     m_fJumpSpeed = pSettings->read_if_exists<float>(section, "jump_speed", 1.f);
     m_fWalkAccel = pSettings->read_if_exists<float>(section, "walk_accel", 1.f);

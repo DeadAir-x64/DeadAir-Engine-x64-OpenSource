@@ -1,0 +1,424 @@
+[wpn_svu]:identity_immunities,weapon_probability,default_weapon_params,wpn_svu_sounds
+GroupControlSection		= spawn_group
+$spawn                  = "weapons\svu"      ; option for Level Editor
+$npc			 		= on				; option for Level Editor
+$prefetch 		 		= 8
+scheduled               = off              	; option for ALife Simulator
+cform                   = skeleton
+class                   = WP_SVU
+description             = st_wpn_svu_descr
+
+scopes 			= 1p29, kobra, ps01
+parent_section  	= wpn_svu
+
+ef_main_weapon_type		= 3
+ef_weapon_type			= 11
+
+default_to_ruck			= true
+sprint_allowed          = true
+
+repair_type = rifle
+condition_avail = 2030043123
+;-------------------------------------------------------------------------------
+cost                    = 50000
+weapon_class			= sniper_rifle
+inv_weight              = 3.81
+
+upgrades                = up_gr_firstab_svu, up_gr_seconab_svu, up_gr_thirdab_svu, up_gr_fourtab_svu, up_gr_fourtcd_svu, up_gr_fourtef_svu, up_gr_fifthab_svu, up_gr_secone_svu
+installed_upgrades      =
+upgrade_scheme          = upgrade_scheme_svu
+
+;----TTX------------------------------------------------------------------------
+hit_power           	= 0.90, 0.90, 0.90, 0.90
+hit_impulse             = 40
+hit_type 				= fire_wound
+fire_distance           = 1200
+bullet_speed		= 805	;начальная скорость пули
+rpm                     = 200
+rpm_empty_click         = 200
+
+use_aim_bullet				= false		;Поддерживается ли первая суппер пуля
+time_to_aim					= 1.0
+
+hud                     = wpn_svu_hud
+
+misfire_start_condition		= 0.75
+misfire_end_condition		= 0.25
+misfire_start_prob              = 0.02 
+misfire_end_prob                = 0.1 
+condition_shot_dec      	= 0.001
+condition_queue_shot_dec	= 0.001
+
+ammo_elapsed			= 10
+ammo_mag_size			= 10
+fire_modes		  = 1
+ammo_class		        = ammo_7.62x54_7h14, ammo_7.62x54_7h1
+hand_dependence         = 1
+single_handed           = 0
+
+;---дисперсия-------------------------------------------------------------------------
+;базовая дисперсия
+fire_dispersion_base    = 0.08  ;угол (в градусах) базовой дисперсии оружия (оружия зажатого в тисках)
+control_inertion_factor = 1
+crosshair_inertion		= 8.8
+
+;отдача
+cam_return = 0 ;				= 0
+cam_relax_speed         = 3.0   ;скорость возврата в исходное положение
+cam_relax_speed_ai      = 360	;скорость возврата в исходное положение
+cam_dispersion          = 2 ;увеличения угла (в градусах) с каждым выстрелом
+cam_dispersion_inc		= 1	;увеличениe cam_dispersion с каждым выстрелом
+cam_dispersion_frac		= 1	;ствол будет подыматься на cam_dispersion*cam_dispersion_frac +- cam_dispersion*(1-cam_dispersion_frac)
+cam_max_angle           = 50.0   ;максимальный угол отдачи
+cam_max_angle_horz		= 50.0	;(degree) maximum shot horizontal degree
+cam_step_angle_horz     = 2.92 ;(degree) size of step camera moved in horizontal position while shooting
+
+PDM_disp_base 				= 1.33
+PDM_disp_vel_factor 		= 3.05
+PDM_disp_accel_factor 		= 3.05
+PDM_disp_crouch = 1.0 ;  			= 1.225
+PDM_disp_crouch_no_acc = 1.0 ; 		= 1.425
+
+zoom_cam_relax_speed        = 0.7    ; scope & ironsight
+zoom_cam_relax_speed_ai     = 120.75
+zoom_cam_dispersion         = 3
+zoom_cam_dispersion_inc     = 1
+zoom_cam_dispersion_frac    = 1.0
+zoom_cam_max_angle          = 50.0
+zoom_cam_max_angle_horz     = 50.0
+zoom_cam_step_angle_horz    = 2.56
+
+fire_dispersion_condition_factor = 15 ; = 0.01 ; 10	;увеличение дисперсии в процентах при максимальном износе
+
+;---DOF-------------------------------------------------------------------------
+;zoom_dof				= 0.5, 1.0, 350
+reload_dof				= 0.0, 0.5, 5, 2
+
+;-------------------------------------------------------------------------------
+holder_range_modifier	= 2.15               ; во сколько раз увеличивается eye_range
+holder_fov_modifier		= 1.0             ; во сколько раз увеличивается eye_fov
+
+min_radius = 0 ;              = 0
+max_radius = 500 ; = 250 ;              = 50
+
+hit_probability_gd_novice = 1.00 ;	= 1
+hit_probability_gd_stalker = 1.00 ;	= 1
+hit_probability_gd_veteran = 1.00 ;	= 1
+hit_probability_gd_master = 1.00 ;	= 1
+
+;-------------------------------------------------------------------------------
+slot                    = 2                ; // secondary
+animation_slot          = 2                ; type of the animation that will be used
+
+inv_name                = st_wpn_svu
+inv_name_short          = st_wpn_svu
+
+inv_grid_width          = 5
+inv_grid_height		= 2
+inv_grid_x		= 45
+inv_grid_y              = 2
+
+upgr_icon_x			= 1724 ; 594
+upgr_icon_y			= 802 ; 395
+upgr_icon_width		= 167 ; 294
+upgr_icon_height   	= 159 ; 80
+
+kill_msg_x				= 0
+kill_msg_y              = 59
+kill_msg_width          = 80
+kill_msg_height         = 26
+
+;-------------------------------------------------------------------------------
+position                = -0.026, -0.084, 0.0
+orientation             = 0, 0, 0
+
+fire_point              = 0.0, 0.128, 0.522
+fire_point2             = 0.0, 0.128, 0.522
+
+flame_particles         = weapons\generic_weapon05
+smoke_particles         = weapons\generic_shoot_00
+rpm_empty_click 		= 200
+
+shell_point					= 0.0, 0.128, 0.0
+shell_dir		 			= 0.0, 0.0, 0.4
+shell_particles				= weapons\762x54
+
+;--STRAP PARAMETERS-----------------------------------------------------------------
+;под мишкой
+strap_position          = -0.26,-0.11,0.25         ; position (offset) and orientation of the weapon when it is strapped
+strap_orientation       = -15,-9,110            ; (3rd person view in degrees)
+strap_bone0					= bip01_spine2
+strap_bone1					= bip01_spine1
+
+startup_ammo            = 10
+visual                  = dynamics\weapons\wpn_svu\wpn_svu.ogf
+
+light_disabled          = true
+light_color		 		= 0.6,0.5,0.3
+light_range		 		= 4.0
+light_var_color		 	= 0.05
+light_var_range		 	= 0.5
+light_time 		 		= 0.2
+
+ph_mass			 		= 3
+
+;addons
+scope_status            = 0
+silencer_status		= 1
+grenade_launcher_status	= 0
+
+zoom_enabled			= true
+zoom_rotate_time		= 0.35
+scope_zoom_factor = 1.1
+
+scope_texture			= wpn_crosshair_pso1
+scope_name 				= wpn_addon_scope
+scope_x 				= 60
+scope_y 				= -2
+
+[wpn_svu_hud]:hud_base
+zoom_hide_crosshair			= true
+attach_place_idx			= 0
+item_visual             		= dynamics\weapons\wpn_svu\wpn_svu_hud
+
+hands_position				= 0.008,-0.17,0.25
+hands_orientation			= 0.55,2.39,0.15
+hands_position_16x9			= 0.008,-0.17,0.25
+hands_orientation_16x9			= 0.55,2.39,0.15
+
+item_position				= 0,0,0
+item_orientation			= 0,0,0
+
+aim_hud_offset_pos	 		= -0.1123,0.062,-0.1
+aim_hud_offset_rot			= 0.0386,0.022,0
+aim_hud_offset_pos_16x9 		= -0.1123,0.062,-0.1
+aim_hud_offset_rot_16x9 		= 0.0386,0.022,0
+
+shell_point				= 0,0,0
+shell_dir               		= 0,1,0
+shell_bone				= gilza
+
+fire_point				= 0,0,0
+fire_bone               		= muzzle
+
+anm_show				= svu_draw
+anm_hide             			= svu_holster
+anm_shots				= svu_shoot, shoot
+anm_reload				= svu_reload, reload
+anm_reload_empty				= svu_reload_empty, reload_empty
+anm_bore				= svu_idle_aim
+anm_idle             			= svu_idle
+anm_idle_aim				= svu_idle_aim
+anm_idle_moving 			= svu_idle_moving
+anm_idle_moving_crouch			= svu_idle_crouch
+anm_idle_sprint				= svu_idle_sprint
+
+gl_hud_offset_pos			= 0,0,0
+gl_hud_offset_rot			= 0,0,0
+
+lean_hud_offset_pos			= 0,0,0
+lean_hud_offset_rot			= 0,0,0
+;-----------------------------------------------------------------------------
+[wpn_svu_1p29]:wpn_svu
+
+inv_weight              	= 4.61
+
+hud				= wpn_svu_1p29_hud
+  
+1icon_layer			= 1p29
+1icon_layer_x			= 72
+1icon_layer_y			= 6
+
+visual				= dynamics\weapons\wpn_svu\wpn_svu_1p29.ogf
+
+scope_status			= 1
+scope_texture			= wpn_crosshair_1p29
+scope_zoom_factor = 4.0
+zoom_rotate_time		= 0.3
+
+[wpn_svu_1p29_hud]:wpn_svu_hud
+item_visual             	= dynamics\weapons\wpn_svu\wpn_svu_1p29_hud.ogf
+
+aim_hud_offset_pos		= -0.104,0.036,-0.1
+aim_hud_offset_rot		= 0.027,0.009,0
+aim_hud_offset_pos_16x9 	= -0.104,0.036,-0.1
+aim_hud_offset_rot_16x9 	= 0.027,0.009,0
+;-----------------------------------------------------------------------------
+[wpn_svu_kobra]:wpn_svu
+
+inv_weight              	= 4.22
+
+hud				= wpn_svu_kobra_hud
+
+1icon_layer			= kobra
+1icon_layer_x			= 75
+1icon_layer_y			= 9
+
+visual				= dynamics\weapons\wpn_svu\wpn_svu_kobra.ogf
+
+scope_status            	= 0
+
+scope_zoom_factor = 1.1
+scope_dynamic_zoom = off
+
+[wpn_svu_kobra_hud]:wpn_svu_hud
+item_visual             	= dynamics\weapons\wpn_svu\wpn_svu_kobra_hud.ogf
+
+aim_hud_offset_pos		= -0.104,0.036,-0.1
+aim_hud_offset_rot		= 0.027,0.009,0
+aim_hud_offset_pos_16x9 	= -0.104,0.036,-0.1
+aim_hud_offset_rot_16x9 	= 0.027,0.009,0
+;-----------------------------------------------------------------------------
+[wpn_svu_ps01]:wpn_svu
+
+inv_weight			= 4.41
+
+hud                     	= wpn_svu_pso1_hud
+
+visual				= dynamics\weapons\wpn_svu\wpn_svu_pso1.ogf
+
+1icon_layer			= ps01
+1icon_layer_x			= 47
+1icon_layer_y			= 8
+
+scope_status			= 1
+scope_texture			= wpn_crosshair_pso1
+scope_zoom_factor = 4.0
+scope_dynamic_zoom		= on
+
+[wpn_svu_pso1_hud]:wpn_svu_hud
+item_visual                	= dynamics\weapons\wpn_svu\wpn_svu_pso1_hud.ogf
+
+aim_hud_offset_pos 		= -0.098,0.055,-0.1
+aim_hud_offset_rot 		= 0.0386,0.009,0
+aim_hud_offset_pos_16x9 	= -0.098,0.055,-0.1
+aim_hud_offset_rot_16x9 	= 0.0386,0.009,0
+
+;-----------------------------------------------------------------------------
+[wpn_svu_nimble]:wpn_svu
+$spawn              		= "weapons\wpn_svu_nimble"
+class                   	= WP_AK74
+inv_name			= st_wpn_svu_nimble
+description			= st_wpn_svu_nimble_descr
+
+scopes 				= 1p29, kobra, ps01
+parent_section  		= wpn_svu_nimble
+
+installed_upgrades      	= up_fiftha_svu
+
+cost                    	= 60000
+inv_weight              	= 3.83
+  
+inv_grid_x			= 45
+inv_grid_y			= 8
+
+;----TTX------------------------------------------------------------------------
+hit_power           		= 0.91, 0.91, 0.91, 0.91
+
+bullet_speed			= 783	;начальная скорость пули
+
+hud				= wpn_svu_nimble_hud
+
+misfire_start_condition		= 0.65
+misfire_end_condition		= 0.25
+misfire_start_prob              = 0.02 
+misfire_end_prob                = 0.1 
+condition_shot_dec      	= 0.0009
+condition_queue_shot_dec	= 0.0009
+
+fire_modes              	= 1, -1
+rpm                     	= 500
+launch_speed            	= 0
+grenade_class           	= ammo_m209
+
+fire_dispersion_base    	= 0.07
+
+grenade_flame_particles 	= weapons\generic_weapon01
+
+visual                  	= dynamics\weapons\wpn_svu\wpn_svu_nimble.ogf
+
+control_inertion_factor = 1
+crosshair_inertion		= 8.8
+
+;отдача
+cam_return = 0 ;				= 0
+cam_relax_speed         = 5.0   ;скорость возврата в исходное положение
+cam_relax_speed_ai      = 360	;скорость возврата в исходное положение
+cam_dispersion          = 1.3 ;увеличения угла (в градусах) с каждым выстрелом
+cam_dispersion_inc		= 1.3	;увеличениe cam_dispersion с каждым выстрелом
+cam_dispersion_frac		= 1	;ствол будет подыматься на cam_dispersion*cam_dispersion_frac +- cam_dispersion*(1-cam_dispersion_frac)
+cam_max_angle           = 30.0   ;максимальный угол отдачи
+cam_max_angle_horz		= 20.0	;(degree) maximum shot horizontal degree
+cam_step_angle_horz     = 2.92 ;(degree) size of step camera moved in horizontal position while shooting
+
+[wpn_svu_nimble_hud]:wpn_svu_hud
+item_visual             	= dynamics\weapons\wpn_svu\wpn_svu_nimble_hud
+
+grenade_bone            	= grenade
+;-----------------------------------------------------------------------------
+[wpn_svu_nimble_1p29]:wpn_svu_nimble
+
+inv_weight              	= 4.63
+
+hud				= wpn_svu_nimble_1p29_hud
+  
+1icon_layer			= 1p29
+1icon_layer_x			= 72
+1icon_layer_y			= 6
+
+visual				= dynamics\weapons\wpn_svu\wpn_svu_1p29_nimble.ogf
+
+scope_status			= 1
+scope_texture			= wpn_crosshair_1p29
+scope_zoom_factor = 4.0
+scope_dynamic_zoom		= on
+
+[wpn_svu_nimble_1p29_hud]:wpn_svu_1p29_hud
+item_visual             	= dynamics\weapons\wpn_svu\wpn_svu_1p29_nimble_hud.ogf
+
+grenade_bone            	= grenade
+;-----------------------------------------------------------------------------
+[wpn_svu_nimble_kobra]:wpn_svu_nimble
+
+inv_weight              	= 4.25
+
+hud				= wpn_svu_nimble_kobra_hud
+
+1icon_layer			= kobra
+1icon_layer_x			= 75
+1icon_layer_y			= 9
+
+visual				= dynamics\weapons\wpn_svu\wpn_svu_kobra_nimble.ogf
+
+scope_status            	= 0
+
+scope_zoom_factor = 1.1
+scope_dynamic_zoom = off
+
+[wpn_svu_nimble_kobra_hud]:wpn_svu_kobra_hud
+item_visual             	= dynamics\weapons\wpn_svu\wpn_svu_kobra_nimble_hud.ogf
+
+grenade_bone            	= grenade
+;-----------------------------------------------------------------------------
+[wpn_svu_nimble_ps01]:wpn_svu_nimble
+
+inv_weight              	= 4.44
+
+hud				= wpn_svu_nimble_pso1_hud
+
+1icon_layer			= ps01
+1icon_layer_x			= 47
+1icon_layer_y			= 8
+
+visual				= dynamics\weapons\wpn_svu\wpn_svu_pso1_nimble.ogf
+
+scope_status			= 1
+scope_texture			= wpn_crosshair_pso1
+scope_zoom_factor = 4.0
+scope_dynamic_zoom		= on
+
+[wpn_svu_nimble_pso1_hud]:wpn_svu_pso1_hud
+item_visual             	= dynamics\weapons\wpn_svu\wpn_svu_pso1_nimble_hud.ogf
+
+grenade_bone            	= grenade
+;-----------------------------------------------------------------------------

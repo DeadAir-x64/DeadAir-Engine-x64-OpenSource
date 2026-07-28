@@ -9,6 +9,7 @@ target_sources(xrRenderPC_R4 PRIVATE
     r4_rendertarget_phase_combine.cpp
     r4_rendertarget_phase_hdao.cpp
     r4_rendertarget_phase_taa.cpp
+    da_gpu_timer.cpp
     da_fsr2.cpp
     da_fsr2.h
     da_fsr3.cpp
@@ -16,6 +17,8 @@ target_sources(xrRenderPC_R4 PRIVATE
     da_fsr3_api.h
     da_xess.cpp
     da_xess.h
+    da_dlss.cpp
+    da_dlss.h
     da_upscaler.h
     r4_rendertarget_phase_fsr2.cpp
     r4_rendertarget_phase_fsr3.cpp
@@ -23,6 +26,7 @@ target_sources(xrRenderPC_R4 PRIVATE
     r4_rendertarget_phase_reactive.cpp
     r4_rendertarget_phase_sky_velocity.cpp
     r4_rendertarget_phase_xess.cpp
+    r4_rendertarget_phase_dlss.cpp
     r4_rendertarget_u_set_rt.cpp
     r4_shaders.cpp
     R_Backend_LOD.cpp
@@ -282,6 +286,19 @@ target_include_directories(xrRenderPC_R4 PRIVATE
 )
 target_link_libraries(xrRenderPC_R4 PRIVATE
     "${CMAKE_SOURCE_DIR}/Externals/xess/lib/libxess_dx11.lib"
+)
+
+# [DA_PORT] NVIDIA DLSS. Здесь НЕТ линковки, и это не упущение.
+#
+# NGX отдаётся статическими библиотеками MSVC, а MinGW их не линкует вообще: 77-123 неразрешённых
+# символа MSVC-STL, RTTI и vcruntime. Поэтому NGX живёт в отдельной da_ngx.dll (Externals/nvngx_shim),
+# собранной MSVC, а рендер грузит её через GetProcAddress. Отсюда нужен только заголовок с описанием
+# плоского C-интерфейса.
+#
+# Собирать прослойку заново нужно ТОЛЬКО при правке её исходника: Externals/nvngx_shim/build.bat.
+# Обычная сборка игры о MSVC не знает.
+target_include_directories(xrRenderPC_R4 PRIVATE
+    "${CMAKE_SOURCE_DIR}/Externals"
 )
 
 target_compile_definitions(xrRenderPC_R4

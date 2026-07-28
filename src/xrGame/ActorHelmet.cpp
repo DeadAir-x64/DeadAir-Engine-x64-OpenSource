@@ -58,7 +58,16 @@ void CHelmet::Load(LPCSTR section)
     m_fSatietyRestoreSpeed = READ_IF_EXISTS(pSettings, r_float, section, "satiety_restore_speed", 0.0f);
     m_fPowerRestoreSpeed = READ_IF_EXISTS(pSettings, r_float, section, "power_restore_speed", 0.0f);
     m_fBleedingRestoreSpeed = READ_IF_EXISTS(pSettings, r_float, section, "bleeding_restore_speed", 0.0f);
-    m_fPowerLoss = READ_IF_EXISTS(pSettings, r_float, section, "power_loss", 1.0f);
+    // [DA_PORT] Defaults to 0, not 1, because for a helmet this value is a SUMMAND.
+    //
+    // CEntityCondition::HitPowerEffect adds the power_loss of every worn piece on top of a 0.5 base, the
+    // way Dead Air does it, instead of multiplying by the outfit's value. Under that formula the old
+    // default of 1.0 - which meant "no effect" back when it was a multiplier - would mean "+100%", and
+    // since no helmet in Dead Air declares this key at all, simply putting one on would have roughly
+    // trebled the cost of sprinting. Undeclared must mean "contributes nothing".
+    // The only engine reader is that sum. The field is also exposed to Lua (CustomOutfit_script.cpp),
+    // but no Dead Air script touches it, so nothing else observes the changed default.
+    m_fPowerLoss = READ_IF_EXISTS(pSettings, r_float, section, "power_loss", 0.0f);
     clamp(m_fPowerLoss, 0.0f, 1.0f);
 
     m_BonesProtectionSect = READ_IF_EXISTS(pSettings, r_string, section, "bones_koeff_protection", "");

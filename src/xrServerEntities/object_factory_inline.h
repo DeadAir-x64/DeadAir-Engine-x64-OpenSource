@@ -16,11 +16,11 @@ IC const CObjectFactory& object_factory()
     if (!g_object_factory)
     {
         ZoneScopedN("Create object factory");
-        Msg("! [DA_PORT] object_factory: creating new (g_object_factory=null)"); FlushLog();
+        Msg("* [DA_PORT] object_factory: creating new (g_object_factory=null)"); FlushLog();
         g_object_factory = xr_new<CObjectFactory>();
-        Msg("! [DA_PORT] object_factory: after xr_new, before init()"); FlushLog();
+        Msg("* [DA_PORT] object_factory: after xr_new, before init()"); FlushLog();
         g_object_factory->init();
-        Msg("! [DA_PORT] object_factory: after init()"); FlushLog();
+        Msg("* [DA_PORT] object_factory: after init()"); FlushLog();
 
         class CResetEventCb : public CEventNotifierCallbackWithCid
         {

@@ -499,6 +499,7 @@ void CRenderTarget::phase_combine()
         phase_fsr2();
         phase_fsr3(); // [DA_PORT]
         phase_xess();
+        phase_dlss(); // [DA_PORT] NVIDIA DLSS, тот же слот кадра; включён всегда только один
         da_d3d_debug_drain(); // [DA_PORT] validation layer output, see dx11HW.cpp // [DA_PORT] the other upscaler; only one is ever enabled
 
         PIX_EVENT(phase_pp);

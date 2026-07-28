@@ -11,6 +11,7 @@
 #include "Include/xrRender/Kinematics.h"
 #include "Common/object_broker.h"
 #include "ActorHelmet.h"
+#include "ActorBackpack.h" // [DA_PORT] CBackpack::m_fPowerLoss in HitPowerEffect
 
 #define MAX_HEALTH 1.0f
 #define MIN_HEALTH -0.01f
@@ -302,20 +303,31 @@ float CEntityCondition::HitOutfitEffect(
 
     CCustomOutfit* pOutfit = (CCustomOutfit*)pInvOwner->inventory().ItemFromSlot(OUTFIT_SLOT);
     CHelmet* pHelmet = (CHelmet*)pInvOwner->inventory().ItemFromSlot(HELMET_SLOT);
-    if (!pOutfit && !pHelmet)
+    // [DA_PORT] The backpack gets its turn first, before outfit and helmet, as in Dead Air.
+    //
+    // MUST be a checked cast. The author writes (CCustomOutfit*) here, but Dead Air's own backpacks are
+    // "class = SCRPTART" artefacts (kit_hunt and everything derived from it), not outfits, so that cast
+    // reinterprets an artefact and reads armour fields from meaningless offsets. smart_cast yields null
+    // for them and the layer is simply skipped - which is also why this currently changes nothing for
+    // stock Dead Air: its backpacks carry no armour data at all, only additional_inventory_weight.
+    // It stays because a backpack defined as an outfit would now be honoured.
+    CCustomOutfit* pBackpack = smart_cast<CCustomOutfit*>(pInvOwner->inventory().ItemFromSlot(BACKPACK_SLOT));
+    if (!pOutfit && !pHelmet && !pBackpack)
         return hit_power;
 
-    float new_hit_power = hit_power;
+    if (pBackpack)
+        hit_power = pBackpack->HitThroughArmor(hit_power, element, ap, add_wound, hit_type);
+
     if (pOutfit)
-        new_hit_power = pOutfit->HitThroughArmor(hit_power, element, ap, add_wound, hit_type);
+        hit_power = pOutfit->HitThroughArmor(hit_power, element, ap, add_wound, hit_type);
 
     if (pHelmet)
-        new_hit_power = pHelmet->HitThroughArmor(new_hit_power, element, ap, add_wound, hit_type);
+        hit_power = pHelmet->HitThroughArmor(hit_power, element, ap, add_wound, hit_type);
 
     if (bDebug)
-        Msg("new_hit_power = %.3f  hit_type = %s  ap = %.3f", new_hit_power, ALife::g_cafHitType2String(hit_type), ap);
+        Msg("new_hit_power = %.3f  hit_type = %s  ap = %.3f", hit_power, ALife::g_cafHitType2String(hit_type), ap);
 
-    return new_hit_power;
+    return hit_power;
 }
 
 float CEntityCondition::HitPowerEffect(float power_loss)
@@ -324,13 +336,28 @@ float CEntityCondition::HitPowerEffect(float power_loss)
     if (!pInvOwner)
         return power_loss;
 
+    // [DA_PORT] power_loss stays a MULTIPLIER. The author's summand form is deliberately NOT used.
+    //
+    // His alpha replaces this with `power_loss * (0.5 + outfit + helmet + backpack)`, and it was ported
+    // that way first. Measured against real data it does not hold up:
+    //   * Dead Air's helmets declare no power_loss at all and the field defaults to 1.0, so in the
+    //     author's own build merely wearing a helmet adds +100% - a multiplier of ~2.12 against the
+    //     stock 0.62. Nobody play-tested a balance where sprinting is that expensive; the alpha was
+    //     evidently mid-refactor here.
+    //   * Even with that default corrected the sum charges 1.12 where stock charges 0.62, and the
+    //     effect is not the 80% it looks like. Drain and income (artefacts + satiety) nearly cancel
+    //     under the multiplier, so the extra 0.5 turned ~85 seconds of continuous sprint into ~12.
+    //     Measured in game at 16 seconds with Pavel's kit: 17.2 kg against a carry limit of 12.
+    // The configs read as multiplier semantics too - a suit at 0.62 says "sprinting costs 62% here",
+    // and its upgrades subtract from that number.
+    //
+    // Helmet and backpack therefore do not take part. Their power_loss defaults were set to 0 for the
+    // sum and are simply unread now; that stays as it is so restoring the sum remains a local edit.
     CCustomOutfit* pOutfit = pInvOwner->GetOutfit();
     if (!pOutfit)
         return power_loss * 0.5f;
 
-    const float new_power_loss = power_loss * pOutfit->GetPowerLoss();
-
-    return new_power_loss;
+    return power_loss * pOutfit->GetPowerLoss();
 }
 
 CWound* CEntityCondition::AddWound(float hit_power, ALife::EHitType hit_type, u16 element)
@@ -374,7 +401,11 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 
     bool const is_special_hit_2_self = (pHDS->who == m_object) && (pHDS->boneID == BI_NONE);
 
-    bool bAddWound = pHDS->add_wound;
+    // [DA_PORT] Dead Air starts from "this hit wounds" and lets the switch below veto it, rather than
+    // trusting the flag the hit arrived with. The branches that must not wound (psy, burns, chemical,
+    // shock, radiation) clear it explicitly a few lines down, so the only hits affected are physical
+    // ones that came in with add_wound unset - which in the author's build still leave a wound.
+    bool bAddWound = true; // was: pHDS->add_wound
 
     float hit_power_org = pHDS->damage();
     float hit_power = hit_power_org;
@@ -396,7 +427,10 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
     case ALife::eHitTypeLightBurn:
     case ALife::eHitTypeBurn:
         hit_power *= GetHitImmunity(ALife::eHitTypeBurn) - m_fBoostBurnImmunity;
-        m_fHealthLost = hit_power * m_fHealthHitPart * m_fHitBoneScale;
+        // [DA_PORT] No per-bone scaling on burns - Dead Air drops m_fHitBoneScale here. Fire damage
+        // mostly arrives from zones and anomalies with no meaningful bone, so scaling it by whichever
+        // bone the hit was tagged with made the same flame hurt differently for no readable reason.
+        m_fHealthLost = hit_power * m_fHealthHitPart;
         m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
         m_fDeltaPower -= hit_power * m_fPowerHitPart;
         //		bAddWound		=  is_special_hit_2_self;

@@ -364,9 +364,52 @@ xrImTextureData D3DXRenderBase::GetImGuiTextureId(pcstr texture_name)
     };
 }
 
+// [DA_PORT] The same breakdown, into the LOG instead of the screen.
+//
+// The on-screen overlay exists (rs_stats) but it cannot be read reliably: taking a screenshot to read
+// it costs several milliseconds of the very frame being measured, so the numbers you photograph are not
+// the numbers you had. This writes one line per frame for N frames and nothing else touches the frame.
+//
+// Purpose it was written for: comparing the SAME scene between two levels. Cordon runs at 130 fps and
+// the swamps at 400+, with every render sub-counter reading zero on both, so the difference has to be
+// in something the overlay shows but nobody could copy down accurately.
+int ps_da_render_log = 0;
+
 void D3DXRenderBase::DumpStatistics(IGameFont& font, IPerformanceAlert* alert)
 {
     BasicStats.FrameEnd();
+
+    if (ps_da_render_log > 0)
+    {
+        const auto& rc = RCache.stat;
+        Msg("~ [DA_RENDER] total %5.2f | calc %5.2f | prim %5.2f | waitL %5.2f | waitS %5.2f | skin %5.2f "
+            "| dt_vis %5.2f x%u | dt_rend %5.2f | wm %5.2f | glow %5.2f | lights %5.2f x%u | rt %5.2f x%u "
+            "| hud %5.2f | s_calc %5.2f | s_rend %5.2f x%u | occ %u/%u | DIP %u | verts %u | polys %u",
+            Device.GetStats().RenderTotal.result, BasicStats.Culling.result, BasicStats.Primitives.result,
+            BasicStats.Wait.result, BasicStats.WaitS.result, BasicStats.Skinning.result,
+            BasicStats.DetailVisibility.result, BasicStats.DetailCount, BasicStats.DetailRender.result,
+            BasicStats.Wallmarks.result, BasicStats.Glows.result, BasicStats.Lights.result,
+            BasicStats.Lights.count, BasicStats.RenderTargets.result, BasicStats.RenderTargets.count,
+            BasicStats.HUD.result, BasicStats.ShadowsCalc.result, BasicStats.ShadowsRender.result,
+            BasicStats.ShadowsRender.count, BasicStats.OcclusionCulled, BasicStats.OcclusionQueries,
+            rc.render.calls, rc.render.verts, rc.render.polys);
+
+        // [DA_PORT] Light counts, on their own line.
+        //
+        // BasicStats.Lights / ShadowsRender are never filled by R2/R4, so the line above always shows
+        // "lights 0.00 x0" - useless exactly where it matters. The numbers that decide the frame live in
+        // RImplementation.Stats: every SHADOWED light re-submits the scene geometry into its own shadow
+        // map (r2_R_lights.cpp: phase_smap_spot -> render_graph), so the scene is drawn 1 + l_shadowed
+        // times. On a level full of lamps that, not the level's geometry, is the cost.
+        Msg("~ [DA_LIGHTS] total %u | visible %u | shadowed %u | unshadowed %u | smaps used %d, merged %d, "
+            "clipped %d",
+            RImplementation.Stats.l_total, RImplementation.Stats.l_visible, RImplementation.Stats.l_shadowed,
+            RImplementation.Stats.l_unshadowed, RImplementation.Stats.s_used, RImplementation.Stats.s_merged,
+            RImplementation.Stats.s_finalclip);
+
+        if (--ps_da_render_log == 0)
+            Msg("~ [DA_RENDER] ---- done ----");
+    }
     auto renderTotal = Device.GetStats().RenderTotal.result;
 #define PPP(a) (100.f * float(a) / renderTotal)
     font.OutNext("*** RENDER:   %2.2fms", renderTotal);

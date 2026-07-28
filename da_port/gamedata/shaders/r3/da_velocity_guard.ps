@@ -1,0 +1,92 @@
+#include "common.h"
+
+// [DA_PORT] Damp vegetation motion in the neighbourhood of glossy, standing surfaces.
+//
+// The problem this exists for, measured over several sessions: FSR reconstructs each pixel by looking up
+// where it was last frame, and it takes that vector not from the pixel itself but from the NEAREST-DEPTH
+// pixel in a small neighbourhood - dilation, which exists so the edges of moving objects do not tear.
+// Grass and thin branches grow right against objects and are always the nearer surface, so their motion
+// gets pulled onto the static thing behind them. The surface then has its history fetched as though it
+// had travelled with the grass. Metal shows it worst: a narrow specular lobe turns a small error in the
+// lookup into a large error in brightness, which is why barrels and cars break up into coloured mush
+// while the wooden fence beside them, with the same grass in front of it, is untouched.
+//
+// FSR offers no way to say "do not dilate from here" - the reactive and transparency masks act on the
+// pixels they mark, not on where a neighbour's vector comes from. Both were tried and neither helped.
+// Nor is silencing all vegetation an answer: it costs smearing on the grass itself whenever the camera
+// moves, which is a worse trade in open country than the artefact it fixes.
+//
+// So the damping is made LOCAL. A grass pixel keeps its honest vector everywhere except within a few
+// pixels of a glossy surface that is standing still - exactly where dilation would do harm. In open
+// field nothing changes at all.
+
+uniform float4 da_vguard;   // x = gloss threshold, y = strength, z = radius, w = stillness sensitivity
+
+// s_velocity needs declaring; s_diffuse is already declared in common.h and must NOT be repeated -
+// HLSL treats a second declaration as a redefinition and the whole shader fails to compile, which
+// the engine answers by silently substituting stub_default.
+Texture2D s_velocity;
+
+// Matches da_fullscreen.vs exactly: the field order is what binds the two stages together.
+struct vf
+{
+	float2 tc0   : TEXCOORD0;
+	float4 hpos  : SV_Position;
+};
+
+float4 main(vf I) : SV_Target
+{
+	// Integer texel coordinates straight from the rasteriser. Load() rather than Sample(): this pass
+	// wants the exact texel and nothing else - filtering would average a moving pixel with a still one,
+	// which is precisely the confusion it exists to undo. It also needs no sampler, and therefore no
+	// agreement with the blender about which sampler slot to use.
+	const int3 px = int3(I.hpos.xy, 0);
+	const float2 v = s_velocity.Load(px).xy;
+
+	if (da_vguard.y <= 0.0)
+		return float4(v, 0, 0);
+
+	const int r = int(da_vguard.z);
+
+	// Find a glossy neighbour and remember ITS velocity, not merely that it exists.
+	float found = 0.0;
+	float2 v_protected = v;
+	[unroll] for (int y = -1; y <= 1; ++y)
+	{
+		[unroll] for (int x = -1; x <= 1; ++x)
+		{
+			const int3 spx = int3(px.xy + int2(x, y) * r, 0);
+			const float gloss = s_diffuse.Load(spx).w;
+			if (gloss >= da_vguard.x && found < 0.5)
+			{
+				found = 1.0;
+				v_protected = s_velocity.Load(spx).xy;
+			}
+		}
+	}
+
+	// [DA_PORT] And only while the protected surface is actually standing still on screen.
+	//
+	// Screen velocity depends on depth: under camera motion two neighbouring pixels at different
+	// distances legitimately travel at different speeds, and tying one to the other then destroys a
+	// difference that was correct - which is why the picture swam whenever the camera moved even after
+	// the damping was aimed at the neighbour rather than at zero. There is nothing to gain there in any
+	// case: the artefact this pass exists for appears when the world is still and only the vegetation
+	// moves. So the guard fades itself out the moment the camera starts to travel.
+	// The stillness test used to live here, per pixel. It moved to the CPU and now covers the whole
+	// frame at once - see phase_velocity_guard for why a per-pixel threshold could not work.
+
+	// Pulled TOWARDS the protected surface's own velocity, not towards zero - and that
+	// distinction is the whole difference between working and ruining the frame.
+	//
+	// Damping to zero was the first attempt and it failed in a way worth recording: when the camera
+	// moves, a blade of grass and the barrel behind it travel across the screen together, so almost all
+	// of that vector is camera motion and it is entirely correct. Zeroing it tells the upscaler the
+	// grass stood still while the world slid past, its history is fetched from the wrong place, and
+	// since vegetation covers half the screen the whole image appears to swim.
+	//
+	// Against the neighbour's velocity both cases fall out on their own: under camera motion the two
+	// are nearly equal and this changes almost nothing, while with the camera still the barrel reads
+	// zero and only the sway - exactly the part that poisons it - is taken away.
+	return float4(lerp(v, v_protected, found * da_vguard.y), 0, 0);
+}

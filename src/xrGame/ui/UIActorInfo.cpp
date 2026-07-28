@@ -72,7 +72,11 @@ bool CUIActorInfoWnd::Init()
     UICharacterInfo = xr_new<CUICharacterInfo>();
     UICharacterInfo->SetAutoDelete(true);
     UICharacterWindow->AttachChild(UICharacterInfo);
-    UICharacterInfo->InitCharacterInfo(UICharacterWindow->GetWndPos(), UICharacterWindow->GetWndSize(), ACTOR_CHARACTER_XML);
+    // [DA_PORT] Origin is (0,0), not the parent's position: UICharacterInfo is attached as a child of
+    // UICharacterWindow, so its coordinates are already relative to it. Passing the parent's own offset
+    // applies that shift a second time and pushes the whole character block down and to the right.
+    // Both the CoC base and Dead Air's own source pass (0,0) here - this is an upstream divergence.
+    UICharacterInfo->InitCharacterInfo(Fvector2().set(0.0f, 0.0f), UICharacterWindow->GetWndSize(), ACTOR_CHARACTER_XML);
 
     // Элементы автоматического добавления
     CUIXmlInit::InitAutoStaticGroup(uiXml, "right_auto_static", 0, UICharIconFrame);
@@ -87,8 +91,15 @@ void CUIActorInfoWnd::Show(bool status)
     if (!status) return;
 
     UICharacterInfo->InitCharacter(Actor()->ID());
-    if (UICharIconHeader->GetTitleText())
-        UICharIconHeader->GetTitleText()->SetText(Actor()->Name());
+
+    // [DA_PORT] The actor's name is deliberately NOT drawn here.
+    //
+    // Upstream implemented the "todo" that both the CoC base and Dead Air's own source leave commented
+    // out, and on this data it renders as garbage: the frame-line title has no Russian font assigned, so
+    // the Cyrillic name comes out as repeated junk glyphs, and it lands outside the frame besides. The
+    // header already carries its own caption from the XML - there is nothing to replace here.
+    // Restoring it would mean giving the title its own font and position, which neither original does.
+
     FillPointsInfo();
 }
 
@@ -100,53 +111,64 @@ void CUIActorInfoWnd::FillPointsInfo()
 
     UIMasterList->Clear();
 
-#ifndef PRIQUEL
+    // [DA_PORT] Choose the layout scheme by what the XML actually contains, not by a build flag.
+    //
+    // Two incompatible ways of describing the section list exist. Upstream expects repeated <master_part>
+    // nodes carrying an "id" attribute; CoC and Dead Air name each node after its key instead
+    // (<master_part_total>, ...) and there is no <master_part> node at all. The branch below was selected
+    // by PRIQUEL, which is defined nowhere in this tree, so on Dead Air's data the node count came out
+    // zero, the loop never ran and the whole left-hand section list stayed empty - which is what made the
+    // Statistics tab look broken. Counting first and falling back keeps both kinds of data working.
     const int items_num = uiXml.GetNodesNum("actor_stats_wnd", 0, "master_part");
-    uiXml.SetLocalRoot(uiXml.NavigateToNode("actor_stats_wnd", 0));
-    string64 buff;
-
-    for (int i = 0; i < items_num; ++i)
+    if (items_num > 0)
     {
-        CUIActorStaticticHeader* itm = xr_new<CUIActorStaticticHeader>(this);
-        itm->Init(&uiXml, "master_part", i);
+        uiXml.SetLocalRoot(uiXml.NavigateToNode("actor_stats_wnd", 0));
+        string64 buff;
 
-        if (itm->m_id != "foo")
+        for (int i = 0; i < items_num; ++i)
         {
-            if (itm->m_id == "reputation")
-            {
-                itm->m_text2->SetTextST(InventoryUtilities::GetReputationAsText(Actor()->Reputation()));
-                itm->m_text2->TextItemControl()->SetTextColor(InventoryUtilities::GetReputationColor(Actor()->Reputation()));
-            }
-            else
-            {
-                const s32 _totl = Actor()->StatisticMgr().GetSectionPoints(itm->m_id);
+            CUIActorStaticticHeader* itm = xr_new<CUIActorStaticticHeader>(this);
+            itm->Init(&uiXml, "master_part", i);
 
-                if (_totl == -1)
+            if (itm->m_id != "foo")
+            {
+                if (itm->m_id == "reputation")
                 {
-                    itm->m_text2->SetTextST("");
+                    itm->m_text2->SetTextST(InventoryUtilities::GetReputationAsText(Actor()->Reputation()));
+                    itm->m_text2->TextItemControl()->SetTextColor(InventoryUtilities::GetReputationColor(Actor()->Reputation()));
                 }
                 else
                 {
-                    xr_sprintf(buff, "%d", _totl);
-                    itm->m_text2->SetTextST(buff);
+                    const s32 _totl = Actor()->StatisticMgr().GetSectionPoints(itm->m_id);
+
+                    if (_totl == -1)
+                    {
+                        itm->m_text2->SetTextST("");
+                    }
+                    else
+                    {
+                        xr_sprintf(buff, "%d", _totl);
+                        itm->m_text2->SetTextST(buff);
+                    }
                 }
             }
+            UIMasterList->AddWindow(itm, true);
         }
-        UIMasterList->AddWindow(itm, true);
     }
-#else
-    const vStatSectionData& _storage = Actor()->StatisticMgr().GetCStorage();
-    vStatSectionData::const_iterator it = _storage.begin();
-    vStatSectionData::const_iterator it_e = _storage.end();
-
-    FillMasterPart(&uiXml, "foo");
-
-    for (; it != it_e; ++it)
+    else
     {
-        FillMasterPart(&uiXml, (*it).key);
+        const vStatSectionData& _storage = Actor()->StatisticMgr().GetCStorage();
+        vStatSectionData::const_iterator it = _storage.begin();
+        vStatSectionData::const_iterator it_e = _storage.end();
+
+        FillMasterPart(&uiXml, "foo");
+
+        for (; it != it_e; ++it)
+        {
+            FillMasterPart(&uiXml, (*it).key);
+        }
+        FillMasterPart(&uiXml, "total");
     }
-    FillMasterPart(&uiXml, "total");
-#endif
     UIMasterList->SetSelected(UIMasterList->GetItem(1));
 }
 
@@ -312,12 +334,19 @@ void CUIActorStaticticHeader::Init(CUIXml* xml, LPCSTR path, int idx_in_xml)
 
     CUIXmlInit::InitAutoStaticGroup(*xml, "auto", 0, this);
 
-#ifndef PRIQUEL
+    // [DA_PORT] Support both ways of naming a statistic section, instead of picking one at compile time.
+    //
+    // Upstream reads the key from an "id" attribute unless PRIQUEL is defined, and PRIQUEL is defined
+    // nowhere in this tree. Dead Air's actor_statistic.xml is a CoC-era file that encodes the key in the
+    // node name ("master_part_<key>") and carries no such attribute, so the key came out empty: every
+    // comparison below missed and GetSectionPoints() was queried with a null section.
+    // The attribute still wins where it exists; the node name is the fallback.
     m_id = xml->ReadAttrib(xml->GetLocalRoot(), "id", nullptr);
-#else
-    pcstr _id = strstr(path, "master_part_") + xr_strlen("master_part_");
-    m_id = _id;
-#endif
+    if (!m_id.size())
+    {
+        if (pcstr _id = strstr(path, "master_part_"))
+            m_id = _id + xr_strlen("master_part_");
+    }
 
     m_stored_alpha = color_get_A(m_text1->TextItemControl()->GetTextColor());
     xml->SetLocalRoot(_stored_root);

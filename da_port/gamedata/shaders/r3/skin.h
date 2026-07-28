@@ -1,0 +1,371 @@
+#ifndef	SKIN_H
+#define SKIN_H
+
+#include "common.h"
+//RoH & SM+
+struct 	v_model_skinned_0
+{
+	float4 	P	: POSITION;		// (float,float,float,1) - quantized	// short4
+	float3	N	: NORMAL;		// normal				// DWORD
+	float3	T	: TANGENT;		// tangent				// DWORD
+	float3	B	: BINORMAL;		// binormal				// DWORD
+	float2	tc	: TEXCOORD0;	// (u,v)				// short2
+};
+struct 	v_model_skinned_1   		// 24 bytes
+{
+	float4 	P	: POSITION;	// (float,float,float,1) - quantized	// short4
+	float4	N	: NORMAL;	// (nx,ny,nz,index)			// DWORD
+	float3	T	: TANGENT;	// tangent				// DWORD
+	float3	B	: BINORMAL;	// binormal				// DWORD
+	float2	tc	: TEXCOORD0;	// (u,v)				// short2
+};
+struct 	v_model_skinned_2		// 28 bytes
+{
+	float4 	P	: POSITION;	// (float,float,float,1) - quantized	// short4
+	float4 	N	: NORMAL;	// (nx,ny,nz,weight)			// DWORD
+	float3	T	: TANGENT;	// tangent				// DWORD
+	float3	B	: BINORMAL;	// binormal				// DWORD
+	float4 	tc	: TEXCOORD0;	// (u,v, w=m-index0, z=m-index1)  	// short4
+};
+
+struct 	v_model_skinned_3		// 28 bytes
+{
+	float4 	P	: POSITION;	// (float,float,float,1) - quantized	// short4
+	float4 	N	: NORMAL;	// (nx,ny,nz,weight0)			// DWORD
+	float4	T	: TANGENT;	// (tx,ty,tz,weight1)				// DWORD
+	float4	B	: BINORMAL;	// (bx,by,bz,m-index2)				// DWORD
+	float4 	tc	: TEXCOORD0;	// (u,v, w=m-index0, z=m-index1)  	// short4
+};
+
+struct 	v_model_skinned_4		// 28 bytes
+{
+	float4 	P	: POSITION;	// (float,float,float,1) - quantized	// short4
+	float4 	N	: NORMAL;	// (nx,ny,nz,weight0)			// DWORD
+	float4	T	: TANGENT;	// (tx,ty,tz,weight1)				// DWORD
+	float4	B	: BINORMAL;	// (bx,by,bz,weight2)				// DWORD
+	float2 	tc	: TEXCOORD0;	// (u,v)  					// short2
+	float4 	ind: TEXCOORD1;	// (x=m-index0, y=m-index1, z=m-index2, w=m-index3)  	// DWORD
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+float4 	u_position	(float4 v)	{ return float4(v.xyz, 1.f);	}	// -12..+12
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//uniform float4 	sbones_array	[256-22] : register(vs,c22);
+//tbuffer	SkeletonBones
+//{
+// [DA_PORT] Bones in a named constant buffer, sized by an explicit bone count rather than by the
+// leftover of the old DX9 register space.
+//
+// The original [256-22] means "whatever is left of the 256 constant registers after the 22 the
+// engine uses" - i.e. 78 bones. That is a DX9-era limit which no longer applies inside a named
+// cbuffer, and it is too small: a model with a larger skeleton overruns the array and corrupts
+// whatever follows, which shows up as characters frozen in their T-pose. 128 is what IX-Ray uses
+// for the same reason.
+//
+// The previous-frame copy lives in the same buffer, exactly as it does there: two separate
+// buffers, or a second loose global, both break the engine's writes into the first array.
+#define DA_MAX_BONES 128
+cbuffer SkinConstants
+{
+	float4 	sbones_array	[DA_MAX_BONES * 3];
+#ifdef DA_VELOCITY
+	float4 	sbones_array_old	[DA_MAX_BONES * 3];
+#endif
+}
+//}
+
+float3 	skinning_dir 	(float3 dir, float3 m0, float3 m1, float3 m2)
+{
+	float3 	U 	= unpack_normal	(dir);
+	return 	float3	
+		(
+			dot	(m0, U),
+			dot	(m1, U),
+			dot	(m2, U)
+		);
+}
+float4 	skinning_pos 	(float4 pos, float4 m0, float4 m1, float4 m2)
+{
+	float4 	P	= u_position	(pos);
+	return 	float4
+		(
+			dot	(m0, P),
+			dot	(m1, P),
+			dot	(m2, P),
+			1
+		);
+}
+
+v_model skinning_0	(v_model_skinned_0	v)
+{
+	//	Swizzle for D3DCOLOUR format
+	v.N			= v.N.zyx;
+	v.T			= v.T.zyx;
+	v.B			= v.B.zyx;
+
+	// skinning
+	v_model 	o;
+	o.P 		= u_position	(v.P);
+	o.N 		= unpack_normal(v.N);
+	o.T 		= unpack_normal(v.T);
+	o.B 		= unpack_normal(v.B);
+	o.tc 		= v.tc;
+	return o;
+}
+v_model skinning_1 	(v_model_skinned_1	v)
+{
+	//	Swizzle for D3DCOLOUR format
+	v.N.xyz		= v.N.zyx;
+	v.T.xyz		= v.T.zyx;
+	v.B.xyz		= v.B.zyx;
+
+	// matrices
+	int 	mid = v.N.w * 255 + 0.3;
+	float4  m0 	= sbones_array[mid+0];
+	float4  m1 	= sbones_array[mid+1];
+	float4  m2 	= sbones_array[mid+2];
+
+	// skinning
+	v_model 	o;
+	o.P 		= skinning_pos(v.P, m0,m1,m2 );
+	o.N 		= skinning_dir(v.N, m0,m1,m2 );
+	o.T 		= skinning_dir(v.T, m0,m1,m2 );
+	o.B 		= skinning_dir(v.B, m0,m1,m2 );
+	o.tc 		= v.tc;
+	return o;
+}
+v_model skinning_2 	(v_model_skinned_2	v)
+{
+	//	Swizzle for D3DCOLOUR format
+	v.N.xyz		= v.N.zyx;
+	v.T.xyz		= v.T.zyx;
+	v.B.xyz		= v.B.zyx;
+
+	// matrices
+	int 	id_0 	= v.tc.z;
+	float4  m0_0 	= sbones_array[id_0+0];
+	float4  m1_0 	= sbones_array[id_0+1];
+	float4  m2_0 	= sbones_array[id_0+2];
+	int 	id_1 	= v.tc.w;
+	float4  m0_1 	= sbones_array[id_1+0];
+	float4  m1_1 	= sbones_array[id_1+1];
+	float4  m2_1 	= sbones_array[id_1+2];
+
+	// lerp
+	float 	w 	= v.N.w;
+	float4  m0 	= lerp(m0_0,m0_1,w);
+	float4  m1 	= lerp(m1_0,m1_1,w);
+	float4  m2 	= lerp(m2_0,m2_1,w);
+
+	// skinning
+	v_model 	o;
+	o.P 		= skinning_pos(v.P, m0,m1,m2 );
+	o.N 		= skinning_dir(v.N, m0,m1,m2 );
+	o.T 		= skinning_dir(v.T, m0,m1,m2 );
+	o.B 		= skinning_dir(v.B, m0,m1,m2 );
+	o.tc 		= v.tc;
+	return o;
+}
+v_model skinning_3 	(v_model_skinned_3	v)
+{
+	//	Swizzle for D3DCOLOUR format
+	v.N.xyz		= v.N.zyx;
+	v.T.xyz		= v.T.zyx;
+	v.B.xyz		= v.B.zyx;
+
+	// matrices
+	int 	id_0 	= v.tc.z;
+	float4  m0_0 	= sbones_array[id_0+0];
+	float4  m1_0 	= sbones_array[id_0+1];
+	float4  m2_0 	= sbones_array[id_0+2];
+	int 	id_1 	= v.tc.w;
+	float4  m0_1 	= sbones_array[id_1+0];
+	float4  m1_1 	= sbones_array[id_1+1];
+	float4  m2_1 	= sbones_array[id_1+2];
+	int 	id_2 	= v.B.w*255+0.3;
+	float4  m0_2 	= sbones_array[id_2+0];
+	float4  m1_2 	= sbones_array[id_2+1];
+	float4  m2_2 	= sbones_array[id_2+2];
+
+	// lerp
+	float 	w0 	= v.N.w;
+	float 	w1 	= v.T.w;
+	float 	w2 	= 1-w0-w1;
+	float4  m0 	= m0_0*w0;
+	float4  m1 	= m1_0*w0;
+	float4  m2 	= m2_0*w0;
+
+			m0 	+= m0_1*w1;
+			m1 	+= m1_1*w1;
+			m2 	+= m2_1*w1;
+
+			m0 	+= m0_2*w2;
+			m1 	+= m1_2*w2;
+			m2 	+= m2_2*w2;
+
+	// skinning
+	v_model 	o;
+	o.P 		= skinning_pos(v.P, m0,m1,m2 );
+	o.N 		= skinning_dir(v.N, m0,m1,m2 );
+	o.T 		= skinning_dir(v.T, m0,m1,m2 );
+	o.B 		= skinning_dir(v.B, m0,m1,m2 );
+	o.tc 		= v.tc;
+#ifdef SKIN_COLOR
+	o.rgb_tint	= float3	(2,0,0)	;
+	if (id_0==id_1)	o.rgb_tint	= float3(1,2,0);
+#endif
+	return o;
+}
+v_model skinning_4 	(v_model_skinned_4	v)
+{
+	//	Swizzle for D3DCOLOUR format
+	v.N.xyz		= v.N.zyx;
+	v.T.xyz		= v.T.zyx;
+	v.B.xyz		= v.B.zyx;
+	v.ind.xyz	= v.ind.zyx;
+
+	// matrices
+	float	id[4];
+	float4	m[4][3];	//	[bone index][matrix row or column???]
+	[unroll]
+	for (int i=0; i<4; ++i)
+	{		
+		id[i] = v.ind[i]*255+0.3;
+		[unroll]
+		for (int j=0; j<3; ++j)
+			m[i][j] = sbones_array[id[i]+j];
+	}
+
+	// lerp
+	float	w[4];
+	w[0] 	= v.N.w;
+	w[1] 	= v.T.w;
+	w[2] 	= v.B.w;
+	w[3]	= 1-w[0]-w[1]-w[2];
+
+	float4  m0 	= m[0][0]*w[0];
+	float4  m1 	= m[0][1]*w[0];
+	float4  m2 	= m[0][2]*w[0];
+
+	[unroll]
+	for (int i=1; i<4; ++i)
+	{
+		m0 	+= m[i][0]*w[i];
+		m1 	+= m[i][1]*w[i];
+		m2 	+= m[i][2]*w[i];
+	}
+
+	// skinning
+	v_model 	o;
+	o.P 		= skinning_pos(v.P, m0,m1,m2 );
+	o.N 		= skinning_dir(v.N, m0,m1,m2 );
+	o.T 		= skinning_dir(v.T, m0,m1,m2 );
+	o.B 		= skinning_dir(v.B, m0,m1,m2 );
+	o.tc 		= v.tc;
+
+	return o;
+}
+
+
+#ifdef DA_VELOCITY
+// [DA_PORT] ---- Previous-frame pose, for motion vectors ------------------------------------------
+// Separate functions rather than extra outputs on skinning_N: those are called by many other shaders
+// (shadows, effects) and changing their signature would break all of them. Each mirrors its
+// counterpart exactly, reading sbones_array_old.
+float4 skinning_prev_0(v_model_skinned_0 v)
+{
+	return u_position(v.P);           // rigid binding: not re-posed at all
+}
+
+float4 skinning_prev_1(v_model_skinned_1 v)
+{
+	int mid = v.N.w * 255 + 0.3;
+	return skinning_pos(v.P, sbones_array_old[mid+0], sbones_array_old[mid+1], sbones_array_old[mid+2]);
+}
+
+float4 skinning_prev_2(v_model_skinned_2 v)
+{
+	int id_0 = v.tc.z;
+	int id_1 = v.tc.w;
+	float w  = v.N.w;
+	return skinning_pos(v.P,
+		lerp(sbones_array_old[id_0+0], sbones_array_old[id_1+0], w),
+		lerp(sbones_array_old[id_0+1], sbones_array_old[id_1+1], w),
+		lerp(sbones_array_old[id_0+2], sbones_array_old[id_1+2], w));
+}
+
+float4 skinning_prev_3(v_model_skinned_3 v)
+{
+	int id_0 = v.tc.z;
+	int id_1 = v.tc.w;
+	int id_2 = v.B.w*255+0.3;
+	float w0 = v.N.w;
+	float w1 = v.T.w;
+	float w2 = 1-w0-w1;
+	return skinning_pos(v.P,
+		sbones_array_old[id_0+0]*w0 + sbones_array_old[id_1+0]*w1 + sbones_array_old[id_2+0]*w2,
+		sbones_array_old[id_0+1]*w0 + sbones_array_old[id_1+1]*w1 + sbones_array_old[id_2+1]*w2,
+		sbones_array_old[id_0+2]*w0 + sbones_array_old[id_1+2]*w1 + sbones_array_old[id_2+2]*w2);
+}
+
+float4 skinning_prev_4(v_model_skinned_4 v)
+{
+	v.N.xyz		= v.N.zyx;
+	v.T.xyz		= v.T.zyx;
+	v.B.xyz		= v.B.zyx;
+	v.ind.xyz	= v.ind.zyx;
+
+	float	id[4];
+	float4	m[4][3];
+	[unroll]
+	for (int i=0; i<4; ++i)
+	{
+		id[i] = v.ind[i]*255+0.3;
+		[unroll]
+		for (int j=0; j<3; ++j)
+			m[i][j] = sbones_array_old[id[i]+j];
+	}
+
+	float	w[4];
+	w[0] 	= v.N.w;
+	w[1] 	= v.T.w;
+	w[2] 	= v.B.w;
+	w[3]	= 1-w[0]-w[1]-w[2];
+
+	float4  m0 	= m[0][0]*w[0];
+	float4  m1 	= m[0][1]*w[0];
+	float4  m2 	= m[0][2]*w[0];
+	[unroll]
+	for (int i=1; i<4; ++i)
+	{
+		m0 	+= m[i][0]*w[i];
+		m1 	+= m[i][1]*w[i];
+		m2 	+= m[i][2]*w[i];
+	}
+
+	return skinning_pos(v.P, m0, m1, m2);
+}
+#else
+// [DA_PORT] Stand-ins for when motion vectors are off.
+//
+// deffer_model_bump.vs and deffer_model_flat.vs name these in their entry points UNCONDITIONALLY -
+// the result is passed to _main and only used inside its own #ifdef - so with DA_VELOCITY off the
+// declarations vanished while the calls stayed, every model shader failed to compile, and the engine
+// answered by substituting stub_default. In game that is the player, his weapon and every NPC simply
+// not drawn, with nothing said about it outside the log.
+//
+// It stayed hidden all the while an upscaler was always selected, because that is what switches the
+// velocity buffer on. Choosing our own temporal AA - which needs no velocity - was the first time the
+// other branch had ever been compiled.
+//
+// The value is never read in this configuration, so the current pose is as good an answer as any.
+float4 skinning_prev_0(v_model_skinned_0 v) { return u_position(v.P); }
+float4 skinning_prev_1(v_model_skinned_1 v) { return u_position(v.P); }
+float4 skinning_prev_2(v_model_skinned_2 v) { return u_position(v.P); }
+float4 skinning_prev_3(v_model_skinned_3 v) { return u_position(v.P); }
+float4 skinning_prev_4(v_model_skinned_4 v) { return u_position(v.P); }
+#endif
+
+#endif

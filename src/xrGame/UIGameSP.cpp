@@ -117,12 +117,20 @@ bool CUIGameSP::IR_UIOnKeyboardPress(int dik)
     if (!pActor->g_Alive())
         return false;
 
+
     switch (GetBindedAction(dik))
     {
     case kACTIVE_JOBS:
     {
-        if (!pActor->inventory_disabled())
-            ShowPdaMenu();
+        // [DA_PORT] The engine deliberately does NOT open the PDA here - the author disabled this in his
+        // own sources (commented out, UIGameSP.cpp:112) and the mod opens it from Lua instead, in
+        // itms_manager, where it can refuse if the PDA's battery is flat.
+        //
+        // Leaving the engine call in place made both fire on one key press: the engine opened the PDA,
+        // then the script saw the same key, found the window already shown and closed it again. Two
+        // toggles, no visible effect - which is exactly how "P stopped working" looked.
+        //
+        // ShowPdaMenu() intentionally absent.
         break;
     }
     case kMAP:

@@ -45,7 +45,7 @@ void node::sort()
     for (auto n = first_node; n; n = n->m_next_node)
     {
         ++build_count;
-        if (build_count > 500) { Msg("! [DA_PORT] sort: LOOP DETECTED in node list at %zu", build_count); FlushLog(); break; }
+        if (build_count > 500) { Msg("* [DA_PORT] sort: LOOP DETECTED in node list at %zu", build_count); FlushLog(); break; }
         map[n] = state::not_visited;
     }
 

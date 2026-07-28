@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="windows-1251"?>
+<string_table>
+	<!-- [DA_PORT] added by the x64 port: Dead Air had no menu entry for water reflections -->
+	<string id="ui_mm_water_refl">
+		<text>Water reflections</text>
+	</string>
+	<string id="ui_mm_water_refl_desc">
+		<text>Screen-space water reflection quality. Higher reaches further and looks more complete, but costs more GPU. Requires a restart.</text>
+	</string>
+	<!-- [DA_PORT] ready-made colour grading profiles -->
+	<string id="ui_mm_grade_preset">
+		<text>Preset</text>
+	</string>
+	<string id="ui_mm_grade_original">
+		<text>Original</text>
+	</string>
+	<string id="ui_mm_grade_default">
+		<text>Default</text>
+	</string>
+	<string id="ui_mm_grade_autumn">
+		<text>Golden autumn</text>
+	</string>
+	<string id="ui_mm_grade_cold">
+		<text>Cold Zone</text>
+	</string>
+	<string id="ui_mm_grade_faded">
+		<text>Faded film</text>
+	</string>
+	<string id="ui_mm_grade_vivid">
+		<text>Vivid</text>
+	</string>
+	<!-- [DA_PORT] FSR 1.0 upscaling -->
+	<string id="ui_mm_upscale_preset">
+		<text>Upscaling</text>
+	</string>
+	<string id="st_da_upscale_off">
+		<text>Off</text>
+	</string>
+	<string id="st_da_upscale_quality">
+		<text>Quality</text>
+	</string>
+	<string id="st_da_upscale_balanced">
+		<text>Balanced</text>
+	</string>
+	<string id="st_da_upscale_performance">
+		<text>Performance</text>
+	</string>
+	<!-- [DA_PORT] FSR 2.0 quality mode -->
+	<string id="ui_mm_fsr2">
+		<text>FSR 2.0</text>
+	</string>
+	<string id="ui_mm_fsr2_off">
+		<text>Off</text>
+	</string>
+	<string id="ui_mm_fsr2_quality">
+		<text>Quality</text>
+	</string>
+	<string id="ui_mm_fsr2_balanced">
+		<text>Balanced</text>
+	</string>
+	<string id="ui_mm_fsr2_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_fsr2_ultra">
+		<text>Ultra performance</text>
+	</string>
+	<!-- [DA_PORT] Intel XeSS quality mode -->
+	<string id="ui_mm_xess">
+		<text>XeSS</text>
+	</string>
+	<string id="ui_mm_xess_off">
+		<text>Off</text>
+	</string>
+	<string id="ui_mm_xess_ultra_quality">
+		<text>Ultra quality</text>
+	</string>
+	<string id="ui_mm_xess_quality">
+		<text>Quality</text>
+	</string>
+	<string id="ui_mm_xess_balanced">
+		<text>Balanced</text>
+	</string>
+	<string id="ui_mm_xess_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_xess_ultra_performance">
+		<text>Ultra performance</text>
+	</string>
+	<!-- [DA_PORT] Upscaling: which upscaler, and how hard. Replaces the separate FSR 1.0 / FSR 2 lists. -->
+	<string id="ui_mm_upscaler">
+		<text>Upscaling</text>
+	</string>
+	<string id="ui_mm_upscaler_off">
+		<text>Off</text>
+	</string>
+	<string id="ui_mm_upscaler_taa">
+		<text>TAA</text>
+	</string>
+	<string id="ui_mm_upscaler_fsr1">
+		<text>FSR 1.0</text>
+	</string>
+	<string id="ui_mm_upscaler_fsr2">
+		<text>FSR 2.0</text>
+	</string>
+	<string id="ui_mm_upscaler_xess">
+		<text>XeSS</text>
+	</string>
+	<string id="ui_mm_upscaler_dlss">
+		<text>DLSS</text>
+	</string>
+	<string id="ui_mm_dlss_off">
+		<text>Off</text>
+	</string>
+	<string id="ui_mm_dlss_ultra_quality">
+		<text>Ultra quality</text>
+	</string>
+	<string id="ui_mm_dlss_quality">
+		<text>Quality</text>
+	</string>
+	<string id="ui_mm_dlss_balanced">
+		<text>Balanced</text>
+	</string>
+	<string id="ui_mm_dlss_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_dlss_ultra_performance">
+		<text>Ultra performance</text>
+	</string>
+	<string id="ui_mm_upscaler_quality">
+		<text>Quality</text>
+	</string>
+	<string id="ui_mm_upq_ultra_quality">
+		<text>Ultra quality</text>
+	</string>
+	<string id="ui_mm_upq_quality">
+		<text>Quality</text>
+	</string>
+	<string id="ui_mm_upq_balanced">
+		<text>Balanced</text>
+	</string>
+	<string id="ui_mm_upq_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_upq_ultra_performance">
+		<text>Ultra performance</text>
+	</string>
+	<string id="ui_mm_upscaler_fsr3">
+		<text>FSR 3.0</text>
+	</string>
+	<string id="ui_mm_shadow_lights">
+		<text>Light shadows</text>
+	</string>
+	<string id="st_opt_shadow_lights_off">
+		<text>Disabled</text>
+	</string>
+	<string id="st_opt_shadow_lights_low">
+		<text>Low</text>
+	</string>
+	<string id="st_opt_shadow_lights_medium">
+		<text>Medium</text>
+	</string>
+	<string id="st_opt_shadow_lights_high">
+		<text>High</text>
+	</string>
+	<string id="ui_mm_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_sun_far">
+		<text>Sun shadow distance</text>
+	</string>
+	<string id="ui_mm_opt_static">
+		<text>Static geometry cut-off</text>
+	</string>
+	<string id="ui_mm_opt_dynamic">
+		<text>Dynamic geometry cut-off</text>
+	</string>
+	<string id="st_optimize_off">
+		<text>Off</text>
+	</string>
+	<string id="st_optimize_low">
+		<text>Low</text>
+	</string>
+	<string id="st_optimize_med">
+		<text>Medium</text>
+	</string>
+	<string id="st_optimize_high">
+		<text>High</text>
+	</string>
+	<string id="ui_mm_filtering">
+		<text>Filtering</text>
+	</string>
+	<string id="ui_mm_vis_dist">
+		<text>View distance</text>
+	</string>
+	<string id="ui_mm_fps_limit">
+		<text>FPS limit</text>
+	</string>
+	<string id="st_opt_fps_unlimited">
+		<text>Unlimited</text>
+	</string>
+	<string id="renderer_r4">
+		<text>DX11 R4</text>
+	</string>
+	<string id="ui_mm_grp_surfaces">
+		<text>Surfaces and materials</text>
+	</string>
+	<string id="ui_mm_grp_sun">
+		<text>Sun</text>
+	</string>
+	<string id="ui_mm_grp_light">
+		<text>Light</text>
+	</string>
+	<string id="ui_mm_grp_water">
+		<text>Water</text>
+	</string>
+	<string id="ui_mm_grp_post">
+		<text>Occlusion and post-processing</text>
+	</string>
+	<string id="ui_mm_grp_fx">
+		<text>Particles and lens</text>
+	</string>
+	<string id="da_sun_shadow">
+		<text>Sun shadow</text>
+	</string>
+	<string id="da_grass_shadow">
+		<text>Grass shadow</text>
+	</string>
+	<string id="da_sun_quality">
+		<text>Sun quality</text>
+	</string>
+	<string id="da_sun_shafts">
+		<text>Sun shafts</text>
+	</string>
+	<string id="da_shadow_quality">
+		<text>Shadow quality</text>
+	</string>
+	<string id="da_soft_water">
+		<text>Soft water</text>
+	</string>
+	<string id="da_wet_surfaces">
+		<text>Surface wetness</text>
+	</string>
+	<string id="da_water_refl">
+		<text>Water reflections</text>
+	</string>
+	<string id="ui_mm_grp_difficulty">
+		<text>Difficulty and world</text>
+	</string>
+	<string id="ui_mm_grp_crosshair">
+		<text>Crosshair</text>
+	</string>
+	<string id="ui_mm_grp_interface">
+		<text>Interface</text>
+	</string>
+	<string id="ui_mm_grp_controls">
+		<text>Controls</text>
+	</string>
+	<string id="ui_mm_grp_save">
+		<text>Saving</text>
+	</string>
+	<string id="ui_mm_grp_sound">
+		<text>Sound</text>
+	</string>
+	<string id="ui_mm_grp_impact_high">
+		<text>Performance impact: high</text>
+	</string>
+	<string id="ui_mm_grp_impact_med">
+		<text>Performance impact: medium</text>
+	</string>
+	<string id="ui_mm_grp_impact_low">
+		<text>Performance impact: low</text>
+	</string>
+	<string id="ui_mm_perf_preset">
+		<text>Overall preset</text>
+	</string>
+	<string id="st_opt_perf_low">
+		<text>Low</text>
+	</string>
+	<string id="st_opt_perf_medium">
+		<text>Medium</text>
+	</string>
+	<string id="st_opt_perf_high">
+		<text>High</text>
+	</string>
+	<string id="st_opt_perf_ultra">
+		<text>Ultra</text>
+	</string>
+	<string id="st_opt_perf_max_fps">
+		<text>Ultra performance</text>
+	</string>
+	<string id="ui_mm_grp_screen">
+		<text>Display</text>
+	</string>
+	<string id="ui_mm_grp_scaling">
+		<text>Scaling</text>
+	</string>
+	<string id="ui_mm_grp_image">
+		<text>Image</text>
+	</string>
+</string_table>

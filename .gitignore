@@ -25,3 +25,10 @@ doc/doxygen/html/*
 
 # xray-monolith donor reference (read-only)
 scratchpad/
+
+# [DA_PORT] Сторонние SDK: у каждого свой .git и своя лицензия, в дерево порта они не входят.
+# NVIDIA DLSS  — git clone --depth 1 https://github.com/NVIDIA/DLSS.git Externals/nvngx   (~760 МБ)
+# Intel XeSS   — git clone --depth 1 https://github.com/intel/xess.git Externals/xess
+# Собранная прослойка da_ngx.dll лежит в Externals/nvngx_shim и коммитится: она наша.
+Externals/nvngx/
+Externals/xess/

@@ -749,21 +749,32 @@ bool CInventory::Action(u16 cmd, u32 flags)
         }
     }
     break;
-    // [DA_PORT] The mod's own key, bound to G. It is a TOGGLE rather than a select - press once to take
-    // the binoculars out, press again to put them away - which is what makes it worth having beside
-    // wpn_5, that slot's ordinary select. Taken from the author's sources, not invented.
+    // [DA_PORT] The mod's own key, bound to G. A TOGGLE rather than a select: press once to take the
+    // item out, press again to put it away.
+    //
+    // It targets GRENADE_SLOT, and the reason that is not a mistake needs stating, because the name in
+    // the author's version of this handler is BINOCULAR_SLOT and it was ported across verbatim.
+    //
+    // Slot 14 is ONE shared utility slot in Dead Air, holding either a grenade or the binoculars - they
+    // replace each other there. The author's enum calls it BINOCULAR_SLOT; ours calls it GRENADE_SLOT.
+    // Same slot, different name. What made the copied line wrong is that BINOCULAR_SLOT also EXISTS
+    // here - as the stock value 5, which in this port is the sidearm cell. So G quietly toggled the
+    // pistol slot, and the grenade it was supposed to fetch never came out.
+    //
+    // Confirmed from the data rather than by reading: grenade_f1 carries "slot = 13", and base_slot is
+    // config slot + 1 (inventory_item.cpp), which lands on 14.
     case kWPN_7:
     {
         b_send_event = true;
         if (flags & CMD_START)
         {
-            if (GetActiveSlot() == BINOCULAR_SLOT && ActiveItem() /*&& IsGameTypeSingle()*/)
+            if (GetActiveSlot() == GRENADE_SLOT && ActiveItem() /*&& IsGameTypeSingle()*/)
             {
                 Activate(NO_ACTIVE_SLOT);
             }
             else
             {
-                Activate(BINOCULAR_SLOT);
+                Activate(GRENADE_SLOT);
             }
         }
     }
@@ -1044,9 +1055,25 @@ float CInventory::TotalWeight() const
 
 float CInventory::CalcTotalWeight()
 {
+    // [DA_PORT] Equipped gear counts at 30% of its weight, as in Dead Air.
+    //
+    // Anything sitting in one of the equipment slots - outfit, helmet, weapons, backpack - is carried on
+    // the body rather than in the bag, and Dead Air charges only a fraction of it against the load. That
+    // is why putting a 6.8 kg suit on visibly frees space instead of costing nothing: it goes from 100%
+    // to 30%. The stock CoC formula weighs everything the same and was inherited here unchanged.
+    //
+    // The slot lookup is guarded: an item in the ruck reports NO_ACTIVE_SLOT, and ItemFromSlot() asserts
+    // on that value, so the author's unguarded version would trip in a debug build.
+    constexpr float EQUIPPED_WEIGHT_FACTOR = 0.3f;
+
     float weight = 0;
     for (TIItemContainer::const_iterator it = m_all.begin(); m_all.end() != it; ++it)
-        weight += (*it)->Weight();
+    {
+        PIItem item = *it;
+        const u16 slot = item->CurrSlot();
+        const bool equipped = (slot != NO_ACTIVE_SLOT) && (ItemFromSlot(slot) == item);
+        weight += equipped ? item->Weight() * EQUIPPED_WEIGHT_FACTOR : item->Weight();
+    }
 
     m_fTotalWeight = weight;
     return m_fTotalWeight;

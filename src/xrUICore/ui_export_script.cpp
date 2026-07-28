@@ -632,10 +632,15 @@ void CUIStatic::script_register(lua_State* luaState)
             .def("SetFont", &CUIStatic::SetFont)
             .def("GetFont", &CUIStatic::GetFont)
 
-            .def("SetTextColor", +[](CUIStatic* self, int a, int r, int g, int b)
-            {
-                self->SetTextColor(color_argb(a, r, g, b));
-            })
+            // [DA_PORT] Takes ONE packed colour, not four components.
+            //
+            // Upstream changed this single binding to (a, r, g, b) while every sibling here
+            // (SetColor, SetTextureColor, CUILines::SetTextColor) kept the packed u32. Stock X-Ray
+            // scripts — and all 7 call sites in Dead Air — pass GetARGB(...), i.e. one value, so the
+            // extra parameters arrived as nil and converted to 0: the text was set to pure black and
+            // rendered invisibly on the dark PDA background. That is what emptied the relations grid
+            // and the companion health readouts. Nothing in the game calls the four-argument form.
+            .def("SetTextColor", &CUIStatic::SetTextColor)
             .def("GetTextColor", &CUIStatic::GetTextColor)
             .def("SetTextComplexMode", &CUIStatic::SetTextComplexMode)
             .def("SetTextAlignment", &CUIStatic::SetTextAlignment)

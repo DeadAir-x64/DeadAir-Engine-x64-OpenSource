@@ -123,6 +123,21 @@ protected:
     float m_fBaseDispersionedBulletsSpeed;
     //скорость вылета остальных патронов
     float m_fOldBulletSpeed;
+
+    // [DA_PORT] Dead Air's two malfunction keys, finally read by the engine.
+    //
+    // condition_coeff scales how readily this weapon picks up breakages while firing - the author's own
+    // per-weapon reliability dial. condition_avail is the WHITELIST of breakages it may ever suffer, a
+    // 32-bit mask where bit N means "code N is allowed" (the AK-74 carries 2030043135). The scripts have
+    // always read condition_avail straight out of the config - items_condition.get_break() does - so
+    // these two are the same numbers the Lua side already uses, not a parallel invention.
+    //
+    // condition_coeff had been written off as a dead key here: the shipped x32 decompile showed it
+    // loaded and never read, which was true only because the code that reads it is the block below,
+    // and the author had commented that block out.
+    float m_fConditionCoeff;
+    u32 m_conditionAvail;
+
     Fvector m_vStartPos, m_vStartDir;
     //флаг того, что мы остановились после того как выстреляли
     //ровно столько патронов, сколько было задано в m_iQueueSize

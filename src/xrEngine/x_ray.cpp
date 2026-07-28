@@ -302,9 +302,9 @@ CApplication::CApplication(pcstr commandLine, GameModule* game, const std::array
     });
 
     Device.Create();
-    Msg("! [DA_PORT] App: before TaskScheduler->Wait(lightAnim)"); FlushLog();
+    Msg("* [DA_PORT] App: before TaskScheduler->Wait(lightAnim)"); FlushLog();
     TaskScheduler->Wait(createLightAnim);
-    Msg("! [DA_PORT] App: after TaskScheduler->Wait"); FlushLog();
+    Msg("* [DA_PORT] App: after TaskScheduler->Wait"); FlushLog();
 
     if (game)
     {
@@ -312,12 +312,12 @@ CApplication::CApplication(pcstr commandLine, GameModule* game, const std::array
         g_pGamePersistent = game->create_persistent();
         R_ASSERT(g_pGamePersistent);
     }
-    Msg("! [DA_PORT] App: after create_persistent"); FlushLog();
+    Msg("* [DA_PORT] App: after create_persistent"); FlushLog();
     if (g_pGamePersistent)
     {
-        Msg("! [DA_PORT] App: before OnAppStart"); FlushLog();
+        Msg("* [DA_PORT] App: before OnAppStart"); FlushLog();
         g_pGamePersistent->OnAppStart();
-        Msg("! [DA_PORT] App: after OnAppStart"); FlushLog();
+        Msg("* [DA_PORT] App: after OnAppStart"); FlushLog();
     }
     else
         Console->Show();
@@ -381,11 +381,11 @@ CApplication::~CApplication()
 
 int CApplication::Run()
 {
-    Msg("! [DA_PORT] Run: before HideSplash"); FlushLog();
+    Msg("* [DA_PORT] Run: before HideSplash"); FlushLog();
     HideSplash();
-    Msg("! [DA_PORT] Run: before Device.Run"); FlushLog();
+    Msg("* [DA_PORT] Run: before Device.Run"); FlushLog();
     Device.Run();
-    Msg("! [DA_PORT] Run: after Device.Run, entering loop"); FlushLog();
+    Msg("* [DA_PORT] Run: after Device.Run, entering loop"); FlushLog();
 
     while (!SDL_QuitRequested()) // SDL_PumpEvents is here
     {

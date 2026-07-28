@@ -112,6 +112,14 @@ extern BOOL g_ai_die_in_anomaly;
 int g_inv_highlight_equipped = 0;
 //-Alundaio
 
+// [DA_PORT] see WeaponMagazined::state_Fire - weapons pick up breakages while being fired.
+//
+// ON by default at Pavel's decision (27.07). The mechanic is the author's own, written and then left
+// commented out in his sources, which is why weapons never wear into faults in the original. With it on
+// the three ported systems that read the malfunction mask finally do something: wear accelerates,
+// rate of fire goes ragged, dispersion widens - and CheckForMisfire starts producing real jams.
+int g_weapon_malfunctions = 1;
+
 int g_first_person_death = 0;
 int g_normalize_mouse_sens = 0;
 int g_normalize_upgrade_mouse_sens = 0;
@@ -660,8 +668,21 @@ public:
             return;
         }
 
-        Fvector pos = Actor()->Position();
-        Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos);
+        // [DA_PORT] Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
+        // spawn that never touches the ALife vertices. Anything created that way keeps m_tGraphID at
+        // its initial 0xFFFF - the "no vertex" sentinel - and once such an object lands in a save, the
+        // next load feeds 65535 into CALifeGraphRegistry::add, which indexes a VECTOR with it. That is
+        // an out-of-bounds read, and the game died inside libstdc++ with no message; see the bounds
+        // guard in alife_graph_registry.cpp. Found by spawning a boar to test mutant field dressing,
+        // quicksaving, and reloading.
+        //
+        // spawn_item is the path that does it properly: given a valid level vertex it looks the game
+        // vertex up through the cross table, so the object is registered like any other. Handing it the
+        // actor's own vertex - not 0, which is a real but arbitrary vertex somewhere else on the level -
+        // puts the spawn where the player is standing. Parent 0xFFFF means "no parent", i.e. into the
+        // world rather than into an inventory, which is what this command has always done.
+        const Fvector pos = Actor()->Position();
+        Level().spawn_item(args, pos, Actor()->ai_location().level_vertex_id(), 0xffff);
     }
 
     void Info(TInfo& I) override
@@ -749,6 +770,116 @@ void get_files_list(xr_vector<shared_str>& files, LPCSTR dir, LPCSTR file_ext)
 }
 
 #include "UIGameCustom.h"
+
+// [DA_PORT] Walk the live in-game HUD window tree and report what is actually on screen: every widget's
+// name, its absolute rectangle and whether it is shown. Layout faults look identical from the outside -
+// a widget that was never created, one placed off screen, one covered by another and one simply hidden
+// all render as "nothing there" - and the xml alone cannot tell them apart. This prints the answer.
+class CCC_DumpHud : public IConsole_Command
+{
+    static void dump(CUIWindow* w, int depth)
+    {
+        if (!w)
+            return;
+
+        Frect r;
+        w->GetAbsoluteRect(r);
+
+        string256 pad{};
+        const int indent = _min(depth * 2, 40);
+        for (int i = 0; i < indent; ++i)
+            pad[i] = ' ';
+        pad[indent] = 0;
+
+        pcstr name = w->WindowName().c_str();
+        Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
+            w->GetDebugType(), w->IsShown() ? 1 : 0, r.x1, r.y1, r.x2, r.y2, w->GetWidth(), w->GetHeight());
+
+        for (auto* child : w->GetChildWndList())
+            dump(child, depth + 1);
+    }
+
+public:
+    CCC_DumpHud(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+
+    void Execute(pcstr /*args*/) override
+    {
+        Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
+            psHUD_Flags.test(HUD_DRAW_INFO) ? 1 : 0, psHUD_Flags.test(HUD_DRAW_MAP) ? 1 : 0,
+            psHUD_Flags.test(HUD_INFO) ? 1 : 0);
+
+        CUIGameCustom* ui = CurrentGameUI();
+        if (!ui || !ui->UIMainIngameWnd)
+        {
+            Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
+            return;
+        }
+
+        Msg("~ [DA_PORT] --- HUD tree ---");
+        dump(ui->UIMainIngameWnd, 0);
+        Msg("~ [DA_PORT] --- end of HUD tree ---");
+    }
+};
+
+// [DA_PORT] Report what every belt item actually gives the actor.
+//
+// Dead Air carries artefacts inside containers, so the belt item is a combined section
+// (af_medusa_af_iam) that inherits the container, NOT the artefact - the real values are pushed in at
+// runtime by bind_artefact.script from the server object. That is a long chain (config -> se_artefact ->
+// binder -> engine field -> UpdateArtefactsOnBeltAndOutfit), and when a boost "does nothing" the only
+// useful question is which link came out zero. This prints the engine-side numbers as they stand now.
+#include "Artefact.h"
+#include "Inventory.h"
+#include "ActorCondition.h"
+class CCC_DumpBelt : public IConsole_Command
+{
+public:
+    CCC_DumpBelt(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+
+    void Execute(pcstr /*args*/) override
+    {
+        if (!g_pGameLevel) // typed from the main menu - Level() would not be there to ask
+        {
+            Msg("! [DA_PORT] no level loaded - run this in the game world");
+            return;
+        }
+
+        CActor* actor = smart_cast<CActor*>(Level().CurrentViewEntity());
+        if (!actor)
+        {
+            Msg("! [DA_PORT] no actor - run this in the game world");
+            return;
+        }
+
+        Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
+
+        for (const auto& it : actor->inventory().m_belt)
+        {
+            pcstr sect = it->object().cNameSect().c_str();
+            const auto artefact = smart_cast<CArtefact*>(it);
+            if (!artefact)
+            {
+                Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
+                continue;
+            }
+
+            Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
+                artefact->GetCondition(), artefact->m_fPowerRestoreSpeed, artefact->m_fHealthRestoreSpeed,
+                artefact->m_fSatietyRestoreSpeed, artefact->m_fBleedingRestoreSpeed,
+                artefact->m_fRadiationRestoreSpeed, artefact->AdditionalInventoryWeight());
+        }
+
+        Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
+            actor->GetRestoreSpeed(ALife::ePowerRestoreSpeed));
+
+        // The load decides the sprint cost, so print it alongside the gains - the two numbers are only
+        // meaningful next to each other.
+        Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
+            actor->inventory().TotalWeight(), actor->MaxCarryWeight(), actor->MaxWalkWeight(),
+            actor->conditions().GetPower());
+        Msg("~ [DA_PORT] --- end of belt ---");
+    }
+};
 
 class CCC_ALifeSave : public IConsole_Command
 {
@@ -1790,6 +1921,7 @@ struct CCC_DbgBullets : public CCC_Integer
 #include "attachment_owner.h"
 #include "InventoryOwner.h"
 #include "Inventory.h"
+
 class CCC_TuneAttachableItem : public IConsole_Command
 {
 public:
@@ -2318,7 +2450,11 @@ void CCC_RegisterCommands()
     CMD3(CCC_Mask, "hud_draw", &psHUD_Flags, HUD_DRAW);
 
     // [DA_PORT] Dead Air compatibility aliases
-    CMD3(CCC_Mask, "hud_draw_info", &psHUD_Flags, HUD_INFO);
+    // "hud_draw_info" is a flag of its own, not a second name for "hud_info": it hides the bottom-left
+    // readout (health, stamina, ammo, fire mode, weapon icon), while HUD_INFO only controls the
+    // look-at target info. Pointing it at HUD_INFO made the option in the gameplay menu toggle the
+    // wrong thing and left the readout ungated.
+    CMD3(CCC_Mask, "hud_draw_info", &psHUD_Flags, HUD_DRAW_INFO);
     // [DA_PORT] "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
     // (as DA's map/PDA scripts do) silently killed the entire main indicators HUD (health/boosts)
     // forever, since the off state got persisted to user.ltx. Give it its own dedicated bit.
@@ -2329,6 +2465,7 @@ void CCC_RegisterCommands()
     psHUD_Flags.set(HUD_WEAPON, true);
     psHUD_Flags.set(HUD_DRAW, true);
     psHUD_Flags.set(HUD_INFO, true);
+    psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
 
     CMD3(CCC_Mask, "hud_crosshair", &psHUD_Flags, HUD_CROSSHAIR);
     CMD3(CCC_Mask, "hud_crosshair_dist", &psHUD_Flags, HUD_CROSSHAIR_DIST);
@@ -2348,6 +2485,14 @@ void CCC_RegisterCommands()
     }
     CMD4(CCC_Float, "fov", &g_fov, 5.0f, 180.0f);
     CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+
+    // [DA_PORT] Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+    // commented out. Off by default: it changes the balance of every firefight, so it is opted into.
+    // Deliberately outside the MASTER_GOLD cheat block below - this is a gameplay setting, not a cheat.
+    {
+        extern int g_weapon_malfunctions;
+        CMD4(CCC_Integer, "g_weapon_malfunctions", &g_weapon_malfunctions, 0, 1);
+    }
 
     // Demo
     CMD1(CCC_DemoPlay, "demo_play");
@@ -2683,6 +2828,8 @@ void CCC_RegisterCommands()
     // and test with (the dump_* commands above are debug-only, which is why the first attempt at this
     // came back as "Unknown command").
     CMD1(CCC_DumpUIXml, "da_dump_ui_xml");
+    CMD1(CCC_DumpHud, "da_dump_hud");
+    CMD1(CCC_DumpBelt, "da_dump_belt");
     CMD1(CCC_DumpShaders, "da_dump_shaders");
 
 #ifndef MASTER_GOLD

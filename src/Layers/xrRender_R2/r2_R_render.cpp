@@ -1,5 +1,19 @@
 #include "stdafx.h"
 
+// [DA_PORT] GPU timing per phase - see da_gpu_timer.h. R4 only; the GL branch has no D3D11 queries.
+#if RENDER == R_R4
+#   include "Layers/xrRenderPC_R4/da_gpu_timer.h"
+#   define DA_GPU_ZONE_BEGIN(z) g_da_gpu_timer.zone_begin(da_gpu_timer::z)
+#   define DA_GPU_ZONE_END(z)   g_da_gpu_timer.zone_end(da_gpu_timer::z)
+#   define DA_GPU_FRAME_BEGIN()  g_da_gpu_timer.frame_begin()
+#   define DA_GPU_FRAME_END()    g_da_gpu_timer.frame_end()
+#else
+#   define DA_GPU_ZONE_BEGIN(z)
+#   define DA_GPU_ZONE_END(z)
+#   define DA_GPU_FRAME_BEGIN()
+#   define DA_GPU_FRAME_END()
+#endif
+
 #include "xrCore/Threading/TaskManager.hpp"
 
 #include "xrEngine/IGame_Persistent.h"
@@ -123,6 +137,7 @@ void CRender::Render()
 
     //.	VERIFY					(g_pGameLevel && g_pGameLevel->pHUD);
     auto& dsgraph = get_imm_context();
+    DA_GPU_FRAME_BEGIN();
 
     //******* Z-prefill calc - DEFERRER RENDERER
     if (ps_r2_ls_flags.test(R2FLAG_ZFILL))
@@ -193,6 +208,7 @@ void CRender::Render()
     if (!split_the_scene_to_minimize_wait)
     {
         PIX_EVENT(DEFER_PART0_NO_SPLIT);
+        DA_GPU_ZONE_BEGIN(z_gbuffer);
         // level, DO NOT SPLIT
         Target->phase_scene_begin();
         dsgraph.render_hud();
@@ -201,6 +217,7 @@ void CRender::Render()
         if (Details)
             Details->Render(dsgraph.cmd_list);
         Target->phase_scene_end();
+        DA_GPU_ZONE_END(z_gbuffer);
     }
     else
     {
@@ -230,6 +247,39 @@ void CRender::Render()
     {
         PIX_EVENT(DEFER_TEST_LIGHT_VIS);
         light_Package& LP = Lights.package;
+
+        // [DA_PORT] Keep only the most prominent lights casting shadows; demote the rest.
+        //
+        // A shadowed light costs a full re-submission of the scene geometry into its own shadow map, so
+        // sixty lamps mean sixty extra scene passes. Demoted lights are moved to the unshadowed vectors:
+        // they still light the room, they simply stop casting - which on a distant lamp is invisible and
+        // on the frame time is everything. accum_point/accum_spot never consult flags.bShadow, so the
+        // flag is left alone and nothing else in the light's state changes.
+        //
+        // Ranking is apparent size: range divided by distance to the eye. Cheap, and it keeps the lamp
+        // you are standing under while dropping the ones across the map.
+        if (ps_r__light_shadow_budget > 0 && LP.v_shadowed.size() > size_t(ps_r__light_shadow_budget))
+        {
+            const size_t budget = size_t(ps_r__light_shadow_budget);
+            const Fvector eye = Device.vCameraPosition;
+
+            std::partial_sort(LP.v_shadowed.begin(), LP.v_shadowed.begin() + budget, LP.v_shadowed.end(),
+                [&eye](const light* a, const light* b)
+                {
+                    return a->range / (a->position.distance_to(eye) + EPS) >
+                        b->range / (b->position.distance_to(eye) + EPS);
+                });
+
+            for (size_t i = budget; i < LP.v_shadowed.size(); ++i)
+            {
+                light* L = LP.v_shadowed[i];
+                if (L->flags.type == IRender_Light::POINT || L->flags.type == IRender_Light::OMNIPART)
+                    LP.v_point.push_back(L);
+                else
+                    LP.v_spot.push_back(L);
+            }
+            LP.v_shadowed.resize(budget);
+        }
 
         // stats
         Stats.l_shadowed = LP.v_shadowed.size();
@@ -351,15 +401,20 @@ void CRender::Render()
     {
         PIX_EVENT(DEFER_SUN);
         Stats.l_visible++;
+        DA_GPU_ZONE_BEGIN(z_sun_smap);
         if (!RImplementation.o.oldshadowcascades)
             r_sun.sync();
         else
             r_sun_old.sync();
+        DA_GPU_ZONE_END(z_sun_smap);
+        DA_GPU_ZONE_BEGIN(z_sun_apply);
         Target->accum_direct_blend(dsgraph.cmd_list);
+        DA_GPU_ZONE_END(z_sun_apply);
     }
 
     {
         PIX_EVENT(DEFER_SELF_ILLUM);
+        DA_GPU_ZONE_BEGIN(z_selfillum);
         Target->phase_accumulator(dsgraph.cmd_list);
         // Render emissive geometry, stencil - write 0x0 at pixel pos
         dsgraph.cmd_list.set_xform_project(Device.mProject);
@@ -382,7 +437,9 @@ void CRender::Render()
 
     // Lighting, non dependant on OCCQ
     {
+        DA_GPU_ZONE_END(z_selfillum);
         PIX_EVENT(DEFER_LIGHT_NO_OCCQ);
+        DA_GPU_ZONE_BEGIN(z_lights);
         render_lights(LP_normal);
     }
 
@@ -394,8 +451,11 @@ void CRender::Render()
 
     // Postprocess
     {
+        DA_GPU_ZONE_END(z_lights);
         PIX_EVENT(DEFER_LIGHT_COMBINE);
+        DA_GPU_ZONE_BEGIN(z_combine);
         Target->phase_combine();
+        DA_GPU_ZONE_END(z_combine);
     }
 
     // [DA_PORT] FSR 2 used to be dispatched here, which looked like "after the frame is assembled but
@@ -403,12 +463,11 @@ void CRender::Render()
     // late and its output was never displayed. Moved into phase_combine, immediately ahead of phase_pp.
 
     // [DA_PORT] Remember this frame's camera for the next one. Temporal effects reproject a pixel into
-    // the previous frame from its depth and this matrix; it has to be captured after the frame is fully
-    // rendered, so that the next frame compares against the camera the picture was actually drawn with.
-    // The un-jittered matrix, not mFullTransform: with TAA on the projection carries a sub-pixel offset
-    // that changes every frame, and reprojecting through it would read that offset as camera movement.
+    // the previous frame from its depth and this matrix.
     extern Fmatrix g_da_prev_VP;
     g_da_prev_VP = ::g_da_taa_unjittered_VP;
+
+    DA_GPU_FRAME_END();
 
     VERIFY(dsgraph.mapDistort.empty());
 }

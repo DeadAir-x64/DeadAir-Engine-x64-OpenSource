@@ -22,6 +22,14 @@ ENGINE_API extern Flags32 psHUD_Flags;
 // killed the entire main indicators HUD (health/boosts) forever, since the off state got persisted
 // to user.ltx. Give it its own bit so it can't affect anything else.
 #define HUD_DRAW_MAP (1 << 14)
+// [DA_PORT] Dead Air's own flag, gating the bottom-left readout: health bar, stamina bar, ammo counts,
+// fire mode, grenade count and the weapon icon. Its gameplay options menu exposes it as a checkbox
+// ("hud_draw_info") next to the map one. The alias used to be pointed at HUD_INFO, which is the
+// look-at target info and nothing else, so the option toggled the wrong thing and the readout was
+// never gated at all. The author used bit 14 for this and 13 for the map; both are taken here (13 by
+// upstream's left-handed flag, 14 by the map alias above), and the bit number is private to the
+// engine anyway - only the command name has to match.
+#define HUD_DRAW_INFO (1 << 15)
 
 class IGameObject;
 

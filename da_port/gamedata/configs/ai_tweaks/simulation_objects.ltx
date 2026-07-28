@@ -1,0 +1,105 @@
+; This is used for determining which levels to deactivate and remove from simulation. 
+; "Linked" levels will have level transiting enabled and respawns active.
+; This is done to alleviate the performance issues with having hundreds of active squads and smart terrain updates
+
+[k00_marsh]
+target_maps = l01_escape, l03_agroprom
+
+[l01_escape]
+target_maps = k00_marsh, k01_darkscape, l02_garbage
+
+[l02_garbage]
+target_maps = l03_agroprom, l04_darkvalley, l01_escape, l05_bar
+
+[l03_agroprom]
+target_maps = l02_garbage, l08_yantar, k00_marsh, l03u_agr_underground
+
+[k01_darkscape]
+target_maps = l01_escape, l04_darkvalley
+
+[l04_darkvalley]
+target_maps = l02_garbage, k02_trucks_cemetery, k01_darkscape, l04u_labx18
+
+[l05_bar]
+target_maps = k02_trucks_cemetery, new_military, l02_garbage
+
+[l06_rostok]
+target_maps = l08_yantar
+
+[l07_military]
+target_maps =
+
+[l08_yantar]
+target_maps = l06_rostok, l09_deadcity, l03_agroprom, l08u_brainlab
+
+[l09_deadcity]
+target_maps = new_military, l10_limansk, l08_yantar
+
+[l10_limansk]
+target_maps = l10_red_forest, l11_hospital, l09_deadcity
+
+[l10_radar]
+target_maps = l10_red_forest, l11_pripyat, new_military, l10u_bunker
+
+[l10_red_forest]
+target_maps = l10_limansk, l10_radar, jupiter, new_military
+
+[l11_hospital]
+target_maps = zaton, l10_limansk
+
+[l11_pripyat]
+target_maps = pripyat, l10_radar
+
+[l12_stancia]
+target_maps = l12_stancia_2,  zaton, l12u_sarcofag
+
+[l12_stancia_2]
+target_maps = l13_generators, l12_stancia, l12u_control_monolith
+
+[l13_generators]
+target_maps = l12_stancia_2, l13u_warlab
+
+[l03u_agr_underground]
+target_maps = l03_agroprom, l02_garbage, l08_yantar, k00_marsh
+
+[l04u_labx18]
+target_maps = l04_darkvalley, l02_garbage, k02_trucks_cemetery, k01_darkscape
+
+[l08u_brainlab]
+target_maps = l08_yantar, l06_rostok, l09_deadcity, l03_agroprom
+
+[l10u_bunker]
+target_maps = l10_radar, l10_red_forest, l11_pripyat, new_military
+
+[l12u_sarcofag]
+target_maps = l12u_control_monolith, l12_stancia
+
+[l12u_control_monolith]
+target_maps = l12u_sarcofag, l12_stancia_2
+
+[l13u_warlab]
+target_maps = l13_generators, l12_stancia_2
+
+[zaton]
+target_maps = l12_stancia, l11_hospital, jupiter
+
+[jupiter] ;Note: Jupiter so active with many smarts that it's not a good idea to re-enable this without performance issues
+target_maps = jupiter_underground, zaton, l10_red_forest
+
+[jupiter_underground]
+target_maps = jupiter, pripyat
+
+[pripyat]
+target_maps = l11_pripyat, jupiter_underground, labx8
+
+[labx8]
+target_maps = pripyat, l11_pripyat, jupiter_underground
+
+[k02_trucks_cemetery]
+target_maps = new_military, l04_darkvalley, l05_bar
+
+[fake_start]
+target_maps =
+
+[new_military]
+target_maps = l09_deadcity, l10_radar, l10_red_forest, k02_trucks_cemetery, l05_bar

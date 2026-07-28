@@ -44,4 +44,13 @@ public:
 protected:
     xr_unordered_map<ALife::EHitType, CUIOutfitImmunity*> m_items;
     Fvector2 m_start_pos{};
+
+    // [DA_PORT] Armour condition as a number, the way Dead Air shows it.
+    //
+    // The weapon side of this lives in CUIWpnParams; outfits get it here because that is where the mod
+    // puts the nodes - outfit_info:cap_condition (label) and cap_condition2 (value), both already in
+    // the markup with nobody reading them. The icon beside them, static_condition, is there too.
+    CUIStatic m_stCondition{ "Condition icon" };
+    CUIStatic m_textCondition{ "Condition caption" };
+    CUIStatic m_textCondition2{ "Condition value" };
 }; // class CUIOutfitInfo

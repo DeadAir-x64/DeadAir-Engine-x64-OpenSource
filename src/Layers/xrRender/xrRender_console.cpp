@@ -241,7 +241,13 @@ float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
 // far shadow cascade ends well inside open country, and the step in brightness where it ends reads as
 // a flickering line across a distant slope that slides away as the player walks towards it. Verified
 // in game: raising it to 180 removes that line outright.
-float ps_r2_sun_far = 180.f;
+// [DA_PORT] 51 instead of the stock 180.
+//
+// The sun renders the whole scene again into each of its shadow cascades, and the far cascade is by far
+// the most expensive: on Cordon it was 5.1 ms of a 6.0 ms GPU frame at 180. At 51 the shadows look the
+// same in play - the difference only shows on terrain hundreds of metres out - and the level went from
+// 130 to 240-500 fps. This is Pavel's call, made after measuring; going above 51 is not worth it.
+float ps_r2_sun_far = 51.f;
 float ps_r2_sun_depth_far_scale = 1.00000f; // 1.00001f
 float ps_r2_sun_depth_far_bias = -0.00002f; // -0.0000f
 float ps_r2_sun_depth_near_scale = 1.0000f; // 1.00001f
@@ -338,6 +344,16 @@ float ps_r_color_base_b = 0.96f;
 
 u32 ps_steep_parallax = 0;
 int ps_r__detail_radius = 49;
+
+// [DA_PORT] Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
+//
+// Every shadowed light re-submits the whole scene into its own shadow map (r2_R_lights.cpp:
+// phase_smap_spot -> render_graph), so the scene is drawn 1 + N times per frame. Measured in the Bar:
+// 87 lights, 84 visible, 61 shadowed, only 4 clipped - the level's 345k polygons went through the
+// pipeline nearly sixty times. Lights ate 3.7 ms of the 4.5 ms GPU frame there.
+// Lights beyond the budget are demoted to the unshadowed path (they still light the scene, they just
+// stop casting), keeping the ones that matter most on screen.
+u32 ps_r__light_shadow_budget = 12;
 
 u32 dm_size = 24;
 u32 dm_cache1_line = 12; //dm_size*2/dm_cache1_count
@@ -544,6 +560,92 @@ float o_optimize_dynamic_l2_dist = O_D_L2_D_MED;
 float o_optimize_dynamic_l2_size = O_D_L2_S_MED;
 float o_optimize_dynamic_l3_dist = O_D_L3_D_MED;
 float o_optimize_dynamic_l3_size = O_D_L3_S_MED;
+
+// [DA_PORT] Presets for the shadow-casting light ceiling, exposed in the video options.
+// The token value IS the budget, so the console still reads as a plain number.
+// [DA_PORT] One-touch performance preset for the Performance tab.
+//
+// Applies the whole tab at once by running each setting's own console command, not by poking the
+// variables: r__optimize_* recompute their distance thresholds inside Execute, and r2_smap_size has to
+// go through its own handler too. Writing the variables directly would set the number and skip the work.
+// The ordering of the rows below matches what was actually measured - the shadow settings are the ones
+// that move the frame, the rest is trim.
+xr_token q_perf_preset[] = {
+    { "st_opt_perf_low", 0 },
+    { "st_opt_perf_medium", 1 },
+    { "st_opt_perf_high", 2 },
+    { "st_opt_perf_ultra", 3 },
+    { "st_opt_perf_max_fps", 4 },
+    { nullptr, 0 },
+};
+u32 ps_r__perf_preset = 1;
+
+class CCC_PerfPreset : public CCC_Token
+{
+public:
+    CCC_PerfPreset(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+
+        struct Preset
+        {
+            pcstr shadow_lights, sun_far, smap, opt_static, opt_dyn;
+            pcstr vis_dist, detail_radius, detail_density, geometry_lod, detail_height;
+        };
+        // low, medium, high, ultra, max fps
+        static const Preset presets[5] = {
+            { "st_opt_shadow_lights_low",    "51",  "1024", "st_optimize_high", "st_optimize_high",
+              "0.8", "60",  "0.75", "0.7", "1.0" },
+            { "st_opt_shadow_lights_medium", "51",  "1024", "st_optimize_med",  "st_optimize_med",
+              "1.0", "100", "0.5",  "1.0", "1.3" },
+            { "st_opt_shadow_lights_high",   "80",  "2048", "st_optimize_low",  "st_optimize_low",
+              "1.0", "150", "0.4",  "1.3", "1.5" },
+            { "st_opt_shadow_lights_high",   "120", "2048", "st_optimize_off",  "st_optimize_off",
+              "1.0", "200", "0.3",  "1.6", "1.8" },
+            { "st_opt_shadow_lights_off",    "51",  "1024", "st_optimize_high", "st_optimize_high",
+              "0.6", "49",  "0.9",  "0.5", "1.0" },
+        };
+
+        const Preset& p = presets[(*value < 5) ? *value : 1];
+        string256 cmd;
+
+        xr_sprintf(cmd, "r__light_shadow_budget %s", p.shadow_lights);   Console->Execute(cmd);
+        xr_sprintf(cmd, "r2_sun_far %s", p.sun_far);                     Console->Execute(cmd);
+        xr_sprintf(cmd, "r2_smap_size %s", p.smap);                      Console->Execute(cmd);
+        xr_sprintf(cmd, "r__optimize_static_geom %s", p.opt_static);     Console->Execute(cmd);
+        xr_sprintf(cmd, "r__optimize_dynamic_geom %s", p.opt_dyn);       Console->Execute(cmd);
+        xr_sprintf(cmd, "rs_vis_distance %s", p.vis_dist);               Console->Execute(cmd);
+        xr_sprintf(cmd, "r__detail_radius %s", p.detail_radius);         Console->Execute(cmd);
+        xr_sprintf(cmd, "r__detail_density %s", p.detail_density);       Console->Execute(cmd);
+        xr_sprintf(cmd, "r__geometry_lod %s", p.geometry_lod);           Console->Execute(cmd);
+        xr_sprintf(cmd, "r__detail_height %s", p.detail_height);         Console->Execute(cmd);
+    }
+};
+
+xr_token q_light_shadow_budget[] = {
+    { "st_opt_shadow_lights_off", 1 },
+    { "st_opt_shadow_lights_low", 6 },
+    { "st_opt_shadow_lights_medium", 12 },
+    { "st_opt_shadow_lights_high", 18 },
+    { nullptr, 0 },
+};
+
+// [DA_PORT] r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
+//
+// В альфе DA он заменён на CCC_Token с ps_r_sun_details (st_opt_off/medium/high), и разница между
+// «средне» и «высоко» — в том, КТО чистит списки видимой травы: при 2 их чистит UpdateVisibleM раз в
+// кадр, при 1 — сам проход отрисовки, и только вне теневой фазы.
+//
+// Не переносим по двум причинам. Первая: нашего DetailManager_VS это не касается вовсе — там другой
+// путь, без clear_not_free, а трава попадает в теневую карту по тесту R2FLAG_SUN_DETAILS. Вторая, и
+// решающая: пресеты качества самого мода пишут сюда `on`, то есть булеву форму. Токен сломал бы их
+// собственные данные, а авторская альфа, судя по этому, отвергала бы свои же пресеты — она здесь в
+// середине переделки, как это уже было с power_loss у шлемов.
+//
+// Строка `r2_sun_details on` из rspec_extreme.ltx действительно не применялась, но виноват был
+// хвостовой пробел в конфиге, а не тип команды. Починено в remove_spaces (line_edit_control.cpp).
 
 xr_token q_optimize_geom[] = {
     { "st_optimize_off", 0 },
@@ -996,13 +1098,28 @@ void xrRender_initconsole()
 
     // [DA_PORT] Geometry cut-off, ported from the author's build. Defaults match his: both levels on
     // "low" (i.e. the gentlest culling) and the harsher shadow-map pass enabled.
+    // [DA_PORT] Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
+    // only totalled up inside DumpStatistics, so with the overlay off there is nothing to print.
+    {
+        extern int ps_da_render_log;
+        CMD4(CCC_Integer, "da_render_log", &ps_da_render_log, 0, 2000);
+    }
+#if RENDER == R_R4
+    // [DA_PORT] GPU time per render phase, N frames into the log. See da_gpu_timer.h.
+    {
+        extern int ps_da_gpu_log;
+        CMD4(CCC_Integer, "da_gpu_log", &ps_da_gpu_log, 0, 2000);
+    }
+#endif
     CMD3(CCC_OptimizeStatic, "r__optimize_static_geom", &ps_r_optimize_static, q_optimize_geom);
     CMD3(CCC_OptimizeDynamic, "r__optimize_dynamic_geom", &ps_r_optimize_dynamic, q_optimize_geom);
     CMD4(CCC_Integer, "r__optimize_sun_shad", &ps_r_high_optimize_sun_shad, 0, 1);
     //CMD4(CCC_Float, "r__geometry_lod_pow", &ps_r__LOD_Power, 0, 2);
 
     CMD4(CCC_Float, "r__detail_density", &ps_current_detail_density/*&ps_r__Detail_density*/, 0.1f, 0.99f);
+    CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
     CMD4(CCC_detail_radius, "r__detail_radius", &ps_r__detail_radius, 49, 300);
+    CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
     CMD4(CCC_Float, "r__detail_height", &ps_r__Detail_height, 1, 2);
 
 #ifdef DEBUG

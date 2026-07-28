@@ -9,6 +9,7 @@ extern ENGINE_API int ps_r__reactive_ref_fps;
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API int ps_r__xess;
+extern ENGINE_API bool da_upscaler_active(); // [DA_PORT]
 
 extern ENGINE_API int ps_r__reactive_selftest;
 
@@ -150,7 +151,9 @@ void CRenderTarget::phase_reactive()
         return;
 
     // Nothing but an upscaler ever reads this mask, so with all of them off the pass is pure cost.
-    if (!ps_r__fsr2 && !ps_r__fsr3 && !ps_r__xess)
+    // [DA_PORT] Через общий список, а не перечислением: этот if уже дважды забывали обновить при
+    // добавлении бэкенда, и оба раза маска молча переставала строиться.
+    if (!da_upscaler_active())
         return;
 
     PIX_EVENT(DA_phase_reactive);

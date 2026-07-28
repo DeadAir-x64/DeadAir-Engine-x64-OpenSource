@@ -9,6 +9,8 @@ extern ENGINE_API int ps_r__foliage_tandc;
 extern ENGINE_API int ps_r__fsr3_debug;
 extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
+extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // [DA_PORT] Shared with FSR 2 and XeSS on purpose: only one upscaler reconstructs a given frame, and
@@ -71,7 +73,9 @@ bool CRenderTarget::phase_fsr3()
         const float aspect_hw = float(Device.dwRenderHeight) / float(Device.dwRenderWidth);
         p.fov_vertical = 2.f * atanf(tanf(deg2rad(Device.fFOV) * 0.5f) * aspect_hw);
 
-        p.reset = (Device.dwFrame < 3);
+        // [DA_PORT] Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
+        // а прежнее `dwFrame < 3` покрывало только запуск сессии. См. xr_ioc_cmd.cpp.
+        p.reset = ::da_upscaler_history_reset();
 
         p.sharpening = ::ps_r__upscale_sharpness > 0;
         p.sharpness = float(::ps_r__upscale_sharpness) / 100.f;

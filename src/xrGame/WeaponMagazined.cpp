@@ -22,6 +22,9 @@
 #include "script_game_object.h"
 #include "HudSound.h"
 
+// [DA_PORT] "g_weapon_malfunctions" - see state_Fire. Defined in console_commands.cpp.
+extern int g_weapon_malfunctions;
+
 CWeaponMagazined::CWeaponMagazined(ESoundTypes eSoundType) : CWeapon(), m_bStopedAfterQueueFired(false)
 {
     m_eSoundShow = ESoundTypes(SOUND_TYPE_ITEM_TAKING | eSoundType);
@@ -69,6 +72,24 @@ bool CWeaponMagazined::WeaponSoundExist(pcstr section, pcstr sound_name) const
 void CWeaponMagazined::Load(LPCSTR section)
 {
     inherited::Load(section);
+
+    // [DA_PORT] see the members in the header. Both optional: a weapon without them simply never picks
+    // up a breakage from firing, which is what every weapon did before this.
+    m_fConditionCoeff = READ_IF_EXISTS(pSettings, r_float, section, "condition_coeff", 1.f);
+    // [DA_PORT] Default 0x00FFFFFF, not 0 - otherwise "applies to all weapons" would be a lie.
+    //
+    // Only 75 of the mod's ~564 weapon sections carry condition_avail; the rest inherit it from a base
+    // section, and whatever inherits nothing would have kept a mask of zero, meaning that weapon could
+    // never break no matter how much it was fired. Silent and impossible to notice from inside the game.
+    //
+    // 0x00FFFFFF is bits 0..23, which is exactly the range the firing block below can produce: its
+    // add_cond runs 1..24 and the bit set is add_cond-1. So this permits every breakage that mechanism
+    // knows how to inflict, and nothing beyond it - the addon-specific bits (27 firemode, 28 scope,
+    // 29 silencer, 30 launcher) stay off unless a weapon's own config asks for them, which is right:
+    // a rifle with no scope should not be told its scope is broken.
+    //
+    // Weapons that DO declare a mask keep it untouched, restrictions and all.
+    m_conditionAvail = READ_IF_EXISTS(pSettings, r_u32, section, "condition_avail", 0x00FFFFFF);
 
     // Sounds
     m_sounds.LoadSound(section, "snd_draw", "sndShow", true, m_eSoundShow);
@@ -578,7 +599,137 @@ void CWeaponMagazined::state_Fire(float dt)
                 fShotTimeCounter = fOneShotTime;
             //Alundaio: END
 
+            // [DA_PORT] A broken weapon loses rate of fire, and unevenly - the author's block, from
+            // _engine_diff/da_alpha/src_/xrGame/WeaponMagazined.cpp:806.
+            //
+            // The random 0.5..2.5 spread is the point of it: a fixed penalty would just read as a
+            // slower weapon, while a shot interval that varies from one round to the next is what makes
+            // a damaged gun feel like it is stuttering. Two of the four breaks only count outside
+            // single fire (mode 1) - a mechanism that cannot cycle is only felt when it has to cycle.
+            //
+            // The 0.3s guard is his as well, at both ends: weapons already slower than that are left
+            // alone, and the penalty may not push any weapon past it either. Without the cap a couple
+            // of breaks plus a bad roll would have taken a rifle down to a shot every second.
+            const float max_time = 0.3f;
+            if (fShotTimeCounter < max_time)
+            {
+                float cond = 0.f;
+
+                if (m_weapon_condition_type & (1 << 2))
+                    cond += 0.10f;
+                if (m_weapon_condition_type & (1 << 3))
+                    cond += 0.30f;
+
+                if (GetCurrentFireMode() != 1)
+                {
+                    if (m_weapon_condition_type & (1 << 4))
+                        cond += 0.20f;
+                    if (m_weapon_condition_type & (1 << 5))
+                        cond += 0.40f;
+                }
+
+                const float rnd = ::Random.randF(0.5f, 2.5f);
+                fShotTimeCounter *= 1.f + cond * rnd;
+                if (fShotTimeCounter > max_time)
+                    fShotTimeCounter = max_time;
+            }
+
             ++m_iShotNum;
+
+            // [DA_PORT] Breakages from firing - the author's block, revived behind "g_weapon_malfunctions".
+            //
+            // This is the mechanic that makes a weapon feel like it is wearing out rather than just
+            // losing a percentage: three dice per shot, and on a hit the weapon gains a breakage bit,
+            // which then feeds everything else - faster wear (WeaponFire.cpp), a stuttering rate of fire
+            // above, wider dispersion (WeaponDispersion.cpp), and the jams CheckForMisfire already reads.
+            // Without it those four are all dead code, because nothing else sets the mask while shooting.
+            //
+            // It exists in Dead Air's own sources COMMENTED OUT, and that is why guns there never break
+            // from use. Default OFF for the same reason: switching it on changes the balance of every
+            // firefight, and that is the player's call, not a side effect of a port.
+            //
+            // Two corrections to the author's draft, both deliberate:
+            //
+            // 1. He checked availability against bit `add_cond` but set bit `add_cond - 1`. They cannot
+            //    both be right. `add_cond == 0` is his "nothing rolled" sentinel, so the value is 1-based
+            //    and the bit is `add_cond - 1`; had it been the bit itself, code 0 - which exists in the
+            //    scripts' condition_type_table - could never be produced. So the availability check is
+            //    the line that was off, and both now use the same bit. This matters: condition_avail is
+            //    the config's whitelist and the Lua side honours it strictly, so an engine testing a
+            //    different bit would hand out breakages the mod forbids.
+            // 2. His unconditional Msg on every hit is gone. It fires per shot in the middle of combat.
+            if (g_weapon_malfunctions && ParentIsActor())
+            {
+                float cond = GetCondition();
+                clamp(cond, 0.01f, cond);
+
+                // The weapon's own wear rate sets the scale, so a rugged weapon breaks proportionally
+                // more rarely - a worn one rolls against a smaller range and therefore hits far sooner.
+                const float coeff = (GetWeaponDeterioration() + 0.0001f) * 1000.f;
+                u32 add_cond = 0;
+
+                // randI(max) is randI() % max, and its VERIFY(max) is compiled out of Release - a range
+                // of zero is an integer division by zero, i.e. a crash. Reachable for real: a weapon with
+                // condition_coeff = 0 in its config drives every range to zero. Floor of one keeps the
+                // author's meaning (randI(1) is always 0, so the roll always hits), without the trap.
+                auto roll = [](float range) { return ::Random.randI(std::max(1, iFloor(range))) == 0; };
+
+                const bool rnd1 = roll(50.f * m_fConditionCoeff / coeff);
+                const bool rnd2 = roll(20.f + 100.f * m_fConditionCoeff * cond / coeff);
+                const bool rnd3 = roll(1.f + 50.f * m_fConditionCoeff * cond / coeff);
+
+                if (rnd1)
+                {
+                    switch (::Random.randI(1, 7))
+                    {
+                    case 1: add_cond = 1; break;
+                    case 2: add_cond = 3; break;
+                    case 3: add_cond = 5; break;
+                    case 4: add_cond = 11; break;
+                    case 5: add_cond = 16; break;
+                    case 6: add_cond = 19; break;
+                    case 7: add_cond = 22; break;
+                    }
+                }
+
+                if (rnd2)
+                {
+                    switch (::Random.randI(1, 8))
+                    {
+                    case 1: add_cond = 4; break;
+                    case 2: add_cond = 6; break;
+                    case 3: add_cond = 9; break;
+                    case 4: add_cond = 12; break;
+                    case 5: add_cond = 14; break;
+                    case 6: add_cond = 17; break;
+                    case 7: add_cond = 20; break;
+                    case 8: add_cond = 24; break;
+                    }
+                }
+
+                // Escalation: each of these only fires when the weapon ALREADY carries the matching
+                // lesser fault, turning it into the next one up. That is why a neglected weapon fails
+                // suddenly rather than gradually.
+                if (rnd3)
+                {
+                    switch (::Random.randI(1, 6))
+                    {
+                    case 1: if (m_weapon_condition_type & (1 << 8)) add_cond = 10; break;
+                    case 2: if (m_weapon_condition_type & (1 << 11)) add_cond = 13; break;
+                    case 3: if (m_weapon_condition_type & (1 << 13)) add_cond = 15; break;
+                    case 4: if (m_weapon_condition_type & (1 << 16)) add_cond = 18; break;
+                    case 5: if (m_weapon_condition_type & (1 << 19)) add_cond = 21; break;
+                    case 6: if (m_weapon_condition_type & (1 << 21)) add_cond = 23; break;
+                    }
+                }
+
+                if (add_cond > 0)
+                {
+                    const u32 bit = 1u << (add_cond - 1);
+                    if (m_conditionAvail & bit)
+                        m_weapon_condition_type |= bit;
+                }
+            }
 
             OnShot();
 

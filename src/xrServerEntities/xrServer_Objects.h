@@ -165,7 +165,12 @@
 // 127	 CSE_ALifeObjectClimable		added material;
 // 128	 CSE_ALifeObjectClimable		added can_fire in smart covers;
 //------------------------------------------------------------------------------
-#define SPAWN_VERSION u16(128)
+// [DA_PORT] 128 -> 129: the weapon packet gained condition_type, the malfunction mask. Bumping this is
+// what keeps old saves readable - they carry 128, so every "m_wVersion > 128" test reads false and the
+// new field is skipped. Verified safe before bumping: every existing comparison in the tree is "< N"
+// with N <= 118 or "> N" with N <= 126, and there is no equality test on the version anywhere, so 129
+// is indistinguishable from 128 to all of them.
+#define SPAWN_VERSION u16(129)
 
 class CSE_Shape : public IServerEntityShape, public CShapeData
 {

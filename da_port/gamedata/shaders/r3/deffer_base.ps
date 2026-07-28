@@ -1,0 +1,174 @@
+// [DA_PORT] ---- Vegetation: soft edges + translucency ------------------------------------------
+// This is the shader for grass and foliage (see the author's comment below and the H_GRASS term).
+// Both additions are gated on def_aref > 0, i.e. on geometry that actually alpha-tests: grass, bushes
+// and leaves. Walls and crates go through the same shader with def_aref = 0 and are untouched.
+//
+// DA_SOFT_EDGES: a hard clip() cuts a blade of grass exactly on the pixel, which is what produces the
+// stair-stepping on every stem. The engine's own fix (alpha-to-coverage) only works together with MSAA,
+// and MSAA is off in favour of temporal AA. So instead the cutoff is jittered by an ordered 4x4 pattern:
+// an edge pixel is dropped on some frames and kept on others, and temporal accumulation resolves that
+// into a smooth gradient. Same result as alpha-to-coverage without its cost - but it only makes sense
+// with r__taa on, otherwise the edge just looks noisy.
+//
+// DA_TRANSLUCENCY: a leaf's normal almost always points sideways, so in deferred lighting vegetation
+// turns into a flat dark silhouette against the sun. Real subsurface light would need its own G-buffer
+// channel; instead the normal is bent slightly towards the viewer, so the leaf catches light from both
+// sides - the same "fake SSS" trick SSFX uses in Anomaly. Gloss is raised at the same time: dry grass
+// does catch highlights, and def_gloss for it was effectively zero.
+#define DA_SOFT_EDGES
+#define DA_TRANSLUCENCY
+#define DA_TRANSLUCENCY_BEND  0.35
+#define DA_FOLIAGE_GLOSS      0.35
+
+// Ordered Bayer 4x4 matrix: an even pattern fixed in screen space. Unlike random noise it does not boil
+// between frames, which is what lets temporal AA average it away instead of amplifying it.
+float da_bayer4x4(float2 pos)
+{
+	const float m[16] =
+	{
+		 0.0 / 16.0,  8.0 / 16.0,  2.0 / 16.0, 10.0 / 16.0,
+		12.0 / 16.0,  4.0 / 16.0, 14.0 / 16.0,  6.0 / 16.0,
+		 3.0 / 16.0, 11.0 / 16.0,  1.0 / 16.0,  9.0 / 16.0,
+		15.0 / 16.0,  7.0 / 16.0, 13.0 / 16.0,  5.0 / 16.0
+	};
+	int2 p = int2(fmod(abs(pos), 4.0));
+	return m[p.y * 4 + p.x];
+}
+
+#if ( defined(MSAA_ALPHATEST_DX10_1_ATOC) || defined(MSAA_ALPHATEST_DX10_1) ) 
+#define EXTEND_F_DEFFER
+#endif
+
+#include "common.h"
+#include "da_shader_ids.h"
+#include "sload.h"
+
+#ifdef	ATOC
+
+float4 	main	( p_flat I ) : SV_Target
+{
+	float4 D 	= tbase	 	(I.tcdh);
+	D.w = (D.w-def_aref*0.5f)/(1-def_aref*0.5f);
+	return D;
+}
+
+#else	//	ATOC
+
+#if defined(MSAA_ALPHATEST_DX10_1_ATOC) || defined(DA_SOFT_EDGES)
+f_deffer 	main	( p_flat I, float4 pos2d : SV_Position )
+#else	//	MSAA_ALPHATEST_DX10_1_ATOC
+f_deffer 	main	( p_flat I )
+#endif	//	MSAA_ALPHATEST_DX10_1_ATOC
+{
+  f_deffer	O;
+
+  // 1. Base texture + kill pixels with low alpha
+  
+#if !defined(MSAA_ALPHATEST_DX10_1)
+
+  float4 D 	= tbase	 	(I.tcdh);
+
+#if	!( defined(MSAA_ALPHATEST_DX10_1_ATOC) || defined(MSAA_ALPHATEST_DX10_0_ATOC) )
+#ifdef	DA_SOFT_EDGES
+	// The cutoff wanders by +-half of def_aref. Only bites where alpha-testing happens at all: with
+	// def_aref = 0 the spread is zero too and this stays exactly the clip it always was.
+	float	da_spread = def_aref * (da_bayer4x4(pos2d.xy) - 0.5);
+	clip					(D.w-(def_aref+da_spread));
+#else
+	clip					(D.w-def_aref);
+#endif
+#endif	//	!( defined(MSAA_ALPHATEST_DX10_1_ATOC) || defined(MSAA_ALPHATEST_DX10_1_ATOC) )
+#ifdef 	MSAA_ALPHATEST_DX10_1_ATOC
+	float alpha = (D.w-def_aref*0.5f)/(1-def_aref*0.5f);
+	uint mask = alpha_to_coverage ( alpha, pos2d );
+#endif	//	MSAA_ALPHATEST_DX10_1_ATOC
+
+#else
+  uint mask = 0x0;
+  float2 ddx_base = ddx( I.tcdh );
+  float2 ddy_base = ddy( I.tcdh );
+
+  float2 pixeloffset = MSAAOffsets[0]*(1.0/16.0);
+  
+  float2 texeloffset =  pixeloffset.x * ddx_base + pixeloffset.y * ddy_base;
+      	
+  float4 D 	= tbase(I.tcdh+texeloffset);
+	
+  if( D.w-def_aref >= 0 ) mask |= 0x1;
+	
+  [unroll] for( int i = 1; i < MSAA_SAMPLES; ++i )
+  {
+	pixeloffset = MSAAOffsets[i]*(1.0/16.0);
+	texeloffset =  pixeloffset.x * ddx_base + pixeloffset.y * ddy_base;
+	float4 DI 	= tbase(I.tcdh+texeloffset);
+	if( DI.w-def_aref >= 0 ) mask |= ( uint(0x1) << i );
+  }
+	
+  if( mask == 0x0 )
+	discard;
+#endif
+
+#ifdef	USE_TDETAIL
+//	D.rgb	= 2*D.rgb*tex2D	(s_detail, I.tcdbump).rgb;
+	D.rgb	= 2*D.rgb * s_detail.Sample( smp_base, I.tcdbump ).rgb;
+#endif
+
+	// hemi,sun,material
+	float 	ms	= xmaterial		;
+#ifdef USE_LM_HEMI
+//	float4	lm 	= tex2D			(s_hemi, I.lmh);
+	float4	lm 	= s_hemi.Sample( smp_rtlinear, I.lmh);
+//	float 	h  	= dot			(lm.rgb,1.h/3.h);
+	float 	h  	= get_hemi(lm);
+# ifdef USE_R2_STATIC_SUN
+//		 	ms 	= lm.w			;
+			ms 	= get_sun(lm);
+# endif
+#else
+	float 	h	= I.position.w	;
+# ifdef USE_R2_STATIC_SUN
+		 	ms	= I.tcdh.w		;
+# endif
+#endif
+
+  // 2. Standart output
+  float3 da_N = normalize((float3)I.N.xyz);
+#ifdef	DA_TRANSLUCENCY
+  if (def_aref > 0.001)
+  {
+	// Direction to the camera in view space is simply the direction back to the origin.
+	float3 da_to_eye = normalize(-I.position.xyz);
+	// Lean the normal towards the viewer, so the leaf stops being edge-on to the light and gains
+	// brightness instead of collapsing into a black silhouette against the sun.
+	da_N = normalize(lerp(da_N, da_to_eye, DA_TRANSLUCENCY_BEND));
+  }
+#endif
+  float4 Ne     = float4	(da_N, 					h*H_GRASS			);
+#if !( defined(MSAA_ALPHATEST_DX10_1_ATOC) || defined(MSAA_ALPHATEST_DX10_1) )
+  O				= pack_gbuffer(
+  								Ne,
+								float4 	(I.position.xyz + Ne.xyz*def_virtualh/2.h	, 	ms			),
+								float4	(D.rgb,		max(def_gloss, def_aref > 0.001 ? DA_FOLIAGE_GLOSS : def_gloss)) );
+#else
+  O				= pack_gbuffer(
+  								Ne,
+								float4 	(I.position.xyz + Ne.xyz*def_virtualh/2.h	, 	ms			),
+								float4	(D.rgb,		max(def_gloss, def_aref > 0.001 ? DA_FOLIAGE_GLOSS : def_gloss)),
+								mask );
+#endif
+
+	// [DA_PORT] Motion vector — see deffer_base_flat.ps.
+#ifdef DA_VELOCITY
+#ifdef DA_DEBUG_SHADER_IDS
+	O.velocity = DA_ID_BASE;
+#else
+	O.velocity = I.hpos_curr.xy / I.hpos_curr.w - I.hpos_old.xy / I.hpos_old.w;
+	// [DA_PORT] Moving pixels distrust their history - see da_motion_reactive.
+	O.reactive = max( O.reactive, da_motion_reactive(O.velocity) );
+#endif
+#endif
+
+  return O;
+}
+
+#endif	//	ATOC

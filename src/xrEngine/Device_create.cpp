@@ -36,24 +36,24 @@ void CRenderDevice::Create()
         psDeviceMode.WindowStyle = rsWindowed;
 
     UpdateWindowProps();
-    Msg("! [DA_PORT] Dev::Create before Render->Create"); FlushLog();
+    Msg("* [DA_PORT] Dev::Create before Render->Create"); FlushLog();
     GEnv.Render->Create(m_sdlWnd, dwWidth, dwHeight, fWidth_2, fHeight_2);
-    Msg("! [DA_PORT] Dev::Create after Render->Create"); FlushLog();
+    Msg("* [DA_PORT] Dev::Create after Render->Create"); FlushLog();
 
     Memory.mem_compact();
     b_is_Ready = true;
 
     SetupStates();
-    Msg("! [DA_PORT] Dev::Create after SetupStates"); FlushLog();
+    Msg("* [DA_PORT] Dev::Create after SetupStates"); FlushLog();
     string_path fname;
     FS.update_path(fname, "$game_data$", "shaders.xr");
     GEnv.Render->OnDeviceCreate(fname);
-    Msg("! [DA_PORT] Dev::Create after OnDeviceCreate"); FlushLog();
+    Msg("* [DA_PORT] Dev::Create after OnDeviceCreate"); FlushLog();
     m_imgui_render = GEnv.RenderFactory->CreateImGuiRender();
-    Msg("! [DA_PORT] Dev::Create after CreateImGuiRender"); FlushLog();
+    Msg("* [DA_PORT] Dev::Create after CreateImGuiRender"); FlushLog();
     m_imgui_render->OnDeviceCreate(GetImGuiContext());
-    Msg("! [DA_PORT] Dev::Create after ImGui OnDeviceCreate"); FlushLog();
+    Msg("* [DA_PORT] Dev::Create after ImGui OnDeviceCreate"); FlushLog();
     Statistic->OnDeviceCreate();
-    Msg("! [DA_PORT] Dev::Create DONE"); FlushLog();
+    Msg("* [DA_PORT] Dev::Create DONE"); FlushLog();
     dwFrame = 0;
 }

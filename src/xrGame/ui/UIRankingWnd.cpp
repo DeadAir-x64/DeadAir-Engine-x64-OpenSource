@@ -94,26 +94,20 @@ bool CUIRankingWnd::Init()
     std::ignore = UIHelper::CreateStatic(xml, "center_background", this, false);
     std::ignore = UIHelper::CreateFrameWindow(xml, "down_background", this, false);
 
-    if (xml.NavigateToNode("actor_ch_info"))
-    {
-        m_actor_ch_info = xr_new<CUICharacterInfo>();
-        m_actor_ch_info->SetAutoDelete(true);
-        AttachChild(m_actor_ch_info);
-        m_actor_ch_info->InitCharacterInfo(&xml, "actor_ch_info");
+    // [DA_PORT] The actor portrait block is deliberately not built on this screen.
+    //
+    // Neither Dead Air's own source nor the CoC base creates "actor_ch_info" or "actor_icon_over" here -
+    // the two files are byte-identical on this point and build only the background, the counters and the
+    // achievements. Upstream added the block, and pda_ranking.xml still carries the (dead, for Dead Air)
+    // markup for it, so on this data the engine drew a portrait at x=56..191 straight on top of the first
+    // column of counters, which sits at x=89. That is the skew. Its name_static made it worse: the name
+    // is rendered in graffiti19, which has no Cyrillic, so it came out as repeating junk glyphs.
+    //
+    // Leaving m_actor_ch_info null also restores the author's counter numbering - see get_statistic(),
+    // which reserves stat_info[0] for an engine-drawn "time in zone" only when this block exists. Dead
+    // Air has that line commented out and feeds every slot from pda.get_stat() starting at 0 instead.
 
-        auto* community = m_actor_ch_info->GetIcon(CUICharacterInfo::eCommunity);
-        auto* communityCaption = m_actor_ch_info->GetIcon(CUICharacterInfo::eCommunityCaption);
-
-        if (community && communityCaption)
-        {
-            communityCaption->AdjustWidthToText();
-            pos = community->GetWndPos();
-            pos.x = communityCaption->GetWndPos().x + communityCaption->GetWndSize().x + 10.0f;
-            community->SetWndPos(pos);
-        }
-    }
-
-    std::ignore = UIHelper::CreateFrameWindow(xml, "actor_icon_over", this, false);
+    m_actor_ch_info = nullptr;
 
     auto* money_caption = UIHelper::CreateStatic(xml, "money_caption", this, false);
     m_money_value = UIHelper::CreateStatic(xml, "money_value", this, false);

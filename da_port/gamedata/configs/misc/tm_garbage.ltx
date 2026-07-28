@@ -1,0 +1,27 @@
+;  (Bandit Medic) Find Drugs Kit Task-
+
+[gar_3_5_medic_task_1]
+
+icon = ui_inGame2_Instrumenti
+storyline = false
+prior = 15
+precondition = {-gar_3_5_medic_drugs_kit} true, false
+
+title = gar_3_5_medic_task_1_name
+title_functor = general_fetch_task
+descr = gar_3_5_medic_task_1_text
+descr_functor = general_fetch_task
+job_descr = gar_3_5_medic_task_1_about
+fetch_descr = gar_3_5_medic_task_1_fetch_about
+task_complete_descr = gar_3_5_medic_task_1_fetch_finish
+
+stage_complete = 1
+target_functor = general_fetch_task
+status_functor = actor_has_fetch_item
+condlist_0 = {!task_giver_alive(gar_3_5_medic_task_1)} fail
+condlist_1 = {=drx_sl_is_enemy(bandit)} fail
+
+fetch_func = %=setup_generic_fetch_task(gar_3_5_medic_task_1_fetch:1:itm_drugkit)%
+on_complete = %=reward_random_item(adrenalin) =complete_task_inc_goodwill(50:bandit) =remove_fetch_item(gar_3_5_medic_task_1_fetch) =inc_task_stage(gar_3_5_medic_task_1) +gar_3_5_medic_drugs_kit =drx_sl_unregister_task_giver(gar_3_5_medic_task_1)%
+on_fail = %=fail_task_dec_goodwill(25:bandit) =drx_sl_unregister_task_giver(gar_3_5_medic_task_1)%
+on_fail = %=drx_sl_unregister_task_giver(gar_3_5_medic_task_1)%

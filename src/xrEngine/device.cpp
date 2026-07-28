@@ -23,7 +23,7 @@ ENGINE_API bool g_bRendering = false;
 ENGINE_API bool g_bBenchmark = false;
 string512 g_sBenchmarkName;
 
-int ps_fps_limit = 501;
+u32 ps_fps_limit = 1000; // [DA_PORT] token cvar now; 1000 == unlimited
 
 // [DA_PORT] Frames still to write into the log, see ProcessFrame. Counts itself down.
 ENGINE_API int ps_da_perf_dump = 0;
@@ -41,7 +41,7 @@ static u32 g_da_perf_seq_count = 0;
 static float g_da_perf_seq_inner_ms = 0.f;
 static float g_da_perf_sleep_ms = 0.f;
 static float g_da_perf_total_ms = 0.f;
-int ps_fps_limit_in_menu = 60;
+u32 ps_fps_limit_in_menu = 60;
 
 bool g_bLoaded = false;
 ref_light precache_light = 0;
@@ -324,7 +324,10 @@ void CRenderDevice::ProcessFrame()
     if (!BeforeFrame())
         return;
 
-    const u64 frameStartTime = TimerGlobal.GetElapsed_ms();
+    const u64 frameStartTime = TimerGlobal.GetElapsed_ns(); // [DA_PORT] ns: whole ms cannot express 165 fps
+    // [DA_PORT] Pace the frame on a clock that CANNOT be paused. TimerGlobal can: while paused it
+    // returns a constant, so waiting on it froze the game solid the moment the menu opened.
+    const auto frameStartSteady = std::chrono::steady_clock::now();
 
     // [DA_PORT] Own timers for the dump, because the engine's own are peak-hold, not per-frame:
     // CStatTimer::FrameEnd jumps straight to any new maximum and then decays by one percent a frame.
@@ -482,16 +485,21 @@ void CRenderDevice::ProcessFrame()
         g_da_oh_entries = g_da_oh_alive = g_da_oh_throws = g_da_lpb_calls = 0;
     }
 
-    const u64 frameEndTime = TimerGlobal.GetElapsed_ms();
+    const u64 frameEndTime = TimerGlobal.GetElapsed_ns();
     const u64 frameTime = frameEndTime - frameStartTime;
 
-    u32 updateDelta = 1000 / ps_fps_limit;
+    // [DA_PORT] The budget is computed in NANOSECONDS.
+    //
+    // It used to be `1000 / ps_fps_limit` in whole milliseconds, which cannot express most caps at all:
+    // 165 became 6ms (166 fps by luck), 144 became 6ms as well, 120 became 8ms (125 fps), and anything
+    // above 500 collapsed to 1ms. That is why the limiter looked broken - it either did nothing or
+    // capped at a number nobody asked for.
+    u64 budget = ps_fps_limit ? 1000000000ull / ps_fps_limit : 0;
 
     if (GEnv.isDedicatedServer)
-        updateDelta = 1000 / g_svDedicateServerUpdateReate;
-
+        budget = 1000000000ull / g_svDedicateServerUpdateReate;
     else if (Paused() || g_pGameLevel == nullptr)
-        updateDelta = 1000 / ps_fps_limit_in_menu;
+        budget = ps_fps_limit_in_menu ? 1000000000ull / ps_fps_limit_in_menu : 0;
 
     // [DA_PORT] Time the sleep, and the whole of this function, because the parts measured above stopped
     // adding up: a 22ms frame with 1.4 of processing, 3.0 of drawing and nothing waiting leaves
@@ -509,8 +517,27 @@ void CRenderDevice::ProcessFrame()
     if (perf)
         sleep_timer.Start();
 
-    if (frameTime < updateDelta)
-        Sleep(updateDelta - frameTime);
+    // Sleep for the whole milliseconds only and spin out the remainder: Sleep() rounds up to the
+    // scheduler tick, so sleeping the fractional part would overshoot the cap it is meant to hold.
+    if (budget)
+    {
+        const auto elapsed_ns = [&frameStartSteady]() -> u64
+        {
+            return u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - frameStartSteady).count());
+        };
+
+        const u64 done = elapsed_ns();
+        if (done < budget)
+        {
+            const u64 remaining = budget - done;
+            if (remaining > 2000000ull) // sleep the whole milliseconds, spin the remainder
+                Sleep(static_cast<u32>((remaining - 1000000ull) / 1000000ull));
+
+            while (elapsed_ns() < budget)
+                std::this_thread::yield();
+        }
+    }
 
     if (!b_is_Active)
         Sleep(1);
@@ -518,7 +545,7 @@ void CRenderDevice::ProcessFrame()
     if (perf)
     {
         g_da_perf_sleep_ms = sleep_timer.GetElapsed_sec() * 1000.f;
-        g_da_perf_total_ms = float(TimerGlobal.GetElapsed_ms() - frameStartTime);
+        g_da_perf_total_ms = float(TimerGlobal.GetElapsed_ns() - frameStartTime) / 1000000.f;
     }
 }
 

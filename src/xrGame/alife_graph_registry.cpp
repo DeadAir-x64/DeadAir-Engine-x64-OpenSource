@@ -195,6 +195,34 @@ void CALifeGraphRegistry::add(CSE_ALifeDynamicObject* object, GameGraph::_GRAPH_
     {
         VERIFY(ai().game_graph().valid_vertex_id(game_vertex_id));
 
+        // [DA_PORT] m_objects is a VECTOR indexed by the graph vertex id, and the only thing standing
+        // between a bad id and reading past its end is the VERIFY above - which Release compiles away.
+        //
+        // What that costs is worth spelling out, because the crash it produces points nowhere near
+        // here: the out-of-bounds read hands back a garbage CGraphPointInfo, the std::map inside it has
+        // garbage node pointers, and the process dies inside _Rb_tree_decrement in libstdc++ with no
+        // message at all. Found exactly that way - the stack named this file only after the addresses
+        // were run back through addr2line.
+        //
+        // Two different faults land here and the log line separates them: an object carrying an invalid
+        // m_tGraphID (id >= vertex count), or add() running before the registry was sized at all
+        // (size 0). Skipping the registration is safe - an object that is not in the per-vertex list
+        // is simply not tracked there - and infinitely better than undefined behaviour.
+        if (game_vertex_id >= m_objects.size())
+        {
+            // The SECTION is what identifies the object here, not name_replace() - that one is empty
+            // for every object without a custom name, which is most of them, and the first version of
+            // this message printed nothing useful because of it.
+            Msg("! [DA_PORT] ALife: object [%s] section[%s] id[%d] has graph vertex %u but the registry "
+                "holds %u - not registering (invalid vertex id, or the registry is not built yet)",
+                object->name_replace(), object->s_name.c_str(), object->ID, u32(game_vertex_id),
+                u32(m_objects.size()));
+            object->m_tGraphID = game_vertex_id;
+            if (update && m_level && ai().game_graph().valid_vertex_id(game_vertex_id))
+                level().add(object);
+            return;
+        }
+
         // [DA_PORT] Registering the same object at the same graph point twice is a hard assert inside
         // the registry, and it took down the game on a level change. The second registration is a
         // no-op for an object already there, so it is skipped rather than fatal - but it is reported,
@@ -219,8 +247,28 @@ void CALifeGraphRegistry::add(CSE_ALifeDynamicObject* object, GameGraph::_GRAPH_
         object->m_tGraphID = game_vertex_id;
     }
 
+    // [DA_PORT] The SECOND registry, and it needed the same tolerance as the first.
+    //
+    // The guard above covers the per-graph-point list. This is the per-LEVEL one, and it asserts on a
+    // duplicate exactly the same way - safe_map_iterator_inline.h:35, "Specified object has been already
+    // found in the registry!". Caught on a level change, and the log made the sequence unmistakable: our
+    // own line reporting the graph point had already been skipped, and one instruction later the level
+    // registry killed the game over the very same object.
+    //
+    // Skipping is correct rather than merely survivable: the object IS already registered here, so
+    // adding it again has nothing to accomplish. Reported, because arriving here still means someone
+    // registered without unregistering, and the object's name is the only thing that identifies who.
     if (update && m_level && ai().game_graph().valid_vertex_id(game_vertex_id))
-        level().add(object);
+    {
+        if (level().object(object->ID, true) != nullptr)
+        {
+            Msg("! [DA_PORT] ALife: object [%s] section[%s] id[%d] already in the level registry - "
+                "skipping (it was registered without being unregistered first)",
+                object->name_replace(), object->s_name.c_str(), object->ID);
+        }
+        else
+            level().add(object);
+    }
 }
 
 void CALifeGraphRegistry::remove(CSE_ALifeDynamicObject* object, GameGraph::_GRAPH_ID game_vertex_id, bool update)
@@ -240,7 +288,13 @@ void CALifeGraphRegistry::remove(CSE_ALifeDynamicObject* object, GameGraph::_GRA
         // later attach()/remove() finds no key here. Asserting hard-crashed the game (repro:
         // an NPC gathering an artefact via xr_gather_items while the actor stood at a trader).
         // Removing an absent object from this per-vertex list is a benign no-op.
-        m_objects[game_vertex_id].objects().remove(object->ID, true);
+        //
+        // [DA_PORT] Same bounds guard as add() - this indexes the same vector with the same
+        // unvalidated id, and an object that could not be registered cannot be unregistered either.
+        // Silent here on purpose: add() already named the object when it refused it, and remove() runs
+        // often enough that repeating the complaint would bury the one line that matters.
+        if (game_vertex_id < m_objects.size())
+            m_objects[game_vertex_id].objects().remove(object->ID, true);
     }
     if (update && m_level)
     {

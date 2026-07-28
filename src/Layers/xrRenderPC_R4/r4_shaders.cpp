@@ -39,6 +39,69 @@ static HRESULT create_shader(DWORD const* buffer, size_t const buffer_size, LPCS
         // Parse constant table data
         result->constants.parse(pReflection, ShaderTypeTraits<T>::GetShaderDest());
 
+        // [DA_PORT] Tell a mod author when their shader will not work with the upscalers.
+        //
+        // A pixel shader that draws into the G-buffer must also write the motion vector, colour target
+        // 2. If it does not, the target keeps the zero it was cleared to - and zero does not mean
+        // "unknown" to FSR, it means "this pixel did not move on screen". The object is then rebuilt
+        // from history fetched where it used to be, which looks like the model smearing or trailing
+        // behind the camera. Nothing fails, nothing is logged by the engine, and the artefact points
+        // nowhere near the shader that caused it. This is the message that would have saved that hunt.
+        //
+        // The test needs no naming convention and no guessing. Deferred scene shaders write colour
+        // targets 0 and 1 (position and albedo); post-process and blit shaders write target 0 alone.
+        // So "writes 1 but not 2" identifies a scene shader missing its velocity output exactly, and
+        // leaves every legitimate single-target shader alone.
+        //
+        // Only while an upscaler actually needs the vectors: with velocity off nothing consumes them
+        // and the message would be noise.
+        if constexpr (std::is_same_v<T, SPS>)
+        {
+            if (RImplementation.o.velocity)
+            {
+                D3D11_SHADER_DESC shader_desc{};
+                if (SUCCEEDED(pReflection->GetDesc(&shader_desc)))
+                {
+                    bool writes_1 = false, writes_2 = false;
+                    for (UINT i = 0; i < shader_desc.OutputParameters; ++i)
+                    {
+                        D3D11_SIGNATURE_PARAMETER_DESC param{};
+                        if (FAILED(pReflection->GetOutputParameterDesc(i, &param)) || !param.SemanticName)
+                            continue;
+                        if (xr_strcmp(param.SemanticName, "SV_Target") != 0)
+                            continue;
+                        if (param.SemanticIndex == 1)
+                            writes_1 = true;
+                        else if (param.SemanticIndex == 2)
+                            writes_2 = true;
+                    }
+
+                    // [DA_PORT] Name-gated, and the first attempt without it was wrong.
+                    //
+                    // The idea was that only G-buffer shaders write two colour targets, so "writes 1
+                    // but not 2" would identify them without caring what they are called. That is
+                    // false: full-screen passes write two targets for their own reasons - the combine
+                    // splits the frame into low and high parts, and our temporal resolve writes the
+                    // screen and the history separately. The check duly accused da_taa.ps,
+                    // combine_1_nomsaa.ps and combine_volumetric.ps, none of which touch the G-buffer.
+                    //
+                    // Every deferred scene shader in this engine is named deffer_*, and a mod adding
+                    // one either follows that convention or has copied a file that does. Narrower than
+                    // intended, but a diagnostic that cries wolf on the engine's own shaders is worse
+                    // than one that covers slightly less.
+                    const bool is_scene_shader = file_name && strstr(file_name, "deffer") != nullptr;
+
+                    if (is_scene_shader && writes_1 && !writes_2)
+                    {
+                        Msg("! [DA_PORT] shader [%s] draws into the G-buffer but writes no motion vector "
+                            "(colour target 2). Anything using it will smear or trail under FSR/XeSS. "
+                            "Fix: output the velocity the way gamedata\shaders\r3\deffer_model_bump.vs "
+                            "and pack_gbuffer do.", file_name);
+                    }
+                }
+            }
+        }
+
         _RELEASE(pReflection);
     }
     else

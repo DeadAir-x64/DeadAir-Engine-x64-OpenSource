@@ -1,0 +1,35 @@
+; [DA_PORT] Actor third-person visual per outfit.
+;
+; Why: Dead Air's outfit `actor_visual` (actors\legs\*.ogf) is a FIRST-PERSON body model
+; (legs + torso only, no arms, no head) and cannot be used for the actor's shadow / death
+; corpse. This maps each outfit section to a full NPC faction model (head + arms + matching
+; armour) so the shadow and corpse show the real outfit with a head.
+;
+; The key is the OUTFIT section name; the value is a mesh path under gamedata\meshes (no .ogf).
+; If an outfit is not listed here (or its model is missing) the engine falls back to the actor's
+; config base visual (stalker_hero). Safe to edit and reload — no rebuild needed.
+
+[da_actor_visual_3d]
+novice_outfit            = actors\stalker_neutral\stalker_neutral_1
+stalker_outfit           = actors\stalker_neutral\stalker_neutral_2
+scientific_outfit        = actors\stalker_neutral\stalker_neutral_nauchniy_face_1
+bandit_novice_outfit     = actors\stalker_bandit\stalker_bandit_1
+banditmerc_outfit        = actors\stalker_bandit\stalker_bandit_2
+trenchcoat_outfit        = actors\stalker_bandit\stalker_bandit_4
+dolg_outfit              = actors\stalker_dolg\stalker_dolg_2_face_1
+dolg_heavy_outfit        = actors\stalker_dolg\stalker_dolg_3_face_1
+svoboda_light_outfit     = actors\stalker_freedom\stalker_freedom_1_face_1
+svoboda_outfit           = actors\stalker_freedom\stalker_freedom_2_face_1
+svoboda_heavy_outfit     = actors\stalker_freedom\stalker_freedom_3_face_1
+merc_outfit              = actors\stalker_merc\stalker_merc_2_face_1
+specops_outfit           = actors\stalker_soldier\stalker_soldier_2
+military_outfit          = actors\stalker_soldier\stalker_soldier_4
+monolith_outfit          = actors\stalker_monolith\stalker_monolith1
+exo_outfit               = actors\stalker_neutral\stalker_neutral_exo_helm_1
+ecolog_guard_outfit      = actors\stalker_ecologist\stalker_ecolog_guard
+ecolog_outfit_green      = actors\stalker_ecologist\stalker_ecolog_military
+ecolog_outfit_orange     = actors\stalker_ecologist\stalker_ecolog
+cs_light_outfit          = actors\stalker_nebo\stalker_nebo_1
+cs_heavy3a_outfit        = actors\stalker_nebo\stalker_nebo_2
+cs_outfit                = actors\stalker_nebo\stalker_nebo_3
+cs_heavy3b_outfit        = actors\stalker_nebo\stalker_nebo_3

@@ -205,6 +205,19 @@ public:
     u8 ammo_type;
     u16 a_current;
     u16 a_elapsed;
+
+    // [DA_PORT] The malfunction mask, on the SERVER object so that it survives.
+    //
+    // Dead Air carries this in the weapon packet and the port did not, which meant every breakage a
+    // weapon collected - from a corpse, from a stash, or from firing once g_weapon_malfunctions is on -
+    // lived only until the object went offline or the game was saved. The mask itself is client-side
+    // (CWeapon::m_weapon_condition_type); this is where it is kept between sessions.
+    //
+    // Not invented here: Dead Air's own scripts prove the field and its width. stpk_utils's weapon
+    // packet parser reads condition_type as a u32 immediately after the grenade byte, and
+    // coc_treasure_manager and axr_dynamic_spawn already compute and write it back through that path -
+    // they were writing into a field the engine ignored.
+    u32 condition_type;
     // count of grenades to spawn in grenade launcher [ttcccccc]
     // WARNING! hight 2 bits (tt bits) indicate type of grenade, so maximum grenade count is 2^6 = 64
     struct grenade_count_t

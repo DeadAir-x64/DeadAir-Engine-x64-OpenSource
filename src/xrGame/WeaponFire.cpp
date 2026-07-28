@@ -69,7 +69,21 @@ void CWeapon::FireTrace(const Fvector& P, const Fvector& D)
     //повысить изношенность оружия с учетом влияния конкретного патрона
     //	float Deterioration = GetWeaponDeterioration();
     //	Msg("Deterioration = %f", Deterioration);
-    ChangeCondition(-GetWeaponDeterioration() * l_cartridge.param_s.impair);
+    // [DA_PORT] A damaged weapon wears out faster - the author's factor, from
+    // _engine_diff/da_alpha/src_/xrGame/WeaponFire.cpp:74. Specific breaks make the mechanism grind
+    // rather than merely shoot badly, so each of them adds to the per-shot wear on top of the flat
+    // config rate. Bits and weights are his; the mask is m_weapon_condition_type (his m_conditionType).
+    float cond = 1.f;
+    if (m_weapon_condition_type & (1 << 0))
+        cond += 0.2f;
+    if (m_weapon_condition_type & (1 << 1))
+        cond += 0.4f;
+    if (m_weapon_condition_type & (1 << 8))
+        cond += 0.1f;
+    if (m_weapon_condition_type & (1 << 13))
+        cond += 0.1f;
+
+    ChangeCondition(-GetWeaponDeterioration() * l_cartridge.param_s.impair * cond);
 
     float fire_disp = 0.f;
     CActor* tmp_actor = NULL;

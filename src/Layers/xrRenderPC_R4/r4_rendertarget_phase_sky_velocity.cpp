@@ -4,6 +4,7 @@ extern ENGINE_API int ps_r__sky_velocity;
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API int ps_r__xess;
+extern ENGINE_API bool da_upscaler_active(); // [DA_PORT]
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -18,7 +19,9 @@ void CRenderTarget::phase_sky_velocity()
         return;
 
     // Only an upscaler reads these vectors for the sky; without one the pass is pure cost.
-    if (!ps_r__fsr2 && !ps_r__fsr3 && !ps_r__xess)
+    // [DA_PORT] Через общий список: пропущенный здесь бэкенд оставляет небо без векторов, а ноль
+    // для апскейлера значит «пиксель стоял на месте», а не «данных нет».
+    if (!da_upscaler_active())
         return;
 
     PIX_EVENT(DA_phase_sky_velocity);

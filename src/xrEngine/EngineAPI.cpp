@@ -141,6 +141,15 @@ void CEngineAPI::CreateRendererList(const std::array<RendererModule*, 2>& module
 
         for (const auto [mode, modeIndex] : modes)
         {
+            // [DA_PORT] Only R4 is offered. Every change this port makes - temporal upscalers, motion
+            // vectors, the reactive mask, the shadow-light budget, the gamma and shadow fixes, the whole
+            // diagnostic set - lives in xrRenderPC_R4, and that is the only renderer this build even
+            // produces. The other modes still answer "supported", but picking one silently drops the
+            // player onto stock code: it would not crash, it would just quietly be a different game,
+            // and the bug reports would come back to us. The dedicated server keeps its own path.
+            if (!GEnv.isDedicatedServer && xr_strcmp(mode, "renderer_r4") != 0)
+                continue;
+
             const auto it = renderModes.find(mode);
             if (it != renderModes.end())
             {

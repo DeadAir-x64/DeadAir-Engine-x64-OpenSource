@@ -9,6 +9,30 @@
 #include "Weapon.h"
 #include "UIHelper.h"
 
+// [DA_PORT] The condition percentage, written the way Dead Air writes it.
+//
+// Taken from the author's UIWpnParams.cpp, including the details that look arbitrary and are not:
+// the value is clamped to 99 rather than 100, and there is a space before the per-cent sign. Colour
+// carries the same information a second time, for reading at a glance: green above 66, yellow above
+// 33, red below - so a glance at the colour is enough and the number is there when it matters.
+static void da_set_condition_text(CUIStatic& value_text, const CInventoryItem& item)
+{
+    int condition = int(item.GetConditionToShow() * 100.f);
+    clamp(condition, 0, 99);
+
+    if (condition > 66)
+        value_text.SetTextColor(color_rgba(0, 255, 0, 255));
+    else if (condition > 33)
+        value_text.SetTextColor(color_rgba(255, 255, 0, 255));
+    else
+        value_text.SetTextColor(color_rgba(255, 0, 0, 255));
+
+    string32 tmp;
+    xr_sprintf(tmp, sizeof(tmp), "%d %s", condition, "%");
+    value_text.SetText(tmp);
+}
+
+
 struct SLuaWpnParams
 {
     luabind::functor<float> m_functorRPM;
@@ -53,6 +77,9 @@ CUIWpnParams::CUIWpnParams() : CUIWindow("Weapon Params")
     AttachChild(&m_progressDamage);
     AttachChild(&m_progressHandling);
     AttachChild(&m_progressRPM);
+
+    AttachChild(&m_textConditionW);  // [DA_PORT]
+    AttachChild(&m_textConditionW2); // [DA_PORT]
 }
 
 bool CUIWpnParams::InitFromXml(CUIXml& xml_doc)
@@ -73,6 +100,11 @@ bool CUIWpnParams::InitFromXml(CUIXml& xml_doc)
     CUIXmlInit::InitStatic(xml_doc, "wpn_params:cap_damage", 0, &m_textDamage);
     CUIXmlInit::InitStatic(xml_doc, "wpn_params:cap_handling", 0, &m_textHandling);
     CUIXmlInit::InitStatic(xml_doc, "wpn_params:cap_rpm", 0, &m_textRPM);
+
+    // [DA_PORT] The numeric condition beside the bars - see da_set_condition_text. Optional nodes, so a
+    // layout without them behaves exactly as before.
+    CUIXmlInit::InitStatic(xml_doc, "wpn_params:cap_condition", 0, &m_textConditionW, false);
+    CUIXmlInit::InitStatic(xml_doc, "wpn_params:cap_condition2", 0, &m_textConditionW2, false);
 
     m_progressAccuracy.InitFromXml(xml_doc, "wpn_params:progress_accuracy");
     m_progressDamage.InitFromXml(xml_doc, "wpn_params:progress_damage");
@@ -146,6 +178,7 @@ void CUIWpnParams::SetInfo(CInventoryItem* slot_wpn, CInventoryItem& cur_wpn)
     m_progressDamage.SetTwoPos(cur_damage, slot_damage);
     m_progressHandling.SetTwoPos(cur_hand, slot_hand);
     m_progressRPM.SetTwoPos(cur_rpm, slot_rpm);
+    da_set_condition_text(m_textConditionW2, cur_wpn); // [DA_PORT] numeric condition, see the helper
 
     if (IsGameTypeSingle())
     {
@@ -251,6 +284,7 @@ bool CUIWpnParams::Check(const shared_str& wpn_section)
     return false;
 }
 
+
 // -------------------------------------------------------------------------------------------------
 
 CUIConditionParams::CUIConditionParams()
@@ -258,6 +292,8 @@ CUIConditionParams::CUIConditionParams()
 {
     AttachChild(&m_progress);
     AttachChild(&m_text);
+    AttachChild(&m_textCondition);
+    AttachChild(&m_textCondition2);
 }
 
 bool CUIConditionParams::InitFromXml(CUIXml& xml_doc)
@@ -267,6 +303,10 @@ bool CUIConditionParams::InitFromXml(CUIXml& xml_doc)
         CUIXmlInit::InitWindow(xml_doc, "condition_params", 0, this);
         CUIXmlInit::InitStatic(xml_doc, "condition_params:caption", 0, &m_text);
         m_progress.InitFromXml(xml_doc, "condition_params:progress_state");
+        // [DA_PORT] Optional on purpose: layouts that never had these nodes keep working untouched,
+        // they simply show the bar alone as before.
+        CUIXmlInit::InitStatic(xml_doc, "condition_params:cap_condition", 0, &m_textCondition, false);
+        CUIXmlInit::InitStatic(xml_doc, "condition_params:cap_condition2", 0, &m_textCondition2, false);
         return true;
     }
     // SOC
@@ -291,4 +331,5 @@ void CUIConditionParams::SetInfo(CInventoryItem const* slot_item, CInventoryItem
         slot_value = slot_item->GetConditionToShow() * 100.0f + 1.0f - EPS;
     }
     m_progress.SetTwoPos(cur_value, slot_value);
+    da_set_condition_text(m_textCondition2, cur_item); // [DA_PORT]
 }

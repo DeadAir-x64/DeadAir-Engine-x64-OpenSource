@@ -1,0 +1,558 @@
+--[[
+Copyright (C) 2012 Alundaio
+This work is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License
+
+Modified to craft system by Lanforse
+--]]
+-------------------------------------------------------------------
+
+local ini = system_ini()
+local parts_id = {}
+
+local Recepies = {}
+
+local Recepies1 = {
+
+{"bandage", 	        1, "bottle_metal", "textile_patch_b", "-", "-"},
+{"bandage", 	        2, "bottle_metal_2", "textile_patch_b", "-", "-"},
+{"bandage", 	        3, "bottle_metal_3", "textile_patch_b", "-", "-"},
+
+{"bandage", 	        1, "vodka", "textile_patch_b", "-", "-"},
+{"bandage", 	        2, "vodka_2", "textile_patch_b", "-", "-"},
+{"bandage", 	        3, "vodka_3", "textile_patch_b", "-", "-"},
+
+{"bandage", 	        1, "vodka_quality", "textile_patch_b", "-", "-"},
+{"bandage", 	        2, "vodka_quality_2", "textile_patch_b", "-", "-"},
+{"bandage", 	        3, "vodka_quality_3", "textile_patch_b", "-", "-"},
+{"ammo_12x70_buck", 		10, "ammo_bad", "ammo_bad", "spareparts", "jar"},
+{"ammo_12x76_zhekan", 		10, "ammo_bad", "ammo_bad", "spareparts", "jar"},
+
+{"device_flashlight", 	1, "flashlight_broken", "headlamp", "copper_coil", "jar"},
+{"geiger", 				1, "radio", "capacitors", "colophony", "copper_coil"},
+{"detector_craft",		1, "radio", "capacitors", "transistors", "textolite"},
+{"matches", 			3, "guitar_a", "porn2", "porn2", "-"},
+{"matches", 			3, "guitar_a", "survivalguide", "-", "-"},
+{"matches", 			3, "guitar_a", "old_book", "-", "-"},
+{"matches", 			3, "guitar_a", "porn", "-", "-"},
+{"cooking", 			2, "explo_jerrycan_fuel_0", "cutlery", "cutlery", "-"},
+{"wood_stove", 			1, "explo_balon_gas_0", "explo_jerrycan_fuel_0", "jar", "jar"},
+{"helm_cloth_mask", 	1, "textile_patch_b", "textile_patch_b", "-",	"-"},
+{"itm_sleepbag", 		1, "tarpaulin", "synthrope", "textile_patch_b", "textile_patch_b"},
+{"itm_backpack", 		1, "textile_patch_m", "textile_patch_m", "synthrope", "textile_patch_b"},
+{"backpack_light", 		1, "textile_patch_m", "rope", "synthrope", "beadspread"},
+{"kit_hunt", 			1, "backpack_light", "grooming", "wpn_knife3",	"sharpening_stones_4"},
+{"itm_qr", 			    1, "rope", "jar", "swiss",	"-"},
+{"af_ironplate", 		1, "explo_jerrycan_fuel_0", "rope", "textile_patch_m",	"jar"},
+{"af_ironplate", 		1, "explo_balon_gas_0", "rope", "textile_patch_m",	"jar"},
+{"af_iam", 				1, "lead_box", "copper_coil", "explo_jerrycan_fuel_0", "jar"},
+{"af_camelbak", 		1, "textile_patch_m", "textile_patch_m", "flask_3", "rope"},
+{"wpn_knife", 		    1, "explo_jerrycan_fuel_0", "sharpening_stones_2", "-", "-"},
+{"wpn_knife", 		    1, "explo_balon_gas_0", "sharpening_stones_2", "-", "-"},
+{"mine_wire", 		    1, "grenade_rgd5", "copper_coil", "synthrope", "-"},
+{"mine_wire", 		    1, "grenade_f1", "copper_coil", "synthrope", "-"},
+}
+
+local Recepies1_m = {
+{"sewing_kit_b_4",      1, "textile_patch_m", "synthrope", "swiss", "grooming"},
+{"armor_repair_fa_2",   1, "glue_b_2", "textile_patch_m", "textile_patch_b", "textile_patch_b"},
+{"sewing_kit_a_2",      1, "textile_patch_e", "textile_patch_e", "swiss", "synthrope"},
+{"sewing_kit_h",        1, "sewing_kit_b_4", "textile_patch_e", "textile_patch_e", "synthrope"},
+{"helmet_repair_kit", 	1, "helmet_repair_kit_0", "armor_repair_fa_2", "textile_patch_e", "synthrope"},
+{"armor_repair_pro", 	1, "armor_repair_pro_0", "sewing_kit_h", "textile_patch_e", "textile_patch_b"},
+{"toolkit_p", 	        1, "toolkit_p_0", "cleaning_kit_p_3", "spareparts", "grease"},
+{"toolkit_s", 	        1, "toolkit_s_0", "cleaning_kit_s_3", "spareparts", "grease"},
+{"toolkit_r", 	        1, "toolkit_r_0", "cleaning_kit_r_3", "spareparts", "grease"},
+{"repairkit_p", 	    1, "repairkit_p_0", "cleaning_kit_p_3", "spareparts", "steel_wool"},
+{"repairkit_s", 	    1, "repairkit_s_0", "cleaning_kit_s_3", "spareparts", "steel_wool"},
+{"repairkit_r", 	    1, "repairkit_r_0", "cleaning_kit_r_3", "spareparts", "steel_wool"},
+   
+}
+
+local Recepies1_l = {
+{"ammo_9x18_fmj",		5, "ammo_bad", "ammo_bad", "-", "-"},
+{"ammo_9x19_fmj",		5, "ammo_bad", "ammo_bad", "-", "-"},
+{"ammo_11.43x23_fmj",	5, "ammo_bad", "ammo_bad", "-", "-"},
+{"ammo_7.62x25_p",		5, "ammo_bad", "ammo_bad", "-", "-"},
+{"ammo_357_hp_mag",		5, "ammo_bad", "ammo_bad", "ammo_bad", "-"},
+{"ammo_5.45x39_fmj",	5, "ammo_bad", "ammo_bad", "ammo_bad", "-"},
+{"ammo_5.56x45_ss190",	5, "ammo_bad", "ammo_bad", "ammo_bad", "-"},
+{"ammo_9x39_pab9",		5, "ammo_bad", "ammo_bad", "ammo_bad", "-"},
+{"ammo_7.62x39_fmj",	5, "ammo_bad", "ammo_bad", "ammo_bad", "-"},
+{"ammo_7.62x51_fmj",	5, "ammo_bad", "ammo_bad", "ammo_bad", "-"},
+{"ammo_7.92x33_fmj",	5, "ammo_bad", "ammo_bad", "ammo_bad", "ammo_bad"},
+{"ammo_7.62x54_7h1",	5, "ammo_bad", "ammo_bad", "ammo_bad", "ammo_bad"},
+{"ammo_7.62x54_ap",		5, "ammo_bad", "ammo_bad", "ammo_bad", "ammo_bad"},
+
+}
+
+local Recepies2 = {
+{"af_kevlar", 			1, "textile_patch_e", "textile_patch_e", "textile_patch_e", "synthrope"},
+{"device_torch_dummy", 	1, "device_flashlight", "welding_goggles", "colophony", "-"},
+{"device_torch_dummy", 	1, "device_flashlight", "headlamp", "colophony", "-"},
+{"ied", 				1, "explo_metalcan_powder", "jar", "swiss", "copper_coil"},
+{"ied", 				1, "grenade_rgd5", "jar", "swiss", "copper_coil"},
+{"ied", 				1, "grenade_f1", "jar", "swiss", "copper_coil"},
+{"ied", 				1, "grenade_gd-05", "jar", "swiss", "copper_coil"},
+{"ied_rpg", 			1, "ammo_og-7b", "jar", "swiss", "copper_coil"},
+
+}
+
+local Recepies2_m = {
+{"wpn_sil_9mm",		    1, "af_ironplate", "steel_wool", "-", "-"},
+{"wpn_sil_45",		    1, "af_plates", "steel_wool", "-", "-"},
+{"wpn_sil_pbs1",		1, "af_plates", "steel_wool", "-", "-"},
+{"wpn_sil_tgp-a",		1, "af_plates", "steel_wool", "-", "-"},
+{"wpn_sil_nato",		1, "af_plates", "steel_wool", "-", "-"},
+{"wpn_sil_kzrzp",		1, "af_plates", "steel_wool", "-", "-"},
+{"wpn_sil_9a91",		1, "af_plates", "steel_wool", "-", "-"},
+{"wpn_sil_gemtech",		1, "af_plates", "steel_wool", "-", "-"},
+}
+
+local Recepies2_l = {
+
+}
+
+local Recepies3 = {
+
+{"af_aac", 				1, "af_iam", "af_iam", "geiger", "colophony"},
+{"af_cooler",		    1, "lead_box", "batteries_ccell", "batteries_ccell", "copper_coil"},
+{"af_surge",		    1, "radio", "colophony", "copper_coil", "copper_coil"},
+{"af_freon",		    1, "detector_craft", "colophony", "capacitors", "transistors"},
+
+}
+
+local Recepies3_m = {
+
+}
+
+local Recepies3_l = {
+
+}
+
+local Recepies4 = {
+{"joint", 		        5, "marijuana", "porn2", "porn2", "porn2"},
+{"joint", 		        5, "marijuana", "old_book", "-", "-"},
+{"joint", 		        5, "marijuana", "survivalguide", "-", "-"},
+
+{"medkit_army", 		1, "medkit", "salicidic_acid", "-", "-"},
+{"medkit_scientic", 	1, "medkit", "antirad", "tetanus", "drug_coagulant_5"},
+{"stimpack", 			1, "medkit", "morphine", "-", "-"},
+{"stimpack_army", 		1, "medkit_army", 	"morphine", "-", "-"},
+{"stimpack_scientic", 	1, "medkit_scientic", "drug_coagulant_5", "salicidic_acid", "salicidic_acid"},
+{"survival_kit", 		1, "medkit", "antirad", "bandage",	"drug_charcoal_5"},
+}
+
+local Recepies4_m = {
+
+}
+
+local Recepies4_l = {
+
+}
+
+
+class "load_item" (CUIListBoxItem)
+function load_item:__init(height) super(height)
+	self.file_name		= "filename"
+	
+	self.can_craft = false
+
+	self:SetTextColor(GetARGB(255, 170, 170, 170))
+
+	self.fn = self:GetTextItem()
+	self.fn:SetFont(GetFontLetterica18Russian())
+	self.fn:SetEllipsis(true)
+end
+
+function load_item:__finalize()
+end
+
+class "craft_ui" (CUIScriptWnd)
+function craft_ui:__init(owner,section) super()
+	self.owner = owner
+	self.section = section
+	
+	Recepies = {}
+	local Recepies_add = {}
+	if 		(section == "itm_repairkit_tier_1") 	then Recepies_add = Recepies1
+	elseif 	(section == "itm_repairkit_tier_2") 	then Recepies_add = Recepies2
+	elseif 	(section == "itm_repairkit_tier_3") 	then Recepies_add = Recepies3
+	elseif 	(section == "itm_drugkit")				then Recepies_add = Recepies4 end
+	for k,v in pairs(Recepies_add) do
+		table.insert(Recepies,v)
+	end
+	
+	if db.actor:has_info("perk_craft") then
+		Recepies_add = {}
+		if 		(section == "itm_repairkit_tier_1") 	then Recepies_add = Recepies1_m
+		elseif 	(section == "itm_repairkit_tier_2") 	then Recepies_add = Recepies2_m
+		elseif 	(section == "itm_repairkit_tier_3") 	then Recepies_add = Recepies3_m
+		elseif 	(section == "itm_drugkit")				then Recepies_add = Recepies4_m end
+		for k,v in pairs(Recepies_add) do
+			table.insert(Recepies,v)
+		end
+	end
+	
+	
+	if IsLastStandMode() then
+		Recepies_add = {}
+		if 		(section == "itm_repairkit_tier_1") 	then Recepies_add = Recepies1_l
+		elseif 	(section == "itm_repairkit_tier_2") 	then Recepies_add = Recepies2_l
+		elseif 	(section == "itm_repairkit_tier_3") 	then Recepies_add = Recepies3_l
+		elseif 	(section == "itm_drugkit")				then Recepies_add = Recepies4_l end
+		for k,v in pairs(Recepies_add) do
+			table.insert(Recepies,v)
+		end
+	end
+	
+	
+	self:InitControls()
+	self:InitCallBacks()
+end
+
+function craft_ui:__finalize()
+end
+
+function craft_ui:FillCraftList()
+	self.list_box_craft:RemoveAll()
+	for i = 1, #Recepies do
+		self:AddItemToList(Recepies[i][1],self.list_box_craft,Recepies[i][2])
+	end
+end
+
+function craft_ui:InitControls()
+	self:SetWndRect			(Frect():set(0,0,1024,768))
+	self:SetWndPos			(vector2():set(240,120))
+
+	self:SetAutoDelete(true)
+
+	self.xml				= CScriptXmlInit()
+	local ctrl
+	self.xml:ParseFile			("ui_itm_main.xml")
+
+	ctrl					= CUIWindow()
+	self.xml:InitWindow			("itm_craft:file_item:main",0,ctrl)
+
+	self.file_item_main_sz	= vector2():set(ctrl:GetWidth(),ctrl:GetHeight())
+
+	self.xml:InitWindow			("itm_craft:file_item:fn",0,ctrl)
+	self.file_item_fn_sz	= vector2():set(ctrl:GetWidth(),ctrl:GetHeight())
+
+	self.xml:InitWindow			("itm_craft:file_item:fd",0,ctrl)
+	self.file_item_fd_sz	= vector2():set(ctrl:GetWidth(),ctrl:GetHeight())
+	
+	self.form				= self.xml:InitStatic("itm_craft:form",self)
+
+	self.form:SetWndPos(vector2():set(0, 0))
+
+	
+	-- Tool picture
+	self.icon_tool = self.xml:InitStatic("itm_craft:form:icon_tool",self.form)
+
+	-- Tool Title
+	local used_name = game.translate_string(alun_utils.read_from_ini(nil,self.section,"inv_name","string","error"))
+	self.caption_tool = self.xml:InitTextWnd("itm_craft:form:caption_tool",self.form)
+	self.caption_tool:SetText(used_name)
+	
+	--Craft Window Title
+	self.xml:InitTextWnd("itm_craft:form:caption_craft_title",self.form)
+	self.xml:InitTextWnd("itm_craft:form:caption_material_title",self.form)
+	
+
+	local inv_grid_width = alun_utils.read_from_ini(ini,self.section,"inv_grid_width","float",0)
+	local inv_grid_height = alun_utils.read_from_ini(ini,self.section,"inv_grid_height","float",0)
+	local inv_grid_x = alun_utils.read_from_ini(ini,self.section,"inv_grid_x","float",0)
+	local inv_grid_y = alun_utils.read_from_ini(ini,self.section,"inv_grid_y","float",0)
+
+	local x1 = inv_grid_x*50
+	local y1 = inv_grid_y*50
+
+	local w = inv_grid_width*50
+	local h = inv_grid_height*50
+
+	local x2 = x1 + w
+	local y2 = y1 + h
+
+	self.icon_tool:InitTexture("ui\\ui_icon_equipment")
+	self.icon_tool:SetTextureRect(Frect():set(x1,y1,x2,y2))
+
+	self.list_box_craft		= self.xml:InitListBox("itm_craft:form:list_craft",self.form)
+	
+	self.list_box_craft:ShowSelectedItem(true)
+	self:Register(self.list_box_craft, "list_window_parts")
+	
+	
+	self.caption_part1 = self.xml:InitTextWnd("itm_craft:form:caption_part1",self.form)
+	self.caption_part2 = self.xml:InitTextWnd("itm_craft:form:caption_part2",self.form)
+	self.caption_part3 = self.xml:InitTextWnd("itm_craft:form:caption_part3",self.form)
+	self.caption_part4 = self.xml:InitTextWnd("itm_craft:form:caption_part4",self.form)
+	
+	self.icon_part1 = self.xml:InitStatic("itm_craft:form:icon_part1",self.form)
+	self.icon_part2 = self.xml:InitStatic("itm_craft:form:icon_part2",self.form)
+	self.icon_part3 = self.xml:InitStatic("itm_craft:form:icon_part3",self.form)
+	self.icon_part4 = self.xml:InitStatic("itm_craft:form:icon_part4",self.form)
+	
+	self.icon_part1:InitTexture("ui\\ui_icon_equipment")
+	self.icon_part2:InitTexture("ui\\ui_icon_equipment")
+	self.icon_part3:InitTexture("ui\\ui_icon_equipment")
+	self.icon_part4:InitTexture("ui\\ui_icon_equipment")
+	
+	self.icon_part1:SetTextureRect(Frect():set(0,0,0,0))
+	self.icon_part2:SetTextureRect(Frect():set(0,0,0,0))
+	self.icon_part3:SetTextureRect(Frect():set(0,0,0,0))
+	self.icon_part4:SetTextureRect(Frect():set(0,0,0,0))
+	
+	ctrl					= self.xml:Init3tButton("itm_craft:form:btn_ok",	self.form)
+	self:Register			(ctrl, "button_ok")
+
+	ctrl = self.xml:Init3tButton	("itm_craft:form:btn_cancel",	self.form)
+	self:Register			(ctrl, "button_back")
+end
+
+function craft_ui:InitCallBacks()
+	self:AddCallback("button_ok",		ui_events.BUTTON_CLICKED,         self.OnButton_ok,			self)
+	self:AddCallback("button_back",		ui_events.BUTTON_CLICKED,             self.OnButton_back_clicked,	self)
+
+	self:AddCallback("list_window", ui_events.LIST_ITEM_CLICKED, 			  self.OnListItemClicked,		self)
+	self:AddCallback("list_window", ui_events.WINDOW_LBUTTON_DB_CLICK,		  self.OnListItemDbClicked,		self)
+
+	self:AddCallback("list_window_parts", ui_events.LIST_ITEM_CLICKED, 		  self.OnPartsListItemClicked,		self)
+	self:AddCallback("list_window_parts", ui_events.WINDOW_LBUTTON_DB_CLICK,  self.OnPartsListItemDbClicked,	self)
+end
+
+function craft_ui:OnPartsListItemClicked()
+	
+	parts_id = {}
+	found = {false,false,false,false}
+	
+	if self.list_box_craft:GetSize()==0 then return end
+
+	local item = self.list_box_craft:GetSelectedItem()
+	if not (item) then return end
+	
+	
+	self.caption_part1:SetText("")
+	self.caption_part2:SetText("")
+	self.caption_part3:SetText("")
+	self.caption_part4:SetText("")
+	self.caption_part1:SetTextColor(GetARGB(200, 255, 0, 0))
+	self.caption_part2:SetTextColor(GetARGB(200, 255, 0, 0))
+	self.caption_part3:SetTextColor(GetARGB(200, 255, 0, 0))
+	self.caption_part4:SetTextColor(GetARGB(200, 255, 0, 0))
+	
+	self.icon_part1:SetTextureRect(Frect():set(0,0,0,0))
+	self.icon_part2:SetTextureRect(Frect():set(0,0,0,0))
+	self.icon_part3:SetTextureRect(Frect():set(0,0,0,0))
+	self.icon_part4:SetTextureRect(Frect():set(0,0,0,0))
+		
+	local index = self.list_box_craft:GetSelectedIndex()
+	if index == -1 then return end
+		
+	local Recepie = Recepies[index+1]
+	
+	if not (Recepie) then return end
+	
+	local tmp_x = 120
+	local tmp_y = 25
+	local size_k = 0.7
+	
+	if (Recepie[3]) then
+		local sec = Recepie[3]
+				
+		local function search(temp, item)
+			if (not found[1]) and (item:section() == sec) and (not parts_id[item:id()]) then
+				found[1] = true
+				parts_id[item:id()] = true
+				self.caption_part1:SetTextColor(GetARGB(200, 0, 255, 0))
+			end
+		end
+		db.actor:iterate_inventory(search,nil)
+		
+		if (sec == "-") then found[1] = true	end
+		
+		local name = alun_utils.read_from_ini(ini,sec,"inv_name","string","")
+		self.caption_part1:SetText(game.translate_string(name))
+		local inv_grid_width = alun_utils.read_from_ini(ini,sec,"inv_grid_width","float",0)
+		local inv_grid_height = alun_utils.read_from_ini(ini,sec,"inv_grid_height","float",0)
+		local inv_grid_x = alun_utils.read_from_ini(ini,sec,"inv_grid_x","float",0)
+		local inv_grid_y = alun_utils.read_from_ini(ini,sec,"inv_grid_y","float",0)
+		local x1 = inv_grid_x*50
+		local y1 = inv_grid_y*50
+		local width = inv_grid_width*50
+		local height = inv_grid_height*50
+		local x2 = x1 + width
+		local y2 = y1 + height
+		local pos = self.icon_part1:GetWndPos()
+		self.icon_part1:SetTextureRect(Frect():set(x1,y1,x2,y2))
+		self.icon_part1:SetWndPos(vector2():set(tmp_x-width/3,90+tmp_y-height/2))
+		self.icon_part1:SetWndSize(vector2():set(width*size_k,height*size_k))
+	end
+	
+	if (Recepie[4]) then
+		local sec = Recepie[4]
+
+		local function search(temp, item)
+			if (not found[2]) and (item:section() == sec) and (not parts_id[item:id()]) then
+				found[2] = true
+				parts_id[item:id()] = true
+				self.caption_part2:SetTextColor(GetARGB(200, 0, 255, 0))
+			end
+		end
+		db.actor:iterate_inventory(search,nil)
+			
+		if (sec == "-") then found[2] = true	end
+		
+		local name = alun_utils.read_from_ini(ini,sec,"inv_name","string","")
+		self.caption_part2:SetText(game.translate_string(name))
+		local inv_grid_width = alun_utils.read_from_ini(ini,sec,"inv_grid_width","float",0)
+		local inv_grid_height = alun_utils.read_from_ini(ini,sec,"inv_grid_height","float",0)
+		local inv_grid_x = alun_utils.read_from_ini(ini,sec,"inv_grid_x","float",0)
+		local inv_grid_y = alun_utils.read_from_ini(ini,sec,"inv_grid_y","float",0)
+		local x1 = inv_grid_x*50
+		local y1 = inv_grid_y*50
+		local width = inv_grid_width*50
+		local height = inv_grid_height*50
+		local x2 = x1 + width
+		local y2 = y1 + height
+		self.icon_part2:SetTextureRect(Frect():set(x1,y1,x2,y2))
+		local pos = self.icon_part2:GetWndPos()
+		self.icon_part2:SetWndPos(vector2():set(tmp_x-width/3,175+tmp_y-height/2))
+		self.icon_part2:SetWndSize(vector2():set(width*size_k,height*size_k))
+	end
+	
+	if (Recepie[5]) then
+		local sec = Recepie[5]
+
+		local function search(temp, item)
+			if (not found[3]) and (item:section() == sec) and (not parts_id[item:id()]) then
+				found[3] = true
+				parts_id[item:id()] = true
+				self.caption_part3:SetTextColor(GetARGB(200, 0, 255, 0))
+			end
+		end
+		db.actor:iterate_inventory(search,nil)
+		
+		if (sec == "-") then found[3] = true	end
+		
+		local name = alun_utils.read_from_ini(ini,sec,"inv_name","string","")
+		self.caption_part3:SetText(game.translate_string(name))
+		local inv_grid_width = alun_utils.read_from_ini(ini,sec,"inv_grid_width","float",0)
+		local inv_grid_height = alun_utils.read_from_ini(ini,sec,"inv_grid_height","float",0)
+		local inv_grid_x = alun_utils.read_from_ini(ini,sec,"inv_grid_x","float",0)
+		local inv_grid_y = alun_utils.read_from_ini(ini,sec,"inv_grid_y","float",0)
+		local x1 = inv_grid_x*50
+		local y1 = inv_grid_y*50
+		local width = inv_grid_width*50
+		local height = inv_grid_height*50
+		local x2 = x1 + width
+		local y2 = y1 + height
+		self.icon_part3:SetTextureRect(Frect():set(x1,y1,x2,y2))
+		local pos = self.icon_part3:GetWndPos()
+		self.icon_part3:SetWndPos(vector2():set(tmp_x-width/3,260+tmp_y-height/2))
+		self.icon_part3:SetWndSize(vector2():set(width*size_k,height*size_k))
+	end	
+	
+	if (Recepie[6]) then
+		local sec = Recepie[6]
+
+		local function search(temp, item)
+			if (not found[4]) and (item:section() == sec) and (not parts_id[item:id()]) then
+				found[4] = true
+				parts_id[item:id()] = true
+				self.caption_part4:SetTextColor(GetARGB(200, 0, 255, 0))
+			end
+		end
+		db.actor:iterate_inventory(search,nil)
+		
+		if (sec == "-") then found[4] = true	end
+		
+		local name = alun_utils.read_from_ini(ini,sec,"inv_name","string","")
+		self.caption_part4:SetText(game.translate_string(name))
+		local inv_grid_width = alun_utils.read_from_ini(ini,sec,"inv_grid_width","float",0)
+		local inv_grid_height = alun_utils.read_from_ini(ini,sec,"inv_grid_height","float",0)
+		local inv_grid_x = alun_utils.read_from_ini(ini,sec,"inv_grid_x","float",0)
+		local inv_grid_y = alun_utils.read_from_ini(ini,sec,"inv_grid_y","float",0)
+		local x1 = inv_grid_x*50
+		local y1 = inv_grid_y*50
+		local width = inv_grid_width*50
+		local height = inv_grid_height*50
+		local x2 = x1 + width
+		local y2 = y1 + height
+		self.icon_part4:SetTextureRect(Frect():set(x1,y1,x2,y2))
+		local pos = self.icon_part4:GetWndPos()
+		self.icon_part4:SetWndPos(vector2():set(tmp_x-width/3,345+tmp_y-height/2))
+		self.icon_part4:SetWndSize(vector2():set(width*size_k,height*size_k))
+	end
+	
+	self.can_craft = found[1] and found[2] and found[3] and found[4]
+end
+
+function craft_ui:OnPartsListItemDbClicked()
+	self:OnButton_ok()
+end
+
+function craft_ui:OnButton_back_clicked()
+	--alife():create(self.section,db.actor:position(),db.actor:level_vertex_id(),db.actor:game_vertex_id(),db.actor:id())
+	self:HideDialog()
+end
+
+function craft_ui:OnKeyboard(dik, keyboard_action)
+	local bind = dik_to_bind(dik)
+	CUIScriptWnd.OnKeyboard(self,dik,keyboard_action)
+	if (keyboard_action == ui_events.WINDOW_KEY_PRESSED) then
+		if (dik == DIK_keys.DIK_RETURN) then
+			self:OnButton_ok()
+		elseif (dik == DIK_keys.DIK_ESCAPE) then
+			self:OnButton_back_clicked()
+		elseif (bind == key_bindings.kUSE) then
+			self:OnButton_back_clicked()
+		end
+	end
+	return true
+end
+
+function craft_ui:OnButton_ok()
+	if not self.can_craft then return end
+	local index = self.list_box_craft:GetSelectedIndex()
+	if index == -1 then return end
+	
+	local result = Recepies[index+1][1]
+	local num	 = Recepies[index+1][2]
+	
+	if (string.find(result,"ammo_")) then
+		create_ammo(result,db.actor:position(),db.actor:level_vertex_id(),db.actor:game_vertex_id(),0,num)
+	else
+		for i = 1, num do
+			alife():create(result,db.actor:position(),db.actor:level_vertex_id(),db.actor:game_vertex_id(),db.actor:id())
+		end
+	end
+	
+	for k,v in pairs(parts_id) do
+		alife():release(alife_object(k),true)
+	end
+	
+	if (actor_effects) then
+		actor_effects.use_item("toolkit_u_dummy")
+	end
+	
+	self:HideDialog()
+end
+
+function craft_ui:AddItemToList(sec,listbox,num)
+	local _itm			= load_item(self.file_item_main_sz.y)
+	local inv_name 		= game.translate_string(alun_utils.read_from_ini(nil,sec,"inv_name","string","error")) or "none"
+	_itm:SetWndSize		(self.file_item_main_sz)
+	_itm.fn:SetWndPos(vector2():set(0,0))
+	_itm.fn:SetWndSize	(self.file_item_fn_sz)
+	_itm.fn:SetText		(inv_name)
+	_itm.section		= sec
+	
+	--if (num > 1) then
+		_itm.fage     = _itm:AddTextField("x"..num)
+		_itm.fage:SetFont	(GetFontLetterica16Russian())
+		_itm.fage:SetWndPos	(vector2():set(self.file_item_fn_sz.x+4, 0))
+		_itm.fage:SetWndSize(self.file_item_fd_sz)
+	--end
+	
+	listbox:AddExistingItem(_itm)
+end

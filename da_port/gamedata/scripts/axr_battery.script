@@ -1,0 +1,292 @@
+--[[
+Misery 2.0 - Battery and UPD (Universal Power Device) feature
+Original script by wuut
+Script expanded upon and finished by SetaKat
+Rewrite 21/12/2012
+modified by Alundaio on Jan 21, 2013 for axr_main callback manager
+
+This script makes it so the PDA, Flashlight and Nightvision equipment runs off batteries
+installed into a device called a UPD (Universal Power Device). The UPD is linked to the
+PDA, Flashlight and Nightvision equipment. When the battery is exhausted, these devices
+no longer work.
+
+Updated by ddraig to properly utilize power from batteries. Now the UPD's condition is set to
+its current condition (power level) plus the "power" setting from the battery, rather than just
+setting it to the battery's power level, which can severely break things. Also temporarily disabled
+the "spawn excess battery" function, for a few reasons.
+
+]]
+
+local ini = ini_file("plugins\\axr_battery.ltx")
+local Batteries = alun_utils.collect_section(ini,"battery_sections",true)
+local pda_open = false
+
+local upd_time = 1000
+local last_update = time_global()
+
+local nnEffectIsOn = 0
+local nnEffectId = 8080
+
+local nv_drain = ini:r_bool_ex("config","nv_drain",false)
+local fl_drain = ini:r_bool_ex("config","fl_drain",false)
+local dt_drain = ini:r_bool_ex("config","dt_drain",false)
+local af_drain = ini:r_bool_ex("config","af_drain",false)
+local exo_drain = ini:r_bool_ex("config","exo_drain",false)
+
+function on_game_start()
+	RegisterScriptCallback("actor_on_item_use",use_battery)
+	RegisterScriptCallback("actor_on_update",update)
+end
+	
+function use_battery(obj)
+	if (axr_main.config:r_value("mm_options","enable_use_battery",1,false) ~= true) then 
+		return
+	end
+	
+	local name = obj:section()
+	local upd = db.actor:object("wpn_upd")
+
+	if not Batteries[name] then
+		return
+	end
+
+	if (upd) then
+		local con = upd:condition()
+		local power
+		local bb,bp
+		power = alun_utils.read_from_ini(ini,name,"power","float",0.6)
+		bp = con + power;
+		if bp > 1 then
+			bp = 1
+		end
+		upd:set_condition(bp)
+		db.actor:transfer_item(upd,db.actor)
+	else
+		show_message("st_upd_disconnected",25)
+		alife():create(name, db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+	end
+end
+
+function update()
+
+	local pos = db.actor:position()
+	
+	
+	local a    = db.actor:position()        -- Our position's coordinates
+	local lvid  = db.actor:level_vertex_id() 
+	local gvid = db.actor:game_vertex_id() 
+	local text = level.name().."#XYZ:"..tostring(a.x)..","..tostring(a.y)..","..tostring(a.z).."#Lvid:"..tostring(lvid).."#Gvid:"..tostring(gvid)
+	--get_console():execute(text)
+	
+	
+	
+	if (axr_main.config:r_value("mm_options","enable_use_battery",1,false) ~= true) then 
+		return
+	end
+	
+	if (time_global() > last_update+upd_time) then
+		last_update = time_global()
+	
+		local battery = db.actor:object("wpn_upd")
+		updateLight(battery)
+		updateDetector(battery)
+		updateNV(battery)
+		updateContainers(battery)
+		
+		
+		--printf("--Update battery: "..battery:condition())
+	end
+end
+
+function updateLight(battery)
+	if not fl_drain then return end
+
+	local obj = db.actor:active_detector()
+	local light = db.actor:object("device_torch")
+	
+	if (itms_manager.Torch2) then
+		local batcon = battery and battery:condition()
+		-- if it is above 5%, then drain it
+		if (battery and batcon > 0.05) then
+			updateBatteryCondition(battery, batcon, "fl")
+		elseif (battery) then
+			--show_message("st_upd_low",25)
+			db.actor:object("device_torch"):enable_torch2(false)
+			--db.actor:object("device_torch"):enable_torch(true)
+		else
+			show_message("st_upd_disconnected",25)
+			db.actor:object("device_torch"):enable_torch2(false)
+			db.actor:object("device_torch"):enable_torch(true)
+		end
+	end
+end
+
+function updateDetector(battery)
+	if not dt_drain then return end
+	
+	local obj = db.actor:active_detector()
+	if (obj) and not ((obj:section() == "device_flashlight") 
+					or (obj:section() == "device_lighter")
+					or (obj:section() == "device_glowstick")
+					or (obj:section() == "detector_craft")) then
+		local batcon = battery and battery:condition()
+		if (battery and batcon > 0.05) then
+			if (obj:section() == "detector_simple") then	
+				updateBatteryCondition(battery, batcon, "dt1")
+			end
+			if (obj:section() == "detector_advanced") then	
+				updateBatteryCondition(battery, batcon, "dt2")
+			end
+			if (obj:section() == "detector_elite") then
+				updateBatteryCondition(battery, batcon, "dt3")
+			end
+			if (obj:section() == "detector_scientific") then
+				updateBatteryCondition(battery, batcon, "dt4")
+			end
+		elseif (battery) then
+			show_message("st_upd_low",25)
+			db.actor:drop_item(obj)
+			db.actor:transfer_item(obj,db.actor)
+		else
+			show_message("st_upd_disconnected",25)
+			db.actor:drop_item(obj)
+			db.actor:transfer_item(obj,db.actor)
+		end
+	end
+end
+
+function updateNV(battery)
+	if not nv_drain then return end
+
+	if nnEffectIsOn == 1 then
+		nnEffectIsOn = 0
+		level.remove_pp_effector(nnEffectId)
+	end
+
+	--local helmet = db.actor:alive() and (db.actor:item_in_slot(12) or db.actor:get_current_outfit())
+	local nv = db.actor:object("device_torch")
+	local enabled = nv and nv:night_vision_enabled()
+	if enabled then
+		nnEffectIsOn = 1
+		-- battery check
+		if not (battery) then
+			show_message("st_upd_disconnected",25)
+			nv:enable_night_vision(false)
+			return
+		end
+
+		local batcon = battery:condition()
+		if batcon < 0.05 then
+			show_message("st_upd_low",35)
+			nv:enable_night_vision(false)
+		end
+		updateBatteryCondition(battery, batcon, "nv")
+	else
+		nnEffectIsOn = 0
+	end
+end
+
+function updateContainers(battery)
+	if not af_drain then return end
+	
+	local batcon = battery and battery:condition()
+	local drain = 0
+	local belt = {}
+	
+	local function SearchBeltContainers(actor, item)
+	
+		if db.actor:is_on_belt(item) and string.match(tostring(item:section()),"_af_") then
+			belt[#belt+1] = item
+			--printf(item:section().." is on belt")
+		end
+	end
+	db.actor:iterate_inventory(SearchBeltContainers,nil)
+	--printf("----------------")
+
+	if (battery and batcon > 0.05) then
+		for i = 1, #belt do
+			local art = belt[i]
+			if (string.match(tostring(art:section()),"_af_")) then
+				if (string.match(tostring(art:section()),"_af_iam")) then
+					drain = drain+alun_utils.read_from_ini(ini,"main","iam_drain_speed","float",0)
+				elseif (string.match(tostring(art:section()),"_af_aac")) then
+					drain = drain+alun_utils.read_from_ini(ini,"main","aac_drain_speed","float",0)
+				elseif (string.match(tostring(art:section()),"_af_aam")) then
+					drain = drain+alun_utils.read_from_ini(ini,"main","aam_drain_speed","float",0)
+				end
+			end
+		end
+		local newbatcon = batcon - drain
+		battery:set_condition(newbatcon)
+		if (drain ~= 0) then
+			drain = string.format("%.4f",drain*10000)
+			--printf("Containers drain: "..drain)
+		end
+	else
+		for i = 1, #belt do
+			local art = belt[i]
+			local drop = false
+			if (string.match(tostring(art:section()),"_af_")) then	
+				if (string.match(tostring(art:section()),"_af_iam")) then
+					drop = alun_utils.read_from_ini(ini,"main","iam_drain_speed","float",0) > 0
+				elseif (string.match(tostring(art:section()),"_af_aac")) then
+					drop = alun_utils.read_from_ini(ini,"main","aac_drain_speed","float",0) > 0
+				elseif (string.match(tostring(art:section()),"_af_aam")) then
+					drop = alun_utils.read_from_ini(ini,"main","aam_drain_speed","float",0) > 0
+				end
+			
+				if (drop) then
+					db.actor:drop_item(art)
+					db.actor:transfer_item(art,db.actor)
+					if (battery) then
+						show_message("st_upd_low",25)
+					else
+						show_message("st_upd_disconnected",25)
+					end
+				end
+			end
+		end
+	end
+end
+
+function updateBatteryCondition(battery, batcon, device)
+	local newbatcon = batcon - alun_utils.read_from_ini(ini,"main",device.."_drain_speed","float",0.0001)
+	battery:set_condition(newbatcon)
+end
+
+function getBatteryCondition()
+	local battery = db.actor:object("wpn_upd")
+	if (battery) then 
+		return battery:condition()
+	end
+	return 0
+end
+	
+function is_jammed()
+
+	if (DEV_DEBUG_DEV) then
+		return false
+	end
+
+	local jammed_levels =
+	{
+		["l10_red_forest"] = true,
+		["l13_generators"] = true,
+		--["l13u_warlab"] = true,
+	}
+
+	if (jammed_levels[level.name()] == true) then
+		return true
+	end
+
+	return false
+end
+	
+function show_message(msg,time)
+	local hud = get_hud()
+	hud:AddCustomStatic("can_use_weapon_now", true)
+	hud:GetCustomStatic("can_use_weapon_now"):wnd():TextControl():SetTextST(msg)
+	ShowMessage = true
+	ShowMessageInit = game.get_game_time()
+	ShowMessageTime = time
+end

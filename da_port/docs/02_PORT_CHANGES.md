@@ -1,0 +1,1502 @@
+# Карта правок порта
+
+Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **864 правк(и) в 193 файлах**.
+
+Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
+пока маркеры на месте. Пересобрать: `python docs/_regen_changes.py`.
+
+> Как читать: каждая строка — это `файл:строка` и первая строка комментария, объясняющего правку.
+> Развёрнутое объяснение «почему» лежит рядом с кодом — комментарии писались как основная документация,
+> потому что они не теряются при переносе и видны тому, кто читает функцию.
+
+
+## Рендер — DirectX 11 (R4)
+
+*61 файл(ов), 315 правк(и)*
+
+
+### `Layers/xrRender/Blender_Recorder_StandartBinding.cpp`
+
+- **:27** — BIND_DECLARE(wvp_old); // [DA_PORT] motion vectors
+- **:28** — BIND_DECLARE(wvp_nojit); // [DA_PORT] motion vectors
+- **:42** — DECLARE_TREE_BIND(wave_old); // [DA_PORT]
+- **:43** — DECLARE_TREE_BIND(wind_old); // [DA_PORT]
+- **:333** — Deliberately the plain window size, i.e. stock behaviour. Deriving it from the current
+- **:398** — Motion vectors. Registered here, with the transforms, rather than as ordinary
+- **:409** — r_Constant("wave_old", &tree_binder_wave_old); // [DA_PORT] motion vectors
+- **:410** — r_Constant("wind_old", &tree_binder_wind_old); // [DA_PORT] motion vectors
+
+### `Layers/xrRender/D3DXRenderBase.cpp`
+
+- **:367** — The same breakdown, into the LOG instead of the screen.
+- **:397** — Light counts, on their own line.
+
+### `Layers/xrRender/DetailManager.cpp`
+
+- **:103** — motion vectors: no previous sway yet, and an uninitialised flag here would let the very
+
+### `Layers/xrRender/DetailManager.h`
+
+- **:141** — The same three phases as of the previous frame, for motion vectors. Grass sway is
+
+### `Layers/xrRender/DetailManager_Decompress.cpp`
+
+- **:285** — REVERTED - kept as a note, do not re-apply without measuring first.
+
+### `Layers/xrRender/FTreeVisual.cpp`
+
+- **:10** — Vegetation sway scale, 0 = frozen. Defined in the engine; declared outside the namespace
+- **:120** — The same two as they were on the previous frame, for motion vectors. Without them the
+- **:129** — Sway phase, accumulated rather than derived from the clock. See calculate().
+- **:147** — The phase is ACCUMULATED, not computed as time * speed.
+- **:166** — Wrapped to one turn. The phase is fed to periodic functions (calc_cyclic in the
+- **:181** — r__wind_scale: 0 freezes the trees. See xr_ioc_cmd.cpp for why it exists.
+- **:204** — Exactly once per frame, and provably so.
+- **:230** — Foliage stands still in the SHADOW pass, while swaying normally on screen.
+- **:253** — cmd_list.tree.set_wave_old(tvs.wave_old); // [DA_PORT] motion vectors
+- **:254** — cmd_list.tree.set_wind_old(wind_old); // [DA_PORT] motion vectors
+
+### `Layers/xrRender/ParticleEffect.cpp`
+
+- **:20** — extern ENGINE_API float g_hud_fov_current; // [DA_PORT] nearwall
+
+### `Layers/xrRender/R_Backend_Runtime.cpp`
+
+- **:11** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here: an extern written inside
+- **:456** — Compensate the mip selection for r__render_scale. Rendering the scene smaller makes the
+- **:465** — With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection
+
+### `Layers/xrRender/R_Backend_Runtime.h`
+
+- **:55** — see R_Backend_xform.h - these follow m_wvp so they are correct per object, not per pass.
+
+### `Layers/xrRender/R_Backend_tree.cpp`
+
+- **:16** — c_wave_old = nullptr; // [DA_PORT]
+- **:17** — c_wind_old = nullptr; // [DA_PORT]
+- **:70** — void R_tree::set_wave_old(Fvector4& vec) // [DA_PORT] motion vectors
+- **:76** — void R_tree::set_wind_old(Fvector4& vec) // [DA_PORT] motion vectors
+
+### `Layers/xrRender/R_Backend_tree.h`
+
+- **:13** — R_constant* c_wave_old; // [DA_PORT] motion vectors
+- **:14** — R_constant* c_wind_old; // [DA_PORT] motion vectors
+
+### `Layers/xrRender/R_Backend_xform.cpp`
+
+- **:6** — Camera matrices for motion vectors, owned by the engine. Declared outside the namespace:
+- **:19** — Default the previous-frame world to the current one; movers overwrite it via set_W_old
+- **:26** — Rebuilt for THIS object, on the same footing as m_wvp - see the header for why they
+- **:46** — Supplies the real previous-frame transform for something that moves. Always called right
+- **:109** — c_wvp_old = nullptr; // [DA_PORT]
+- **:110** — c_wvp_nojit = nullptr; // [DA_PORT]
+- **:117** — m_w_old.identity(); // [DA_PORT] motion vectors
+- **:124** — m_wvp_old.identity(); // [DA_PORT]
+- **:125** — m_wvp_nojit.identity(); // [DA_PORT]
+
+### `Layers/xrRender/R_Backend_xform.h`
+
+- **:16** — World matrix this object had on the PREVIOUS frame, for motion vectors. set_W keeps it
+- **:23** — The two motion-vector matrices, kept here rather than behind R_constant_setup binders.
+- **:51** — void set_W_old(const Fmatrix& m); // [DA_PORT] motion vectors
+- **:64** — IC void set_c_wvp_old(R_constant* C); // [DA_PORT]
+- **:65** — IC void set_c_wvp_nojit(R_constant* C); // [DA_PORT]
+
+### `Layers/xrRender/SkeletonCustom.cpp`
+
+- **:120** — motion vectors
+- **:125** — Roll the visual's world matrix one frame back. Called from the render path with the matrix
+- **:139** — "Previous" only means anything if the visual was actually drawn on the previous frame.
+- **:165** — The bones have to be seeded here too, not just the world matrix. Leaving them alone
+
+### `Layers/xrRender/SkeletonCustom.h`
+
+- **:133** — ---- Motion vectors: this visual's world matrix on the previous frame ---------------
+
+### `Layers/xrRender/SkeletonX.cpp`
+
+- **:16** — shared_str s_bones_array_old_const; // [DA_PORT] previous-frame poses, for motion vectors
+- **:47** — Motion vectors: remember where this visual was, and tell the backend, so the shader's
+- **:98** — The same poses as they were on the previous frame, for motion vectors. Without this
+- **:190** — s_bones_array_old_const = "sbones_array_old"; // [DA_PORT]
+
+### `Layers/xrRender/blenders/blender_bloom_build.cpp`
+
+- **:235** — NOTE: this C++ blender is NOT what builds the post-process pass in Dead Air —
+
+### `Layers/xrRender/blenders/blender_taa.h`
+
+- **:5** — temporal anti-aliasing resolve (R4 only). Blends the previous frame into the current one after
+
+### `Layers/xrRender/r__dsgraph_build.cpp`
+
+- **:40** — ---- Geometry cut-off by size and distance --------------------------------------------
+- **:347** — if (!da_is_valuable_dynamic(pVisual, xform, o.phase)) // [DA_PORT] geometry cut-off
+- **:436** — if (!da_is_valuable_static(pVisual, o.phase)) // [DA_PORT] geometry cut-off
+- **:649** — if (!da_is_valuable_static(pVisual, o.phase)) // [DA_PORT] geometry cut-off
+
+### `Layers/xrRender/r__dsgraph_render.cpp`
+
+- **:11** — extern ENGINE_API float g_hud_fov_current; // [DA_PORT] nearwall: == psHUD_FOV unless modulated
+- **:32** — This used to be `if (equal) return false; return left.ssa >= right.ssa;`, which is not a
+
+### `Layers/xrRender/xrRender_console.cpp`
+
+- **:143** — The author's value; governs STATIC visuals - trees and bushes, grass is unaffected by it.
+- **:186** — 64 is what the original actually rendered with, not merely the stock value: the author's
+- **:209** — Tone mapping and bloom below are the author's values, taken from the Dead Air sources
+- **:214** — float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
+- **:215** — float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
+- **:216** — float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
+- **:218** — float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
+- **:220** — float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
+- **:224** — float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
+- **:239** — float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
+- **:240** — 180, the value beside it, which is the author's and also the console maximum. At 100 the
+- **:244** — 51 instead of the stock 180.
+- **:255** — The author's lighting balance: a much stronger sun against a heavily damped ambient and
+- **:258** — float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
+- **:259** — float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
+- **:260** — float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
+- **:283** — Dead Air compatibility stubs (x32 mod commands)
+- **:311** — Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
+- **:321** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
+- **:336** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
+- **:348** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
+- **:380** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
+- **:520** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
+- **:527** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
+- **:564** — Presets for the shadow-casting light ceiling, exposed in the video options.
+- **:566** — One-touch performance preset for the Performance tab.
+- **:793** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
+- **:1084** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
+- **:1086** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
+- **:1093** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
+- **:1105** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
+- **:1107** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
+- **:1175** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
+- **:1239** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
+- **:1331** — Dead Air compatibility stub commands
+- **:1357** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+- **:1358** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
+
+### `Layers/xrRender/xrRender_console.h`
+
+- **:58** — How many lights may cast shadows in one frame; 0 = no limit (stock behaviour).
+- **:232** — Dead Air compatibility stub variables (x32 mod commands absent in OpenXRay)
+- **:259** — extern ECORE_API u32 ps_r_grading_preset; // [DA_PORT] ready-made colour grading profiles
+- **:272** — ---- Geometry cut-off by size and distance (author's optimisation) --------------------
+
+### `Layers/xrRender/xr_effgamma.cpp`
+
+- **:94** — On Windows this call is a no-op that still reports success: the OS has ignored
+
+### `Layers/xrRender/xr_effgamma.h`
+
+- **:8** — True only while the hardware gamma ramp is genuinely in effect, i.e. exclusive fullscreen
+
+### `Layers/xrRenderDX11/dx11ConstantBuffer.cpp`
+
+- **:53** — xr_malloc does not zero memory. Constant buffers with the same layout are
+
+### `Layers/xrRenderDX11/dx11DetailManager_VS.cpp`
+
+- **:7** — Vegetation sway scale, 0 = frozen. Defined in the engine; declared outside the namespace
+- **:49** — Remember where the sway was before this frame advances it - see DetailManager.h.
+- **:61** — Wrapped to one turn. The phase is fed to periodic functions (calc_cyclic in the
+- **:87** — r__wind_scale: 0 freezes the grass. Applied to the previous-frame copies too, so the
+- **:91** — r__wind_shadow 0: grass stands still in the SHADOW pass while swaying on screen.
+- **:113** — The same directions one frame back, built exactly the same way.
+- **:166** — static shared_str strWaveOld("wave_old"); // [DA_PORT] motion vectors
+- **:167** — static shared_str strDir2DOld("dir2D_old"); // [DA_PORT] motion vectors
+- **:205** — cmd_list.set_c(strWaveOld, wave_old); // [DA_PORT]
+- **:206** — cmd_list.set_c(strDir2DOld, wind_old); // [DA_PORT]
+
+### `Layers/xrRenderDX11/dx11HW.cpp`
+
+- **:3** — Defined in the engine (xr_ioc_cmd.cpp).
+- **:125** — The validation layer, on a console variable and available in Release.
+- **:136** — Msg("* [DA_PORT] D3D11 validation layer requested (r__d3d_debug)");
+- **:190** — The validation layer is refused outright when the "Graphics Tools" Windows feature is
+- **:195** — Msg("! [DA_PORT] device creation failed WITH the validation layer - is the 'Graphics Tools' "
+- **:201** — Drain the validation layer into our own log.
+- **:220** — Msg("* [DA_PORT] validation layer active, messages will appear in this log");
+- **:624** — Pull whatever the validation layer has to say into the engine log, once per frame.
+
+### `Layers/xrRenderDX11/dx11ResourceManager_Resources.cpp`
+
+- **:189** — Look in the other contexts before giving up. Buffers are filed under the context that
+
+### `Layers/xrRenderPC_R4/da_fsr2.cpp`
+
+- **:93** — Reactive mask. Alpha-tested foliage is marked here (deffer_base_aref_*.ps): a branch
+- **:98** — Transparency-and-composition mask. Fed the SAME buffer as the reactive one, on a
+- **:147** — Step 1 has no counterpart in the library - AMD's highest mode is 1.5x. It exists so
+
+### `Layers/xrRenderPC_R4/da_fsr2.h`
+
+- **:3** — AMD FidelityFX Super Resolution 2.
+- **:38** — ID3D11Resource* reactive{}; // [DA_PORT] 1 where the history must not be trusted
+- **:39** — ID3D11Resource* tandc{};    // [DA_PORT] transparency-and-composition, null to disable
+
+### `Layers/xrRenderPC_R4/da_fsr3.cpp`
+
+- **:9** — Type-free entry points, see da_fsr3_api.h for why they exist.
+- **:34** — The three buffers FSR 3 shares with whatever runs after it. Formats and usage are taken
+- **:114** — DEBUG_CHECKING stays on in Release. The backend answers a failed context with a bare
+
+### `Layers/xrRenderPC_R4/da_fsr3.h`
+
+- **:3** — AMD FidelityFX Super Resolution 3 — upscaler only, no frame generation.
+
+### `Layers/xrRenderPC_R4/da_fsr3_api.h`
+
+- **:3** — The few FSR 3 entry points the rest of the renderer needs, declared WITHOUT dragging in
+
+### `Layers/xrRenderPC_R4/da_gpu_timer.cpp`
+
+- **:6** — Switched on with "da_gpu_log <frames>".
+
+### `Layers/xrRenderPC_R4/da_gpu_timer.h`
+
+- **:3** — GPU timing per render phase.
+
+### `Layers/xrRenderPC_R4/da_upscaler.h`
+
+- **:3** — Common interface for temporal upscalers: FSR 2, XeSS, DLSS.
+
+### `Layers/xrRenderPC_R4/da_xess.cpp`
+
+- **:51** — XESS_RESULT_ERROR_UNSUPPORTED_DEVICE (-1) is the expected answer on most machines,
+
+### `Layers/xrRenderPC_R4/da_xess.h`
+
+- **:3** — Intel XeSS — the second temporal upscaler, alongside FSR 2.
+- **:43** — ID3D11Resource* reactive{}; // [DA_PORT] Intel calls it the responsive pixel mask
+
+### `Layers/xrRenderPC_R4/r4_rendertarget.h`
+
+- **:59** — ref_rt rt_SSR; // screen-space reflections output (R4)
+- **:60** — ref_rt rt_TAA_history; // previous frame, kept for temporal reprojection (R4)
+- **:61** — ref_rt rt_TAA_scratch; // second output of the resolve — the copy that goes into the history
+- **:62** — ref_rt rt_TAA_out;     // first output of the resolve — the copy that goes back on screen
+- **:63** — ref_rt rt_Velocity;    // screen-space motion vectors, RG16F (R4). Groundwork for FSR 2.
+- **:64** — Velocity after the guard pass - see phase_velocity_guard.
+- **:66** — ref_rt rt_Reactive;    // reactive mask for the upscalers, R8 — 1 where history must not be trusted
+- **:67** — Working pair for the reactive widening - see phase_reactive.
+- **:70** — u32 da_velocity_cleared_frame{}; // phase_scene_begin runs twice per frame when the scene is split
+- **:71** — Same guard for the position clear - see phase_scene_begin.
+- **:73** — ref_rt rt_FSR2_out;    // FSR 2 output, at OUTPUT resolution and writable from a compute shader
+- **:157** — ref_shader s_taa; // temporal AA resolve
+- **:158** — ref_shader s_velocity_guard; // damps vegetation motion next to glossy surfaces
+- **:159** — ref_shader s_reactive; // marks pixels around genuinely moving objects as reactive
+- **:160** — ref_shader s_reactive_dilate_h; // widens that mark, horizontally
+- **:161** — ref_shader s_reactive_dilate_v; // and vertically, folding in the mask the G-buffer left
+- **:162** — ref_shader s_sky_velocity; // the sky writes no motion vectors of its own
+- **:248** — ID3DDepthStencilView* zb); // [DA_PORT] reactive mask as a fourth target
+- **:249** — Convenience form taking the depth buffer as a render target, mirroring the three-target
+- **:289** — void phase_taa(); // temporal AA resolve
+- **:291** — void phase_velocity_guard(); // [DA_PORT] damp vegetation motion next to glossy surfaces
+- **:292** — void phase_reactive(); // [DA_PORT] widen the reactive mask around moving objects, against ghosting
+- **:293** — void phase_sky_velocity(); // [DA_PORT] motion vectors for the sky, which no shader writes
+- **:294** — bool phase_fsr3(); // [DA_PORT] FSR 3 upscaler, same slot in the frame
+- **:295** — bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // FSR 2 upscale; false when it did not run, so the caller can fall back
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_combine.cpp`
+
+- **:10** — Defined in dx11HW.cpp - see the note there on why the layer needs draining by hand.
+- **:205** — Visor rain-droplet ("lens water") intensity. blender_combine puts the combine_1.ps
+- **:243** — Scene-grab for water screen-space reflections (SSLR).
+- **:301** — The stand-alone full-screen SSR pass is retired: reflections are done inside Dead Air's
+- **:349** — u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:356** — u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:471** — Temporal AA, on the assembled frame.
+- **:485** — FSR 2 belongs HERE, not after phase_combine returns. phase_pp is called from inside
+- **:496** — phase_sky_velocity(); // [DA_PORT] fill the sky in before anything reads the velocity buffer
+- **:497** — phase_reactive(); // [DA_PORT] reads the honest velocity, so it goes before the guard touches it
+- **:498** — phase_velocity_guard(); // [DA_PORT] must run BEFORE any upscaler reads the buffer
+- **:500** — phase_fsr3(); // [DA_PORT]
+- **:502** — da_d3d_debug_drain(); // [DA_PORT] validation layer output, see dx11HW.cpp // [DA_PORT] the other upscaler; only one is ever enabled
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_fsr2.cpp`
+
+- **:5** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
+- **:13** — Set only when the upscaler actually produced a frame. The post-process pass keys off
+- **:29** — Release the outputs first. Combine leaves rt_Color bound as the render target and
+- **:38** — The real depth buffer, not rt_Position. That one holds eye-space POSITIONS: four
+- **:58** — Same buffer, second input - see da_fsr2.cpp.
+- **:77** — Device.fFOV is the HORIZONTAL angle — the projection is built from it together with
+- **:88** — The library's own RCAS pass, on the same slider FSR 1.0 uses. Reconstruction from a
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_fsr3.cpp`
+
+- **:5** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
+- **:14** — Shared with FSR 2 and XeSS on purpose: only one upscaler reconstructs a given frame, and
+- **:27** — r__fsr3_debug 1: everything exists, nothing runs. See xr_ioc_cmd.cpp for what it splits.
+- **:83** — Put the pipeline back the way it was found.
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_reactive.cpp`
+
+- **:3** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
+- **:19** — ---- Self-test: read the buffers back and put numbers in the log --------------------
+- **:158** — Everything this pass works in is travel PER FRAME, so every setting it takes is frame
+- **:183** — Inputs measured before the draw touches anything, output after - see da_probe.
+- **:240** — Fill the target with a value by hand first, then draw over it. The two readings that
+- **:258** — The same draw again per debug mode, each writing one ingredient AS THE SHADER SEES
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_taa.cpp`
+
+- **:3** — temporal anti-aliasing resolve. Blends the previous frame (rt_TAA_history) into the current one
+- **:25** — Not alongside an upscaler. Each of them is a temporal resolve in its own right, working
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_velocity_guard.cpp`
+
+- **:3** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
+- **:22** — One decision for the whole frame: is the camera moving?
+- **:42** — Recalibrated. These thresholds were driven down and down against jitter that this pass
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_xess.cpp`
+
+- **:5** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
+- **:23** — Release the outputs first — same trap that made FSR 2 reconstruct a black frame and
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_u_set_rt.cpp`
+
+- **:48** — Slot 3 must be released here. The scene pass binds four targets (the reactive mask is
+- **:55** — NOTE: deliberately does NOT set the viewport, unlike CBackend::set_pass_targets.
+- **:65** — Four colour targets: the G-buffer plus motion vectors plus the reactive mask. Same body as
+- **:118** — NOTE: deliberately does NOT set the viewport, unlike CBackend::set_pass_targets.
+- **:140** — Unlike the ref_rt overloads (see CBackend::set_pass_targets), this raw-view path never
+
+### `Layers/xrRenderPC_R4/r4_shaders.cpp`
+
+- **:42** — Tell a mod author when their shader will not work with the upscalers.
+- **:79** — Name-gated, and the first attempt without it was wrong.
+- **:96** — Msg("! [DA_PORT] shader [%s] draws into the G-buffer but writes no motion vector "
+- **:467** — Motion vectors as an extra G-buffer output — see f_deffer in common_iostructs.h. Must
+- **:470** — appendShaderOption(o.velocity_debug_ids, "DA_DEBUG_SHADER_IDS", "1"); // [DA_PORT] see r2.cpp
+- **:490** — Enable Dead Air's visor rain-droplet ("lens water") effect that lives in the
+- **:499** — Enable Dead Air's OWN screen-space reflections on water. DA's archive water.ps/waterd.ps
+- **:535** — Do NOT inject H_*/L_*/PIXEL_SIZE/eye_direction macros here!
+
+### `Layers/xrRenderPC_R4/xrRender_R4.cpp`
+
+- **:38** — Trim the exposed mode list to 2 clear choices instead of 4 near-duplicate
+
+### `Layers/xrRender_R2/r2.cpp`
+
+- **:21** — Defined in the engine (xr_ioc_cmd.cpp). Declared outside the namespace on purpose: an
+- **:28** — "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
+- **:116** — These describe the G-BUFFER, not the window: the deferred shaders rebuild eye-space
+- **:126** — Previous frame's view-projection, for temporal reprojection (TAA, temporal SSR).
+- **:146** — World-view-projection of the PREVIOUS frame, for motion vectors. Static level geometry is
+- **:155** — Current frame's view-projection WITHOUT the temporal-AA jitter. Motion vectors have to be
+- **:163** — The projection jitter, for shaders to apply themselves.
+- **:177** — Any temporal upscaler, not FSR 2 alone - see da_upscaler_active(). While this named
+- **:182** — Converted to clip space HERE, from the pixel offset the upscaler is handed, so
+- **:202** — Detail-bump damping weights, see xr_ioc_cmd.cpp for what they are for. An ordinary pass
+- **:205** — Gloss-driven reactive mask, see xr_ioc_cmd.cpp. x = weight, y = gloss threshold.
+- **:215** — Motion-driven reactivity, see da_motion_reactive in common_functions.h.
+- **:233** — Motion-vector camera matrices WITHOUT any world part, for geometry that is already in world
+- **:254** — Same reasoning: this is the G-buffer's size, used for texel-exact fetches.
+- **:612** — Motion vectors. R4 only — the extra target and the shader option are DX11-side, and R2
+- **:617** — Every consumer of the velocity buffer has to be listed here, FSR 3 included. Missing
+- **:624** — Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every
+- **:628** — The debug map and an upscaler must not run together: FSR 2 reads the very buffer the
+- **:635** — Msg("! [DA_PORT] r__motion_vectors 3 with FSR 2 enabled: the upscaler is being fed shader "
+- **:690** — Resources->RegisterConstantSetup("m_prev_VP", &binder_prev_vp); // [DA_PORT] temporal reprojection
+- **:691** — Resources->RegisterConstantSetup("m_taa_jitter", &binder_taa_jitter); // [DA_PORT] jitter for shaders
+- **:692** — Resources->RegisterConstantSetup("m_VP_nojit_ws", &binder_vp_nojit_ws); // [DA_PORT] world-space geometry
+- **:693** — Resources->RegisterConstantSetup("m_VP_old_ws", &binder_vp_old_ws); // [DA_PORT] world-space geometry
+- **:694** — Resources->RegisterConstantSetup("da_detail_fix", &binder_detail_fix); // [DA_PORT] detail-bump damping
+- **:695** — Resources->RegisterConstantSetup("da_reactive_motion", &binder_reactive_motion); // [DA_PORT]
+- **:696** — Resources->RegisterConstantSetup("da_gloss_reactive", &binder_gloss_reactive); // [DA_PORT] gloss opts out of history
+- **:701** — Msg("* [DA_PORT] create: before CRenderTarget"); FlushLog();
+- **:703** — Msg("* [DA_PORT] create: after CRenderTarget"); FlushLog();
+- **:708** — Msg("* [DA_PORT] create: after Models/PSLibrary/HWOCC"); FlushLog();
+- **:712** — Msg("* [DA_PORT] create: after q_sync_point"); FlushLog();
+- **:716** — Msg("* [DA_PORT] create: before FluidManager.Initialize"); FlushLog();
+- **:720** — Msg("* [DA_PORT] create: after FluidManager"); FlushLog();
+- **:723** — g_da_gpu_timer.create(); // [DA_PORT] per-phase GPU timing, see da_gpu_timer.h
+- **:725** — Msg("* [DA_PORT] create: DONE"); FlushLog();
+
+### `Layers/xrRender_R2/r2.h`
+
+- **:249** — Motion vectors written as an extra G-buffer target. Latched once when the renderer
+- **:253** — u32 velocity_debug_ids : 1; // [DA_PORT] mode 3: shaders stamp their identity instead of motion
+
+### `Layers/xrRender_R2/r2_R_calculate.cpp`
+
+- **:72** — The OUTPUT size, not the render target's. Every level-of-detail threshold below is
+
+### `Layers/xrRender_R2/r2_R_render.cpp`
+
+- **:3** — GPU timing per phase - see da_gpu_timer.h. R4 only; the GL branch has no D3D11 queries.
+- **:25** — Defined in the engine (device.cpp). Declared out here, not inside the function that uses it:
+- **:42** — The composite path below draws the menu into rt_Generic_0 — but the UI lays itself out in
+- **:68** — Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:128** — Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:251** — Keep only the most prominent lights casting shadows; demote the rest.
+- **:461** — FSR 2 used to be dispatched here, which looked like "after the frame is assembled but
+- **:465** — Remember this frame's camera for the next one. Temporal effects reproject a pixel into
+
+### `Layers/xrRender_R2/r2_loader.cpp`
+
+- **:46** — The result was dereferenced unchecked: a level shader entry without a '/' wrote
+- **:50** — Msg("! [DA_PORT] level shader [%s] has no '/' separator - skipped", n_sh);
+
+### `Layers/xrRender_R2/r2_rendertarget.cpp`
+
+- **:13** — #include "Layers/xrRender/blenders/blender_taa.h" // temporal AA
+- **:15** — #include "Layers/xrRenderPC_R4/da_fsr2.h" // FSR 2
+- **:17** — #include "Layers/xrRenderPC_R4/da_fsr3_api.h" // Intel XeSS
+- **:213** — Make sure the internal render resolution is current before any target is sized from it.
+- **:223** — Msg("* [DA_PORT] render targets: output %ux%u, scene %ux%u", Device.dwWidth, Device.dwHeight,
+- **:280** — Scene targets follow the internal render resolution ("r__render_scale"); only the
+- **:303** — scene-grab target for water SSLR ("$user$ssr", bound to s_image by r3\effects_water.s).
+- **:352** — temporal AA buffers. They live on rt_Color, which is where the finished frame lands after
+- **:367** — Motion vectors: where each pixel was on the previous frame, in screen space.
+- **:377** — Reactive mask: one channel, 1 where the pixel belongs to something a temporal
+- **:388** — Same format and size as the velocity buffer: the guard pass writes here and the
+- **:394** — Working pair for phase_reactive. Widening happens one axis at a time - a maximum
+- **:402** — FSR 2 writes its result here. Two things set it apart from every other target:
+- **:425** — Intel XeSS, the alternative. Created alongside rather than instead: both are
+- **:430** — Intel XeSS. Was nested inside the FSR 2 branch above, which meant it could only
+- **:443** — FSR 3. Same reasoning as FSR 2 for the sizes: maxRenderSize is declared as the full
+- **:714** — temporal AA resolve (R4-only). Skipped under MSAA: common.h then types s_position as
+- **:720** — Script blender, unlike the TAA one - it needs no textures beyond two
+- **:723** — Object-motion reactivity, see phase_reactive. Two blenders share one pixel
+- **:796** — see phase_pp: no depth when targeting the back buffer (sizes may differ)
+
+### `Layers/xrRender_R2/r2_rendertarget_phase_PP.cpp`
+
+- **:3** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace: an
+- **:141** — no depth here on purpose: this composites a full-screen quad onto the back buffer,
+- **:201** — Colour grading. r__color_base_r/g/b and r2_vibrance_val existed as console variables
+- **:208** — Sharpening strength for the upscale (RCAS, the second half of FSR 1.0).
+- **:222** — Gamma / brightness / contrast. These reach the screen through the hardware gamma ramp,
+
+### `Layers/xrRender_R2/r2_rendertarget_phase_bloom.cpp`
+
+- **:8** — ---- Why this pass forces a window-sized viewport ------------------------------------
+- **:120** — see the note at the top of this file — every quad below depends on this.
+- **:578** — Hand the viewport back exactly as it was — the passes after this one inherit it too.
+
+### `Layers/xrRender_R2/r2_types.h`
+
+- **:14** — #define     r2_RT_SSR           "$user$ssr"         // screen-space reflections (R4)
+- **:15** — #define     r2_RT_taa_history   "$user$taa_history" // previous resolved frame, for temporal AA (R4)
+- **:16** — #define     r2_RT_taa_scratch   "$user$taa_scratch" // un-sharpened resolve, on its way into the history
+- **:17** — #define     r2_RT_taa_out       "$user$taa_out"     // sharpened resolve, on its way back into rt_Color
+- **:18** — #define     r2_RT_velocity      "$user$velocity"    // per-pixel screen-space motion, for FSR 2 (R4)
+- **:19** — #define     r2_RT_velocity_guard "$user$velocity_guard" // velocity after the guard pass (R4)
+- **:20** — #define     r2_RT_reactive      "$user$reactive"    // reactive mask for the upscalers (R4)
+- **:21** — #define     r2_RT_reactive_scratch "$user$reactive_scratch" // reactive, first axis of the dilate (R4)
+- **:22** — #define     r2_RT_reactive_scratch2 "$user$reactive_scratch2" // reactive, motion in and result out (R4)
+- **:23** — #define     r2_RT_fsr2_out      "$user$fsr2_out"    // FSR 2 result, at OUTPUT resolution (R4)
+
+### `Layers/xrRender_R2/r3_rendertarget_mark_msaa_edges.cpp`
+
+- **:38** — scene-space pass: viewport follows the scene targets, not the window
+
+### `Layers/xrRender_R2/r3_rendertarget_phase_occq.cpp`
+
+- **:8** — scene-space pass: viewport follows the scene targets, not the window
+- **:11** — scene-space pass: viewport follows the scene targets, not the window
+
+### `Layers/xrRender_R2/r3_rendertarget_phase_scene.cpp`
+
+- **:25** — This is the G-buffer pass — the viewport has to match the scene targets, not the
+- **:48** — same reasoning: depth here is the scene depth, so the viewport follows the scene
+- **:62** — With motion vectors on, rt_Velocity is bound as the last colour target. Only the
+- **:72** — Clear the position target too, once per frame, whatever else is switched on.
+- **:86** — REVERTED - clearing it here made every model vanish: NPCs, the weapon in hand, the actor.
+- **:109** — Clear the velocity target ONCE PER FRAME. Pixels the G-buffer never covers — the sky
+
+
+## Движок и устройство
+
+*17 файл(ов), 120 правк(и)*
+
+
+### `xrEngine/CameraManager.cpp`
+
+- **:18** — TAA: defined in xr_ioc_cmd.cpp / device.cpp — see the jitter block in ApplyDevice below.
+- **:22** — "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
+- **:344** — TAA projection jitter. Reprojecting the previous frame only removes temporal noise; the
+- **:357** — Every temporal upscaler needs the jitter just as much as our own temporal AA does — it
+- **:369** — Generated exactly the way FSR 2 specifies, because it has to undo this offset and
+- **:406** — Only our own temporal AA gets the jitter through the projection matrix. An upscaler
+
+### `xrEngine/CustomHUD.h`
+
+- **:20** — dedicated bit for the "hud_draw_map" compat alias (see console_commands.cpp) - it used
+- **:25** — Dead Air's own flag, gating the bottom-left readout: health bar, stamina bar, ammo counts,
+
+### `xrEngine/Device.cpp`
+
+- **:26** — u32 ps_fps_limit = 1000; // [DA_PORT] token cvar now; 1000 == unlimited
+- **:28** — Frames still to write into the log, see ProcessFrame. Counts itself down.
+- **:31** — Frame-time watchdog: milliseconds above which a frame is worth a line in the log. Zero is
+- **:37** — Filled by the parallel task, read after the wait - see ProcessFrame.
+- **:187** — The dump forces gathering on for its own duration. Without this the timers it prints
+- **:211** — TAA plumbing.
+- **:217** — "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
+- **:221** — The same jitter in PIXELS, which is the form FSR 2 takes it in. Kept separately
+- **:252** — see g_da_taa_unjittered_VP above. The jitter is two entries of the projection matrix, so
+- **:327** — const u64 frameStartTime = TimerGlobal.GetElapsed_ns(); // [DA_PORT] ns: whole ms cannot express 165 fps
+- **:328** — Pace the frame on a clock that CANNOT be paused. TimerGlobal can: while paused it
+- **:332** — Own timers for the dump, because the engine's own are peak-hold, not per-frame:
+- **:354** — Split for the dump. This sequence turned out to be the frame - some eleven
+- **:365** — Sum the entries individually as well as timing the loop around them, because those
+- **:411** — The frame has three parts and the statistics only count two of them. ENGINE times
+- **:422** — The same figures the statistics overlay shows, written to the log for N frames.
+- **:432** — Watchdog: silent until a frame actually misbehaves.
+- **:491** — The budget is computed in NANOSECONDS.
+- **:504** — Time the sleep, and the whole of this function, because the parts measured above stopped
+
+### `xrEngine/Device.h`
+
+- **:65** — Internal resolution the 3D scene is actually rendered at, driven by "r__render_scale".
+
+### `xrEngine/Device_create.cpp`
+
+- **:39** — Msg("* [DA_PORT] Dev::Create before Render->Create"); FlushLog();
+- **:41** — Msg("* [DA_PORT] Dev::Create after Render->Create"); FlushLog();
+- **:47** — Msg("* [DA_PORT] Dev::Create after SetupStates"); FlushLog();
+- **:51** — Msg("* [DA_PORT] Dev::Create after OnDeviceCreate"); FlushLog();
+- **:53** — Msg("* [DA_PORT] Dev::Create after CreateImGuiRender"); FlushLog();
+- **:55** — Msg("* [DA_PORT] Dev::Create after ImGui OnDeviceCreate"); FlushLog();
+- **:57** — Msg("* [DA_PORT] Dev::Create DONE"); FlushLog();
+
+### `xrEngine/Device_mode.cpp`
+
+- **:6** — extern ENGINE_API int ps_r__render_scale; // [DA_PORT] defined in xr_ioc_cmd.cpp
+- **:243** — Derive the internal scene resolution from "r__render_scale" (a percentage of the output).
+- **:264** — Msg("* [DA_PORT] render scale %d%%: scene renders at %ux%u, presented at %ux%u", scale, dwRenderWidth,
+
+### `xrEngine/Engine.cpp`
+
+- **:11** — See Engine.h for why this exists rather than a MasterGold build. Read once: the command
+
+### `xrEngine/Engine.h`
+
+- **:48** — Was the game started with "-dev"?
+
+### `xrEngine/EngineAPI.cpp`
+
+- **:144** — Only R4 is offered. Every change this port makes - temporal upscalers, motion
+
+### `xrEngine/Environment_misc.cpp`
+
+- **:249** — Msg("! [DA_PORT] CEnvAmbient '%s': no sound channels and no effects, skipping", sect.c_str());
+
+### `xrEngine/IGame_ObjectPool.cpp`
+
+- **:47** — не крашиться, если класс не создался (битый/незарегистрированный clsid) — залогировать и вернуть null
+
+### `xrEngine/key_binding_registrator_script.cpp`
+
+- **:73** — value("kWPN_7",                     int(kWPN_7)), // [DA_PORT]
+- **:74** — value("kWPN_8",                     int(kWPN_8)), // [DA_PORT]
+
+### `xrEngine/x_ray.cpp`
+
+- **:192** — Headless tooling runs (-da_export_scripts/-da_export_configs) and explicit
+- **:305** — Msg("* [DA_PORT] App: before TaskScheduler->Wait(lightAnim)"); FlushLog();
+- **:307** — Msg("* [DA_PORT] App: after TaskScheduler->Wait"); FlushLog();
+- **:315** — Msg("* [DA_PORT] App: after create_persistent"); FlushLog();
+- **:318** — Msg("* [DA_PORT] App: before OnAppStart"); FlushLog();
+- **:320** — Msg("* [DA_PORT] App: after OnAppStart"); FlushLog();
+- **:384** — Msg("* [DA_PORT] Run: before HideSplash"); FlushLog();
+- **:386** — Msg("* [DA_PORT] Run: before Device.Run"); FlushLog();
+- **:388** — Msg("* [DA_PORT] Run: after Device.Run, entering loop"); FlushLog();
+
+### `xrEngine/xr_input.cpp`
+
+- **:526** — std::locale("") throws std::runtime_error under MinGW GCC on Windows
+
+### `xrEngine/xr_ioc_cmd.cpp`
+
+- **:22** — Frame-rate cap offered as a list in the video options. The numeric token names are
+- **:353** — Internal render resolution, as a percentage of the output. Every scene render target is
+- **:358** — FSR 2 quality mode. Setting it also sets the render scale, because the two are not free
+- **:374** — ---- Upscaler registry: only one may be on ------------------------------------------
+- **:399** — Our own temporal AA belongs here too: it owns the frame's history exactly as the
+- **:405** — Is a TEMPORAL upscaler reconstructing this frame?
+- **:429** — Msg("! [DA_PORT] %s switched off - only one upscaler may reconstruct a frame, and two at once "
+- **:435** — ---- What the menu actually shows: which upscaler, and how hard -----------------------
+- **:446** — Our own temporal AA belongs in this list, not beside it.
+- **:532** — Msg("* [DA_PORT] upscaler %d, quality step %d: scene renders at %d%% of the output", ps_r__upscaler,
+- **:551** — Same idea as CCC_FSR2 below: the quality mode also sets the render scale, because Intel's
+- **:578** — Msg("* [DA_PORT] XeSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:616** — Msg("* [DA_PORT] FSR 2 mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:638** — Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible
+- **:826** — Exported: the renderer now applies these itself when the hardware gamma ramp is
+- **:1036** — Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
+- **:1054** — Percentage of the output resolution the 3D scene is rendered at (see
+- **:1058** — Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
+- **:1064** — Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
+- **:1069** — Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
+- **:1075** — AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
+- **:1080** — Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
+- **:1083** — FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
+- **:1088** — D3D11 validation layer, plus draining its messages into the engine log. Off by
+- **:1093** — Halves the FSR 3 path so the damage can be attributed without a validation layer.
+- **:1099** — How much the upscalers should distrust their history on alpha-tested foliage. Not a switch
+- **:1105** — Reactivity from screen-space motion, against ghosting behind moving objects. The
+- **:1115** — Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
+- **:1153** — Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
+- **:1160** — One-shot readback of the pass's inputs and output into the log, with figures rather than a
+- **:1164** — The frame rate the three settings above are stated at.
+- **:1179** — Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
+- **:1183** — Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
+- **:1193** — Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
+- **:1215** — ---- Detail-bump stability under a temporal upscaler --------------------------------
+- **:1239** — Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
+- **:1246** — Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
+- **:1253** — ---- Glossy surfaces opt out of temporal accumulation -------------------------------
+- **:1267** — 0 = vegetation stands still in the shadow map while still swaying on screen. See
+- **:1271** — 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
+- **:1276** — Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
+- **:1290** — Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
+- **:1296** — Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
+- **:1302** — One control instead of two. The pair that actually drives the upscale — render scale and
+- **:1314** — Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
+- **:1319** — Show the temporal resolve where it fetches history from - see da_taa.ps.
+- **:1325** — How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
+- **:1348** — Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
+- **:1352** — Projection jitter, separately switchable. TAA has two halves that fail in different ways —
+- **:1401** — Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
+- **:1406** — What the options menu shows. The three per-vendor variables above stay for the console.
+- **:1432** — Detail-bump damping, see the declarations. Sensitivity and strength in one number:
+- **:1447** — CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
+- **:1448** — CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
+- **:1449** — CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer res...
+- **:1450** — CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
+- **:1451** — CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
+- **:1453** — CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
+- **:1454** — CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
+- **:1455** — CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
+- **:1456** — CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
+- **:1461** — CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
+
+### `xrEngine/xr_level_controller.cpp`
+
+- **:68** — { "wpn_7",                  kWPN_7,                     _both }, // [DA_PORT] bound to G by the mod
+- **:69** — { "wpn_8",                  kWPN_8,                     _both }, // [DA_PORT] reserved, as in the original
+
+### `xrEngine/xr_level_controller.h`
+
+- **:54** — Dead Air adds these two and binds wpn_7 to G in default_controls.ltx. Without them the
+
+
+## Игровая логика
+
+*60 файл(ов), 281 правк(и)*
+
+
+### `xrGame/Actor.cpp`
+
+- **:378** — Weight-based sprint penalty (Actor_Movement.cpp). The alpha reads these as required
+- **:385** — hold-breath sway multiplier (see UpdateCL). [actor] breath_koef = 0.02
+- **:1044** — like CoC-Xray (Actor.cpp): fake fov a zoom texture (scope overlay) is calibrated
+- **:1057** — Dead Air (CoC lineage) treats zoom factors as optical MAGNIFICATION
+- **:1072** — if (m_item_placement_active) // [DA_PORT] keep the placement ghost tracking the crosshair
+- **:1140** — Dead Air aim-sway: extra sway from actor psy/power (scripts feed it each frame
+- **:1479** — ...except while placing an item. The placement ghost is drawn as part of the actor, so
+- **:1565** — defined in script_game_object_script3.cpp (a script TU): calls the Lua functor
+- **:1570** — --- "Установить" item placement preview (kerosene lamp etc.) ---
+- **:1583** — Ghost highlight: a soft cyan point light plus a glow sprite, so the preview reads as a
+- **:1604** — Close the inventory: placement is aimed with the crosshair, so the menu that started it
+- **:1691** — In first person during placement the actor is forced visible purely to get the ghost
+- **:1700** — draw the placement-preview ghost at the crosshair.
+- **:1969** — Dead Air's slot 14 (== GRENADE_SLOT) is a MANUAL utility slot (holds a grenade OR a
+- **:2049** — Dead Air runs artefact and outfit effects at double rate (`update_time*2` in the
+- **:2068** — Artefact radiation is deliberately NOT applied here — Dead Air's own engine has
+- **:2085** — Helmets were read but never applied: CHelmet loads health/radiation/power/bleeding/
+- **:2106** — as above: the outfit's stamina drain only bites while sprinting
+- **:2133** — Scaled by wear, so that the protection actually granted matches the number the
+
+### `xrGame/Actor.h`
+
+- **:24** — class IRenderVisual; // [DA_PORT] item placement-preview ghost
+- **:443** — how hard the carried weapon / worn outfit cut into sprint speed (sprint_*_koef)
+- **:494** — "Установить" placement-preview mode (kerosene lamp etc.): a ghost of the item follows
+- **:504** — item placement-preview state
+- **:510** — Ghost highlight. The model itself cannot be tinted from here — IRenderVisual does not
+- **:522** — hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):
+
+### `xrGame/ActorAnimation.cpp`
+
+- **:29** — PITCH factors bend the actor's THIRD-PERSON spine/head bones to follow the first-person
+
+### `xrGame/ActorBackpack.cpp`
+
+- **:18** — Summand, not multiplier - see the note in ActorHelmet.cpp. Undeclared contributes nothing.
+
+### `xrGame/ActorCondition.cpp`
+
+- **:174** — ---- Dying vision ------------------------------------------------------------------------
+- **:302** — UpdateDyingVision(); // [DA_PORT]
+- **:303** — UpdateRadiationVision(); // [DA_PORT]
+- **:433** — Fixed divisor instead of the live time factor, as in Dead Air.
+- **:466** — Radiation from the ground is NOT folded in here — see the separate hit at the end of the
+- **:523** — Radiation from radioactive ground, as its own hit into the spine (as in Dead Air).
+- **:587** — Satiety saturates at half full before it feeds anything.
+- **:631** — выносливость тратится ТОЛЬКО на спринте (ходьба/ускорение — без траты); перегруз усиливает трату спринта
+- **:634** — Overload is measured against the WALK limit, exactly as the author wrote it.
+- **:975** — физ.урон — звук только при damage>0.1; шок/ожоги — при >1.0; радиация — без звука
+
+### `xrGame/ActorCondition.h`
+
+- **:49** — Vision fades and greys out as health runs out, so the player feels themselves dying
+- **:53** — Blurred and doubled vision from radiation sickness, before it starts eating health.
+
+### `xrGame/ActorHelmet.cpp`
+
+- **:61** — Defaults to 0, not 1, because for a helmet this value is a SUMMAND.
+- **:293** — Same 10x nerf as in CCustomOutfit::HitThroughArmor — Dead Air drops the factor
+
+### `xrGame/ActorInput.cpp`
+
+- **:42** — item placement-preview mode: fire = confirm, use/reload = cancel; swallow the rest so
+- **:131** — Night vision is owned by the Lua script: itms_manager.script on_key_press catches
+
+### `xrGame/Actor_Movement.cpp`
+
+- **:15** — #include "CustomOutfit.h" // [DA_PORT] sprint weight penalty needs the outfit up here
+- **:29** — A failing actor moves like one. Below DA_FAILING_HEALTH ordinary movement speed falls off
+- **:233** — Scale a local copy, not the member.
+- **:323** — The carried weapon and worn outfit eat into sprint speed. Both koefs
+- **:359** — see DA_FAILING_HEALTH above. Sprint is deliberately untouched — it is governed
+- **:623** — зум приоритетнее приседа — нельзя быть «ускоренным» (спринт) в прицеле
+- **:724** — res += outfit->m_additional_weight * outfit->GetCondition(); // грузоподъёмность костюма скейлится по состоянию
+- **:730** — DA's backpacks are scripted artefacts (config class SCRPTART), not the engine
+
+### `xrGame/AnselManager.cpp`
+
+- **:226** — Msg("! [DA_PORT_STUB] AnselCameraEffector::ProcessCam: Ansel delay-load not supported on GCC/MinGW");
+
+### `xrGame/CameraEffector.h`
+
+- **:19** — Fading vision as the actor dies — see CActorCondition::UpdateDyingVision.
+- **:21** — Vision affected by radiation sickness — see CActorCondition::UpdateRadiationVision.
+
+### `xrGame/CustomDetector.cpp`
+
+- **:14** — #include "xrEngine/LightAnimLibrary.h" // [DA_PORT] world lamp light (device_kerosinka) color animator
+- **:15** — #include "ParticlesObject.h" // [DA_PORT] world flame particle (device_kerosinka kerosine_glow)
+- **:195** — m_world_light.destroy(); // [DA_PORT] release the world lamp light
+- **:196** — if (m_world_particles) // [DA_PORT] release the world flame particle
+- **:198** — if (m_hud_particles) // [DA_PORT] release the HUD flame particle
+- **:200** — if (m_held_light) // [DA_PORT] release the held lighter glow
+- **:204** — --- World light for a light-emitting DET_SIMP lying in the world (device_kerosinka) ---
+- **:245** — world flame particle (kerosine_glow) rides the same on/off as the light.
+- **:271** — keep the flame on the lamp as it settles; runs even if this item has no light.
+- **:331** — warm glow so the held lighter lights the environment (world-space, near the actor - the HUD
+- **:362** — a light item spawned straight into the world (e.g. a placed kerosene lamp) burns now.
+- **:381** — light_enabled=true DET_SIMP items (kerosene lamp) emit a world light when on the ground.
+- **:383** — particles_enabled=true DET_SIMP items (kerosene lamp -> "kerosine_glow") show a world flame.
+- **:391** — hud_particles_enabled=true (device_lighter) -> flame on the first-person HUD model bone.
+- **:428** — hud_ui_* generic 3D artefact screen -------------------------------------
+- **:560** — keep the world lamp's light positioned + flickering; runs for the independent
+- **:565** — keep the held lighter's HUD flame on its bone (self-gates on hud_particles_enabled + drawn).
+- **:580** — ActivateWorldLight(false); // [DA_PORT] picked up -> no world light (handheld uses device_torch)
+- **:586** — dropped into the world -> a light item (kerosene lamp) starts burning on the ground.
+
+### `xrGame/CustomDetector.h`
+
+- **:126** — optional generic hud_ui_* 3D artefact screen (simple/advanced/craft)
+- **:156** — hud_ui_* 3D screen hooks (no-op unless the HUD section defines hud_ui_*)
+- **:178** — lazily builds m_hud_ui from HUD-section hud_ui_* keys, then feeds it
+- **:188** — World light for dropped/placed light items (e.g. the device_kerosinka kerosene lamp,
+- **:198** — world flame particle (device_kerosinka particles_enabled=true -> "kerosine_glow"). Plays and
+- **:206** — HUD flame particle (device_lighter hud_particles_enabled=true -> "gas_light_glow" attached to
+- **:212** — the held lighter must actually illuminate. device_lighter has no light_* of its own and its
+
+### `xrGame/CustomOutfit.cpp`
+
+- **:116** — Dead Air: outfit may forbid a backpack (scientific suit). Default true (allowed), like helmet.
+- **:196** — Stock scaled non-bullet protection (radiation, chemical burn, psi, burn, shock)
+- **:312** — mirror the helmet kick for the backpack: putting on an outfit that forbids a
+
+### `xrGame/CustomOutfit.h`
+
+- **:64** — Dead Air outfit flag next to helmet_avaliable (default true). When false the outfit forbids
+
+### `xrGame/CustomZone.cpp`
+
+- **:88** — Inverse filters from the alpha. Read optionally with a false default (author's call):
+- **:288** — Dead Air adds detailed volumetric light params (CoC/port had only on/off).
+- **:395** — apply Dead Air detailed volumetric params
+- **:651** — (!object_info.small_object && m_zone_flags.test(eIgnoreBig)) || // [DA_PORT]
+- **:653** — (!object_info.nonalive_object && m_zone_flags.test(eIgnoreAlive)) || // [DA_PORT]
+
+### `xrGame/CustomZone.h`
+
+- **:111** — Dead Air's inverse filters: skip living entities / skip large objects. The alpha
+- **:252** — Dead Air detailed volumetric idle-light params
+
+### `xrGame/EntityCondition.cpp`
+
+- **:14** — #include "ActorBackpack.h" // [DA_PORT] CBackpack::m_fPowerLoss in HitPowerEffect
+- **:306** — The backpack gets its turn first, before outfit and helmet, as in Dead Air.
+- **:339** — power_loss stays a MULTIPLIER. The author's summand form is deliberately NOT used.
+- **:404** — Dead Air starts from "this hit wounds" and lets the switch below veto it, rather than
+- **:430** — No per-bone scaling on burns - Dead Air drops m_fHitBoneScale here. Fire damage
+
+### `xrGame/HudItem.cpp`
+
+- **:10** — #include "xrCDB/xr_collide_defs.h" // [DA_PORT] nearwall: collide::rq_result for the forward wall ray
+- **:21** — nearwall weapon-collision HUD FOV (opt-in). Default OFF => g_hud_fov_current stays
+- **:196** — nearwall: smoothly pull the weapon HUD FOV toward target_fov as a wall gets close
+
+### `xrGame/Inventory.cpp`
+
+- **:51** — false, // [DA_PORT] script animation slot (13)
+- **:52** — true, // [DA_PORT] grenade slot (14) - DA relocated hand grenades here (DA slot_active_14 = true)
+- **:53** — false // [DA_PORT] backpack slot (15)
+- **:98** — Only warn when the config actually defines MORE slots than the engine enum knows
+- **:191** — Dead Air's slot 14 (GRENADE_SLOT) is a MANUAL utility slot the actor shares between a
+- **:611** — Skip the auto-refill for the ACTOR: Dead Air's slot 14 is a manual utility
+- **:752** — The mod's own key, bound to G. A TOGGLE rather than a select: press once to take the
+- **:1058** — Equipped gear counts at 30% of its weight, as in Dead Air.
+- **:1266** — Dead Air: an outfit with backpack_avaliable=false (scientific suit) forbids a backpack.
+- **:1289** — Dead Air backpacks are artefact-class (belt=true from af_base) but must NEVER live on the
+
+### `xrGame/InventoryOwner.cpp`
+
+- **:323** — The equipped backpack extends the carry limit too - without this the inventory
+
+### `xrGame/Level.cpp`
+
+- **:587** — 10, which is what the author's Dead Air uses. OpenXRay raised it to 100 upstream and left
+
+### `xrGame/Level_input.cpp`
+
+- **:132** — Dead Air's eKeyPress script hook reacts to the raw ESCAPE scancode by force-opening
+- **:142** — ESC first closes any open UI dialog/inventory/PDA/talk,
+
+### `xrGame/MainMenu.cpp`
+
+- **:141** — "-da_export_scripts": dump every script the VFS actually resolves (packed
+- **:169** — Msg("! [DA_PORT] -da_export_scripts: exported %u/%u VFS scripts to appdata\\logs\\vfs_scripts\\, quitting",
+- **:175** — "-da_export_configs": same idea for $game_config$ (ltx/xml) - needed to study
+- **:201** — Msg("! [DA_PORT] -da_export_configs: exported %u/%u VFS configs to appdata\\logs\\vfs_configs\\, quitting",
+- **:384** — Drawing the paused scene behind the menu was tried and reverted: the menu is composed
+
+### `xrGame/ScriptXMLInit.cpp`
+
+- **:88** — DA's UI scripts reference nodes that may be absent in the port's UI XMLs (version
+- **:94** — Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
+- **:150** — if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+- **:153** — Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
+- **:185** — if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+- **:188** — Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
+- **:196** — if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+- **:199** — Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
+- **:256** — if (m_xml.NavigateToNode(path, 0)) // [DA_PORT] tolerate missing node (DA/port UI compat)
+- **:259** — Msg("~ [DA_PORT] UI node [%s] missing - control skipped (DA/port UI compat)", path);
+
+### `xrGame/Torch.cpp`
+
+- **:40** — m_da_color.set(1.f, 1.f, 1.f, 1.f); // [DA_PORT] default white; overridden per item by torch_set_color_*
+- **:179** — "torch" - dim companion light only (light_omni). Dead Air's itms_manager.script
+- **:184** — Spot items (flashlight) must NOT light the omni companion - it floods the whole area
+- **:200** — "torch2" - the real flashlight beam (light_render, spot+shadow), toggled
+- **:296** — Always start the actor's torch in the OFF state.
+- **:338** — --- Dead Air per-item torch light tuning (driven by xr_actor.script apply_torch_type) ---
+- **:388** — light_omni->set_active(false);  // [DA_PORT] spot item (flashlight): kill the omni flood; light is the beam only
+- **:397** — Either light (torch/omni or torch2/spot) being on needs position/rotation updates.
+- **:553** — Actor's torch/torch2 must stay under local key-press control, not server state.
+
+### `xrGame/Torch.h`
+
+- **:24** — Dead Air's scripts drive two independent lights: "torch" (itms_manager.script
+- **:35** — Runtime light tuning driven by Dead Air's xr_actor.script. DA carries ONE hidden
+- **:65** — "torch2" - the real player-controlled flashlight beam (see m_switched_on2 above).
+- **:70** — Dead Air per-item light tuning (xr_actor.script -> torch_set_* bindings). Applied to
+
+### `xrGame/UIGameSP.cpp`
+
+- **:125** — The engine deliberately does NOT open the PDA here - the author disabled this in his
+
+### `xrGame/Weapon.cpp`
+
+- **:107** — multiplier domain (CoC lineage): identity magnification, not fov degrees
+- **:580** — pick the malfunction mask back up from the server object, which is what carried it
+- **:645** — P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon
+- **:675** — must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would
+- **:1220** — Dead Air belt-only reload for the actor: backpack ammo can't be chambered,
+- **:1270** — шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type).
+- **:1480** — multiplier domain: back to identity magnification (was g_fov degrees)
+
+### `xrGame/Weapon.h`
+
+- **:132** — Weapons Evolution compat: unjam_motion_mark.script clears the jam from an
+- **:372** — float fAmmoMisfire{ 0.f }; // базовый шанс осечки из конфига патрона (misfire_chance)
+
+### `xrGame/WeaponAmmo.cpp`
+
+- **:122** — Dead Air prices the box itself on top of the rounds, for price micro-balance.
+- **:261** — return res + m_boxCost; // [DA_PORT] box surcharge (0 unless the section sets box_cost)
+
+### `xrGame/WeaponAmmo.h`
+
+- **:81** — u32 m_boxCost; // [DA_PORT] flat surcharge for the box itself, on top of the per-round price
+
+### `xrGame/WeaponBinoculars.cpp`
+
+- **:103** — multiplier domain like CoC-Xray (Weapon.h GetZoomData): scope_factor is an
+
+### `xrGame/WeaponDispersion.cpp`
+
+- **:16** — Dead Air replaced the stock formula entirely, and the port had kept the stock one.
+- **:61** — PLUS, not times - see GetConditionDispersionFactor above. The factor is now an additive
+
+### `xrGame/WeaponFire.cpp`
+
+- **:72** — A damaged weapon wears out faster - the author's factor, from
+
+### `xrGame/WeaponMagazined.cpp`
+
+- **:25** — "g_weapon_malfunctions" - see state_Fire. Defined in console_commands.cpp.
+- **:76** — see the members in the header. Both optional: a weapon without them simply never picks
+- **:79** — Default 0x00FFFFFF, not 0 - otherwise "applies to all weapons" would be a lie.
+- **:221** — Dead Air core mechanic: the actor reloads only with ammo carried on the belt
+- **:602** — A broken weapon loses rate of fire, and unevenly - the author's block, from
+- **:639** — Breakages from firing - the author's block, revived behind "g_weapon_malfunctions".
+- **:1189** — multiplier domain (CoC lineage): default was 50.0 DEGREES, which under
+
+### `xrGame/WeaponMagazined.h`
+
+- **:60** — Dead Air core mechanic: the actor reloads only with ammo carried on the
+- **:127** — Dead Air's two malfunction keys, finally read by the engine.
+
+### `xrGame/action_planner_inline.h`
+
+- **:91** — The THROW(!solution().empty()) that used to sit here crashed the game whenever an
+- **:127** — The other half, and by elimination the expensive one. Planning turned out to cost
+
+### `xrGame/ai/crow/ai_crow.cpp`
+
+- **:137** — Dead Air's [m_crow] uses randomized ranges (speed_min/speed_max etc.) instead
+
+### `xrGame/ai/monsters/poltergeist/poltergeist.cpp`
+
+- **:22** — #include "xrEngine/LightAnimLibrary.h" // цветоанимация света полтергейста
+- **:148** — параметры светящегося полтергейста (ключи есть в m_poltergeist.ltx)
+- **:331** — обновление светящегося источника (позиция по кости + цветоанимация)
+- **:390** — создать светящийся источник на кости головы
+- **:413** — погасить и уничтожить свет
+
+### `xrGame/ai/monsters/poltergeist/poltergeist.h`
+
+- **:46** — светящийся полтергейст (point-light на кости головы + цветоанимация light_color_animmator)
+
+### `xrGame/ai/monsters/snork/snork.cpp`
+
+- **:64** — Sleeping/lying and corpse dragging, from the Dead Air alpha (which took the snork over
+- **:100** — anim().LinkAction(ACT_LIE_IDLE, has_lie ? eAnimLieIdle : eAnimStandIdle); // [DA_PORT]
+- **:105** — anim().LinkAction(ACT_SLEEP, has_lie ? eAnimSleep : eAnimStandIdle); // [DA_PORT]
+- **:107** — anim().LinkAction(ACT_DRAG, has_drag ? eAnimDragCorpse : eAnimStandIdle); // [DA_PORT]
+
+### `xrGame/ai/stalker/ai_stalker.cpp`
+
+- **:750** — Counted at the door, because the numbers stopped adding up: sixteen of these run per
+
+### `xrGame/ai/stalker/ai_stalker_fire.cpp`
+
+- **:439** — скрипт форсировал оружие — зафиксировать и пометить актуальность
+- **:450** — возвращена проверка стабильности оружия (Alundaio отключал как «тупую») —
+- **:795** — считаем любую аномальную зону (без фильтра по restrictor_type) — стоковый фильтр пропускал часть аномалий
+
+### `xrGame/ai_space.cpp`
+
+- **:46** — Msg("* [DA_PORT] CAI_Space::init: before AISpaceBase::Initialize"); FlushLog();
+- **:48** — Msg("* [DA_PORT] CAI_Space::init: after AISpaceBase::Initialize"); FlushLog();
+- **:56** — Msg("* [DA_PORT] CAI_Space::init: before RestartScriptEngine"); FlushLog();
+- **:58** — Msg("* [DA_PORT] CAI_Space::init: after RestartScriptEngine"); FlushLog();
+- **:146** — Msg("* [DA_PORT] SetupScriptEngine: before ScriptEngine->init"); FlushLog();
+- **:148** — Msg("* [DA_PORT] SetupScriptEngine: after ScriptEngine->init, before RegisterScriptClasses"); FlushLog();
+- **:150** — Msg("* [DA_PORT] SetupScriptEngine: after RegisterScriptClasses, before register_script"); FlushLog();
+- **:152** — Msg("* [DA_PORT] SetupScriptEngine: after register_script, before LoadCommonScripts"); FlushLog();
+- **:154** — Msg("* [DA_PORT] SetupScriptEngine: after LoadCommonScripts"); FlushLog();
+
+### `xrGame/alife_graph_registry.cpp`
+
+- **:84** — The loop above has already added everything the graph points hold for this level.
+- **:95** — Msg("! [DA_PORT] ALife: object [%s][%d] already on the level registry - skipping",
+- **:129** — tolerate an item that was never level().add()'ed (spawned already attached
+- **:198** — m_objects is a VECTOR indexed by the graph vertex id, and the only thing standing
+- **:216** — Msg("! [DA_PORT] ALife: object [%s] section[%s] id[%d] has graph vertex %u but the registry "
+- **:226** — Registering the same object at the same graph point twice is a hard assert inside
+- **:234** — Msg("! [DA_PORT] ALife: object [%s][%d] already registered at graph point %d - skipping",
+- **:250** — The SECOND registry, and it needed the same tolerance as the first.
+- **:265** — Msg("! [DA_PORT] ALife: object [%s] section[%s] id[%d] already in the level registry - "
+- **:285** — no_assert=true. An item spawned already attached to a parent
+- **:292** — Same bounds guard as add() - this indexes the same vector with the same
+- **:306** — Msg("~ [DA_PORT] graph().remove: object id[%u] absent from level registry "
+
+### `xrGame/alife_schedule_registry.cpp`
+
+- **:22** — The same duplicate tolerance the graph and level registries needed.
+- **:36** — Msg("! [DA_PORT] ALife: object [%s] section[%s] id[%d] already in the schedule registry - "
+
+### `xrGame/alife_simulator_base.cpp`
+
+- **:92** — Scripted spawns (alife():create) reach here with whatever the script passed.
+- **:97** — Msg("! [DA_PORT] spawn_item: invalid section '%s' - spawn rejected", section ? section : "(null)");
+- **:103** — Msg("! [DA_PORT] spawn_item: invalid game_vertex_id %u for section '%s' - spawn rejected",
+- **:135** — Release strips the VERIFY and the very next field write AV'd on null (found by
+- **:140** — Msg("! [DA_PORT] spawn_item: section '%s' maps to a non-ALife server class - spawn rejected", section);
+
+### `xrGame/configs_dumper.cpp`
+
+- **:85** — Iterate the low quick-access weapon slots (1..4). This used GRENADE_SLOT as the upper
+
+### `xrGame/console_commands.cpp`
+
+- **:2** — #include "xrEngine/Engine.h" // [DA_PORT] da_dev_mode()
+- **:78** — extern float g_scope_fov; // Actor.cpp [DA_PORT] CoC-Xray compat
+- **:115** — see WeaponMagazined::state_Fire - weapons pick up breakages while being fired.
+- **:193** — Dump the UI xml files the game actually loads, straight through the engine's VFS, into
+- **:221** — Msg("~ [DA_PORT] ui dump: cannot open [%s]", src);
+- **:240** — Msg("~ [DA_PORT] ui dump: cannot write [%s]", dst);
+- **:244** — Msg("~ [DA_PORT] dumped %u/%u ui xml files to appdata" DELIMITER "logs" DELIMITER "vfs_ui" DELIMITER,
+- **:251** — Same trick for shaders, needed to edit the G-buffer output structure for motion vectors.
+- **:286** — Msg("~ [DA_PORT] shader dump: cannot open [%s]", src);
+- **:304** — Msg("~ [DA_PORT] shader dump: cannot write [%s]", dst);
+- **:308** — Msg("~ [DA_PORT] dumped %u/%u shader files from [%s] to appdata" DELIMITER "logs" DELIMITER
+- **:671** — Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
+- **:774** — Walk the live in-game HUD window tree and report what is actually on screen: every widget's
+- **:795** — Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
+- **:807** — Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
+- **:814** — Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
+- **:818** — Msg("~ [DA_PORT] --- HUD tree ---");
+- **:820** — Msg("~ [DA_PORT] --- end of HUD tree ---");
+- **:824** — Report what every belt item actually gives the actor.
+- **:843** — Msg("! [DA_PORT] no level loaded - run this in the game world");
+- **:850** — Msg("! [DA_PORT] no actor - run this in the game world");
+- **:854** — Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
+- **:862** — Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
+- **:866** — Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
+- **:872** — Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
+- **:877** — Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
+- **:880** — Msg("~ [DA_PORT] --- end of belt ---");
+- **:2452** — Dead Air compatibility aliases
+- **:2458** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+- **:2468** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
+- **:2475** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+- **:2487** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+- **:2489** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+- **:2628** — Developer commands: registered only when the game was started with "-dev".
+- **:2647** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+- **:2827** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+
+### `xrGame/game_base.cpp`
+
+- **:9** — This was hardcoded to 10 (10x real time speed) - normally overwritten immediately by
+
+### `xrGame/level_path_builder.h`
+
+- **:29** — Consecutive failures, for the hopeless case - see process().
+- **:108** — Counted because this is the last unmeasured occupant of the parallel sequence, and
+- **:126** — Back off only once a stalker has failed REPEATEDLY.
+
+### `xrGame/player_hud.cpp`
+
+- **:91** — Some Dead Air weapon HUD configs reference decorative motions (e.g.
+- **:99** — Msg("! [DA_PORT] player_hud_motion_container::load: motion not found [%s] in section [%s], skipping",
+- **:439** — Some Dead Air weapon configs reference motion aliases with no matching model
+- **:444** — Msg("! [DA_PORT] attachable_hud_item::anim_play: no motion for alias [%s] in model [%s], skipping",
+
+### `xrGame/script_game_object.cpp`
+
+- **:375** — Dead Air compat: index of the current scope variant in the weapon's scopes_sect
+- **:398** — Dead Air compat: section name of the weapon's currently selected ammo type
+
+### `xrGame/script_game_object.h`
+
+- **:199** — u32 GetWeaponConditionType();           void SetWeaponConditionType(u32 t); // [DA_PORT] 32-bit malfunction bitmask
+- **:276** — bool burer_get_force_anti_aim(); // [DA_PORT] Dead Air compat
+- **:891** — Dead Air compat
+
+### `xrGame/script_game_object_inventory_owner.cpp`
+
+- **:28** — #include "ui/UIMainIngameWnd.h" // [DA_PORT] set/get_radiation_detector -> hud states window
+- **:1057** — An already-accessible position answers itself - return the vertex under it.
+- **:2270** — Dead Air's zone-detector switch. itms_manager.script calls this on the actor every tick:
+- **:2305** — set_actor_zoom_inertion: DA scripts (xr_actor.script) push an extra aim-sway factor
+- **:2318** — Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+- **:2321** — Click period of the nearest radiation zone. Returns a float, not a bool — DA's scripts do
+- **:2344** — Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+- **:2372** — 32-bit bitmask (bit=malfunction). Was u8 -> truncated bits 8..31 (scripts use bit 28, loop 0..31).
+
+### `xrGame/script_game_object_use2.cpp`
+
+- **:66** — Dead Air compat: DA's rename of CoC's get_force_anti_aim (xr_conditions.burer_anti_aim).
+
+### `xrGame/stalker_movement_manager_obstacles_path.cpp`
+
+- **:28** — Putting a stalker that has slid off the navigation mesh back onto it - see below.
+- **:179** — Put a stalker that has fallen off the navigation mesh back onto it.
+- **:223** — Msg("~ [DA_PORT] AI: [%s] was off the navigation mesh, moved %.2fm back "
+- **:228** — Msg("! [DA_PORT] AI: [%s] is stuck off the navigation mesh and the "
+- **:236** — Say WHO, and stop saying it every frame.
+
+### `xrGame/trade2.cpp`
+
+- **:160** — Dead Air reads the condition exponent from config ([trade] buy_condition_koeff),
+
+### `xrGame/xrGame.cpp`
+
+- **:51** — Dead Air's own [alife]/time_factor is 10 (confirmed via trace) - genuinely their
+- **:97** — Msg("* [DA_PORT] create_persistent: before object_factory"); FlushLog();
+- **:99** — Msg("* [DA_PORT] create_persistent: after object_factory, before CGamePersistent"); FlushLog();
+- **:101** — Msg("* [DA_PORT] create_persistent: after CGamePersistent"); FlushLog();
+
+
+## Интерфейс (UI)
+
+*26 файл(ов), 80 правк(и)*
+
+
+### `xrGame/ui/ArtefactDetectorUI.cpp`
+
+- **:37** — CUIArtefactDetectorHudUI — generic hud_ui 3D artefact screen.
+
+### `xrGame/ui/ArtefactDetectorUI.h`
+
+- **:98** — Generic hud_ui 3D screen: renders artefact blips on a device screen
+
+### `xrGame/ui/Restrictions.cpp`
+
+- **:15** — Answered once per section and remembered.
+
+### `xrGame/ui/UIActorInfo.cpp`
+
+- **:75** — Origin is (0,0), not the parent's position: UICharacterInfo is attached as a child of
+- **:95** — The actor's name is deliberately NOT drawn here.
+- **:114** — Choose the layout scheme by what the XML actually contains, not by a build flag.
+- **:337** — Support both ways of naming a statistic section, instead of picking one at compile time.
+
+### `xrGame/ui/UIActorMenu.cpp`
+
+- **:349** — slot 14 grenade/binocular cell must count as a slot list, else double-click and
+- **:353** — slot 5 sidearm cell must count as a slot list too, so double-click/drag-out unequip works.
+- **:665** — [[maybe_unused]] CBackpack* backpack = smart_cast<CBackpack*>(item); // [DA_PORT] DA backpacks aren't CBackpack; see BACKPACK_SLOT check below
+- **:684** — Dead Air backpacks are artefact-class (SCRPTART), so the CBackpack smart_cast is null and
+- **:990** — if (m_pLists[eInventoryBinocularList]) // [DA_PORT] slot 14 grenade/binocular cell - must be cleared
+- **:992** — if (m_pLists[eInventorySidearmList]) // [DA_PORT] slot 5 sidearm cell - clear like every other slot list
+
+### `xrGame/ui/UIActorMenu.h`
+
+- **:97** — Dead Air's actor_menu.xml "dragdrop_binocular" cell is engine slot 14 (GRENADE_SLOT).
+- **:101** — Dead Air's "dragdrop_sidearm" cell is engine slot 5 (BINOCULAR_SLOT). DA puts every
+- **:194** — CUI3tButton* m_trade_barter_button{}; // [DA_PORT] Dead Air barter (goods-for-goods)
+- **:365** — bool bFree = false); // [DA_PORT] bFree: barter transfer, no money movement
+- **:403** — void OnBtnPerformTradeBarter(CUIWindow* w, void* d); // [DA_PORT] Dead Air barter
+
+### `xrGame/ui/UIActorMenuInitialize.cpp`
+
+- **:211** — slot 14 cell (binocular/grenade). required=false so menus whose xml lacks it don't fatal.
+- **:213** — slot 5 cell (sidearm: pistols + binocular item). Has its own condition bar + highlight
+- **:230** — "backpack_over" blocker overlay: shown (via capacity->0 in UpdateOutfit) when the worn
+- **:268** — remember the backpack cell's full capacity so UpdateOutfit can shrink it to 0 (drawing the
+- **:288** — Dead Air's actor_menu.xml has a third trade button (present in the x32 engine's
+- **:537** — if (m_trade_barter_button) // [DA_PORT] optional Dead Air barter button
+- **:563** — BindDragDropListEvents(m_pLists[eInventoryBinocularList]); // [DA_PORT] slot 14 grenade/binocular cell
+- **:564** — BindDragDropListEvents(m_pLists[eInventorySidearmList]);   // [DA_PORT] slot 5 sidearm (pistol/binocular) cell
+
+### `xrGame/ui/UIActorMenuInventory.cpp`
+
+- **:54** — ShowIfExist(m_pLists[eInventorySidearmList], true); // [DA_PORT] slot 5 sidearm (pistol/binocular) cell
+- **:252** — m_pLists[eInventorySidearmList], // [DA_PORT] slot 5 sidearm cell
+- **:394** — Dead Air equips items to small "utility" slot cells whose authored capacity (rows_num x
+- **:431** — A Dead Air slot cell can be authored smaller than the item it must hold (the slot-14
+- **:546** — Dead Air shares engine slot 14 between the hand grenade and the binocular. Double-
+- **:613** — block equipping a backpack (incl. force/drag) when the worn outfit forbids it.
+- **:658** — same slot-cell-too-small guard as InitCellForSlot: grow the target cell to fit the
+- **:820** — Dead Air backpacks are artefact-class (belt=true) but must never go on the artefact belt.
+- **:902** — engine slot 14 = Dead Air's binocular/grenade utility slot (GRENADE_SLOT == 14). Route
+- **:911** — engine slot 5 = Dead Air's sidearm slot: every pistol and the binocular item live here
+- **:1093** — hide "move to slot" for a backpack the worn outfit forbids (scientific suit) - equipping is
+- **:1114** — Only offer "unequip / move to bag" for an item that is actually equipped (slot or belt).
+- **:1662** — same blocker treatment for the backpack cell: shrink to 0 (draws backpack_over) when the
+
+### `xrGame/ui/UIActorMenuTrade.cpp`
+
+- **:51** — Dead Air barter: characters flagged with <barter_mode> in their profile trade
+- **:161** — ShowIfExist(m_trade_barter_button, false); // [DA_PORT]
+- **:535** — Dead Air barter: goods-for-goods exchange, money never moves. Prices come from
+
+### `xrGame/ui/UIActorMenu_action.cpp`
+
+- **:83** — Pick the cell under the CURSOR, not under the dragged icon's top-left corner.
+
+### `xrGame/ui/UIActorStateInfo.cpp`
+
+- **:95** — This bar shows SATIETY, not stamina.
+
+### `xrGame/ui/UICellCustomItems.cpp`
+
+- **:37** — Numbering starts at 1, not 0. Every layered icon in Dead Air is declared as
+
+### `xrGame/ui/UIHudStatesWnd.cpp`
+
+- **:10** — #include "xrEngine/CustomHUD.h" // [DA_PORT] psHUD_Flags / HUD_DRAW_INFO
+- **:249** — The bottom-left bars follow the "hud_draw_info" option, as they do in Dead Air. Their
+- **:362** — Ammo, fire mode and grenade count are part of the same readout as the health and
+- **:490** — The weapon icon belongs to the same readout as the ammo counts - see Update().
+- **:692** — expose the radiation zone's click rate to scripts (game_object:get_radiation_detector)
+- **:702** — only click when the actor carries a powered detector (see m_zone_sound_enabled)
+- **:874** — Zone detector on/off, driven per tick by itms_manager.script from the actor's geiger +
+
+### `xrGame/ui/UIHudStatesWnd.h`
+
+- **:80** — Dead Air gates the zone-detector clicking on the actor actually carrying a working
+- **:111** — driven from Lua via game_object:set_radiation_detector()/get_radiation_detector()
+
+### `xrGame/ui/UIInventoryUtilities.cpp`
+
+- **:372** — Dead Air displays the actor's MaxWalkWeight (base [actor] max_walk_weight ~20kg + gear)
+- **:419** — float max = DA_DisplayMaxWeight(pInvOwner); // [DA_PORT] actor shows MaxWalkWeight (see helper above)
+
+### `xrGame/ui/UIItemInfo.cpp`
+
+- **:26** — #include "xrEngine/StringTable/StringTable.h" // [DA_PORT] weapon condition-type localized strings
+- **:33** — Dead Air shows a weapon's malfunction state in its description: a header (st_condition_type =
+- **:322** — append the weapon "condition type" (malfunction) section, as Dead Air does.
+
+### `xrGame/ui/UIMainIngameWnd.cpp`
+
+- **:301** — this used to force the minimap/radar on unconditionally, ignoring hud_draw_map -
+
+### `xrGame/ui/UIOutfitInfo.cpp`
+
+- **:13** — Armour condition as a percentage - the same rule the weapon side uses.
+- **:147** — Condition row: icon, label, value. All three optional - a layout without them is
+- **:231** — da_set_outfit_condition_text(m_textCondition2, *cur_outfit); // [DA_PORT]
+
+### `xrGame/ui/UIOutfitInfo.h`
+
+- **:48** — Armour condition as a number, the way Dead Air shows it.
+
+### `xrGame/ui/UIRankingWnd.cpp`
+
+- **:97** — The actor portrait block is deliberately not built on this screen.
+
+### `xrGame/ui/UIWpnParams.cpp`
+
+- **:12** — The condition percentage, written the way Dead Air writes it.
+- **:81** — AttachChild(&m_textConditionW);  // [DA_PORT]
+- **:82** — AttachChild(&m_textConditionW2); // [DA_PORT]
+- **:104** — The numeric condition beside the bars - see da_set_condition_text. Optional nodes, so a
+- **:181** — da_set_condition_text(m_textConditionW2, cur_wpn); // [DA_PORT] numeric condition, see the helper
+- **:306** — Optional on purpose: layouts that never had these nodes keep working untouched,
+- **:334** — da_set_condition_text(m_textCondition2, cur_item); // [DA_PORT]
+
+### `xrGame/ui/UIWpnParams.h`
+
+- **:45** — see CUIConditionParams below - same pair, same author, in the weapon parameter block.
+- **:66** — The numeric condition, which the port was missing.
+
+### `xrGame/ui/ui_af_params.cpp`
+
+- **:90** — The caption was passed as a raw string-table KEY, so the inventory showed the literal
+
+### `xrUICore/ComboBox/UIComboBox.cpp`
+
+- **:88** — Order swapped, and it is not cosmetic. Both texture sets are complete in this mod's
+- **:256** — An expanded list has to cover whatever sits below it, and by default it does not: windows
+
+### `xrUICore/ComboBox/UIComboBox.h`
+
+- **:65** — Raise this control above its siblings while its list is open, and put it back after.
+- **:77** — Where this control sat among its parent's children before its list was opened, so the
+
+### `xrUICore/Windows/UIFrameWindow.cpp`
+
+- **:198** — Some Dead Air-defined windows (e.g. the debug menu from ui_debug_main.script) are
+
+
+## Мост Lua ↔ C++
+
+*10 файл(ов), 37 правк(и)*
+
+
+### `xrGame/alife_simulator_script.cpp`
+
+- **:181** — if (!item) // [DA_PORT] spawn_item now rejects bad section/vertex instead of crashing
+- **:241** — if (!item) // [DA_PORT] bad section/vertex rejected inside - give Lua nil, don't THROW
+- **:257** — if (!item) // [DA_PORT] bad section/vertex rejected inside - give Lua nil, don't THROW
+
+### `xrGame/base_client_classes_script.cpp`
+
+- **:26** — Msg("* [DA_PORT] CGameObject::script_register: before module"); FlushLog();
+- **:66** — Msg("* [DA_PORT] CGameObject::script_register: after module"); FlushLog();
+
+### `xrGame/fs_registrator_script.cpp`
+
+- **:180** — Dead Air's debug menu (ui_debug_main.script - the "Advanced"/animations tab, opened via
+
+### `xrGame/level_script.cpp`
+
+- **:195** — Dead Air's name for the current rain intensity; it is the same 0..1 value rain_factor()
+- **:203** — guard like xray-monolith: DA scripts feed stored/offline vertex ids here and
+- **:207** — Msg("! [DA_PORT] vertex_in_direction: invalid level_vertex_id %u", level_vertex_id);
+- **:221** — guard like xray-monolith (level_script.cpp:425): invalid id -> zero vector
+- **:225** — Msg("! [DA_PORT] vertex_position: invalid level_vertex_id %u", level_vertex_id);
+
+### `xrGame/script_game_object_script3.cpp`
+
+- **:12** — #include "Torch.h" // [DA_PORT] for the real torch_set_* light-tuning bindings
+- **:13** — #include "Actor.h" // [DA_PORT] for start_item_placement binding
+- **:40** — Called from CActor::ConfirmItemPlacement (Actor.cpp is not a script TU, so luabind can't
+- **:273** — flashlight/glowstick/lighter light tuning — REAL impl. Dead Air's xr_actor.script
+- **:287** — "Установить" placement preview: start the ghost-follows-crosshair mode for an item.
+
+### `xrScriptEngine/ScriptEngineScript.cpp`
+
+- **:18** — was #ifndef MASTER_GOLD - our Release defines MASTER_GOLD, which silently
+
+### `xrScriptEngine/ScriptExporter.cpp`
+
+- **:48** — if (build_count > 500) { Msg("* [DA_PORT] sort: LOOP DETECTED in node list at %zu", build_count); FlushLog(); break; }
+
+### `xrScriptEngine/script_callback_ex.h`
+
+- **:21** — "-da_lua_trace": log every engine->script object-callback dispatch with the
+- **:119** — da_trace_script_callback(m_functor); // [DA_PORT] no-op without -da_lua_trace
+- **:151** — da_trace_script_callback(m_functor); // [DA_PORT] no-op without -da_lua_trace
+
+### `xrScriptEngine/script_engine.cpp`
+
+- **:357** — permanent load trace: which scripts actually load and in what order (cheap -
+- **:679** — "-da_lua_trace" launch flag: whole-mod engine->script dispatch tracing
+- **:691** — this pcall error handler runs BEFORE the stack unwinds - the only moment the
+- **:807** — Msg("* [DA_PORT] ScriptEngine::init: before reinit"); FlushLog();
+- **:809** — Msg("* [DA_PORT] ScriptEngine::init: after reinit, before luabind::open"); FlushLog();
+- **:811** — Msg("* [DA_PORT] ScriptEngine::init: after luabind::open"); FlushLog();
+- **:827** — Msg("* [DA_PORT] ScriptEngine::init: before setup_callbacks"); FlushLog();
+- **:829** — Msg("* [DA_PORT] ScriptEngine::init: after setup_callbacks, before exporter"); FlushLog();
+- **:832** — Msg("* [DA_PORT] ScriptEngine::init: after exporter"); FlushLog();
+- **:850** — Msg("* [DA_PORT] ScriptEngine::init: before open_lib base"); FlushLog();
+- **:867** — Msg("* [DA_PORT] ScriptEngine::init: after open_lib, before randomize"); FlushLog();
+- **:869** — Dead Air compat: register globals that DA scripts expect early
+- **:928** — Msg("* [DA_PORT] ScriptEngine::init: before process_file_if_exists(_G)"); FlushLog();
+- **:930** — Msg("* [DA_PORT] ScriptEngine::init: after process_file_if_exists(_G)"); FlushLog();
+- **:935** — Msg("* [DA_PORT] ScriptEngine::init: DONE"); FlushLog();
+
+### `xrUICore/ui_export_script.cpp`
+
+- **:635** — Takes ONE packed colour, not four components.
+
+
+## Серверные сущности / ALife
+
+*7 файл(ов), 16 правк(и)*
+
+
+### `xrServerEntities/inventory_space.h`
+
+- **:14** — Stock CoP/OpenXRay puts hand grenades on this slot (=4, config slot 3). Dead Air
+- **:28** — Dead Air defines more inventory slots than stock CoC (system.ltx [inventory] has
+
+### `xrServerEntities/object_factory_inline.h`
+
+- **:19** — Msg("* [DA_PORT] object_factory: creating new (g_object_factory=null)"); FlushLog();
+- **:21** — Msg("* [DA_PORT] object_factory: after xr_new, before init()"); FlushLog();
+- **:23** — Msg("* [DA_PORT] object_factory: after init()"); FlushLog();
+
+### `xrServerEntities/specific_character.cpp`
+
+- **:79** — Dead Air barter traders flag (character_desc profiles)
+- **:165** — bool CSpecificCharacter::barter_mode() const { return data()->m_barter_mode; } // [DA_PORT]
+
+### `xrServerEntities/specific_character.h`
+
+- **:35** — Dead Air: character profiles mark barter traders with <barter_mode>1</barter_mode>
+- **:133** — bool barter_mode() const; // [DA_PORT] Dead Air barter traders
+
+### `xrServerEntities/xrServer_Objects.h`
+
+- **:168** — 128 -> 129: the weapon packet gained condition_type, the malfunction mask. Bumping this is
+
+### `xrServerEntities/xrServer_Objects_ALife_Items.cpp`
+
+- **:496** — condition_type = 0; // [DA_PORT] no breakages until something says otherwise
+- **:537** — the malfunction mask, carried client -> server object so that going offline keeps it.
+- **:555** — tNetPacket.w_u32(condition_type); // [DA_PORT] see UPDATE_Read
+- **:574** — Version-gated exactly the way every field above it is, which is what makes adding it
+- **:592** — tNetPacket.w_u32(condition_type); // [DA_PORT] see STATE_Read - guarded there by SPAWN_VERSION 129
+
+### `xrServerEntities/xrServer_Objects_ALife_Items.h`
+
+- **:209** — The malfunction mask, on the SERVER object so that it survives.
+
+
+## Звук
+
+*3 файл(ов), 4 правк(и)*
+
+
+### `xrSound/OpenALDeviceList.cpp`
+
+- **:38** — OpenAL Soft returns device names as UTF-8 on Windows, but the game's fonts and string
+- **:186** — Only the string shown in the UI/console is transcoded; m_devices[i].name keeps the
+
+### `xrSound/SoundRender_Core.cpp`
+
+- **:20** — XRSOUND_API int psSoundTargets = 256; // больше одновременных звуков (было 32) — меньше обрезания
+
+### `xrSound/SoundRender_Emitter.cpp`
+
+- **:15** — if (source()->channels_num() == 1 && _valid(pos)) // не ставить NaN-позицию (краш/глитч звука)
+
+
+## Ядро и прочее
+
+*9 файл(ов), 11 правк(и)*
+
+
+### `xrAICore/Components/problem_solver_inline.h`
+
+- **:361** — Split the two halves of this apart, because they cost very differently and only one of
+
+### `xrCDB/ISpatial.cpp`
+
+- **:340** — VERIFY(octant < 8) removed: the if-guard below handles the error
+- **:345** — N_sub is not among N's children: tree inconsistency reached the release
+- **:349** — Msg("! [DA_PORT] ISpatial_DB::_remove: N_sub %p not a child of N %p, skipping prune", (void*)N_sub, (void*)N);
+
+### `xrCore/Debug/StackTrace.cpp`
+
+- **:67** — was GetModuleHandleA (only finds an already-loaded module); the MinGW build
+
+### `xrCore/FTimer.cpp`
+
+- **:6** — Counters for the GOAP planner, filled in problem_solver_inline.h and printed by the
+
+### `xrCore/FTimer.h`
+
+- **:163** — See FTimer.cpp - GOAP planner accounting for the performance dump.
+
+### `xrCore/Threading/Lock.cpp`
+
+- **:66** — Lock out-of-line: GCC LTO was eliding the inline Lock() ctor for members
+
+### `xrCore/Threading/TaskManager.cpp`
+
+- **:320** — Give the core away while there is nothing to do here.
+
+### `xrCore/string_concatenations.cpp`
+
+- **:108** — Msg("! [DA_PORT] check_stack_overflow: stack near limit (sp=0x%IX low=0x%IX inc=%u)",
+
+### `xrNetServer/NET_PlayersMonitor.h`
+
+- **:15** — CRITICAL_SECTION csPlayersCS; // [DA_PORT] direct CRITICAL_SECTION, not Lock —

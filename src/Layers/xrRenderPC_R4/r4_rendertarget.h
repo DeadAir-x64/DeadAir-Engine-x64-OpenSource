@@ -292,6 +292,7 @@ public:
     void phase_reactive(); // [DA_PORT] widen the reactive mask around moving objects, against ghosting
     void phase_sky_velocity(); // [DA_PORT] motion vectors for the sky, which no shader writes
     bool phase_fsr3(); // [DA_PORT] FSR 3 upscaler, same slot in the frame
+    bool phase_dlss(); // [DA_PORT] NVIDIA DLSS, same slot in the frame
     bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // DA: FSR 2 upscale; false when it did not run, so the caller can fall back
     void phase_downsamp();
     void phase_wallmarks();

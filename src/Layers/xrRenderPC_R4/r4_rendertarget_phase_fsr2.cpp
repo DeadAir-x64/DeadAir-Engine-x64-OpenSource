@@ -8,6 +8,8 @@ extern ENGINE_API int ps_r__upscale_sharpness;
 extern ENGINE_API int ps_r__foliage_tandc;
 extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
+extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // [DA_PORT] Set only when the upscaler actually produced a frame. The post-process pass keys off
@@ -83,7 +85,9 @@ bool CRenderTarget::phase_fsr2()
 
         // History has to be discarded when the picture changes discontinuously — a level load or a
         // teleport — otherwise the upscaler blends two unrelated scenes for several frames.
-        p.reset = (Device.dwFrame < 3);
+        // [DA_PORT] Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
+        // а прежнее `dwFrame < 3` покрывало только запуск сессии. См. xr_ioc_cmd.cpp.
+        p.reset = ::da_upscaler_history_reset();
 
         // [DA_PORT] The library's own RCAS pass, on the same slider FSR 1.0 uses. Reconstruction from a
         // lower resolution is inherently softer, and foliage suffers most: once its motion vectors are

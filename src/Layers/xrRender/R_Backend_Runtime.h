@@ -56,6 +56,7 @@ IC void R_xforms::set_c_wvp(R_constant* C)
 IC void R_xforms::set_c_wvp_old(R_constant* C)
 {
     c_wvp_old = C;
+
     cmd_list.set_c(C, m_wvp_old);
 };
 IC void R_xforms::set_c_wvp_nojit(R_constant* C)

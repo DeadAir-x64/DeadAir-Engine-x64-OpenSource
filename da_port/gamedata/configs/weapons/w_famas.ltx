@@ -1,0 +1,234 @@
+[wpn_famas]:identity_immunities,weapon_probability,default_weapon_params,wpn_famas_sounds
+GroupControlSection     	= spawn_group
+$spawn               		= "weapons\ak-74u"   ; name and section in level editor
+$npc              		= on
+$prefetch               	= 8
+scheduled               	= off                                ; option for ALife Simulator
+cform                   	= skeleton
+class                		= WP_LR300         ; class of the weapon that corresponding to CPP class
+description          		= st_wpn_famas_descr
+
+parent_section  		= wpn_famas
+
+ef_main_weapon_type     	= 2
+ef_weapon_type          	= 6
+
+default_to_ruck			= true
+sprint_allowed          	= true
+
+repair_type = rifle
+condition_avail = 2030043135
+;-------------------------------------------------------------------------------
+cost              		= 30000          ; the price of the item
+weapon_class            	= assault_rifle      ; the type of the box that will be used in buy-menu in multiplayer mode
+inv_weight			= 3.61				; weight in inventory
+
+;upgrades                	= up_gr_firstab_ak74u, up_gr_seconab_ak74u, up_gr_thirdab_ak74u, up_gr_fourtab_ak74u, up_gr_fifthab_ak74u
+;installed_upgrades      	=
+;upgrade_scheme          	= upgrade_scheme_ak74u
+
+hand_dependence		 	= 1
+single_handed			= 0
+
+;-““’---------------------------------------------------------------------------
+hit_power					= 0.53, 0.53, 0.53, 0.53
+hit_impulse          		= 25    ; size of physic impulse by bullet
+hit_type            		= fire_wound            ; [] type of the wound
+fire_distance           	= 1000    ; maximum fire distance that bullet can fly
+bullet_speed            	= 960    ; starting bullet speed
+rpm                     	= 1000   ; max round per minute
+rpm_empty_click         	= 200
+
+use_aim_bullet          	= false                ;ѕоддерживаетс€ ли перва€ суппер пул€
+time_to_aim             	= 1.0
+
+hud                        	= wpn_famas_hud            ; name of the section of the hud
+
+misfire_probability        	= 0.005
+
+misfire_start_condition		= 0.75
+misfire_end_condition		= 0.25
+misfire_start_prob              = 0.01 
+misfire_end_prob                = 0.1 
+condition_shot_dec      	= 0.00067
+condition_queue_shot_dec	= 0.00067
+
+ammo_elapsed            	= 25           ; obsolete
+ammo_mag_size        		= 25           ; clip (magazine) size
+fire_modes           		= 1, 3, -1
+
+ammo_class              	= ammo_5.56x45_ap, ammo_5.56x45_ss190
+
+;-дисперси€-----------------------------------------------------------------------------
+;базова€ дисперси€
+fire_dispersion_base       = 0.25    ;угол (в градусах) базовой дисперсии оружи€ (оружи€ зажатого в тисках)
+control_inertion_factor    = 1.32f
+crosshair_inertion			= 6.3
+
+;отдача
+cam_return = 0 ;				= 1
+cam_relax_speed         = 8    		;скорость возврата в исходное положение
+cam_relax_speed_ai     	= 120.75
+cam_dispersion	        = 1
+cam_dispersion_inc      = 1
+cam_dispersion_frac     = 1.0 		;ствол будет подыматьс€ на cam_dispersion*cam_dispersion_frac +- cam_dispersion*(1-cam_dispersion_frac)
+cam_max_angle           = 50.0		;максимальный угол отдачи
+cam_max_angle_horz      = 50.0      ;(degree) maximum shot horizontal degree
+cam_step_angle_horz     = 1.99 		;(degree) size of step camera moved in horizontal position while shooting
+
+PDM_disp_base 				= 0.8
+PDM_disp_vel_factor 		= 2.3
+PDM_disp_accel_factor 		= 2.3
+PDM_disp_crouch = 1.0 ;  			= 1.165
+PDM_disp_crouch_no_acc = 1.0 ; 		= 1.325
+
+zoom_cam_relax_speed         = 8     ; scope & ironsight
+zoom_cam_relax_speed_ai      = 360
+zoom_cam_dispersion          = 1
+zoom_cam_dispersion_inc      = 0.7
+zoom_cam_dispersion_frac     = 1.0
+zoom_cam_max_angle           = 40.0
+zoom_cam_max_angle_horz      = 40.0
+zoom_cam_step_angle_horz     = 1.84
+
+fire_dispersion_condition_factor = 15        ;увеличение дисперсии в процентах при максимальном износе
+
+;---DOF-------------------------------------------------------------------------
+;zoom_dof					= 0.5, 1.0, 180
+reload_dof					= 0.0, 0.5, 5, 2
+
+;------- for AI ------------------------------------------------------------------------
+holder_range_modifier	= 1.0		       ; во сколько раз увеличиваетс€ eye_range 
+holder_fov_modifier		= 0.7              ; во сколько раз увеличиваетс€ eye_fov
+
+min_radius = 0 ;           = 30           ; [] for AI
+max_radius = 500 ; = 250 ;           = 100          ; [] for AI
+
+hit_probability_gd_novice = 1.00 ;  = 0.80
+hit_probability_gd_stalker = 1.00 ; = 0.80
+hit_probability_gd_veteran = 1.00 ; = 0.80
+hit_probability_gd_master = 1.00 ;  = 0.80
+
+;-------------------------------------------------------------------------------
+slot                		= 2                ; // secondary
+animation_slot      		= 2                ; type of the animation that will be used
+
+inv_name          		= st_wpn_famas
+inv_name_short      	= st_wpn_famas
+
+inv_grid_width			= 5	 ; position and size of the icon that will be used to display weapon in the inventory menu
+inv_grid_height			= 2	 ; all icons are on the texture ui_icon_equipment.dds,
+inv_grid_x			= 35  ; position and size are in terms of 64x64 squares
+inv_grid_y			= 24
+
+upgr_icon_x			= 1724 ; 300
+upgr_icon_y			= 802 ; 129
+upgr_icon_width			= 167 ; 258
+upgr_icon_height   		= 159 ; 138
+
+kill_msg_x			= 0
+kill_msg_y			= 123
+kill_msg_width			= 69
+kill_msg_height			= 30
+
+position			= -0.026, -0.175, 0.0
+orientation			= 0,0,0
+
+fire_point			= 0,0.218,0.656
+fire_point2			= 0,0.161,0.583
+
+flame_particles         	= weapons\generic_weapon05 ; particles for shooting effects
+smoke_particles         	= weapons\generic_shoot_00
+grenade_flame_particles 	= weapons\generic_weapon01
+
+shell_point		 			= 0.0,0.235,-0.158
+shell_dir		 			= 0.0, 1.0, 0.0
+shell_bone                	= wpn_body
+shell_particles					= weapons\556x45
+
+;--STRAP PARAMETERS-----------------------------------------------------------------
+;под мишкой
+strap_position         		= -0.18,-0.45,0.2			; position (offset) and orientation of the weapon when it is strapped
+strap_orientation      		= -10,-5,10					; (3rd person view in degrees)
+strap_bone0             	= bip01_spine2
+strap_bone1             	= bip01_spine1
+
+startup_ammo            	= 90
+visual                  	= dynamics\weapons\wpn_famas\wpn_famas.ogf
+
+light_disabled                                = false
+light_color             	= 0.6,0.5,0.3
+light_range             	= 5
+light_var_color         	= 0.05
+light_var_range         	= 0.5
+light_time              	= 0.2
+
+ph_mass                 	= 4
+
+;addons
+scope_status               	= 0                   ; 0 - no addon
+silencer_status            	= 2                   ; 1 - permanent
+grenade_launcher_status    	= 0                   ; 2 - attachable
+
+zoom_enabled            	= true                                                ; (on,off)zoom mode (right mouse button)
+zoom_rotate_time        	= 0.25
+scope_zoom_factor = 1.1
+
+silencer_name           = wpn_sil_nato
+silencer_x 			= 210							; offset in inventory icon
+silencer_y 			= 17
+
+;silencer_flame_particles  	= weapons\generic_weapon01
+silencer_smoke_particles   	= weapons\generic_shoot_00
+
+silencer_light_color    	= 0.6,0.5,0.3
+silencer_light_range    	= 0.01
+silencer_light_var_color	= 0.05
+silencer_light_var_range	= 0.5
+silencer_light_time     	= 0.2
+
+[wpn_famas_hud]
+zoom_hide_crosshair		= true
+attach_place_idx		= 0
+item_visual			= dynamics\weapons\wpn_famas\wpn_famas_hud.ogf
+
+hands_position			= -0.052500,-0.167500,0.250999
+hands_orientation		= 0.850000,3.039999,0.150000
+hands_position_16x9				= -0.052500,-0.167500,0.250999
+hands_orientation_16x9			= 0.850000,3.039999,0.150000
+
+item_position			= -0.004,0,-0.0075
+item_orientation		= 0,0,-0.0
+
+aim_hud_offset_pos		= -0.100150,0.047600,-0.250000
+aim_hud_offset_rot		= 0.050750,0.014000,-0.009000
+aim_hud_offset_pos_16x9				= -0.100150,0.047600,-0.250000
+aim_hud_offset_rot_16x9				= 0.050750,0.014000,-0.009000
+
+shell_point          		= -0.,-0.1, -0.8
+shell_dir			 		= 0.0, 0.0, 0.0
+shell_bone              	= wpn_body
+
+fire_point			= 0,0.042782,0.441726
+fire_bone                   	= wpn_body
+fire_point2                 	= 0,-0.011,0.553
+fire_bone2			= wpn_body
+
+anm_show			= lancew_famas_draw
+anm_hide			= lancew_famas_holster
+anm_idle			= lancew_famas_idle
+anm_idle_sprint		= lancew_famas_sprint
+anm_idle_moving		= lancew_famas_moving
+anm_shots			= lancew_famas_shoot, shoot
+anm_reload			= lancew_famas_reload, reload
+anm_idle_aim		= lancew_famas_idle_aim
+anm_bore			= lancew_famas_idle
+
+gl_hud_offset_pos		= 0,0,0
+gl_hud_offset_rot		= 0,0,0
+
+gl_hud_offset_pos_16x9		= 0,0,0
+gl_hud_offset_rot_16x9		= 0,0,0
+
+lean_hud_offset_pos		= 0,0,0
+lean_hud_offset_rot		= 0,0,0

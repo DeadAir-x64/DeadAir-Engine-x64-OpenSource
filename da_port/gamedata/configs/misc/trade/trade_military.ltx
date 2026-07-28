@@ -1,0 +1,193 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition =  trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = {+agr_smart_terrain_1_6_near_2_military_colonel_kovalski_quest_doc_given_2} supplies_3, {+agr_smart_terrain_1_6_near_2_military_colonel_kovalski_quest_doc_given_1} supplies_2, supplies_1
+buy_item_condition_factor = 0.99
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_supplier_9, {=actor_week_in_zone(8)} discount_supplier_8, {=actor_week_in_zone(7)} discount_supplier_7, {=actor_week_in_zone(6)} discount_supplier_6, {=actor_week_in_zone(5)} discount_supplier_5, {=actor_week_in_zone(4)} discount_supplier_4, {=actor_week_in_zone(3)} discount_supplier_3, {=actor_week_in_zone(2)} discount_supplier_2, {=actor_week_in_zone(1)} discount_supplier_1 
+
+[trade_generic_buy]:none
+
+dok_1                 = 0.15, 0.15 ;120% cost 
+dok_2                 = 0.15, 0.15 
+dok_3                 = 0.15, 0.15 
+dok_4                 = 0.15, 0.15 
+dok_5                 = 0.15, 0.15 
+dok_6                 = 0.15, 0.15 
+dok_7                 = 0.15, 0.15 
+dok_8                 = 0.15, 0.15 
+lab_diary_1           = 0.15, 0.15
+lab_diary_2           = 0.15, 0.15
+lab_diary_3           = 0.15, 0.15
+box_lab_1             = 0.15, 0.15 
+
+beer                  = 0.15, 0.15
+vodka                 = 0.15, 0.15
+vodka_2               = 0.15, 0.15
+vodka_3               = 0.15, 0.15
+bottle_metal          = 0.15, 0.15
+bottle_metal_2        = 0.15, 0.15
+bottle_metal_3        = 0.15, 0.15
+vodka_quality         = 0.15, 0.15
+vodka_quality_2       = 0.15, 0.15
+vodka_quality_3       = 0.15, 0.15
+drink_crow            = 0.15, 0.15
+
+[trade_generic_sell]:merchant
+
+dok_1          
+dok_2          
+dok_3          
+dok_4          
+dok_5          
+dok_6          
+dok_7          
+dok_8          
+lab_diary_1    
+lab_diary_2    
+lab_diary_3    
+box_lab_1      
+               
+beer           
+vodka          
+vodka_2        
+vodka_3        
+bottle_metal   
+bottle_metal_2 
+bottle_metal_3 
+vodka_quality  
+vodka_quality_2
+vodka_quality_3
+drink_crow     
+
+conserva				= 0.8, 0.8
+tomato					= 0.8, 0.8
+tushonka				= 0.8, 0.8
+corn					= 0.8, 0.8
+mineral_water_3			= 0.8, 0.8
+ration_ukr_6			= 0.8, 0.8
+ration_ru_7				= 0.8, 0.8
+
+stimpack_army			= 0.5, 0.5
+medkit_army				= 0.5, 0.5
+bandage					= 0.5, 0.5
+
+[supplies_1]
+
+toolkit_p				= 1, 1
+repairkit_p				= 1, 1
+toolkit_s				= 1, 1
+repairkit_s				= 1, 1
+toolkit_r				= 1, 1
+repairkit_r				= 1, 1
+helmet_repair_kit		= 1, 1
+armor_repair_pro		= 1, 1
+
+sharpening_stones_4		= 3, 1
+cleaning_kit_p_3		= 1, 1
+cleaning_kit_s_3		= 1, 1
+cleaning_kit_r_3		= 1, 1
+grease					= 1, 1
+steel_wool				= 1, 1
+glue_b_2				= 1, 1
+glue_a_2				= 1, 1
+glue_e_2				= 1, 1
+sewing_kit_b_4			= 1, 1
+sewing_kit_a_4			= 1, 1
+sewing_kit_h			= 1, 1
+armor_repair_fa_2		= 2, 1
+textile_patch_e		    = 3, 1
+
+medkit_army				= 4, 1
+bandage					= 6, 1
+
+flask_3			        = 5, 0.75
+conserva				= 4, 0.5
+tushonka				= 1, 0.5
+ration_ukr_6			= 1, 1
+
+wpn_hand_shovel         = 1, 1
+wpn_pm					= 1, 1
+wpn_pb					= 1, 1
+wpn_fort                = 1, 1
+wpn_aps                 = 1, 1
+wpn_ak74u               = 1, 1
+wpn_akms                = 1, 1
+wpn_pp2000				= 1, 1
+wpn_bizon				= 1, 1
+
+wpn_binoc           = 1, 1
+
+matches					= 4, 1
+batteries_ccell			= 4, 1
+itm_sleepbag			= 1, 1
+itm_qr		            = 1, 1
+itm_backpack			= 1, 1
+device_flashlight		= 1, 1
+device_torch_dummy		= 1, 1
+geiger					= 1, 1
+backpack_heavy        	= 1, 1
+
+af_kevlar               = 1, 1
+af_plates               = 1, 1
+af_camelbak             = 1, 1
+
+helm_m40				= 1, 1
+helm_hardhat			= 1, 1
+
+ammo_7.62x25_ps			= 5, 1
+ammo_9x18_pmm			= 5, 1
+ammo_9x19_pbp			= 5, 1
+ammo_5.45x39_ap			= 4, 1
+ammo_7.62x39_ap			= 4, 1
+
+grenade_rgd5			= 2, 1
+grenade_f1			    = 1, 1
+
+fieldcooker				  = 1, 1
+kerosene_5                = 1, 1
+explo_balon_gas_8         = 1, 1
+explo_jerrycan_fuel_8     = 1, 1
+
+[supplies_2]:supplies_1
+
+stimpack_army			= 2, 1
+
+wpn_knife5              = 1, 1
+
+1p29                        = 1, 1
+kobra                       = 1, 1
+ps01                        = 1, 1
+pso1m21                     = 1, 1
+wpn_sil_9mm                 = 1, 1
+wpn_sil_45                  = 1, 1
+wpn_sil_pbs1                = 1, 1
+wpn_sil_tgp-a               = 1, 1
+wpn_sil_kzrzp               = 1, 1
+wpn_sil_9a91                = 1, 1
+wpn_addon_grenade_launcher  = 1, 1
+
+ammo_9x39_pab9			= 4, 1
+ammo_7.62x54_7h14		= 4, 1
+ammo_vog-25				= 3, 1
+mine                    = 1, 1
+
+wpn_vityaz				= 1, 1
+wpn_rpk74               = 1, 1
+wpn_ak74                = 1, 1
+wpn_ak74m               = 1, 1
+
+specops_outfit			= 1, 1
+helm_tactic				= 1, 1
+
+[supplies_3]:supplies_2
+
+wpn_9a91                = 1, 1
+wpn_svd                 = 1, 1
+wpn_saiga12s			= 1, 1
+
+military_outfit			= 1, 1

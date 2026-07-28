@@ -94,11 +94,11 @@ void xrGameModule::finalize()
 IGame_Persistent* xrGameModule::create_persistent()
 {
     ZoneScoped;
-    Msg("! [DA_PORT] create_persistent: before object_factory"); FlushLog();
+    Msg("* [DA_PORT] create_persistent: before object_factory"); FlushLog();
     object_factory(); // XXX: remove this call
-    Msg("! [DA_PORT] create_persistent: after object_factory, before CGamePersistent"); FlushLog();
+    Msg("* [DA_PORT] create_persistent: after object_factory, before CGamePersistent"); FlushLog();
     auto* p = xr_new<CGamePersistent>();
-    Msg("! [DA_PORT] create_persistent: after CGamePersistent"); FlushLog();
+    Msg("* [DA_PORT] create_persistent: after CGamePersistent"); FlushLog();
     return p;
 }
 

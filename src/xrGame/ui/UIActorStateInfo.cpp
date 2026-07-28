@@ -92,12 +92,15 @@ void ui_actor_state_wnd::UpdateActorInfo(CInventoryOwner* owner)
 
     const auto& conditions = actor->conditions();
 
-    // show stamina icon
-    value = conditions.GetPower();
+    // [DA_PORT] This bar shows SATIETY, not stamina.
+    //
+    // Dead Air reuses the "stamina_state" widget for hunger - the bar sitting right under health in the
+    // inventory - and the base CoC line that filled it with GetPower() is commented out in the author's
+    // source. Feeding it stamina made the food readout track sprinting instead of how fed the actor is.
+    // The name of the widget is historical; the meaning is the author's.
+    value = actor->conditions().GetSatiety(); // not via the const ref above: this getter is non-const
+    value = floor(value * 55) / 55; // number of sticks in progress bar
     m_state[stt_stamina]->set_progress(value);
-
-    value = actor->GetRestoreSpeed(ALife::ePowerRestoreSpeed);
-    m_state[stt_stamina]->set_text(value); // 0..0.99
 
     // show health icon
     value = conditions.GetHealth();

@@ -102,6 +102,24 @@ void CResourceManager::OnDeviceCreate(IReader* F)
         {
             CBlender_DESC desc;
             chunk->r(&desc, sizeof(desc));
+
+            // [DA_PORT] shadow_world пропускаем молча: этот рендер его не реализует ПО ЗАМЫСЛУ —
+            // r2_blenders.cpp на B_SHADOW_WORLD возвращает nullptr, потому что проецируемые тени
+            // R1-эпохи вытеснены теневыми картами. Без пропуска каждый запуск писал в лог
+            // «! Renderer doesn't support blender 'effects\shadow_world'», и строка выглядела как
+            // поломка, хотя не значила ничего.
+            //
+            // Автор DA делает то же самое, но под условием ps_r_sun_details == 2. У него это имело
+            // смысл: на R2 блендер поддерживался, и пропускался лишь в одном режиме. У нас он не
+            // поддерживается ни в каком, поэтому условие было бы лишним — сообщение всё равно
+            // оставалось бы мусором на двух ступенях из трёх.
+            if (desc.CLS == B_SHADOW_WORLD)
+            {
+                chunk->close();
+                chunk_id += 1;
+                continue;
+            }
+
             if (IBlender* B = IBlender::Create(desc.CLS))
             {
 #ifndef MASTER_GOLD

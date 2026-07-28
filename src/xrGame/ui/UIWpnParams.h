@@ -41,6 +41,10 @@ protected:
     CUIStatic* m_stAmmoType1;
     CUIStatic* m_stAmmoType2;
     CUIStatic* m_Prop_line;
+
+    // [DA_PORT] see CUIConditionParams below - same pair, same author, in the weapon parameter block.
+    CUIStatic m_textConditionW{ "Condition caption" };
+    CUIStatic m_textConditionW2{ "Condition value" };
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -58,4 +62,13 @@ public:
 protected:
     CUIDoubleProgressBar m_progress; // red or green
     CUIStatic m_text;
+
+    // [DA_PORT] The numeric condition, which the port was missing.
+    //
+    // SetInfo already computed the percentage and then threw it away into the progress bar alone. Dead
+    // Air shows the number as well, coloured by how bad it is, and the markup has always had the slot
+    // for it: cap_condition is the label, cap_condition2 the value. Both nodes exist in the mod's XML
+    // and simply had nobody to fill them.
+    CUIStatic m_textCondition{ "Condition caption" };
+    CUIStatic m_textCondition2{ "Condition value" };
 };

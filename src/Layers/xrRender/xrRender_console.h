@@ -55,6 +55,8 @@ extern ECORE_API float ps_r__WallmarkSHIFT_V;
 extern ECORE_API float ps_r__GLOD_ssa_start;
 extern ECORE_API float ps_r__GLOD_ssa_end;
 extern ECORE_API float ps_r__LOD;
+// [DA_PORT] How many lights may cast shadows in one frame; 0 = no limit (stock behaviour).
+extern ECORE_API u32 ps_r__light_shadow_budget;
 //.extern ECORE_API	float		ps_r__LOD_Power		;
 extern ECORE_API float ps_r__ssaDISCARD;
 extern ECORE_API float ps_r__ssaDONTSORT;

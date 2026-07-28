@@ -430,7 +430,14 @@ void CActorCondition::UpdateBoosters()
         BOOSTER_MAP::iterator it = m_booster_influences.find((EBoostParams)i);
         if (it != m_booster_influences.end())
         {
-            it->second.fBoostTime -= m_fDeltaTime / (IsGameTypeSingle() ? Level().GetGameTimeFactor() : 1.0f);
+            // [DA_PORT] Fixed divisor instead of the live time factor, as in Dead Air.
+            //
+            // Booster durations are written in real seconds, and dividing by the current factor tied them
+            // to however fast time happens to be running: Dead Air's scripts raise it to 10 during surges
+            // and psi-storms and to sleep_time_factor (1000) while sleeping, so a booster taken before a
+            // nap evaporated in a moment. Ten is the mod's normal factor, so nothing changes in ordinary
+            // play - it only stops accelerated time from eating the boost.
+            it->second.fBoostTime -= m_fDeltaTime / 10.0f;
             if (it->second.fBoostTime <= 0.0f)
             {
                 DisableBoostParameters(it->second);
@@ -577,12 +584,23 @@ void CActorCondition::UpdateSatiety()
         clamp(m_fSatiety, 0.0f, 1.0f);
     }
 
-    float satiety_health_koef = (m_fSatiety - m_fSatietyCritical) /
-        (m_fSatiety >= m_fSatietyCritical ? 1 - m_fSatietyCritical : m_fSatietyCritical);
+    // [DA_PORT] Satiety saturates at half full before it feeds anything.
+    //
+    // The actor has no regeneration of its own here (health_restore_v is 0 in actor.ltx), so food is the
+    // only thing that heals - and with the stock linear curve half a stomach meant half the healing and
+    // half the stamina recovery. Dead Air doubles satiety and clamps it, which keeps both at full rate
+    // while the actor is fed above 50% and only starts penalising below that. Note that the starvation
+    // threshold moves with it: the coefficient turns negative at satiety_critical/2 in raw terms, so
+    // hunger starts biting at half the value it used to.
+    float new_satiety = m_fSatiety * 2.0f;
+    clamp(new_satiety, 0.0f, 1.0f);
+
+    float satiety_health_koef = (new_satiety - m_fSatietyCritical) /
+        (new_satiety >= m_fSatietyCritical ? 1 - m_fSatietyCritical : m_fSatietyCritical);
     if (CanBeHarmed() && !psActorFlags.test(AF_GODMODE_RT))
     {
         m_fDeltaHealth += m_fV_SatietyHealth * satiety_health_koef * m_fDeltaTime;
-        m_fDeltaPower += m_fV_SatietyPower * m_fSatiety * m_fDeltaTime;
+        m_fDeltaPower += m_fV_SatietyPower * new_satiety * m_fDeltaTime;
     }
 }
 
@@ -612,8 +630,21 @@ void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
     power += m_fWalkWeightPower * weight * (weight > 1.f ? m_fOverweightWalkK : 1.f);
     // DA: выносливость тратится ТОЛЬКО на спринте (ходьба/ускорение — без траты); перегруз усиливает трату спринта
     // power *= m_fDeltaTime * (accel ? (sprint ? m_fSprintK : m_fAccelK) : 1.f);
+
+    // [DA_PORT] Overload is measured against the WALK limit, exactly as the author wrote it.
+    //
+    // Note that this makes the term dead by construction: it only goes positive above MaxWalkWeight, and
+    // that is the very threshold at which IsCantWalkWeight() freezes the actor - CanMove() clears
+    // mcAnyMove, so ConditionWalk is never reached in that state. Sprinting therefore always costs plain
+    // sprint_k. That is the original behaviour and it is deliberate here.
+    //
+    // We did try measuring it against MaxCarryWeight instead, to make the penalty reachable. It works,
+    // but the base carry limit is only 5 kg ([inventory] max_weight) plus gear bonuses, so in practice
+    // the actor is over it almost always and the penalty stopped reading as "overloaded" and started
+    // reading as "tired all the time". Reverted on Pavel's call; restoring it is a one-word change.
     const float k = 0.0015f;
-    float overweight_k = (object().inventory().TotalWeight() - m_object->MaxWalkWeight()) * (m_object->MaxWalkWeight() * k);
+    const float walk_limit = m_object->MaxWalkWeight(); // walks the belt - compute once, this runs every frame
+    float overweight_k = (object().inventory().TotalWeight() - walk_limit) * (walk_limit * k);
     clamp(overweight_k, 0.f, 1.0f);
     power *= m_fDeltaTime * (sprint ? m_fSprintK + overweight_k * 4 : 0.f);
     m_fPower -= HitPowerEffect(power);

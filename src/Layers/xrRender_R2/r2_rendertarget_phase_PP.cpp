@@ -5,6 +5,8 @@
 extern ENGINE_API int ps_r__upscale_sharpness;
 extern ENGINE_API float ps_gamma, ps_brightness, ps_contrast;
 extern ENGINE_API int ps_r__motion_vectors;
+extern ENGINE_API int ps_r__dlss; // [DA_PORT] эти двое резкости не имеют своей
+extern ENGINE_API int ps_r__xess;
 extern ENGINE_API int ps_r__fsr2;
 
 namespace xray::render::RENDER_NAMESPACE
@@ -216,8 +218,17 @@ void CRenderTarget::phase_pp()
 #else
     const float fsr2_active = 0.f;
 #endif
+    // [DA_PORT] w = 1, когда кадр сделал апскейлер, который НЕ точит сам.
+    //
+    // FSR 2 и FSR 3 гоняют RCAS внутри себя от этого же ползунка, поэтому им резкость в постобработке
+    // добавлять нельзя - выйдет дважды, и раньше это уже давало хруст на земле. А DLSS и XeSS не точат
+    // вообще: NVIDIA свою встроенную резкость объявила устаревшей и в DLSS 4 игнорирует, у Intel её
+    // нет. Из-за этого рядом с FSR они смотрятся мягче, хотя реконструируют не хуже.
+    const float needs_sharpen =
+        (fsr2_active > 0.f && (::ps_r__dlss != 0 || ::ps_r__xess != 0)) ? 1.f : 0.f;
+
     RCache.set_c(s_upscale, float(::ps_r__upscale_sharpness) / 100.f, float(::ps_r__motion_vectors),
-        fsr2_active, 0.f);
+        fsr2_active, needs_sharpen);
 
     // [DA_PORT] Gamma / brightness / contrast. These reach the screen through the hardware gamma ramp,
     // which on DX11 only works in exclusive fullscreen — in borderless or windowed mode the sliders do

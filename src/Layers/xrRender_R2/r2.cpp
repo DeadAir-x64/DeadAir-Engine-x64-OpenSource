@@ -1,4 +1,7 @@
 #include "stdafx.h"
+#if RENDER == R_R4
+#   include "Layers/xrRenderPC_R4/da_gpu_timer.h"
+#endif
 
 #include "xrCore/PostProcess/PPInfo.hpp"
 
@@ -617,7 +620,17 @@ void CRender::create()
     // declares. Get it wrong and the two disagree; D3D11 reports "Signatures between stages are
     // incompatible" and draws garbage, which on screen looks like models losing their textures and
     // standing in a T-pose - nothing that points back at an upscaler.
-    o.velocity = !!::ps_r__motion_vectors || !!::ps_r__fsr2 || !!::ps_r__fsr3;
+    // [DA_PORT] Через da_upscaler_active(), а не перечислением. Перечисление тут и подвело: строка
+    // называла FSR 2 и FSR 3, а XeSS и DLSS пропускала — причём молча, потому что их имён в ней нет
+    // вовсе, и поиском по «xess» такое не находится.
+    //
+    // Цена промаха здесь выше, чем в остальных местах со списком: этот признак решает, собираются ли
+    // шейдеры геометрии с DA_VELOCITY. При выбранном DLSS они собирались БЕЗ него — то есть трава,
+    // земля и модели не писали вектора вообще, а апскейлер реконструировал кадр по пустому буферу.
+    // Ноль для него значит «пиксель стоял на месте», поэтому в движении картинка разваливалась, а
+    // стоя выглядела нормально. Замер это и показал: низ кадра, где травы больше всего, заполнен на
+    // 28-43%, верх (его пишет отдельный проход неба) — на 100%.
+    o.velocity = !!::ps_r__motion_vectors || da_upscaler_active();
     // [DA_PORT] Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every
     // G-buffer shader writes a fixed identifier instead of a motion vector. Answers "what actually
     // draws this object" directly, instead of guessing from pass names in the log.
@@ -628,10 +641,10 @@ void CRender::create()
     // which is easy to mistake for a fault in whatever is being investigated. It cost one wasted
     // measurement, hence the warning rather than a silent override: the mode is still useful with the
     // upscaler off, and the choice stays with whoever is debugging.
-    if (o.velocity_debug_ids && !!::ps_r__fsr2)
-        Msg("! [DA_PORT] r__motion_vectors 3 with FSR 2 enabled: the upscaler is being fed shader "
-            "identifiers instead of motion vectors. Expect the whole image to shake - set r__fsr2 0 "
-            "while mapping shaders, and remember both are latched at renderer start.");
+    if (o.velocity_debug_ids && da_upscaler_active()) // [DA_PORT] любой апскейлер, не FSR 2 один
+        Msg("! [DA_PORT] r__motion_vectors 3 with an upscaler enabled: it is being fed shader "
+            "identifiers instead of motion vectors. Expect the whole image to shake - switch the "
+            "upscaler off while mapping shaders, and remember both are latched at renderer start.");
 #else
     o.velocity = 0;
     o.velocity_debug_ids = 0;
@@ -695,28 +708,31 @@ void CRender::create()
     Resources->RegisterConstantSetup("triLOD", &binder_LOD);
 #endif
 
-    Msg("! [DA_PORT] create: before CRenderTarget"); FlushLog();
+    Msg("* [DA_PORT] create: before CRenderTarget"); FlushLog();
     Target = xr_new<CRenderTarget>(); // Main target
-    Msg("! [DA_PORT] create: after CRenderTarget"); FlushLog();
+    Msg("* [DA_PORT] create: after CRenderTarget"); FlushLog();
 
     Models = xr_new<CModelPool>();
     PSLibrary.OnCreate();
     HWOCC.occq_create(occq_size);
-    Msg("! [DA_PORT] create: after Models/PSLibrary/HWOCC"); FlushLog();
+    Msg("* [DA_PORT] create: after Models/PSLibrary/HWOCC"); FlushLog();
 
     rmNormal(RCache);
     q_sync_point.Create();
-    Msg("! [DA_PORT] create: after q_sync_point"); FlushLog();
+    Msg("* [DA_PORT] create: after q_sync_point"); FlushLog();
 
     //	TODO: OGL: Implement FluidManager.
 #if defined(USE_DX11)
-    Msg("! [DA_PORT] create: before FluidManager.Initialize"); FlushLog();
+    Msg("* [DA_PORT] create: before FluidManager.Initialize"); FlushLog();
     FluidManager.Initialize(70, 70, 70);
     //	FluidManager.Initialize( 100, 100, 100 );
     FluidManager.SetScreenSize(Device.dwWidth, Device.dwHeight);
-    Msg("! [DA_PORT] create: after FluidManager"); FlushLog();
+    Msg("* [DA_PORT] create: after FluidManager"); FlushLog();
 #endif
-    Msg("! [DA_PORT] create: DONE"); FlushLog();
+#if RENDER == R_R4
+    g_da_gpu_timer.create(); // [DA_PORT] per-phase GPU timing, see da_gpu_timer.h
+#endif
+    Msg("* [DA_PORT] create: DONE"); FlushLog();
 }
 
 void CRender::destroy()
