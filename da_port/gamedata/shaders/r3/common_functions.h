@@ -319,7 +319,24 @@ gbuffer_data gbuffer_load_data( float2 tc : TEXCOORD, float2 pos2d, int iSample 
 	// righttop		= (  tan(fHorzFOV/2),  tan(fVertFOV/2), 1 )
 	// leftbottom   = ( -tan(fHorzFOV/2), -tan(fVertFOV/2), 1 )
 	// rightbottom	= (  tan(fHorzFOV/2), -tan(fVertFOV/2), 1 )
-	gbd.P  = float3( P.z * ( pos2d * pos_decompression_params.zw - pos_decompression_params.xy ), P.z );
+	// [DA_PORT] Снять дрожание кадра перед восстановлением позиции.
+	//
+	// Под апскейлером сцена рисуется со сдвигом на доли пикселя: матрица проекции остаётся чистой, а
+	// геометрию смещают сами шейдеры на m_taa_jitter (см. cl_taa_jitter в r2.cpp). Значит глубина,
+	// лежащая в пикселе, принадлежит поверхности, спроецированной СО СДВИГОМ. Восстанавливать по ней
+	// позицию из немодифицированной экранной координаты нельзя: мировая точка выходит смещённой, и
+	// смещение это МЕНЯЕТСЯ КАЖДЫЙ КАДР вместе с последовательностью дрожания. На краю тени проверка
+	// от этого перещёлкивается туда-сюда — ровно то мерцание теней, которое видно при включённом
+	// апскейлере и которого нет без него.
+	//
+	// Перевод обратно в пиксели делается через сами параметры распаковки: x = ширина/2, y = высота/2,
+	// поэтому лишних констант не нужно. Знак по Y обратный: в отсечённом пространстве ось смотрит
+	// вверх, в экранных координатах — вниз.
+	//
+	// Без апскейлера m_taa_jitter равен нулю, и вся поправка обращается в ничто.
+	const float2 jitter_px = float2( m_taa_jitter.x * pos_decompression_params.x / pos_decompression_params.z,
+	                                -m_taa_jitter.y * pos_decompression_params.y / pos_decompression_params.w );
+	gbd.P  = float3( P.z * ( (pos2d - jitter_px) * pos_decompression_params.zw - pos_decompression_params.xy ), P.z );
 
 	// reconstruct N
 	gbd.N = gbuf_unpack_normal( P.xy );
