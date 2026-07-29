@@ -419,19 +419,23 @@ function CPsiStormManager:vortex_actor_hit(vortex)
 	end
 end
 
+-- [DA_PORT] Судьба NPC в психошторме: настройка opt_psi_storm_fate снова что-то значит.
+--
+-- В kill_obj_at_pos стоял ЛИТЕРАЛ `local fate = "turntozombie"`, поэтому четыре ветки с убийством
+-- не исполнялись никогда, а настройку не читал ни один скрипт. Значения: turntozombie / kill / none.
+-- В поставке стоит turntozombie, значит по умолчанию поведение прежнее.
+-- Вынесено в функцию симметрично surge_manager.get_fate — так это можно проверить тестом.
+function get_fate()
+	return atmosfear_options.config
+		and atmosfear_options.config:r_value("atmosfear_current_parameters","opt_psi_storm_fate",0,"turntozombie")
+		or "turntozombie"
+end
+
 function CPsiStormManager:kill_obj_at_pos(pos)
 	if (utils.load_var(db.actor,"surge_immuned",false) == true) then
 		return
 	end
-	-- [DA_PORT] Судьба NPC читается из настройки, а не зашита в код.
-	--
-	-- Ниже по функции четыре ветки `if fate=="turntozombie" ... else ... kill`, но сама fate была
-	-- ЛИТЕРАЛОМ "turntozombie" — то есть ветки с убийством не исполнялись никогда, а настройка
-	-- opt_psi_storm_fate не читалась ни одним скриптом. Значения: turntozombie / kill / none.
-	-- В поставке стоит turntozombie, поэтому по умолчанию поведение не меняется.
-	local fate = atmosfear_options.config
-		and atmosfear_options.config:r_value("atmosfear_current_parameters","opt_psi_storm_fate",0,"turntozombie")
-		or "turntozombie"
+	local fate = get_fate() -- [DA_PORT]
 	if (fate == "none") then
 		return
 	end
