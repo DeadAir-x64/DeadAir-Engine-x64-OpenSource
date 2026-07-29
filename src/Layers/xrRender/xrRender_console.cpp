@@ -607,7 +607,7 @@ float o_optimize_dynamic_l3_size = O_D_L3_S_MED;
 // name any of them: two controls writing the same variable overwrite each other, and the player has
 // no way to tell which one won. Adding a knob here means removing it from those five files.
 //
-// [DA_PORT] Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран по решению Павла:
+// [DA_PORT] Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:
 // он гасил тени у ВСЕХ источников разом и обрезал видимость до предела — картинка ломалась заметнее,
 // чем росли кадры, а «Низкие» и так покрывают слабые машины. Строка st_opt_perf_max_fps в
 // text/*/st_da_port_ui.xml оставлена намеренно: вернуть пункт = одна строка здесь плюс шестой ряд ниже.

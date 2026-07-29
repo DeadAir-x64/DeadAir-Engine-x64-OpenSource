@@ -176,7 +176,7 @@
 - **:558** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
 - **:595** — Presets for the shadow-casting light ceiling, exposed in the video options.
 - **:597** — One-touch performance preset for the Performance tab.
-- **:610** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран по решению Павла:
+- **:610** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:
 - **:666** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
 - **:684** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
 - **:857** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
