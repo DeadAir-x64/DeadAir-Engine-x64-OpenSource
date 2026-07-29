@@ -11,6 +11,7 @@
 #include "xrSound/Sound.h"
 #include "xrEngine/XR_IOConsole.h"
 #include "Common/object_broker.h"
+#include <algorithm>
 
 namespace
 {
@@ -42,6 +43,7 @@ struct Run
     size_t lua_kb = 0;
     size_t objects = 0;
     size_t alife_objects = 0;
+    xr_vector<std::pair<shared_str, u32>> snd_top; // какие звуки звучат и сколько копий каждого
     size_t snd_playing = 0;   // звуков проигрывается сейчас
     size_t snd_events = 0;    // событий звуковой сцены
     size_t ps_active = 0;     // живых систем частиц
@@ -200,9 +202,28 @@ void finish_run(Run& run)
     if (GEnv.Sound)
     {
         CSound_stats s0{};
-        GEnv.Sound->statistic(&s0, nullptr);
+        CSound_stats_ext s1;
+        GEnv.Sound->statistic(&s0, &s1);
         run.snd_playing = s0._rendered + s0._simulated;
         run.snd_events = s0._events;
+
+        // Считаем КОПИИ по имени. Если один и тот же звук с каждой перезагрузкой звучит на копию
+        // больше — значит эмиттеры прошлого мира не гасятся, и это уже не догадка, а имя файла.
+        for (const auto& item : s1.items)
+        {
+            bool found = false;
+            for (auto& pair : run.snd_top)
+                if (pair.first == item.name)
+                {
+                    ++pair.second;
+                    found = true;
+                    break;
+                }
+            if (!found)
+                run.snd_top.push_back({ item.name, 1 });
+        }
+        std::sort(run.snd_top.begin(), run.snd_top.end(),
+            [](const auto& a, const auto& b) { return a.second > b.second; });
     }
     if (g_pGamePersistent)
     {
@@ -317,19 +338,36 @@ void DA_MemDump()
 
     if (g_runs.size() >= 3)
     {
-        const long long d1 = (long long)g_runs[1].committed_kb - (long long)g_runs[0].committed_kb;
-        const long long dn = (long long)g_runs.back().committed_kb -
-            (long long)g_runs[g_runs.size() - 2].committed_kb;
-        // Плато: последний шаг заметно меньше первого. Утечка: шаг держится.
-        if (dn * 3 < d1)
-            Msg("~ [DA_MEM] ВЫВОД: шаг падает (%lld -> %lld МБ) — похоже на плато, то есть удержание "
-                "памяти аллокатором, а не утечку",
-                d1 / 1024, dn / 1024);
+        // Вердикт по ТЕНДЕНЦИИ шагов, а не по крайним значениям: единичный шаг шумит на десятки
+        // мегабайт, и сравнение первого с последним легко даёт противоположный ответ на одних и тех
+        // же данных. Сравниваются средние по первой и второй половине.
+        xr_vector<long long> steps;
+        for (size_t i = 1; i < g_runs.size(); ++i)
+            steps.push_back((long long)g_runs[i].committed_kb - (long long)g_runs[i - 1].committed_kb);
+
+        const size_t half = steps.size() / 2;
+        long long first_sum = 0, last_sum = 0;
+        for (size_t i = 0; i < half; ++i)
+            first_sum += steps[i];
+        for (size_t i = steps.size() - half; i < steps.size(); ++i)
+            last_sum += steps[i];
+
+        const long long a = half ? first_sum / (long long)half / 1024 : 0;
+        const long long b = half ? last_sum / (long long)half / 1024 : 0;
+
+        Msg("~ [DA_MEM] шаг: первая половина %lld МБ, вторая %lld МБ", a, b);
+        if (half == 0)
+            Msg("~ [DA_MEM] ВЫВОД: прогонов мало, тенденцию не построить");
+        else if (b * 2 < a)
+            Msg("~ [DA_MEM] ВЫВОД: шаг УБЫВАЕТ вдвое и сильнее — похоже на выход на плато, то есть "
+                "удержание памяти аллокатором, а не утечку. Прогоните ещё раз с большим N: если шаг "
+                "дойдёт до нуля, вопрос закрыт");
+        else if (b < a)
+            Msg("~ [DA_MEM] ВЫВОД: шаг убывает, но медленно — однозначного ответа нет. Нужен прогон "
+                "подлиннее (da_mem_test 8): плато уйдёт в ноль, утечка встанет на полке");
         else
-            Msg("~ [DA_MEM] ВЫВОД: шаг держится (%lld -> %lld МБ) — похоже на настоящую утечку на "
-                "пути загрузки уровня. Смотрите таблицу фаз ниже: виновата та, что прибавляет из раза "
-                "в раз",
-                d1 / 1024, dn / 1024);
+            Msg("~ [DA_MEM] ВЫВОД: шаг НЕ убывает — это утечка. Ищите в таблицах ниже то, что растёт "
+                "монотонно от прогона к прогону");
     }
     else
     {
@@ -423,6 +461,36 @@ void DA_MemDump()
             (u32)(r.textures_kb / 1024), (u32)(r.lua_kb / 1024), (u32)r.strings_count,
             objects, (u32)r.alife_objects, (u32)r.snd_playing, (u32)r.snd_events,
             (u32)r.ps_active, (u32)r.ps_destroy, (u32)r.ps_needtoplay);
+    }
+
+    // --- звуки: кто именно накапливается ---
+    // Числа в колонке «звуков» растут монотонно — значит эмиттеры не гасятся. Здесь видно, какие
+    // именно: если строка идёт 1, 2, 3, 4, 5 по прогонам, виновник назван по имени.
+    if (!g_runs.back().snd_top.empty())
+    {
+        Msg("~ [DA_MEM] --- звучит копий по именам (первые 12) ---");
+        const Run& last = g_runs.back();
+        const size_t shown = last.snd_top.size() < 12 ? last.snd_top.size() : 12;
+        for (size_t k = 0; k < shown; ++k)
+        {
+            string512 line;
+            xr_sprintf(line, "~ [DA_MEM]   %s", last.snd_top[k].first.c_str());
+            pad_to(line, 60);
+            for (const Run& r : g_runs)
+            {
+                u32 n = 0;
+                for (const auto& pair : r.snd_top)
+                    if (pair.first == last.snd_top[k].first)
+                    {
+                        n = pair.second;
+                        break;
+                    }
+                string32 cell;
+                xr_sprintf(cell, " %5u", n);
+                xr_strcat(line, cell);
+            }
+            Msg("%s", line);
+        }
     }
 
     // Полный список ресурсов рендера: кроме текстур там геометрия, шейдеры, состояния и константы,
