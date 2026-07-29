@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **978 правк(и) в 204 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **990 правк(и) в 210 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -788,7 +788,7 @@
 
 ## Игровая логика
 
-*65 файл(ов), 319 правк(и)*
+*67 файл(ов), 323 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -1223,15 +1223,17 @@
 - **:2449** — CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
 - **:2451** — extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
 - **:2453** — extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
-- **:2492** — Dead Air compatibility aliases
-- **:2498** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
-- **:2508** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
-- **:2515** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
-- **:2527** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
-- **:2529** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
-- **:2668** — Developer commands: registered only when the game was started with "-dev".
-- **:2687** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
-- **:2867** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+- **:2455** — extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
+- **:2457** — Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного
+- **:2503** — Dead Air compatibility aliases
+- **:2509** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+- **:2519** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
+- **:2526** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+- **:2538** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+- **:2540** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+- **:2679** — Developer commands: registered only when the game was started with "-dev".
+- **:2698** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+- **:2878** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
 
 ### `xrGame/da_memory_probe.h`
 
@@ -1240,6 +1242,14 @@
 ### `xrGame/game_base.cpp`
 
 - **:9** — This was hardcoded to 10 (10x real time speed) - normally overwritten immediately by
+
+### `xrGame/game_sv_base.h`
+
+- **:130** — GameEventQueue* event_queue() const { return m_event_queue; } // [DA_PORT] для замера памяти
+
+### `xrGame/game_sv_event_queue.h`
+
+- **:38** — Размеры для замера памяти. Очередь держит пул свободных событий, а каждое событие
 
 ### `xrGame/game_sv_single.cpp`
 
@@ -1607,7 +1617,7 @@
 
 ## Ядро и прочее
 
-*9 файл(ов), 11 правк(и)*
+*13 файл(ов), 19 правк(и)*
 
 
 ### `xrAICore/Components/problem_solver_inline.h`
@@ -1644,6 +1654,26 @@
 
 - **:108** — Msg("! [DA_PORT] check_stack_overflow: stack near limit (sp=0x%IX low=0x%IX inc=%u)",
 
+### `xrCore/xrMemory.cpp`
+
+- **:2** — #include "Debug/StackTrace.h" // [DA_PORT] ловушка на выделение памяти
+- **:202** — Ловушка на выделение памяти заданного размера — со снимком стека.
+- **:248** — da_alloc_trap(size); // [DA_PORT]
+
+### `xrNetServer/NET_Client.h`
+
+- **:27** — Счётчики для замера памяти. Пул хранит NET_Packet целиком — по шестнадцать
+- **:118** — см. INetQueue::ready_count
+
 ### `xrNetServer/NET_PlayersMonitor.h`
 
 - **:15** — CRITICAL_SECTION csPlayersCS; // [DA_PORT] direct CRITICAL_SECTION, not Lock —
+
+### `xrNetServer/empty/NET_Client.cpp`
+
+- **:105** — ПОЧИНЕНА УТЕЧКА. Здесь возврат пакета в пул был закомментирован, а сам указатель
+
+### `xrNetServer/empty/NET_Client.h`
+
+- **:28** — Счётчики для замера памяти: пул хранит NET_Packet целиком, по 16 килобайт на штуку.
+- **:114** — см. INetQueue::ready_count
