@@ -508,10 +508,41 @@ void CLevel::IR_OnKeyboardRelease(int key)
     }
 }
 
+// [DA_PORT] Почему нажатие не доходит до актёра — замер вместо гадания.
+//
+// Симптом: после смерти и загрузки сохранения игрок не может двинуться, хотя мир живой (симуляция
+// идёт, NPC торгуют, лог пишется), окно отвечает, а Escape открывает меню. Сброс g_bDisableAllInput на
+// старте уровня проблему НЕ снял, то есть блокировка не в нём — а перебирать кандидатов чтением кода
+// уже стоило часа.
+//
+// Печатается один раз в две секунды и ТОЛЬКО когда клавиша реально отброшена, так что в норме этой
+// строки в логе нет вообще. Она сразу называет виновника: флаг блокировки, пауза движка, отсутствие
+// актёра, состояние «не жив» или внешний обработчик ввода.
+static void da_report_input_block(pcstr reason)
+{
+    static u32 last = 0;
+    if (Device.dwTimeGlobal - last < 2000)
+        return;
+    last = Device.dwTimeGlobal;
+    Msg("! [DA_PORT] ввод отброшен: %s", reason);
+    FlushLog();
+}
+
 void CLevel::IR_OnKeyboardHold(int key)
 {
     if (g_bDisableAllInput)
+    {
+        da_report_input_block("взведён g_bDisableAllInput (level.disable_input без парного enable)");
         return;
+    }
+
+    if (Device.Paused())
+        da_report_input_block("движок на паузе (Device.Paused)");
+
+    if (!g_actor)
+        da_report_input_block("актёра нет (g_actor == nullptr)");
+    else if (!g_actor->g_Alive())
+        da_report_input_block("актёр считается НЕ ЖИВЫМ (g_Alive() == false)");
 
     /* avo: script callback */
     if (g_actor)
