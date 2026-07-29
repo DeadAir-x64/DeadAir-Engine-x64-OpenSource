@@ -2461,6 +2461,8 @@ void CCC_RegisterCommands()
         extern int g_da_alloc_trap_left;
         CMD4(CCC_Integer, "da_alloc_trap_size", &g_da_alloc_trap_size, 0, 1024 * 1024);
         CMD4(CCC_Integer, "da_alloc_trap_count", &g_da_alloc_trap_left, 0, 64);
+        extern int g_da_alloc_trap_slack; // допуск: блок в куче больше запрошенного на заголовок
+        CMD4(CCC_Integer, "da_alloc_trap_slack", &g_da_alloc_trap_slack, 0, 4096);
     }
 
     // game

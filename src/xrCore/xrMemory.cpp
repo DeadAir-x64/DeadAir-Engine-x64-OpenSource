@@ -209,6 +209,10 @@ void xrMemory::mem_compact()
 // По умолчанию выключена: g_da_alloc_trap_size = 0, и тогда это одно сравнение целых на аллокацию.
 XRCORE_API int g_da_alloc_trap_size = 0;
 XRCORE_API int g_da_alloc_trap_left = 0;
+// Допуск: обход куч показывает размер БЛОКА, а он больше запрошенного на заголовок аллокатора.
+// Первая попытка ловила ровно 16413 и молчала — запрашивают 16405. Чтобы не угадывать это число
+// заново на каждом шаге, ловим окрестность и печатаем настоящий размер.
+XRCORE_API int g_da_alloc_trap_slack = 16;
 
 namespace
 {
@@ -217,7 +221,10 @@ thread_local bool g_da_trap_inside = false;
 
 void da_alloc_trap(size_t size)
 {
-    if (g_da_alloc_trap_size <= 0 || (int)size != g_da_alloc_trap_size)
+    if (g_da_alloc_trap_size <= 0)
+        return;
+    const int delta = (int)size - g_da_alloc_trap_size;
+    if (delta > g_da_alloc_trap_slack || delta < -g_da_alloc_trap_slack)
         return;
     if (g_da_alloc_trap_left <= 0 || g_da_trap_inside)
         return;
