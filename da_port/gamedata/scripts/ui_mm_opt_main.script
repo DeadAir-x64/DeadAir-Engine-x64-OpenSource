@@ -51,7 +51,16 @@ function options_dialog:__init() super()
 				-- setup the list
 				if (t.list) then
 					for i,v in ipairs(t.list) do 
-						ctrl:AddItem(v,i-1)
+						-- [DA_PORT] ѕометка значени€ по умолчанию пр€мо в списке.
+						-- Ѕезопасно: при сохранении значение берЄтс€ как tonumber(GetText()),
+						-- а на непарс€щемс€ тексте срабатывает откат `or v.default` Ч то есть
+						-- в конфиг всЄ равно уходит ровно default. ѕарна€ правка, став€ща€ ту же
+						-- пометку в поле после перезахода в меню, лежит в axr_main_options.script.
+						if (t.default_label and v == t.default) then
+							ctrl:AddItem(tostring(v).." "..t.default_label,i-1)
+						else
+							ctrl:AddItem(v,i-1)
+						end
 					end
 				end
 		

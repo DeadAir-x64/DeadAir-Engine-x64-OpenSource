@@ -112,13 +112,13 @@ function opt_menu_on_init(menu)
 	--
 	-- debug_only здесь оставлено как было, но поле МЁРТВОЕ: меню скрывает пункт только по
 	-- t.disabled (ui_mm_opt_main.script:19). Опция была видна игроку и раньше.
-	menu.gameplay_options["alife_mutant_pop"]			= {default=1.00, 	debug_only=true, 	typ="list", list={0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00}}
+	menu.gameplay_options["alife_mutant_pop"]			= {default=1.00, default_label="(Стандартно)", 	debug_only=true, 	typ="list", list={0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00}}
 	-- [DA_PORT] Тот же шаг 0.25, что и у мутантов, но потолок 1.50, а не 2.00 — решение Павла.
 	-- Причина в авторском предостережении строкой выше: «не хватит работы в лагерях» относится
 	-- именно к сталкерам. У мутантов работ нет вовсе, поэтому им 2.00 оставлено, а сталкеры
 	-- без работы толпятся и нагружают симуляцию. Отряды отбираются по префиксу "sim_squad",
 	-- мутанты — по "simulation".
-	menu.gameplay_options["alife_stalker_pop"]			= {default=1.00, 	debug_only=true, 	typ="list", list={0.25,0.50,0.75,1.00,1.25,1.50}}
+	menu.gameplay_options["alife_stalker_pop"]			= {default=1.00, default_label="(Стандартно)", 	debug_only=true, 	typ="list", list={0.25,0.50,0.75,1.00,1.25,1.50}}
 	
 	-- excl_dist
 	-- note: shouldn't be greater than switch distance or no simulation squads will come online. Instead it should create a border zone between excl_dist and switch_distance where stuff can come online
@@ -190,7 +190,15 @@ function opt_menu_on_set_values(menu,optMgr)
 				if (type(v.default) == "boolean") then
 					v.ctrl:SetText(axr_main.config:r_value("mm_options",name,1,v.default))
 				elseif (type(v.default) == "number") then 
-					v.ctrl:SetText(axr_main.config:r_value("mm_options",name,2,v.default))
+					-- [DA_PORT] SetText только рисует текст, пункт списка он НЕ ищет. Поэтому
+					-- значение по умолчанию надо подписать и здесь, иначе после перезахода в меню
+					-- поле показывало бы голое число, а в раскрытом списке — помеченное.
+					local _v = axr_main.config:r_value("mm_options",name,2,v.default)
+					if (v.default_label and _v == v.default) then
+						v.ctrl:SetText(tostring(_v).." "..v.default_label)
+					else
+						v.ctrl:SetText(_v)
+					end
 				else 
 					v.ctrl:SetText(axr_main.config:r_value("mm_options",name,0,v.default))
 				end
