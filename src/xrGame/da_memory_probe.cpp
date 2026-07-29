@@ -20,6 +20,7 @@ namespace
 constexpr size_t MAX_RUNS = 8;
 constexpr size_t MAX_MARKS = 24;
 constexpr int SETTLE_FRAMES = 180; // три секунды при 60 кадрах
+constexpr size_t SIZE_BUCKETS = 4097; // точные размеры блоков от 0 до 4096 байт
 
 struct Mark
 {
@@ -46,6 +47,11 @@ struct Run
     size_t alife_objects = 0;
     size_t heap_blocks = 0; // ЖИВЫХ блоков в кучах процесса
     size_t heap_kb = 0;     // и сколько они занимают
+    // Сколько живых блоков какого РАЗМЕРА. Размер — это подпись структуры: если от прогона к
+    // прогону прибавляется тридцать тысяч блоков ровно по 96 байт, остаётся найти, что такое эти
+    // 96 байт, и утечка названа. Хранятся только размеры до SIZE_BUCKETS, крупных блоков мало и они
+    // видны по общей сумме.
+    xr_vector<u32> size_hist;
     // Какие звуки звучат: имя -> {всего копий, из них БЕЗ живого объекта-владельца}.
     // Осиротевший эмиттер — это и есть утечка в чистом виде: объект снесён, звук продолжает играть.
     struct SndItem { shared_str name; u32 total; u32 orphan; };
@@ -90,10 +96,11 @@ const char* sign(long long v) { return v > 0 ? "+" : ""; }
 //
 // Стоит дорого: HeapLock останавливает остальные потоки на время обхода. Поэтому вызывается один
 // раз за прогон, в момент, когда мир уже устоялся, и гасится крутилкой da_mem_heapwalk.
-void walk_heaps(size_t& blocks, size_t& bytes)
+void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist)
 {
     blocks = 0;
     bytes = 0;
+    hist.assign(SIZE_BUCKETS, 0);
 
     HANDLE heaps[64];
     const DWORD count = GetProcessHeaps(64, heaps);
@@ -109,6 +116,8 @@ void walk_heaps(size_t& blocks, size_t& bytes)
             {
                 ++blocks;
                 bytes += entry.cbData;
+                if (entry.cbData < SIZE_BUCKETS)
+                    ++hist[entry.cbData];
             }
         }
         HeapUnlock(heaps[i]);
@@ -243,7 +252,7 @@ void finish_run(Run& run)
     if (g_da_mem_heapwalk)
     {
         size_t blocks = 0, bytes = 0;
-        walk_heaps(blocks, bytes);
+        walk_heaps(blocks, bytes, run.size_hist);
         run.heap_blocks = blocks;
         run.heap_kb = bytes / 1024;
     }
@@ -514,6 +523,33 @@ void DA_MemDump()
             (u32)r.heap_blocks, (u32)(r.committed_kb / 1024),
             (u32)((r.committed_kb - r.heap_kb) / 1024));
     }
+    // Какие размеры блоков прибавляются от первого прогона к последнему: подпись утечки.
+    const Run& first_run = g_runs.front();
+    const Run& last_run = g_runs.back();
+    if (first_run.size_hist.size() == SIZE_BUCKETS && last_run.size_hist.size() == SIZE_BUCKETS)
+    {
+        xr_vector<std::pair<size_t, long long>> growth;
+        for (size_t sz = 0; sz < SIZE_BUCKETS; ++sz)
+        {
+            const long long d = (long long)last_run.size_hist[sz] - (long long)first_run.size_hist[sz];
+            if (d > 0)
+                growth.push_back({ sz, d });
+        }
+        std::sort(growth.begin(), growth.end(),
+            [](const auto& a, const auto& b) { return a.second * (long long)a.first > b.second * (long long)b.first; });
+
+        Msg("~ [DA_MEM] --- какие блоки прибавились с первого прогона (по весу) ---");
+        Msg("~ [DA_MEM] размер, байт | прибавилось штук | это МБ | было -> стало");
+        const size_t shown = growth.size() < 12 ? growth.size() : 12;
+        for (size_t k = 0; k < shown; ++k)
+        {
+            const size_t sz = growth[k].first;
+            Msg("~ [DA_MEM]   %10u | %16lld | %6lld | %u -> %u", (u32)sz, growth[k].second,
+                growth[k].second * (long long)sz / 1024 / 1024, first_run.size_hist[sz],
+                last_run.size_hist[sz]);
+        }
+    }
+
     Msg("~ [DA_MEM] Растут ЖИВЫЕ мегабайты — это утечка. Растёт только закоммичено, а живые стоят —"
         " память держит аллокатор, и это не дефект.");
 
