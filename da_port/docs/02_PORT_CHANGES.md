@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **977 правк(и) в 204 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **978 правк(и) в 204 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -788,7 +788,7 @@
 
 ## Игровая логика
 
-*65 файл(ов), 318 правк(и)*
+*65 файл(ов), 319 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -1222,15 +1222,16 @@
 - **:2448** — CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
 - **:2449** — CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
 - **:2451** — extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
-- **:2490** — Dead Air compatibility aliases
-- **:2496** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
-- **:2506** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
-- **:2513** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
-- **:2525** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
-- **:2527** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
-- **:2666** — Developer commands: registered only when the game was started with "-dev".
-- **:2685** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
-- **:2865** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+- **:2453** — extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
+- **:2492** — Dead Air compatibility aliases
+- **:2498** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+- **:2508** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
+- **:2515** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+- **:2527** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+- **:2529** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+- **:2668** — Developer commands: registered only when the game was started with "-dev".
+- **:2687** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+- **:2867** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
 
 ### `xrGame/da_memory_probe.h`
 

@@ -2450,6 +2450,8 @@ void CCC_RegisterCommands()
     {
         extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
         CMD4(CCC_Integer, "da_mem_probe", &g_da_mem_probe, 0, 1);
+        extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
+        CMD4(CCC_Integer, "da_mem_heapwalk", &g_da_mem_heapwalk, 0, 1);
     }
 
     // game

@@ -12,6 +12,7 @@
 #include "xrEngine/XR_IOConsole.h"
 #include "Common/object_broker.h"
 #include <algorithm>
+#include <windows.h>
 
 namespace
 {
@@ -43,6 +44,8 @@ struct Run
     size_t lua_kb = 0;
     size_t objects = 0;
     size_t alife_objects = 0;
+    size_t heap_blocks = 0; // ЖИВЫХ блоков в кучах процесса
+    size_t heap_kb = 0;     // и сколько они занимают
     // Какие звуки звучат: имя -> {всего копий, из них БЕЗ живого объекта-владельца}.
     // Осиротевший эмиттер — это и есть утечка в чистом виде: объект снесён, звук продолжает играть.
     struct SndItem { shared_str name; u32 total; u32 orphan; };
@@ -78,6 +81,40 @@ size_t textures_kb()
 
 const char* sign(long long v) { return v > 0 ? "+" : ""; }
 
+// Обход куч процесса: считает ЖИВЫЕ блоки, а не закоммиченную память.
+//
+// Ради этого всё и делается. Memory.mem_usage() возвращает PagefileUsage, в котором сидит и то, что
+// приложение освободило, а аллокатор не отдал системе. Поэтому по нему нельзя отличить утечку от
+// удержания: обе выглядят как ровный рост. Сумма живых блоков такой двусмысленности не имеет —
+// если она растёт от перезагрузки к перезагрузке, память действительно не освобождается.
+//
+// Стоит дорого: HeapLock останавливает остальные потоки на время обхода. Поэтому вызывается один
+// раз за прогон, в момент, когда мир уже устоялся, и гасится крутилкой da_mem_heapwalk.
+void walk_heaps(size_t& blocks, size_t& bytes)
+{
+    blocks = 0;
+    bytes = 0;
+
+    HANDLE heaps[64];
+    const DWORD count = GetProcessHeaps(64, heaps);
+    for (DWORD i = 0; i < count && i < 64; ++i)
+    {
+        if (!HeapLock(heaps[i]))
+            continue;
+
+        PROCESS_HEAP_ENTRY entry{};
+        while (HeapWalk(heaps[i], &entry))
+        {
+            if (entry.wFlags & PROCESS_HEAP_ENTRY_BUSY)
+            {
+                ++blocks;
+                bytes += entry.cbData;
+            }
+        }
+        HeapUnlock(heaps[i]);
+    }
+}
+
 // Ширина строки В СИМВОЛАХ, а не в байтах: подписи фаз русские, в UTF-8 это два байта на букву,
 // и обычное "%-22s" разъезжает колонки ровно на длину подписи.
 size_t utf8_width(const char* s)
@@ -99,6 +136,10 @@ void pad_to(string512& dst, size_t width)
 // Выключатель: da_mem_probe 0 гасит автоматические отметки и печать в конце загрузки.
 // Ручной da_mem_dump работает всегда — он печатает то, что успели накопить.
 int g_da_mem_probe = 1;
+
+// Обход куч: даёт ЖИВЫЕ аллокации вместо закоммиченной памяти, но останавливает потоки на время
+// обхода. Для охоты за утечкой включён, в обычной игре имеет смысл гасить.
+int g_da_mem_heapwalk = 1;
 
 namespace
 {
@@ -198,6 +239,14 @@ void finish_run(Run& run)
     }
 
     run.alife_objects = ai().get_alife() ? ai().alife().objects().objects().size() : 0;
+
+    if (g_da_mem_heapwalk)
+    {
+        size_t blocks = 0, bytes = 0;
+        walk_heaps(blocks, bytes);
+        run.heap_blocks = blocks;
+        run.heap_kb = bytes / 1024;
+    }
 
     // Звук и частицы: обе подсистемы создаются пачками на каждую загрузку и обе живут вне счётчиков
     // движка, поэтому в прошлых замерах их никто не проверял. В логе после каждой перезагрузки
@@ -455,6 +504,19 @@ void DA_MemDump()
     }
 
     // --- подсистемы: что уже отсеяно замером, а что нет ---
+    Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
+    Msg("~ [DA_MEM] --- ЖИВЫЕ аллокации (обход куч процесса) ---");
+    Msg("~ [DA_MEM] прогон | живых МБ | блоков | закоммичено МБ | разница");
+    for (size_t i = 0; i < g_runs.size(); ++i)
+    {
+        const Run& r = g_runs[i];
+        Msg("~ [DA_MEM]   %-4u | %8u | %6u | %14u | %u", (u32)(i + 1), (u32)(r.heap_kb / 1024),
+            (u32)r.heap_blocks, (u32)(r.committed_kb / 1024),
+            (u32)((r.committed_kb - r.heap_kb) / 1024));
+    }
+    Msg("~ [DA_MEM] Растут ЖИВЫЕ мегабайты — это утечка. Растёт только закоммичено, а живые стоят —"
+        " память держит аллокатор, и это не дефект.");
+
     Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
     Msg("~ [DA_MEM] прогон | текстуры МБ | Lua МБ | строк | объектов | ALife | звуков | событий | частиц");
     for (size_t i = 0; i < g_runs.size(); ++i)
