@@ -182,7 +182,15 @@ float ps_r__ssaDISCARD = 3.5f; // RO
 float ps_r__ssaDONTSORT = 32.f; // RO
 float ps_r__ssaHZBvsTEX = 96.f; // RO
 
-int ps_r__tf_Anisotropic = 8;
+// [DA_PORT] 16 rather than the stock 8, and this is not a "more is prettier" bump. Under any upscaler
+// SetupStates (R_Backend_Runtime.cpp) shifts the mip LOD bias into the minus by log2(render / output),
+// otherwise the hardware picks mips for the reduced frame and textures arrive pre-blurred. With a
+// negative bias trilinear filtering UNDERSAMPLES, so the symptom flips over: instead of the familiar
+// mush you get shimmer, worst on ground planes seen at a grazing angle. Anisotropy takes its samples
+// along the long axis of the footprint and is what makes the negative bias safe again — measured in
+// game, 16 removes the shimmer under DLSS. Hence also: a quality ladder on this setting is HARMFUL,
+// every rspec_*.ltx asks for 16.
+int ps_r__tf_Anisotropic = 16;
 float ps_r__tf_Mipbias = 0.0f;
 
 int ps_r__clear_models_on_unload = 0; // Alundaio

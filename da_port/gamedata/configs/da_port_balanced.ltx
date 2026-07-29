@@ -34,4 +34,7 @@ r2_soft_water on
 r2_soft_particles on
 
 r2_steep_parallax off
-r__tf_aniso 8
+
+; Анизотропия остаётся максимальной: под апскейлером сдвиг мип-уровней уходит в минус, и низкая
+; анизотропия даёт не мыло, а мерцание (подробнее — в da_port_lowend.ltx).
+r__tf_aniso 16
