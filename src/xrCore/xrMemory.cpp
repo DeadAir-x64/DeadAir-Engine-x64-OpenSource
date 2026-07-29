@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "Debug/StackTrace.h" // [DA_PORT] ловушка на выделение памяти
 
 #include <SDL.h>
 
@@ -197,10 +198,47 @@ void xrMemory::mem_compact()
 #endif
 }
 
+
+// [DA_PORT] Ловушка на выделение памяти заданного размера — со снимком стека.
+//
+// Замер довёл поиск утечки до подписи: блоки РОВНО по 16413 байт, две с половиной тысячи за
+// перезагрузку сохранения, внутри сетевой пакет с событием GE_WPN_STATE_CHANGE. Дальше статикой
+// не пройти: оба известных пула таких пакетов оказались пусты, а искать глазами по всему движку,
+// кто ещё их держит, — гадание. Стек в момент выделения называет место сразу.
+//
+// По умолчанию выключена: g_da_alloc_trap_size = 0, и тогда это одно сравнение целых на аллокацию.
+XRCORE_API int g_da_alloc_trap_size = 0;
+XRCORE_API int g_da_alloc_trap_left = 0;
+
+namespace
+{
+// Снятие стека само выделяет память, поэтому без защиты ловушка ушла бы в бесконечную рекурсию.
+thread_local bool g_da_trap_inside = false;
+
+void da_alloc_trap(size_t size)
+{
+    if (g_da_alloc_trap_size <= 0 || (int)size != g_da_alloc_trap_size)
+        return;
+    if (g_da_alloc_trap_left <= 0 || g_da_trap_inside)
+        return;
+
+    g_da_trap_inside = true;
+    --g_da_alloc_trap_left;
+
+    Msg("~ [DA_TRAP] выделение %u байт, стек:", (u32)size);
+    const auto trace = BuildStackTrace(32);
+    for (const auto& line : trace)
+        Msg("~ [DA_TRAP]   %s", line.c_str());
+
+    g_da_trap_inside = false;
+}
+} // namespace
+
 void* xrMemory::mem_alloc(size_t size)
 {
     const auto result = xr_internal_malloc(size);
     //TracyAlloc(result, size);
+    da_alloc_trap(size); // [DA_PORT]
     return result;
 }
 

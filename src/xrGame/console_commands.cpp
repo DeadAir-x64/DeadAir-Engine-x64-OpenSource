@@ -2454,6 +2454,13 @@ void CCC_RegisterCommands()
         CMD4(CCC_Integer, "da_mem_heapwalk", &g_da_mem_heapwalk, 0, 1);
         extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
         CMD4(CCC_Integer, "da_mem_trap_size", &g_da_mem_trap_size, 0, 1024 * 1024);
+        // [DA_PORT] Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного
+        // размера. Ради неё всё и затевалось — оба известных пула пакетов оказались пусты, и кто
+        // держит блоки, статикой не находится.
+        extern int g_da_alloc_trap_size;
+        extern int g_da_alloc_trap_left;
+        CMD4(CCC_Integer, "da_alloc_trap_size", &g_da_alloc_trap_size, 0, 1024 * 1024);
+        CMD4(CCC_Integer, "da_alloc_trap_count", &g_da_alloc_trap_left, 0, 64);
     }
 
     // game
