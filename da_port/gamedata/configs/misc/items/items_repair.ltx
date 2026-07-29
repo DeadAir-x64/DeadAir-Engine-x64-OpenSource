@@ -953,3 +953,97 @@ attach_position_offset		= 0.096910, -0.013594, 0.107925
 attach_bone_name		= bip01_r_hand
 auto_attach				= false
 repair_part_bonus	 	= 0.04
+
+; =====================================================================================
+; [DA_PORT] Недостающие ступени расхода наборов.
+;
+; Автор пометил каждый набор числом применений (;xN), а скрипт ремонта честно ищет
+; лестницу _4 -> _3 -> _2 -> базовый. Но сами секции ступеней созданы не были, поэтому
+; дорогие наборы оказывались ОДНОРАЗОВЫМИ, тогда как дешёвые (чистящие, простой и
+; универсальный швейные, клей, точильный камень) свои 2-4 применения отрабатывали.
+;
+; Числа взяты по образцу рабочих наборов мода: цена = базовая x номер ступени,
+; вес = базовый + содержимое одного применения за ступень. Имя и иконка наследуются
+; от базовой секции - у чистящих наборов ступени тоже не переопределяют inv_name,
+; поэтому новых строк локализации не требуется.
+; =====================================================================================
+
+; toolkit_p: 4 применения, содержимое одного = 0.211 кг
+[toolkit_p_2]:toolkit_p
+$spawn 				= "devices\toolkit_p"
+cost				= 3000
+inv_weight			= 2.434
+[toolkit_p_3]:toolkit_p
+$spawn 				= "devices\toolkit_p"
+cost				= 4500
+inv_weight			= 2.645
+[toolkit_p_4]:toolkit_p
+$spawn 				= "devices\toolkit_p"
+cost				= 6000
+inv_weight			= 2.856
+
+; toolkit_s: 4 применения, содержимое одного = 0.309 кг
+[toolkit_s_2]:toolkit_s
+$spawn 				= "devices\toolkit_s"
+cost				= 3500
+inv_weight			= 2.58
+[toolkit_s_3]:toolkit_s
+$spawn 				= "devices\toolkit_s"
+cost				= 5250
+inv_weight			= 2.889
+[toolkit_s_4]:toolkit_s
+$spawn 				= "devices\toolkit_s"
+cost				= 7000
+inv_weight			= 3.198
+
+; toolkit_r: 4 применения, содержимое одного = 0.482 кг
+[toolkit_r_2]:toolkit_r
+$spawn 				= "devices\toolkit_r"
+cost				= 8000
+inv_weight			= 2.976
+[toolkit_r_3]:toolkit_r
+$spawn 				= "devices\toolkit_r"
+cost				= 12000
+inv_weight			= 3.458
+[toolkit_r_4]:toolkit_r
+$spawn 				= "devices\toolkit_r"
+cost				= 16000
+inv_weight			= 3.94
+
+; sewing_kit_h: 4 применения, содержимое одного = 0.072 кг
+[sewing_kit_h_2]:sewing_kit_h
+$spawn 				= "devices\repair_kit_10"
+cost				= 18000
+inv_weight			= 0.358
+[sewing_kit_h_3]:sewing_kit_h
+$spawn 				= "devices\repair_kit_10"
+cost				= 27000
+inv_weight			= 0.43
+[sewing_kit_h_4]:sewing_kit_h
+$spawn 				= "devices\repair_kit_10"
+cost				= 36000
+inv_weight			= 0.502
+
+; armor_repair_pro: 4 применения, содержимое одного = 0.086 кг
+[armor_repair_pro_2]:armor_repair_pro
+$spawn 				= "devices\repair_kit_10"
+cost				= 22000
+inv_weight			= 0.396
+[armor_repair_pro_3]:armor_repair_pro
+$spawn 				= "devices\repair_kit_10"
+cost				= 33000
+inv_weight			= 0.482
+[armor_repair_pro_4]:armor_repair_pro
+$spawn 				= "devices\repair_kit_10"
+cost				= 44000
+inv_weight			= 0.568
+
+; helmet_repair_kit: 3 применения, содержимое одного = 0.004 кг
+[helmet_repair_kit_2]:helmet_repair_kit
+$spawn 				= "devices\repair_kit_10"
+cost				= 15000
+inv_weight			= 0.204
+[helmet_repair_kit_3]:helmet_repair_kit
+$spawn 				= "devices\repair_kit_10"
+cost				= 22500
+inv_weight			= 0.208
