@@ -1,0 +1,295 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition =  trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = {+cit_killers_merc_trader_stalker_quest_doc_given_2} supplies_3, {+cit_killers_merc_trader_stalker_quest_doc_given_1} supplies_2,  supplies_1
+buy_item_condition_factor = 0.75
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_supplier_9, {=actor_week_in_zone(8)} discount_supplier_8, {=actor_week_in_zone(7)} discount_supplier_7, {=actor_week_in_zone(6)} discount_supplier_6, {=actor_week_in_zone(5)} discount_supplier_5, {=actor_week_in_zone(4)} discount_supplier_4, {=actor_week_in_zone(3)} discount_supplier_3, {=actor_week_in_zone(2)} discount_supplier_2, {=actor_week_in_zone(1)} discount_supplier_1 
+
+[trade_generic_buy]:merchant
+
+dok_1                 = 0.15, 0.15
+dok_2                 = 0.15, 0.15
+dok_3                 = 0.15, 0.15
+dok_4                 = 0.15, 0.15
+dok_5                 = 0.15, 0.15
+dok_6                 = 0.15, 0.15
+dok_7                 = 0.15, 0.15
+dok_8                 = 0.15, 0.15
+lab_diary_1           = 0.15, 0.15
+lab_diary_2           = 0.15, 0.15
+lab_diary_3           = 0.15, 0.15
+box_lab_1             = 0.15, 0.15
+
+af_thing_1               = 0.05, 0.05
+af_thing_2               = 0.05, 0.05
+af_thing_3               = 0.05, 0.05
+af_thing_4               = 0.05, 0.05
+af_thing_5               = 0.05, 0.05
+af_medusa                = 0.05, 0.05
+af_vyvert                = 0.05, 0.05
+af_gravi                 = 0.05, 0.05
+af_cristall_flower       = 0.15, 0.15 ;120% cost
+af_night_star            = 0.15, 0.15
+af_gold_fish             = 0.15, 0.15
+af_slime                 = 0.05, 0.05
+af_slug                  = 0.05, 0.05
+af_mica                  = 0.05, 0.05
+af_blood                 = 0.05, 0.05
+af_mincer_meat           = 0.05, 0.05
+af_pellicle              = 0.05, 0.05
+af_baloon                = 0.05, 0.05
+af_soul                  = 0.15, 0.15
+af_thorn                 = 0.05, 0.05
+af_crystal_thorn         = 0.05, 0.05
+af_sea_urchin            = 0.05, 0.05
+af_fuzz_kolobok          = 0.05, 0.05
+af_electra_sparkler      = 0.15, 0.15
+af_electra_flash         = 0.15, 0.15
+af_electra_moonlight     = 0.15, 0.15
+af_dummy_dummy           = 0.12, 0.12
+af_dummy_battery         = 0.15, 0.15
+af_ice                   = 0.15, 0.15
+af_drop                  = 0.05, 0.05
+af_cristall              = 0.15, 0.15
+af_fireball              = 0.15, 0.15
+af_eye                   = 0.05, 0.05
+af_dummy_glassbeads      = 0.12, 0.12
+af_fire                  = 0.15, 0.15
+af_compass               = 0.15, 0.15
+af_oasis_heart           = 0.15, 0.15
+jup_b1_half_artifact     = 0.05, 0.05
+af_quest_b14_twisted     = 0.05, 0.05
+
+[trade_generic_sell]:merchant, artefacts
+
+[supplies_1]
+
+wpn_walther             = 1, 0.75
+wpn_hpsa                = 1, 1
+wpn_colt1911            = 1, 1
+
+wpn_lr300           = 1, 1
+wpn_mp5sd           = 1, 1
+wpn_l85             = 1, 0.75
+wpn_m4a1            = 1, 0.75
+wpn_m4              = 1, 0.75
+wpn_mossberg590     = 1, 0.75
+
+sharpening_stones_4		= 3, 0.85
+grease					= 1, 0.85
+steel_wool				= 1, 0.85
+glue_b_2				= 2, 0.85
+glue_a_2				= 2, 0.85
+glue_e_2				= 2, 0.85
+sewing_kit_b_4			= 1, 0.85
+sewing_kit_a_4			= 1, 0.85
+armor_repair_fa_2		= 2, 0.85
+sewing_kit_h			= 1, 0.85
+sewing_kit_h_2			= 1, 0.85
+sewing_kit_h_3			= 1, 0.85
+sewing_kit_h_4			= 1, 0.85
+textile_patch_b			= 2, 0.85
+textile_patch_m			= 2, 0.85
+textile_patch_e			= 2, 0.85
+
+batteries				= 2, 0.85
+batteries_ccell			= 2, 0.85
+itm_sleepbag			= 1, 0.85
+itm_qr		= 1, 0.85
+itm_backpack			= 1, 0.85
+device_torch_dummy		= 1, 0.85
+
+bread					= 1, 0.25
+conserva				= 1, 0.25
+tomato					= 1, 0.25
+sausage					= 1, 0.25
+corn					= 1, 0.25
+beans					= 1, 0.25
+chili					= 1, 0.25
+salmon					= 1, 0.25
+raisins					= 1, 0.25
+chocolate				= 1, 0.25
+nuts					= 1, 0.25
+mint_3					= 1, 0.25
+energy_drink			= 2, 1
+water_drink				= 1, 1
+mre_3					= 1, 1
+cocaine					= 1, 0.25
+cigarettes_3 			= 1, 0.5
+mineral_water_3			= 1, 1
+cigarettes_lucky_3		= 1, 0.5
+matches					= 4, 0.85
+
+wpn_knife4              = 1, 1
+wpn_binoc           = 1, 1
+
+mine                    = 2, 0.85
+ied_rpg                 = 2, 0.85
+ied                     = 2, 0.85
+grenade_rgd5			= 2, 0.85
+grenade_gd-05			= 1, 0.85
+grenade_f1				= 2, 0.85
+ammo_vog-25				= 2, 0.85
+ammo_m209				= 4, 0.85
+
+helm_m40				= 1, 1
+merc_outfit				= 1, 1
+af_kevlar				= 1, 0.85
+af_plates				= 1, 0.85
+af_camelbak				= 1, 0.85
+lead_box				= 1, 0.85
+matches					= 4, 1
+
+ammo_9x19_fmj			= 4, 0.85
+ammo_11.43x23_fmj		= 4, 0.85
+ammo_357_hp_mag			= 4, 0.85
+ammo_5.56x45_ss190		= 5, 0.85
+ammo_7.62x51_fmj		= 5, 0.85
+ammo_9x39_pab9			= 5, 0.85
+ammo_7.62x54_7h1		= 3, 0.85
+ammo_12x70_buck		    = 2, 0.85
+
+fieldcooker				= 1, 1
+kerosene_5              = 3, 0.85
+backpack_heavy          = 1, 1
+
+[supplies_2]:supplies_1
+
+wpn_beretta             = 1, 0.75
+wpn_sig220              = 1, 0.75
+wpn_usp                 = 1, 1
+wpn_fnp45               = 1, 0.75
+wpn_glock               = 1, 1
+
+wpn_g36             = 1, 0.75
+wpn_galil           = 1, 1
+wpn_sig550          = 1, 1
+wpn_spas12          = 1, 0.75
+
+ammo_9x19_fmj			= 2, 0.85
+ammo_11.43x23_fmj		= 2, 0.85
+ammo_357_hp_mag			= 2, 0.85
+ammo_5.56x45_ss190		= 2, 0.85
+ammo_7.62x51_fmj		= 2, 0.85
+ammo_9x39_pab9			= 1, 0.85
+ammo_7.62x54_7h1		= 1, 0.85
+
+ammo_9x19_pbp			= 4, 0.85
+ammo_11.43x23_hydro		= 4, 0.85
+ammo_5.56x45_ap			= 4, 0.85
+ammo_7.62x51_ap			= 4, 0.85
+ammo_9x39_ap			= 3, 0.85
+ammo_7.62x54_7h14		= 3, 0.85
+ammo_357_hp_mag_ap		= 4, 0.85
+
+mine                    = 3, 0.85
+ied_rpg                 = 3, 0.85
+ied                     = 3, 0.85
+grenade_rgd5			= 3, 0.85
+grenade_gd-05			= 2, 0.85
+grenade_f1				= 3, 0.85
+ammo_m209				= 5, 0.85
+
+toolkit_p				= 1, 1
+toolkit_p_2				= 1, 1
+toolkit_p_3				= 1, 1
+toolkit_p_4				= 1, 1
+repairkit_p				= 1, 1
+toolkit_s				= 1, 1
+toolkit_s_2				= 1, 1
+toolkit_s_3				= 1, 1
+toolkit_s_4				= 1, 1
+repairkit_s				= 1, 1
+toolkit_r				= 1, 1
+toolkit_r_2				= 1, 1
+toolkit_r_3				= 1, 1
+toolkit_r_4				= 1, 1
+repairkit_r				= 1, 1
+helmet_repair_kit		= 1, 1
+helmet_repair_kit_2		= 1, 1
+helmet_repair_kit_3		= 1, 1
+armor_repair_pro		= 1, 1
+armor_repair_pro_2		= 1, 1
+armor_repair_pro_3		= 1, 1
+armor_repair_pro_4		= 1, 1
+
+energy_drink			= 2, 1
+mre_3					= 2, 1
+
+wpn_knife5              = 1, 1
+af_aac					= 2, 1
+af_frames				= 2, 1
+af_grid					= 2, 1
+
+scientific_outfit		= 1, 1
+helm_tactic					= 1, 1
+helm_battle					= 1, 1
+
+[supplies_3]:supplies_2
+
+wpn_l96a1           = 1, 1
+wpn_g3              = 1, 1
+wpn_scar            = 1, 1
+wpn_m79             = 1, 1
+
+wpn_addon_scope_pu                = 1, 1
+wpn_addon_scope_zf4               = 1, 1
+wpn_addon_scope_susat             = 1, 1
+1p29                              = 1, 1
+kobra                             = 1, 1
+ps01                              = 1, 1
+pso1m21                           = 1, 1
+ac10632                           = 1, 1
+acog                              = 1, 1
+eot                               = 1, 1
+wpn_sil_9mm                       = 1, 1
+wpn_sil_45                        = 1, 1
+wpn_sil_pbs1                      = 1, 1
+wpn_sil_tgp-a                     = 1, 1
+wpn_sil_nato                      = 1, 1
+wpn_sil_kzrzp                     = 1, 1
+wpn_sil_9a91                      = 1, 1
+wpn_sil_gemtech                   = 1, 1
+wpn_addon_grenade_launcher        = 1, 1
+wpn_addon_grenade_launcher_m203   = 1, 1
+
+toolkit_p				= 2, 1
+toolkit_p_2				= 2, 1
+toolkit_p_3				= 2, 1
+toolkit_p_4				= 2, 1
+repairkit_p				= 2, 1
+toolkit_s				= 2, 1
+toolkit_s_2				= 2, 1
+toolkit_s_3				= 2, 1
+toolkit_s_4				= 2, 1
+repairkit_s				= 2, 1
+toolkit_r				= 2, 1
+toolkit_r_2				= 2, 1
+toolkit_r_3				= 2, 1
+toolkit_r_4				= 2, 1
+repairkit_r				= 2, 1
+helmet_repair_kit		= 2, 1
+helmet_repair_kit_2		= 2, 1
+helmet_repair_kit_3		= 2, 1
+armor_repair_pro		= 2, 1
+armor_repair_pro_2		= 2, 1
+armor_repair_pro_3		= 2, 1
+armor_repair_pro_4		= 2, 1
+
+mine                    = 4, 0.85
+ied_rpg                 = 4, 0.85
+ied                     = 4, 0.85
+grenade_rgd5			= 4, 0.85
+grenade_gd-05			= 3, 0.85
+grenade_f1				= 4, 0.85
+ammo_vog-25				= 3, 0.85
+ammo_m209				= 5, 0.85
+ammo_pkm_100			= 5, 0.85
+ammo_og-7b				= 2, 0.85
+
+exo_outfit			= 1, 1

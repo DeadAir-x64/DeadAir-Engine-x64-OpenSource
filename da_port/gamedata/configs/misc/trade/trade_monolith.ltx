@@ -1,0 +1,274 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition =  trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = {=actor_goodwill_ge(monolith:800)} supplies_3, {=actor_goodwill_ge(monolith:400)} supplies_2,  supplies_1
+buy_item_condition_factor = 0.75
+
+discounts = discount_extra_1
+
+[trade_generic_buy]:merchant
+
+dok_1                 = 0.1, 0.1 
+dok_2                 = 0.1, 0.1 
+dok_3                 = 0.1, 0.1 
+dok_4                 = 0.1, 0.1 
+dok_5                 = 0.1, 0.1 
+dok_6                 = 0.1, 0.1 
+dok_7                 = 0.1, 0.1 
+dok_8                 = 0.1, 0.1 
+lab_diary_1           = 0.1, 0.1
+lab_diary_2           = 0.1, 0.1
+lab_diary_3           = 0.1, 0.1
+box_lab_1             = 0.1, 0.1 
+
+af_thing_1               = 0.1, 0.1 ;120% cost
+af_thing_2               = 0.1, 0.1
+af_thing_3               = 0.1, 0.1
+af_thing_4               = 0.1, 0.1
+af_thing_5               = 0.1, 0.1
+af_medusa                = 0.1, 0.1
+af_vyvert                = 0.1, 0.1
+af_gravi                 = 0.1, 0.1
+af_cristall_flower       = 0.1, 0.1
+af_night_star            = 0.1, 0.1
+af_gold_fish             = 0.1, 0.1
+af_slime                 = 0.1, 0.1
+af_slug                  = 0.1, 0.1
+af_mica                  = 0.1, 0.1
+af_blood                 = 0.1, 0.1
+af_mincer_meat           = 0.1, 0.1
+af_pellicle              = 0.1, 0.1
+af_baloon                = 0.1, 0.1
+af_soul                  = 0.1, 0.1
+af_thorn                 = 0.1, 0.1
+af_crystal_thorn         = 0.1, 0.1
+af_sea_urchin            = 0.1, 0.1
+af_fuzz_kolobok          = 0.1, 0.1
+af_electra_sparkler      = 0.1, 0.1
+af_electra_flash         = 0.1, 0.1
+af_electra_moonlight     = 0.1, 0.1
+af_dummy_dummy           = 0.1, 0.1
+af_dummy_battery         = 0.1, 0.1
+af_ice                   = 0.1, 0.1
+af_drop                  = 0.1, 0.1
+af_cristall              = 0.1, 0.1
+af_fireball              = 0.1, 0.1
+af_eye                   = 0.1, 0.1
+af_dummy_glassbeads      = 0.1, 0.1
+af_fire                  = 0.1, 0.1
+af_compass               = 0.1, 0.1
+af_oasis_heart           = 0.1, 0.1
+jup_b1_half_artifact     = 0.1, 0.1
+af_quest_b14_twisted     = 0.1, 0.1
+
+[trade_generic_sell]:merchant, artefacts
+
+[supplies_1]
+cleaning_kit_p			= 2, 1
+cleaning_kit_p_2		= 2, 1
+cleaning_kit_p_3		= 2, 1
+cleaning_kit_s			= 2, 1
+cleaning_kit_s_2		= 2, 1
+cleaning_kit_s_3		= 2, 1
+cleaning_kit_r			= 2, 1
+cleaning_kit_r_2		= 2, 1
+cleaning_kit_r_3		= 2, 1
+toolkit_p				= 1, 1
+toolkit_p_2				= 1, 1
+toolkit_p_3				= 1, 1
+toolkit_p_4				= 1, 1
+repairkit_p				= 1, 1
+toolkit_s				= 1, 1
+toolkit_s_2				= 1, 1
+toolkit_s_3				= 1, 1
+toolkit_s_4				= 1, 1
+repairkit_s				= 1, 1
+toolkit_r				= 1, 1
+toolkit_r_2				= 1, 1
+toolkit_r_3				= 1, 1
+toolkit_r_4				= 1, 1
+repairkit_r				= 1, 1
+sharpening_stones		= 2, 1
+sharpening_stones_2		= 2, 1
+sharpening_stones_3		= 2, 1
+sharpening_stones_4		= 2, 1
+grease					= 3, 1
+steel_wool				= 3, 1
+glue_b					= 3, 1
+glue_b_2				= 3, 1
+glue_a					= 3, 1
+glue_a_2				= 3, 1
+glue_e					= 3, 1
+glue_e_2				= 3, 1
+sewing_kit_b			= 1, 1
+sewing_kit_b_2			= 1, 1
+sewing_kit_b_3			= 1, 1
+sewing_kit_b_4			= 1, 1
+sewing_kit_a			= 1, 1
+sewing_kit_a_2			= 1, 1
+sewing_kit_a_3			= 1, 1
+sewing_kit_a_4			= 1, 1
+sewing_kit_h			= 1, 1
+sewing_kit_h_2			= 1, 1
+sewing_kit_h_3			= 1, 1
+sewing_kit_h_4			= 1, 1
+armor_repair_fa			= 2, 1
+armor_repair_fa_2		= 2, 1
+helmet_repair_kit		= 1, 1
+helmet_repair_kit_2		= 1, 1
+helmet_repair_kit_3		= 1, 1
+armor_repair_pro		= 1, 1
+armor_repair_pro_2		= 1, 1
+armor_repair_pro_3		= 1, 1
+armor_repair_pro_4		= 1, 1
+textile_patch_b			= 2, 1
+textile_patch_m			= 2, 1
+textile_patch_e			= 2, 1
+
+
+batteries				= 4, 1
+batteries_dead			= 2, 1
+batteries_ccell			= 2, 1
+itm_sleepbag			= 1, 1
+compression_bag			= 1, 1
+itm_qr		= 1, 1
+itm_backpack			= 1, 1
+device_flashlight		= 1, 1
+device_torch_dummy		= 1, 1
+geiger					= 1, 1
+backpack_light        	= 1, 1
+backpack_heavy        	= 1, 1
+airtank					= 1, 1
+
+
+bread					= 4, 1
+breadold				= 4, 1
+conserva				= 4, 1
+tomato					= 4, 1
+corn					= 2, 1
+ration_ukr_6			= 2, 1
+ration_ru_7				= 2, 1
+mineral_water_3			= 2, 1
+caffeine_5				= 1, 1
+energy_drink			= 2, 1
+water_drink				= 2, 1
+
+
+bandage					= 4, 1
+survival_kit			= 1, 1
+medkit					= 4, 1
+medkit_army				= 1, 1
+stimpack				= 4, 1
+stimpack_army			= 1, 1
+antirad					= 4, 1
+salicidic_acid			= 2, 1
+morphine				= 2, 1
+matches					= 4, 1
+
+
+drug_booster			= 2, 1
+drug_coagulant_5		= 1, 1
+drug_antidot_2			= 4, 1
+drug_radioprotector_2	= 4, 1
+drug_psy_blockade_5		= 1, 1
+drug_charcoal_5	= 1, 1
+
+
+grenade_f1              = 6, 1
+grenade_rgd5            = 6, 1
+grenade_gd-05           = 6, 1
+wpn_knife               = 1, 1
+wpn_knife2              = 1, 1
+wpn_knife4              = 1, 1
+wpn_knife5              = 1, 1
+mine                    = 5, 1
+wpn_binoc           = 1, 1
+
+
+helm_respirator 		= 1, 1
+helm_m40				= 1, 1
+helm_hardhat			= 1, 1
+monolith_outfit			= 1, 1
+af_kevlar				= 2, 1
+af_plates				= 2, 1
+af_camelbak				= 1, 1
+af_iam					= 2, 1
+af_aac					= 2, 1
+lead_box				= 3, 1
+
+
+ammo_9x18_fmj			= 10, 1
+ammo_9x18_pmm			= 8, 1
+ammo_9x19_fmj			= 10, 1
+ammo_9x19_pbp			= 8, 1
+ammo_11.43x23_fmj		= 10, 1
+ammo_11.43x23_hydro		= 8, 1
+ammo_12x70_buck			= 15, 1
+ammo_12x76_zhekan		= 10, 1
+ammo_5.45x39_fmj		= 10, 1
+ammo_5.45x39_ap			= 10, 1
+ammo_5.56x45_ss190		= 10, 1
+ammo_5.56x45_ap			= 10, 1
+ammo_7.62x39_fmj		= 10, 1
+ammo_7.62x39_ap			= 10, 1
+ammo_7.62x51_fmj		= 10, 1
+ammo_7.62x51_ap			= 10, 1
+ammo_7.62x25_p			= 8, 1
+ammo_7.62x25_ps			= 5, 1
+ammo_7.92x33_fmj		= 5, 1
+ammo_7.92x33_ap			= 3, 1
+ammo_9x39_pab9			= 14, 1
+ammo_9x39_ap			= 8, 1
+ammo_7.62x54_ap			= 15, 1
+ammo_7.62x54_7h1		= 15, 1
+ammo_7.62x54_7h14		= 5, 1
+ammo_357_hp_mag_ap		= 6, 1
+ammo_357_hp_mag			= 8, 1
+grenade_rgd5			= 5, 1
+grenade_gd-05			= 4, 1
+grenade_f1				= 5, 1
+ammo_vog-25				= 7, 1
+ammo_m209				= 7, 1
+ammo_pkm_100            = 10, 1
+ammo_gauss              = 5, 1
+
+
+detector_simple			= 2, 1
+detector_advanced		= 2, 1
+fieldcooker				= 1, 1
+wood_stove				= 1, 1
+cooking					= 3, 1
+kerosene_5                = 2, 1
+charcoal_3                = 2, 1
+explo_balon_gas_8         = 3, 1
+explo_jerrycan_fuel_8     = 3, 1
+
+[supplies_2]:supplies_1
+af_frames				= 2, 1
+monolith_scientific_outfit	= 1, 1
+helm_tactic					= 1, 1
+helm_battle					= 1, 1
+detector_elite				= 2, 1
+sausage					= 2, 1
+beans					= 4, 1
+chili					= 4, 1
+salmon					= 2, 1
+raisins					= 3, 1
+chocolate				= 1, 1
+nuts					= 2, 1
+mint_3					= 3, 1
+stimpack_scientic		= 1, 1
+medkit_scientic			= 1, 1
+ied_rpg                 = 3, 1
+ied                     = 3, 1
+af_aam					= 1, 1
+
+[supplies_3]:supplies_2
+af_surge				= 2, 1
+af_grid					= 2, 1
+af_freon				= 2, 1
+af_cooler				= 2, 1
+ammo_og-7b				= 10, 1
