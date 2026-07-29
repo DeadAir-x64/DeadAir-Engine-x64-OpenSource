@@ -213,6 +213,10 @@ XRCORE_API int g_da_alloc_trap_left = 0;
 // Первая попытка ловила ровно 16413 и молчала — запрашивают 16405. Чтобы не угадывать это число
 // заново на каждом шаге, ловим окрестность и печатаем настоящий размер.
 XRCORE_API int g_da_alloc_trap_slack = 16;
+// Прореживание выборки. Для крупных редких блоков хватало «первых N»: они и были искомыми. Для
+// мелких так нельзя — выделений по 24 байта тысячи в секунду, и первые N окажутся случайными
+// прохожими. Берём каждое N-е совпадение, чтобы выборка равномерно накрыла окно перезагрузки.
+XRCORE_API int g_da_alloc_trap_every = 1;
 
 namespace
 {
@@ -227,6 +231,11 @@ void da_alloc_trap(size_t size)
     if (delta > g_da_alloc_trap_slack || delta < -g_da_alloc_trap_slack)
         return;
     if (g_da_alloc_trap_left <= 0 || g_da_trap_inside)
+        return;
+
+    static u32 matches = 0;
+    ++matches;
+    if (g_da_alloc_trap_every > 1 && (matches % (u32)g_da_alloc_trap_every) != 0)
         return;
 
     g_da_trap_inside = true;

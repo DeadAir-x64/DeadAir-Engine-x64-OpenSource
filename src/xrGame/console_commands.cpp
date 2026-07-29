@@ -2463,6 +2463,8 @@ void CCC_RegisterCommands()
         CMD4(CCC_Integer, "da_alloc_trap_count", &g_da_alloc_trap_left, 0, 64);
         extern int g_da_alloc_trap_slack; // допуск: блок в куче больше запрошенного на заголовок
         CMD4(CCC_Integer, "da_alloc_trap_slack", &g_da_alloc_trap_slack, 0, 4096);
+        extern int g_da_alloc_trap_every; // прореживание: брать каждое N-е совпадение
+        CMD4(CCC_Integer, "da_alloc_trap_every", &g_da_alloc_trap_every, 1, 100000);
     }
 
     // game
