@@ -21,6 +21,10 @@ constexpr size_t MAX_RUNS = 8;
 constexpr size_t MAX_MARKS = 24;
 constexpr int SETTLE_FRAMES = 180; // три секунды при 60 кадрах
 constexpr size_t SIZE_BUCKETS = 4097; // точные размеры блоков от 0 до 4096 байт
+// Крупные блоки — по степеням двойки от 4 КБ и выше. Первая версия гистограммы обрывалась на 4 КБ,
+// и это было ошибкой: мелочь объяснила лишь несколько мегабайт из ста восьмидесяти, а весь вес
+// оказался в блоках, которых она не видела.
+constexpr size_t BIG_BUCKETS = 24;
 
 struct Mark
 {
@@ -52,6 +56,8 @@ struct Run
     // 96 байт, и утечка названа. Хранятся только размеры до SIZE_BUCKETS, крупных блоков мало и они
     // видны по общей сумме.
     xr_vector<u32> size_hist;
+    xr_vector<u32> big_hist;  // штук
+    xr_vector<size_t> big_kb; // и сколько килобайт в каждом ведре
     // Какие звуки звучат: имя -> {всего копий, из них БЕЗ живого объекта-владельца}.
     // Осиротевший эмиттер — это и есть утечка в чистом виде: объект снесён, звук продолжает играть.
     struct SndItem { shared_str name; u32 total; u32 orphan; };
@@ -96,11 +102,25 @@ const char* sign(long long v) { return v > 0 ? "+" : ""; }
 //
 // Стоит дорого: HeapLock останавливает остальные потоки на время обхода. Поэтому вызывается один
 // раз за прогон, в момент, когда мир уже устоялся, и гасится крутилкой da_mem_heapwalk.
-void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist)
+size_t big_bucket(size_t size)
+{
+    size_t bucket = 0;
+    while (size > 4096 && bucket + 1 < BIG_BUCKETS)
+    {
+        size >>= 1;
+        ++bucket;
+    }
+    return bucket;
+}
+
+void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u32>& big,
+    xr_vector<size_t>& big_kb)
 {
     blocks = 0;
     bytes = 0;
     hist.assign(SIZE_BUCKETS, 0);
+    big.assign(BIG_BUCKETS, 0);
+    big_kb.assign(BIG_BUCKETS, 0);
 
     HANDLE heaps[64];
     const DWORD count = GetProcessHeaps(64, heaps);
@@ -118,6 +138,12 @@ void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist)
                 bytes += entry.cbData;
                 if (entry.cbData < SIZE_BUCKETS)
                     ++hist[entry.cbData];
+                else
+                {
+                    const size_t b = big_bucket(entry.cbData);
+                    ++big[b];
+                    big_kb[b] += entry.cbData / 1024;
+                }
             }
         }
         HeapUnlock(heaps[i]);
@@ -252,7 +278,7 @@ void finish_run(Run& run)
     if (g_da_mem_heapwalk)
     {
         size_t blocks = 0, bytes = 0;
-        walk_heaps(blocks, bytes, run.size_hist);
+        walk_heaps(blocks, bytes, run.size_hist, run.big_hist, run.big_kb);
         run.heap_blocks = blocks;
         run.heap_kb = bytes / 1024;
     }
@@ -548,6 +574,33 @@ void DA_MemDump()
                 growth[k].second * (long long)sz / 1024 / 1024, first_run.size_hist[sz],
                 last_run.size_hist[sz]);
         }
+    }
+
+    // Крупные блоки: именно они несут вес.
+    if (first_run.big_hist.size() == BIG_BUCKETS && last_run.big_hist.size() == BIG_BUCKETS)
+    {
+        Msg("~ [DA_MEM] --- крупные блоки: от->до, штук и МБ по прогонам ---");
+        for (size_t b = 0; b < BIG_BUCKETS; ++b)
+        {
+            if (last_run.big_hist[b] == 0 && first_run.big_hist[b] == 0)
+                continue;
+
+            const size_t from_kb = (size_t(4) << b);
+            string512 line;
+            xr_sprintf(line, "~ [DA_MEM]   %6u..%-6u КБ", (u32)from_kb, (u32)(from_kb * 2));
+            pad_to(line, 32);
+            for (const Run& r : g_runs)
+            {
+                string64 cell;
+                if (r.big_hist.size() == BIG_BUCKETS)
+                    xr_sprintf(cell, " %6u/%-6u", r.big_hist[b], (u32)(r.big_kb[b] / 1024));
+                else
+                    xr_sprintf(cell, " %13s", "-");
+                xr_strcat(line, cell);
+            }
+            Msg("%s", line);
+        }
+        Msg("~ [DA_MEM] (в каждой клетке: штук блоков / их суммарные МБ)");
     }
 
     Msg("~ [DA_MEM] Растут ЖИВЫЕ мегабайты — это утечка. Растёт только закоммичено, а живые стоят —"
