@@ -21,7 +21,10 @@ struct Mark
 {
     shared_str label;
     size_t committed_kb = 0; // память процесса на момент отметки
-    size_t delta_kb = 0;     // сколько прибавилось с предыдущей отметки этого же прогона
+    // Разница с предыдущей отметкой. ЗНАКОВАЯ, и это принципиально: отрицательное значение — это
+    // память, которая ВЕРНУЛАСЬ. Первая версия обрезала минус в ноль, и самый нужный сигнал —
+    // «уничтожение старого симулятора освободило столько-то» — оказывался невидим.
+    long long delta_kb = 0;
 };
 
 struct Run
@@ -129,9 +132,7 @@ void DA_MemMark(const char* label)
     Mark m;
     m.label = label ? label : "?";
     m.committed_kb = now;
-    m.delta_kb = run.marks.empty() ? 0 : (now > run.marks.back().committed_kb
-                                             ? now - run.marks.back().committed_kb
-                                             : 0);
+    m.delta_kb = run.marks.empty() ? 0 : (long long)now - (long long)run.marks.back().committed_kb;
     run.marks.push_back(m);
 }
 
@@ -316,20 +317,47 @@ void DA_MemDump()
     }
 
     // --- по фазам: где именно прибавляется ---
-    Msg("~ [DA_MEM] --- прирост по фазам загрузки, МБ ---");
-    const Run& first = g_runs.front();
-    for (size_t m = 0; m < first.marks.size(); ++m)
+    // Строки собираются ПО ИМЕНИ фазы, а не по её порядковому номеру. Это не педантизм: полная
+    // загрузка уровня и перезагрузка сохранения проходят РАЗНЫЕ наборы фаз, и первая версия,
+    // сопоставлявшая их по позиции, печатала цифры перезагрузки под подписями полной загрузки.
+    // Таблица выглядела осмысленной и врала.
+    Msg("~ [DA_MEM] --- изменение памяти по фазам, МБ (минус = память вернулась) ---");
+
+    xr_vector<shared_str> labels;
+    for (const Run& r : g_runs)
+        for (const Mark& m : r.marks)
+        {
+            bool known = false;
+            for (const shared_str& l : labels)
+                if (l == m.label)
+                {
+                    known = true;
+                    break;
+                }
+            if (!known)
+                labels.push_back(m.label);
+        }
+
+    for (const shared_str& label : labels)
     {
         string512 line;
-        xr_sprintf(line, "~ [DA_MEM]   %s", first.marks[m].label.c_str());
+        xr_sprintf(line, "~ [DA_MEM]   %s", label.c_str());
         pad_to(line, 36); // выравнивание по символам: подписи русские
-        for (size_t i = 0; i < g_runs.size(); ++i)
+        for (const Run& r : g_runs)
         {
+            const Mark* found = nullptr;
+            for (const Mark& m : r.marks)
+                if (m.label == label)
+                {
+                    found = &m;
+                    break;
+                }
+
             string32 cell;
-            if (m < g_runs[i].marks.size())
-                xr_sprintf(cell, " %7u", (u32)(g_runs[i].marks[m].delta_kb / 1024));
+            if (found)
+                xr_sprintf(cell, " %7lld", found->delta_kb / 1024);
             else
-                xr_sprintf(cell, " %7s", "-");
+                xr_sprintf(cell, " %7s", "-"); // такой фазы в этом типе загрузки нет
             xr_strcat(line, cell);
         }
         Msg("%s", line);
