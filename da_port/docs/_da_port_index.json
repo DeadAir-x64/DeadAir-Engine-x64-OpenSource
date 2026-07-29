@@ -307,163 +307,171 @@
 "The author's value; governs STATIC visuals - trees and bushes, grass is unaffected by it."
 ],
 [
-209,
+185,
+"16 rather than the stock 8, and this is not a \"more is prettier\" bump. Under any upscaler"
+],
+[
+217,
 "64 is what the original actually rendered with, not merely the stock value: the author's"
 ],
 [
-232,
+240,
 "Tone mapping and bloom below are the author's values, taken from the Dead Air sources"
 ],
 [
-237,
+245,
 "float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f"
 ],
 [
-238,
+246,
 "float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f"
 ],
 [
-239,
+247,
 "float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f"
 ],
 [
-241,
+249,
 "float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f"
 ],
 [
-243,
+251,
 "float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f"
 ],
 [
-247,
+255,
 "float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)"
 ],
 [
-262,
+270,
 "float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)"
 ],
 [
-263,
+271,
 "180, the value beside it, which is the author's and also the console maximum. At 100 the"
 ],
 [
-267,
+275,
 "51 instead of the stock 180."
 ],
 [
-278,
+286,
 "The author's lighting balance: a much stronger sun against a heavily damped ambient and"
 ],
 [
-281,
+289,
 "float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f"
 ],
 [
-282,
+290,
 "float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f"
 ],
 [
-283,
+291,
 "float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f"
 ],
 [
-306,
+314,
 "Dead Air compatibility stubs (x32 mod commands)"
 ],
 [
-334,
+342,
 "Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night"
 ],
 [
-344,
+352,
 "Ready-made grading profiles, so a player can pick a look instead of hunting for numbers."
 ],
 [
-359,
+367,
 "Default grading for Dead Air's palette: a slight push towards warm. The mod's world is"
 ],
 [
-371,
+379,
 "Ceiling on shadow-casting lights per frame. 0 restores the stock \"no limit\"."
 ],
 [
-403,
+411,
 "float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)"
 ],
 [
-543,
+551,
 "---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------"
 ],
 [
-550,
+558,
 "Both levels default to off, unlike the author's 1/1. This subsystem comes from his"
 ],
 [
-587,
+595,
 "Presets for the shadow-casting light ceiling, exposed in the video options."
 ],
 [
-589,
+597,
 "One-touch performance preset for the Performance tab."
 ],
 [
-602,
+610,
 "Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран по решению Павла:"
 ],
 [
 666,
+"Note the first entry, and that it is 0 rather than a count: 0 means \"no budget at all\","
+],
+[
+684,
 "r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно."
 ],
 [
-839,
+857,
 "Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -"
 ],
 [
-873,
+891,
 "Applies one of the grading profiles. Values mirror the .ltx profiles shipped in"
 ],
 [
-1164,
+1182,
 "Geometry cut-off, ported from the author's build. Defaults match his: both levels on"
 ],
 [
-1166,
+1184,
 "Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are"
 ],
 [
-1173,
+1191,
 "GPU time per render phase, N frames into the log. See da_gpu_timer.h."
 ],
 [
-1185,
+1203,
 "CMD3(CCC_PerfPreset, \"r__perf_preset\", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]"
 ],
 [
-1187,
+1205,
 "CMD3(CCC_Token, \"r__light_shadow_budget\", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]"
 ],
 [
-1255,
+1273,
 "The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the"
 ],
 [
-1319,
+1337,
 "Un-commented: this drives r_dtex_range, the distance over which the detail texture"
 ],
 [
-1380,
+1398,
 "CMD3(CCC_MSAA, \"r3_msaa\", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list"
 ],
 [
-1411,
+1429,
 "Dead Air compatibility stub commands"
 ],
 [
-1437,
+1455,
 "CMD4(CCC_Float, \"r2_vibrance_val\",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate"
 ],
 [
-1438,
+1456,
 "CMD3(CCC_GradingPreset, \"r__grading_preset\", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]"
 ]
 ],
@@ -1763,6 +1771,18 @@
 [
 504,
 "Time the sleep, and the whole of this function, because the parts measured above stopped"
+],
+[
+820,
+"Диагностика зависания при альт-табе."
+],
+[
+836,
+"Msg(\"* [DA_PORT] окно: %s (b_is_Active=%d, always_active=%d)\", activated ? \"фокус получен\" : \"фокус потерян\","
+],
+[
+852,
+"При rs_always_active планировщик НЕ останавливаем."
 ]
 ],
 "xray-16/src/xrEngine/Device.h": [
@@ -1865,6 +1885,26 @@
 [
 526,
 "std::locale(\"\") throws std::runtime_error under MinGW GCC on Windows"
+],
+[
+714,
+"Кто сейчас владеет вводом."
+],
+[
+732,
+"Msg(\"~ [DA_PORT] ввод %s, приёмников %u:%s\", what, (u32)stack.size(), tail);"
+],
+[
+740,
+"Один приёмник — одна запись в стеке. Повторный захват ПЕРЕНОСИТ его наверх, а не"
+],
+[
+757,
+"Msg(\"~ [DA_PORT] ввод: приёмник %s захватывает повторно — переносим наверх, дубликат не создаём\","
+],
+[
+792,
+"Раньше эта ветка молчала, и в логе выглядело так, будто захватов больше,"
 ]
 ],
 "xray-16/src/xrEngine/xr_ioc_cmd.cpp": [
@@ -2427,6 +2467,10 @@
 [
 131,
 "Night vision is owned by the Lua script: itms_manager.script on_key_press catches"
+],
+[
+288,
+"Отладочный пульс отсюда снят: он показал, что команда доходит до движения нормально,"
 ]
 ],
 "xray-16/src/xrGame/Actor_Movement.cpp": [
@@ -3045,6 +3089,18 @@
 [
 142,
 "ESC first closes any open UI dialog/inventory/PDA/talk,"
+],
+[
+511,
+"Почему нажатие не доходит до актёра — замер вместо гадания."
+],
+[
+527,
+"Msg(\"! [DA_PORT] ввод отброшен: %s\", reason);"
+],
+[
+533,
+"Оставлена только эта отметка. Пульсы «клавиша дошла / команда дошла до движения»"
 ]
 ],
 "xray-16/src/xrGame/level_path_builder.h": [
@@ -3081,6 +3137,12 @@
 [
 225,
 "Msg(\"! [DA_PORT] vertex_position: invalid level_vertex_id %u\", level_vertex_id);"
+]
+],
+"xray-16/src/xrGame/Level_start.cpp": [
+[
+24,
+"Сброс блокировки ввода при старте уровня — иначе она переживает смерть и загрузку."
 ]
 ],
 "xray-16/src/xrGame/MainMenu.cpp": [
@@ -3333,6 +3395,10 @@
 [
 160,
 "Dead Air reads the condition exponent from config ([trade] buy_condition_koeff),"
+],
+[
+163,
+".11f and the clamp are the author's, and they go together: at full condition the base"
 ]
 ],
 "xray-16/src/xrGame/UIGameSP.cpp": [
@@ -3347,27 +3413,35 @@
 "multiplier domain (CoC lineage): identity magnification, not fov degrees"
 ],
 [
-580,
+448,
+"Запоминаем конфигурационные статусы: биты поломок 28/29/30 глушат крепление в"
+],
+[
+586,
 "pick the malfunction mask back up from the server object, which is what carried it"
 ],
 [
-645,
+651,
 "P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon"
 ],
 [
-675,
+681,
 "must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would"
 ],
 [
-1220,
+933,
+"Поломка КРЕПЛЕНИЯ аддона (биты маски 28 — прицел, 29 — глушитель, 30 — подствольник)."
+],
+[
+1250,
 "Dead Air belt-only reload for the actor: backpack ammo can't be chambered,"
 ],
 [
-1270,
+1300,
 "шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type)."
 ],
 [
-1480,
+1510,
 "multiplier domain: back to identity magnification (was g_fov degrees)"
 ]
 ],
@@ -3377,7 +3451,11 @@
 "Weapons Evolution compat: unjam_motion_mark.script clears the jam from an"
 ],
 [
-372,
+191,
+"Значение из конфига, запомненное при Load. Биты поломок 28/29/30 временно переводят"
+],
+[
+379,
 "float fAmmoMisfire{ 0.f }; // базовый шанс осечки из конфига патрона (misfire_chance)"
 ]
 ],
@@ -3445,8 +3523,20 @@
 "Breakages from firing - the author's block, revived behind \"g_weapon_malfunctions\"."
 ],
 [
-1189,
+1013,
+"Сломанное крепление (биты 28/29/30) не принимает аддон."
+],
+[
+1044,
+"Сломанное крепление держит аддон намертво — снять его нельзя, пока не починишь."
+],
+[
+1199,
 "multiplier domain (CoC lineage): default was 50.0 DEGREES, which under"
+],
+[
+1410,
+"Переводчик огня: бит 27 маски поломок."
 ]
 ],
 "xray-16/src/xrGame/WeaponMagazined.h": [
@@ -3457,6 +3547,10 @@
 [
 127,
 "Dead Air's two malfunction keys, finally read by the engine."
+],
+[
+163,
+"void TryJamFireModeSelector(); // [DA_PORT] бит 27 маски поломок"
 ]
 ],
 "xray-16/src/xrGame/xrGame.cpp": [

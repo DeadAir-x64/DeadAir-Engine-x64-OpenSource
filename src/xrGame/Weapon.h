@@ -36,7 +36,7 @@ public:
     // It is a 32-BIT BITMASK - each bit is a distinct malfunction (scripts test e.g. bit 28 via
     // bit_and(get_weapon_condition_type(), 2^28) and loop bits 0..31). MUST be u32, not u8, or bits 8..31
     // are silently truncated and the scope/repair/malfunction logic breaks.
-    // Runtime-only for now (not net/save serialized — resets on load; TODO persist).
+    // Serialized: net_Export/net_Import here + CSE_ALifeItemWeapon (STATE_/UPDATE_), spawn version 129.
     u32 m_weapon_condition_type{0};
 
     // Generic
@@ -187,6 +187,13 @@ protected:
     ALife::EWeaponAddonStatus m_eScopeStatus;
     ALife::EWeaponAddonStatus m_eSilencerStatus;
     ALife::EWeaponAddonStatus m_eGrenadeLauncherStatus;
+
+    // [DA_PORT] Значение из конфига, запомненное при Load. Биты поломок 28/29/30 временно переводят
+    // статус крепления в eAddonDisabled, а восстанавливать его надо в то, что было в конфиге, —
+    // поэтому исходное значение нельзя терять. Автор: da_alpha/src_/xrGame/Weapon.h:305-309.
+    ALife::EWeaponAddonStatus m_eScopeStatusLoad{ALife::eAddonDisabled};
+    ALife::EWeaponAddonStatus m_eSilencerStatusLoad{ALife::eAddonDisabled};
+    ALife::EWeaponAddonStatus m_eGrenadeLauncherStatusLoad{ALife::eAddonDisabled};
 
     //названия секций подключаемых аддонов
     shared_str m_sScopeName;

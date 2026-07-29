@@ -1010,9 +1010,12 @@ bool CWeaponMagazined::CanAttach(PIItem pIItem)
     CSilencer* pSilencer = smart_cast<CSilencer*>(pIItem);
     CGrenadeLauncher* pGrenadeLauncher = smart_cast<CGrenadeLauncher*>(pIItem);
 
+    // [DA_PORT] Сломанное крепление (биты 28/29/30) не принимает аддон.
+    // Автор: da_alpha/src_/xrGame/WeaponMagazined.cpp:1205-1236.
     if (pScope && m_eScopeStatus == ALife::eAddonAttachable &&
         (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonScope) == 0 /*&&
-                (m_scopes[cur_scope]->m_sScopeName == pIItem->object().cNameSect())*/)
+                (m_scopes[cur_scope]->m_sScopeName == pIItem->object().cNameSect())*/
+        && !(m_weapon_condition_type & (1 << 28)))
     {
         auto it = m_scopes.begin();
         for (; it != m_scopes.end(); ++it)
@@ -1024,11 +1027,13 @@ bool CWeaponMagazined::CanAttach(PIItem pIItem)
     }
     else if (pSilencer && m_eSilencerStatus == ALife::eAddonAttachable &&
         (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonSilencer) == 0 &&
-        (m_sSilencerName == pIItem->object().cNameSect()))
+        (m_sSilencerName == pIItem->object().cNameSect())
+        && !(m_weapon_condition_type & (1 << 29)))
         return true;
     else if (pGrenadeLauncher && m_eGrenadeLauncherStatus == ALife::eAddonAttachable &&
         (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher) == 0 &&
-        (m_sGrenadeLauncherName == pIItem->object().cNameSect()))
+        (m_sGrenadeLauncherName == pIItem->object().cNameSect())
+        && !(m_weapon_condition_type & (1 << 30)))
         return true;
     else
         return inherited::CanAttach(pIItem);
@@ -1036,8 +1041,11 @@ bool CWeaponMagazined::CanAttach(PIItem pIItem)
 
 bool CWeaponMagazined::CanDetach(const char* item_section_name)
 {
+    // [DA_PORT] Сломанное крепление держит аддон намертво — снять его нельзя, пока не починишь.
+    // Автор: da_alpha/src_/xrGame/WeaponMagazined.cpp:1252-1278.
     if (m_eScopeStatus == ALife::eAddonAttachable &&
-        0 != (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonScope)) /* &&
+        0 != (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonScope)
+        && !(m_weapon_condition_type & (1 << 28))) /* &&
            (m_scopes[cur_scope]->m_sScopeName	== item_section_name))*/
     {
         auto it = m_scopes.begin();
@@ -1050,11 +1058,13 @@ bool CWeaponMagazined::CanDetach(const char* item_section_name)
     }
     //	   return true;
     else if (m_eSilencerStatus == ALife::eAddonAttachable &&
-        0 != (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonSilencer) && (m_sSilencerName == item_section_name))
+        0 != (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonSilencer) && (m_sSilencerName == item_section_name)
+        && !(m_weapon_condition_type & (1 << 29)))
         return true;
     else if (m_eGrenadeLauncherStatus == ALife::eAddonAttachable &&
         0 != (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher) &&
-        (m_sGrenadeLauncherName == item_section_name))
+        (m_sGrenadeLauncherName == item_section_name)
+        && !(m_weapon_condition_type & (1 << 30)))
         return true;
     else
         return inherited::CanDetach(item_section_name);
@@ -1397,14 +1407,32 @@ bool CWeaponMagazined::SwitchMode()
     return true;
 }
 
+// [DA_PORT] Переводчик огня: бит 27 маски поломок.
+// Автор: da_alpha/src_/xrGame/WeaponMagazined.cpp:1715-1765. Две части, обе его:
+//  1) заклинивший переводчик не переключается вовсе — выход до смены режима;
+//  2) сама попытка переключения может его заклинить, тем вероятнее, чем изношенней ствол:
+//     бросок Random.randF(0, 0.9) против состояния, поднятого до минимума 0.2 (у совсем убитого
+//     оружия шанс не растёт бесконечно). При состоянии 0.9 и выше переводчик не ломается никогда.
+void CWeaponMagazined::TryJamFireModeSelector()
+{
+    float cond = GetCondition();
+    clamp(cond, 0.2f, cond);
+
+    if (::Random.randF(0.f, 0.9f) > cond)
+        m_weapon_condition_type |= (1 << 27);
+}
+
 void CWeaponMagazined::OnNextFireMode()
 {
     if (!m_bHasDifferentFireModes)
         return;
     if (GetState() != eIdle)
         return;
+    if (m_weapon_condition_type & (1 << 27))
+        return;
     m_iCurFireMode = (m_iCurFireMode + 1 + m_aFireModes.size()) % m_aFireModes.size();
     SetQueueSize(GetCurrentFireMode());
+    TryJamFireModeSelector();
 };
 
 void CWeaponMagazined::OnPrevFireMode()
@@ -1413,8 +1441,11 @@ void CWeaponMagazined::OnPrevFireMode()
         return;
     if (GetState() != eIdle)
         return;
+    if (m_weapon_condition_type & (1 << 27))
+        return;
     m_iCurFireMode = (m_iCurFireMode - 1 + m_aFireModes.size()) % m_aFireModes.size();
     SetQueueSize(GetCurrentFireMode());
+    TryJamFireModeSelector();
 };
 
 void CWeaponMagazined::OnH_A_Chield()

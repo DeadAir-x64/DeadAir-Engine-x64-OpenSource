@@ -445,6 +445,12 @@ void CWeapon::Load(LPCSTR section)
     m_eSilencerStatus = (ALife::EWeaponAddonStatus)pSettings->r_s32(section, "silencer_status");
     m_eGrenadeLauncherStatus = (ALife::EWeaponAddonStatus)pSettings->r_s32(section, "grenade_launcher_status");
 
+    // [DA_PORT] Запоминаем конфигурационные статусы: биты поломок 28/29/30 глушат крепление в
+    // eAddonDisabled, а по ремонту его надо вернуть ровно в то, что стоит в конфиге. См. UpdateCL.
+    m_eScopeStatusLoad = m_eScopeStatus;
+    m_eSilencerStatusLoad = m_eSilencerStatus;
+    m_eGrenadeLauncherStatusLoad = m_eGrenadeLauncherStatus;
+
     m_zoom_params.m_bZoomEnabled = !!pSettings->r_bool(section, "zoom_enabled");
     m_zoom_params.m_fZoomRotateTime = READ_IF_EXISTS(pSettings, r_float, section, "zoom_rotate_time", ROTATION_TIME);
 
@@ -923,6 +929,30 @@ void CWeapon::UpdateCL()
 
     if (m_zoom_params.m_pVision)
         m_zoom_params.m_pVision->Update();
+
+    // [DA_PORT] Поломка КРЕПЛЕНИЯ аддона (биты маски 28 — прицел, 29 — глушитель, 30 — подствольник).
+    // Автор: da_alpha/src_/xrGame/Weapon.cpp:1058-1071. Смысл: сломанное посадочное место перестаёт
+    // принимать аддон — статус становится eAddonDisabled, и оружие выглядит как не умеющее его носить.
+    // Условие "аддон сейчас НЕ пристёгнут" принципиально: уже стоящий аддон не должен исчезать с модели,
+    // он просто не снимается (запрет живёт в CWeaponMagazined::CanDetach). Постоянные крепления
+    // (eAddonPermanent, вроде встроенного прицела СВД) не ломаются вовсе.
+    if ((m_weapon_condition_type & (1 << 30)) && (0 == (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher)) &&
+        (ALife::eAddonPermanent != m_eGrenadeLauncherStatus))
+        m_eGrenadeLauncherStatus = ALife::eAddonDisabled;
+    else
+        m_eGrenadeLauncherStatus = m_eGrenadeLauncherStatusLoad;
+
+    if ((m_weapon_condition_type & (1 << 29)) && (0 == (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonSilencer)) &&
+        (ALife::eAddonPermanent != m_eSilencerStatus))
+        m_eSilencerStatus = ALife::eAddonDisabled;
+    else
+        m_eSilencerStatus = m_eSilencerStatusLoad;
+
+    if ((m_weapon_condition_type & (1 << 28)) && (0 == (m_flagsAddOnState & CSE_ALifeItemWeapon::eWeaponAddonScope)) &&
+        (ALife::eAddonPermanent != m_eScopeStatus))
+        m_eScopeStatus = ALife::eAddonDisabled;
+    else
+        m_eScopeStatus = m_eScopeStatusLoad;
 }
 void CWeapon::EnableActorNVisnAfterZoom()
 {

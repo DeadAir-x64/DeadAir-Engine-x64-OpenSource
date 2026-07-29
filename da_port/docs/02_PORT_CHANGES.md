@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **931 правк(и) в 199 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **954 правк(и) в 200 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*66 файл(ов), 366 правк(и)*
+*66 файл(ов), 368 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_StandartBinding.cpp`
@@ -150,46 +150,48 @@
 - **:26** — Which entry the upscaler list stands on; needed by CCC_MSAA further down. Declared HERE,
 - **:113** — 8x убран из списка (значение 3 в стоковой таблице). Три причины, и все три — про то, что
 - **:166** — The author's value; governs STATIC visuals - trees and bushes, grass is unaffected by it.
-- **:209** — 64 is what the original actually rendered with, not merely the stock value: the author's
-- **:232** — Tone mapping and bloom below are the author's values, taken from the Dead Air sources
-- **:237** — float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
-- **:238** — float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
-- **:239** — float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
-- **:241** — float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
-- **:243** — float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
-- **:247** — float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
-- **:262** — float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
-- **:263** — 180, the value beside it, which is the author's and also the console maximum. At 100 the
-- **:267** — 51 instead of the stock 180.
-- **:278** — The author's lighting balance: a much stronger sun against a heavily damped ambient and
-- **:281** — float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
-- **:282** — float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
-- **:283** — float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
-- **:306** — Dead Air compatibility stubs (x32 mod commands)
-- **:334** — Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
-- **:344** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
-- **:359** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
-- **:371** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
-- **:403** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
-- **:543** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
-- **:550** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
-- **:587** — Presets for the shadow-casting light ceiling, exposed in the video options.
-- **:589** — One-touch performance preset for the Performance tab.
-- **:602** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран по решению Павла:
-- **:666** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
-- **:839** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
-- **:873** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
-- **:1164** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
-- **:1166** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
-- **:1173** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
-- **:1185** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
-- **:1187** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
-- **:1255** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
-- **:1319** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
-- **:1380** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
-- **:1411** — Dead Air compatibility stub commands
-- **:1437** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
-- **:1438** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
+- **:185** — 16 rather than the stock 8, and this is not a "more is prettier" bump. Under any upscaler
+- **:217** — 64 is what the original actually rendered with, not merely the stock value: the author's
+- **:240** — Tone mapping and bloom below are the author's values, taken from the Dead Air sources
+- **:245** — float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
+- **:246** — float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
+- **:247** — float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
+- **:249** — float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
+- **:251** — float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
+- **:255** — float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
+- **:270** — float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
+- **:271** — 180, the value beside it, which is the author's and also the console maximum. At 100 the
+- **:275** — 51 instead of the stock 180.
+- **:286** — The author's lighting balance: a much stronger sun against a heavily damped ambient and
+- **:289** — float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
+- **:290** — float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
+- **:291** — float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
+- **:314** — Dead Air compatibility stubs (x32 mod commands)
+- **:342** — Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
+- **:352** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
+- **:367** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
+- **:379** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
+- **:411** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
+- **:551** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
+- **:558** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
+- **:595** — Presets for the shadow-casting light ceiling, exposed in the video options.
+- **:597** — One-touch performance preset for the Performance tab.
+- **:610** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран по решению Павла:
+- **:666** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
+- **:684** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
+- **:857** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
+- **:891** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
+- **:1182** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
+- **:1184** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
+- **:1191** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
+- **:1203** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
+- **:1205** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
+- **:1273** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
+- **:1337** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
+- **:1398** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
+- **:1429** — Dead Air compatibility stub commands
+- **:1455** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+- **:1456** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
 
 ### `Layers/xrRender/xrRender_console.h`
 
@@ -583,7 +585,7 @@
 
 ## Движок и устройство
 
-*18 файл(ов), 135 правк(и)*
+*18 файл(ов), 143 правк(и)*
 
 
 ### `xrEngine/CameraManager.cpp`
@@ -621,6 +623,9 @@
 - **:432** — Watchdog: silent until a frame actually misbehaves.
 - **:491** — The budget is computed in NANOSECONDS.
 - **:504** — Time the sleep, and the whole of this function, because the parts measured above stopped
+- **:820** — Диагностика зависания при альт-табе.
+- **:836** — Msg("* [DA_PORT] окно: %s (b_is_Active=%d, always_active=%d)", activated ? "фокус получен" : "фокус потерян",
+- **:852** — При rs_always_active планировщик НЕ останавливаем.
 
 ### `xrEngine/Device.h`
 
@@ -686,6 +691,11 @@
 ### `xrEngine/xr_input.cpp`
 
 - **:526** — std::locale("") throws std::runtime_error under MinGW GCC on Windows
+- **:714** — Кто сейчас владеет вводом.
+- **:732** — Msg("~ [DA_PORT] ввод %s, приёмников %u:%s", what, (u32)stack.size(), tail);
+- **:740** — Один приёмник — одна запись в стеке. Повторный захват ПЕРЕНОСИТ его наверх, а не
+- **:757** — Msg("~ [DA_PORT] ввод: приёмник %s захватывает повторно — переносим наверх, дубликат не создаём",
+- **:792** — Раньше эта ветка молчала, и в логе выглядело так, будто захватов больше,
 
 ### `xrEngine/xr_ioc_cmd.cpp`
 
@@ -778,7 +788,7 @@
 
 ## Игровая логика
 
-*60 файл(ов), 282 правк(и)*
+*61 файл(ов), 295 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -848,6 +858,7 @@
 
 - **:42** — item placement-preview mode: fire = confirm, use/reload = cancel; swallow the rest so
 - **:131** — Night vision is owned by the Lua script: itms_manager.script on_key_press catches
+- **:288** — Отладочный пульс отсюда снят: он показал, что команда доходит до движения нормально,
 
 ### `xrGame/Actor_Movement.cpp`
 
@@ -963,6 +974,13 @@
 
 - **:132** — Dead Air's eKeyPress script hook reacts to the raw ESCAPE scancode by force-opening
 - **:142** — ESC first closes any open UI dialog/inventory/PDA/talk,
+- **:511** — Почему нажатие не доходит до актёра — замер вместо гадания.
+- **:527** — Msg("! [DA_PORT] ввод отброшен: %s", reason);
+- **:533** — Оставлена только эта отметка. Пульсы «клавиша дошла / команда дошла до движения»
+
+### `xrGame/Level_start.cpp`
+
+- **:24** — Сброс блокировки ввода при старте уровня — иначе она переживает смерть и загрузку.
 
 ### `xrGame/MainMenu.cpp`
 
@@ -1011,17 +1029,20 @@
 ### `xrGame/Weapon.cpp`
 
 - **:107** — multiplier domain (CoC lineage): identity magnification, not fov degrees
-- **:580** — pick the malfunction mask back up from the server object, which is what carried it
-- **:645** — P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon
-- **:675** — must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would
-- **:1220** — Dead Air belt-only reload for the actor: backpack ammo can't be chambered,
-- **:1270** — шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type).
-- **:1480** — multiplier domain: back to identity magnification (was g_fov degrees)
+- **:448** — Запоминаем конфигурационные статусы: биты поломок 28/29/30 глушат крепление в
+- **:586** — pick the malfunction mask back up from the server object, which is what carried it
+- **:651** — P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon
+- **:681** — must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would
+- **:933** — Поломка КРЕПЛЕНИЯ аддона (биты маски 28 — прицел, 29 — глушитель, 30 — подствольник).
+- **:1250** — Dead Air belt-only reload for the actor: backpack ammo can't be chambered,
+- **:1300** — шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type).
+- **:1510** — multiplier domain: back to identity magnification (was g_fov degrees)
 
 ### `xrGame/Weapon.h`
 
 - **:132** — Weapons Evolution compat: unjam_motion_mark.script clears the jam from an
-- **:372** — float fAmmoMisfire{ 0.f }; // базовый шанс осечки из конфига патрона (misfire_chance)
+- **:191** — Значение из конфига, запомненное при Load. Биты поломок 28/29/30 временно переводят
+- **:379** — float fAmmoMisfire{ 0.f }; // базовый шанс осечки из конфига патрона (misfire_chance)
 
 ### `xrGame/WeaponAmmo.cpp`
 
@@ -1053,12 +1074,16 @@
 - **:221** — Dead Air core mechanic: the actor reloads only with ammo carried on the belt
 - **:602** — A broken weapon loses rate of fire, and unevenly - the author's block, from
 - **:639** — Breakages from firing - the author's block, revived behind "g_weapon_malfunctions".
-- **:1189** — multiplier domain (CoC lineage): default was 50.0 DEGREES, which under
+- **:1013** — Сломанное крепление (биты 28/29/30) не принимает аддон.
+- **:1044** — Сломанное крепление держит аддон намертво — снять его нельзя, пока не починишь.
+- **:1199** — multiplier domain (CoC lineage): default was 50.0 DEGREES, which under
+- **:1410** — Переводчик огня: бит 27 маски поломок.
 
 ### `xrGame/WeaponMagazined.h`
 
 - **:60** — Dead Air core mechanic: the actor reloads only with ammo carried on the
 - **:127** — Dead Air's two malfunction keys, finally read by the engine.
+- **:163** — void TryJamFireModeSelector(); // [DA_PORT] бит 27 маски поломок
 
 ### `xrGame/action_planner_inline.h`
 
@@ -1235,6 +1260,7 @@
 ### `xrGame/trade2.cpp`
 
 - **:160** — Dead Air reads the condition exponent from config ([trade] buy_condition_koeff),
+- **:163** — .11f and the clamp are the author's, and they go together: at full condition the base
 
 ### `xrGame/xrGame.cpp`
 

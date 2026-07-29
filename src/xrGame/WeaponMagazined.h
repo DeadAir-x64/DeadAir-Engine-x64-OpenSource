@@ -160,6 +160,7 @@ public:
     virtual void OnZoomOut();
     void OnNextFireMode();
     void OnPrevFireMode();
+    void TryJamFireModeSelector(); // [DA_PORT] бит 27 маски поломок
     bool HasFireModes() { return m_bHasDifferentFireModes; }
 
     int GetCurrentFireMode() override
