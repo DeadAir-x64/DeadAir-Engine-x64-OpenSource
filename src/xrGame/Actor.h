@@ -205,6 +205,9 @@ public:
     virtual void UpdateArtefactsOnBeltAndOutfit();
     float HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type);
     float GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type) const;
+    // [DA_PORT] Belt AND backpack slot - the tank and the exo backpack are artefacts too. Shared by the
+    // damage path and by the displayed numbers so the two cannot drift apart. See Actor.cpp.
+    float ArtefactProtection(ALife::EHitType hit_type) const;
 
 protected:
     //звук тяжелого дыхания

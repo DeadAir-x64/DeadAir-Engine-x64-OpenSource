@@ -2123,37 +2123,54 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
     }
 }
 
+// [DA_PORT] How much artefacts take off a hit of this type. ONE function, used both by the damage path
+// and by the numbers the inventory shows - they must never disagree, and they already had: this path
+// used to ignore wear while the display side multiplied by GetCondition(), so a nearly destroyed
+// artefact quietly protected at full strength. Dead Air degrades artefacts continuously through
+// artefact_degradation.script, down to a condition of 0.01, which made that gap wide.
+//
+// ⚠ The belt is not the only place. Dead Air puts real armour data on two BACKPACK-slot items:
+//   • "airtank", the oxygen tank - chemical_burn 0.03, radiation 0.003. This is what the mod's own FAQ
+//     points at for the gas on the Wild Territory and in the labs ("a suit with a closed breathing
+//     system or oxygen tanks in the backpack slot");
+//   • "exobackpack" - strike and explosion up, shock and burn down.
+// Both are "class = SCRPTART", i.e. artefacts rather than outfits, and their protection reached the
+// player through nothing at all: this loop only walked the belt, and the outfit layer
+// (CEntityCondition::HitOutfitEffect) smart_casts the backpack-slot item to CCustomOutfit*, which is
+// null for an artefact. Meanwhile artefact_degradation.script wears the tank down on every hit - so an
+// item costing 12000 degraded while protecting from nothing.
+//
+// The author's build has the same hole, differently: his belt loop is belt-only too, and his outfit
+// layer uses an unchecked C-style cast, which reads armour fields out of an artefact's memory.
+//
+// Plain backpacks are unaffected - kit_hunt and its derivatives inherit af_base_absorbation, which is
+// all zeros.
+float CActor::ArtefactProtection(ALife::EHitType hit_type) const
+{
+    const auto add = [&](const PIItem item) -> float
+    {
+        const auto artefact = smart_cast<CArtefact*>(item);
+        return artefact ? artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type) * artefact->GetCondition() : 0.0f;
+    };
+
+    float sum = 0.0f;
+    for (const auto& it : inventory().m_belt)
+        sum += add(it);
+
+    sum += add(inventory().ItemFromSlot(BACKPACK_SLOT));
+
+    return sum;
+}
+
 float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
 {
-    for (auto& it : inventory().m_belt)
-    {
-        const auto artefact = smart_cast<CArtefact*>(it);
-        if (artefact)
-        {
-            // [DA_PORT] Scaled by wear, so that the protection actually granted matches the number the
-            // inventory shows. GetProtection_ArtefactsOnBelt (the display side, a few lines below) has
-            // always multiplied by GetCondition() while this path did not, so a worn artefact quietly
-            // protected at full strength. Dead Air degrades artefacts continuously through
-            // artefact_degradation.script, down to a condition of 0.01, which made the gap wide.
-            hit_power -= artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type) * artefact->GetCondition();
-        }
-    }
+    hit_power -= ArtefactProtection(hit_type);
     clamp(hit_power, 0.0f, flt_max);
 
     return hit_power;
 }
 
-float CActor::GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type) const
-{
-    float sum = 0.0f;
-    for (const auto& it : inventory().m_belt)
-    {
-        const auto artefact = smart_cast<CArtefact*>(it);
-        if (artefact)
-            sum += artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type) * artefact->GetCondition();
-    }
-    return sum;
-}
+float CActor::GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type) const { return ArtefactProtection(hit_type); }
 
 void CActor::SetZoomRndSeed(s32 Seed)
 {
