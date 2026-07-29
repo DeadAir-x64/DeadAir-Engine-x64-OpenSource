@@ -1179,8 +1179,14 @@ function CSurgeManager:kill_crows_at_pos(pos)
 end
 
 function CSurgeManager:kill_objects_at_pos(pos)
-	if (utils.load_var(db.actor,"surge_immuned",false) == true) then 
-		return 
+	if (utils.load_var(db.actor,"surge_immuned",false) == true) then
+		return
+	end
+	-- [DA_PORT] Волна убивает только при killatwave. При killatend, turntozombie и explode всех
+	-- решает проход в конце выброса (kill_all_unhided) — иначе до превращения в зомби никто бы не
+	-- дожил, волна убила бы раньше. См. apply_fate.
+	if (get_fate() ~= "killatwave") then
+		return
 	end
 	for i=1,#self.objects_to_kill do 
 		local id = self.objects_to_kill[i]
@@ -1326,6 +1332,34 @@ function CSurgeManager:explode(se_obj,squad)
 	squad:remove_npc(se_obj.id)
 end
 
+-- [DA_PORT] Судьба NPC в выбросе: настройка opt_blowout_fate снова что-то значит.
+--
+-- Функции turn_to_zombie и explode написаны автором и не вызывались НИКОГДА: выброс всегда убивал.
+-- Косвенное доказательство, что связь была и потерялась, — self.zombie_count, который заводится на
+-- старте выброса и нигде не растёт: его увеличивает только turn_to_zombie.
+--
+-- Значения (atmosfear_default_settings.ltx): killatwave / killatend / turntozombie / explode.
+-- В поставке killatwave — при нём поведение ровно прежнее, поэтому по умолчанию ничего не меняется.
+--
+-- ⚠️ Честная оговорка: убийство волной и убийство в конце различает НЕ авторский код, а мы. В
+-- шипнутом скрипте оба прохода идут всегда, поэтому killatwave и killatend были неотличимы. Развели
+-- их по смыслу названий: волна убивает только при killatwave, всё остальное решается в конце.
+function get_fate()
+	return atmosfear_options.config
+		and atmosfear_options.config:r_value("atmosfear_current_parameters","opt_blowout_fate",0,"killatwave")
+		or "killatwave"
+end
+
+function CSurgeManager:apply_fate(fate,se_obj,squad)
+	if (fate == "turntozombie") then
+		self:turn_to_zombie(se_obj,squad)
+	elseif (fate == "explode") then
+		self:explode(se_obj,squad)
+	else
+		self:delay_kill(se_obj.id)
+	end
+end
+
 function CSurgeManager:delay_kill(id)
 
 	make_dead(id)
@@ -1364,6 +1398,7 @@ function CSurgeManager:kill_all_unhided()
 				["zombied"]					= true
 	}
 	local can_skip
+	local fate = get_fate() -- [DA_PORT]
 	for k,v in pairs(board.squads) do
 		local squad = alife_object(k)
 		if (squad:clsid() == online_offline_group_s and  can_destroy_squad(squad,immuned_to_surge_squads,sim,gg)) then
@@ -1373,10 +1408,10 @@ function CSurgeManager:kill_all_unhided()
 				if(obj) and not(get_object_story_id(obj.id)) then
 					if(check_squad_smart_props(squad.id)) then
 						--printf("Releasing npc [%s] from squad [%s] because of surge!",obj:name(), squad:name())
-						self:delay_kill(obj.id)
+						self:apply_fate(fate,obj,squad)
 					else
 						if not (self:pos_in_cover(obj.position)) then
-							self:delay_kill(obj.id)
+							self:apply_fate(fate,obj,squad)
 						end
 					end
 				end
