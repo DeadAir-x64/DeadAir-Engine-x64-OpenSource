@@ -160,7 +160,20 @@ u32 CTrade::GetItemPrice(PIItem pItem, bool b_buying, bool bFree /*= false*/)
     // [DA_PORT] Dead Air reads the condition exponent from config ([trade] buy_condition_koeff),
     // instead of the hardcoded 0.75f. With koeff=3 worn items lose value far more steeply.
     const float buy_condition_koeff = pSettings->r_float("trade", "buy_condition_koeff");
-    const float condition_factor = powf(pItem->GetCondition() * 0.9f + .1f, buy_condition_koeff);
+    // [DA_PORT] .11f and the clamp are the author's, and they go together: at full condition the base
+    // becomes 1.01, so with koeff=3 the factor comes out at 1.03 and the clamp pulls it back to 1. The
+    // top of the scale therefore matches a plain .1f exactly - what the pair actually buys is a slightly
+    // kinder price for WORN goods (+6% at half condition, +9% at a quarter). Small, but it is his curve.
+    float condition_factor = powf(pItem->GetCondition() * 0.9f + .11f, buy_condition_koeff);
+    clamp(condition_factor, 0.f, 1.f);
+    // NOT ported from the author, on purpose - both would break the game rather than improve it:
+    //   * `if (GetDrainCondition() > 0) condition_factor = 1.f` - keyed on `condition_drain`, a config
+    //     key that appears NOWHERE in the mod's data, so the branch is dead by construction;
+    //   * `extra_factor` from `trade_manager.get_extra_factor` - the shipped mod has no such script
+    //     function, and the call sits under R_ASSERT. The shipped x32 engine does not reference the name
+    //     either (checked against the decompile: only get_buy_discount/get_sell_discount are there), so
+    //     this is an alpha-only feature the author never finished. Porting it would assert on every
+    //     price calculation.
 
     // computing relation factor
     float relation_factor;
