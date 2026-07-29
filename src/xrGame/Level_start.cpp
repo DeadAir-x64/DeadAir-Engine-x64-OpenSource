@@ -12,6 +12,7 @@
 #include "UIGameCustom.h"
 #include "ui/UICDkey.h"
 #include "xrNetServer/NET_Messages.h"
+#include "da_memory_probe.h" // [DA_PORT] замер памяти по фазам загрузки
 
 int g_cl_save_demo = 0;
 
@@ -49,6 +50,11 @@ bool CLevel::net_Start(const char* op_server, const char* op_client)
     g_bDisableAllInput = false;
 
     net_start_result_total = TRUE;
+
+    // [DA_PORT] Начало прогона замера памяти. Отметка «начало» снимается ЗДЕСЬ, то есть уже после
+    // выгрузки предыдущего уровня, — значит она сама по себе показывает, вернулась ли память после
+    // выгрузки к прежней величине.
+    DA_MemRunBegin("загрузка");
 
     g_pGamePersistent->LoadBegin();
 
@@ -278,6 +284,8 @@ bool CLevel::net_start6()
     BulletManager().Load();
 
     g_pGamePersistent->LoadEnd();
+
+    DA_MemRunEnd(); // [DA_PORT] конец прогона: снимок по подсистемам и печать таблицы
 
     if (net_start_result_total)
     {

@@ -368,6 +368,8 @@ target_sources(xrGame PRIVATE
     CustomZone.cpp
     CustomZone.h
     CycleConstStorage.h
+    da_memory_probe.cpp
+    da_memory_probe.h
     DamagableItem.cpp
     DamagableItem.h
     damage_manager.cpp

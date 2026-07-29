@@ -171,6 +171,8 @@ const xr_token lua_gc_method_token[] =
 
 CUIOptConCom g_OptConCom;
 
+#include "da_memory_probe.h" // [DA_PORT]
+
 static void full_memory_stats()
 {
     Memory.mem_compact();
@@ -321,6 +323,21 @@ public:
         xrDebug::SetOutOfMemoryCallback(full_memory_stats);
     };
     virtual void Execute(LPCSTR args) { full_memory_stats(); }
+};
+
+// [DA_PORT] Поиск утечки памяти. Подробности и протокол — в da_memory_probe.h.
+class CCC_DaMemDump : public IConsole_Command
+{
+public:
+    CCC_DaMemDump(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/) { DA_MemDump(); }
+};
+
+class CCC_DaMemReset : public IConsole_Command
+{
+public:
+    CCC_DaMemReset(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/) { DA_MemReset(); }
 };
 
 class CCC_GameDifficulty : public CCC_Token
@@ -2413,6 +2430,12 @@ void CCC_RegisterCommands()
     g_OptConCom.Init();
 
     CMD1(CCC_MemStats, "stat_memory");
+    CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
+    CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
+    {
+        extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
+        CMD4(CCC_Integer, "da_mem_probe", &g_da_mem_probe, 0, 1);
+    }
 
     // game
     CMD3(CCC_Mask, "g_crouch_toggle", &psActorFlags, AF_CROUCH_TOGGLE);

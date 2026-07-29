@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **954 правк(и) в 200 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **968 правк(и) в 202 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -788,7 +788,7 @@
 
 ## Игровая логика
 
-*61 файл(ов), 295 правк(и)*
+*63 файл(ов), 309 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -978,9 +978,20 @@
 - **:527** — Msg("! [DA_PORT] ввод отброшен: %s", reason);
 - **:533** — Оставлена только эта отметка. Пульсы «клавиша дошла / команда дошла до движения»
 
+### `xrGame/Level_network_start_client.cpp`
+
+- **:15** — #include "da_memory_probe.h" // [DA_PORT] замер памяти по фазам загрузки
+- **:124** — DA_MemMark("геометрия, CDB, AI-граф"); // [DA_PORT]
+- **:144** — DA_MemMark("физический мир"); // [DA_PORT]
+- **:225** — DA_MemMark("текстуры"); // [DA_PORT]
+- **:252** — DA_MemMark("HUD"); // [DA_PORT]
+
 ### `xrGame/Level_start.cpp`
 
-- **:24** — Сброс блокировки ввода при старте уровня — иначе она переживает смерть и загрузку.
+- **:15** — #include "da_memory_probe.h" // [DA_PORT] замер памяти по фазам загрузки
+- **:25** — Сброс блокировки ввода при старте уровня — иначе она переживает смерть и загрузку.
+- **:54** — Начало прогона замера памяти. Отметка «начало» снимается ЗДЕСЬ, то есть уже после
+- **:288** — DA_MemRunEnd(); // [DA_PORT] конец прогона: снимок по подсистемам и печать таблицы
 
 ### `xrGame/MainMenu.cpp`
 
@@ -1172,39 +1183,48 @@
 - **:2** — #include "xrEngine/Engine.h" // [DA_PORT] da_dev_mode()
 - **:78** — extern float g_scope_fov; // Actor.cpp [DA_PORT] CoC-Xray compat
 - **:115** — see WeaponMagazined::state_Fire - weapons pick up breakages while being fired.
-- **:193** — Dump the UI xml files the game actually loads, straight through the engine's VFS, into
-- **:221** — Msg("~ [DA_PORT] ui dump: cannot open [%s]", src);
-- **:240** — Msg("~ [DA_PORT] ui dump: cannot write [%s]", dst);
-- **:244** — Msg("~ [DA_PORT] dumped %u/%u ui xml files to appdata" DELIMITER "logs" DELIMITER "vfs_ui" DELIMITER,
-- **:251** — Same trick for shaders, needed to edit the G-buffer output structure for motion vectors.
-- **:286** — Msg("~ [DA_PORT] shader dump: cannot open [%s]", src);
-- **:304** — Msg("~ [DA_PORT] shader dump: cannot write [%s]", dst);
-- **:308** — Msg("~ [DA_PORT] dumped %u/%u shader files from [%s] to appdata" DELIMITER "logs" DELIMITER
-- **:671** — Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
-- **:774** — Walk the live in-game HUD window tree and report what is actually on screen: every widget's
-- **:795** — Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
-- **:807** — Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
-- **:814** — Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
-- **:818** — Msg("~ [DA_PORT] --- HUD tree ---");
-- **:820** — Msg("~ [DA_PORT] --- end of HUD tree ---");
-- **:824** — Report what every belt item actually gives the actor.
-- **:843** — Msg("! [DA_PORT] no level loaded - run this in the game world");
-- **:850** — Msg("! [DA_PORT] no actor - run this in the game world");
-- **:854** — Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
-- **:862** — Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
-- **:866** — Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
-- **:872** — Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
-- **:877** — Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
-- **:880** — Msg("~ [DA_PORT] --- end of belt ---");
-- **:2452** — Dead Air compatibility aliases
-- **:2458** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
-- **:2468** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
-- **:2475** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
-- **:2487** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
-- **:2489** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
-- **:2628** — Developer commands: registered only when the game was started with "-dev".
-- **:2647** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
-- **:2827** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+- **:174** — #include "da_memory_probe.h" // [DA_PORT]
+- **:195** — Dump the UI xml files the game actually loads, straight through the engine's VFS, into
+- **:223** — Msg("~ [DA_PORT] ui dump: cannot open [%s]", src);
+- **:242** — Msg("~ [DA_PORT] ui dump: cannot write [%s]", dst);
+- **:246** — Msg("~ [DA_PORT] dumped %u/%u ui xml files to appdata" DELIMITER "logs" DELIMITER "vfs_ui" DELIMITER,
+- **:253** — Same trick for shaders, needed to edit the G-buffer output structure for motion vectors.
+- **:288** — Msg("~ [DA_PORT] shader dump: cannot open [%s]", src);
+- **:306** — Msg("~ [DA_PORT] shader dump: cannot write [%s]", dst);
+- **:310** — Msg("~ [DA_PORT] dumped %u/%u shader files from [%s] to appdata" DELIMITER "logs" DELIMITER
+- **:328** — Поиск утечки памяти. Подробности и протокол — в da_memory_probe.h.
+- **:688** — Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
+- **:791** — Walk the live in-game HUD window tree and report what is actually on screen: every widget's
+- **:812** — Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
+- **:824** — Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
+- **:831** — Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
+- **:835** — Msg("~ [DA_PORT] --- HUD tree ---");
+- **:837** — Msg("~ [DA_PORT] --- end of HUD tree ---");
+- **:841** — Report what every belt item actually gives the actor.
+- **:860** — Msg("! [DA_PORT] no level loaded - run this in the game world");
+- **:867** — Msg("! [DA_PORT] no actor - run this in the game world");
+- **:871** — Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
+- **:879** — Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
+- **:883** — Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
+- **:889** — Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
+- **:894** — Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
+- **:897** — Msg("~ [DA_PORT] --- end of belt ---");
+- **:2433** — CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
+- **:2434** — CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
+- **:2436** — extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
+- **:2475** — Dead Air compatibility aliases
+- **:2481** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+- **:2491** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
+- **:2498** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+- **:2510** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+- **:2512** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+- **:2651** — Developer commands: registered only when the game was started with "-dev".
+- **:2670** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+- **:2850** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+
+### `xrGame/da_memory_probe.h`
+
+- **:3** — Поиск утечки памяти по повторным загрузкам одного и того же сохранения.
 
 ### `xrGame/game_base.cpp`
 

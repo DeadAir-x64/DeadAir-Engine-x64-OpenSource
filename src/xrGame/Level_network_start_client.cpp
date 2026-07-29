@@ -12,6 +12,7 @@
 
 #include "xrPhysics/IPHWorld.h"
 #include "physics_game.h"
+#include "da_memory_probe.h" // [DA_PORT] замер памяти по фазам загрузки
 
 extern pureFrame* g_pNetProcessor;
 
@@ -120,6 +121,7 @@ bool CLevel::net_start_client3()
         deny_m_spawn = FALSE;
         // Load level
         R_ASSERT2(Load(level_id), "Loading failed.");
+        DA_MemMark("геометрия, CDB, AI-граф"); // [DA_PORT]
         map_data.m_level_geom_crc32 = 0;
         if (!IsGameTypeSingle())
             CalculateLevelCrc32();
@@ -139,6 +141,7 @@ bool CLevel::net_start_client4()
         // Send physics to single or multithreaded mode
 
         create_physics_world(psDeviceFlags.test(mtPhysics), &ObjectSpace, &Objects);
+        DA_MemMark("физический мир"); // [DA_PORT]
 
         R_ASSERT(physics_world());
 
@@ -219,6 +222,7 @@ bool CLevel::net_start_client5()
             GEnv.Render->DeferredLoad(FALSE);
             GEnv.Render->ResourcesDeferredUpload();
             LL_CheckTextures();
+            DA_MemMark("текстуры"); // [DA_PORT]
         }
         sended_request_connection_data = FALSE;
         deny_m_spawn = TRUE;
@@ -245,6 +249,7 @@ bool CLevel::net_start_client6()
         {
             pHUD->Load();
             pHUD->OnConnected();
+            DA_MemMark("HUD"); // [DA_PORT]
         }
 
 #ifdef DEBUG
