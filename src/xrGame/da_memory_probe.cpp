@@ -61,6 +61,10 @@ struct Run
     xr_vector<u32> size_hist;
     xr_vector<u32> big_hist;  // штук
     xr_vector<size_t> big_kb; // и сколько килобайт в каждом ведре
+    // По кучам: у процесса их несколько, и каждую заводит своя библиотека. Если растущие блоки
+    // сидят в отдельной куче, подсистема названа без всякой возни со стеками вызовов.
+    xr_vector<size_t> heap_kb_by_heap;
+    xr_vector<u32> heap_susp_by_heap; // блоков размером 16..32 КБ — тех самых
     // Какие звуки звучат: имя -> {всего копий, из них БЕЗ живого объекта-владельца}.
     // Осиротевший эмиттер — это и есть утечка в чистом виде: объект снесён, звук продолжает играть.
     struct SndItem { shared_str name; u32 total; u32 orphan; };
@@ -117,18 +121,23 @@ size_t big_bucket(size_t size)
 }
 
 void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u32>& big,
-    xr_vector<size_t>& big_kb)
+    xr_vector<size_t>& big_kb, xr_vector<size_t>& per_heap_kb, xr_vector<u32>& per_heap_susp)
 {
     blocks = 0;
     bytes = 0;
     hist.assign(SIZE_BUCKETS, 0);
     big.assign(BIG_BUCKETS, 0);
     big_kb.assign(BIG_BUCKETS, 0);
+    per_heap_kb.clear();
+    per_heap_susp.clear();
 
     HANDLE heaps[64];
     const DWORD count = GetProcessHeaps(64, heaps);
     for (DWORD i = 0; i < count && i < 64; ++i)
     {
+        per_heap_kb.push_back(0);
+        per_heap_susp.push_back(0);
+
         if (!HeapLock(heaps[i]))
             continue;
 
@@ -139,6 +148,10 @@ void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u
             {
                 ++blocks;
                 bytes += entry.cbData;
+                per_heap_kb.back() += entry.cbData / 1024;
+                if (entry.cbData >= 16 * 1024 && entry.cbData < 32 * 1024)
+                    ++per_heap_susp.back();
+
                 if (entry.cbData < SIZE_BUCKETS)
                     ++hist[entry.cbData];
                 else
@@ -281,7 +294,8 @@ void finish_run(Run& run)
     if (g_da_mem_heapwalk)
     {
         size_t blocks = 0, bytes = 0;
-        walk_heaps(blocks, bytes, run.size_hist, run.big_hist, run.big_kb);
+        walk_heaps(blocks, bytes, run.size_hist, run.big_hist, run.big_kb, run.heap_kb_by_heap,
+            run.heap_susp_by_heap);
         run.heap_blocks = blocks;
         run.heap_kb = bytes / 1024;
     }
@@ -604,6 +618,36 @@ void DA_MemDump()
             Msg("%s", line);
         }
         Msg("~ [DA_MEM] (в каждой клетке: штук блоков / их суммарные МБ)");
+    }
+
+    // По кучам: где именно сидят растущие блоки.
+    {
+        size_t heaps_count = 0;
+        for (const Run& r : g_runs)
+            if (r.heap_kb_by_heap.size() > heaps_count)
+                heaps_count = r.heap_kb_by_heap.size();
+
+        if (heaps_count)
+        {
+            Msg("~ [DA_MEM] --- по кучам процесса: МБ / блоков 16-32 КБ ---");
+            for (size_t h = 0; h < heaps_count; ++h)
+            {
+                string512 line;
+                xr_sprintf(line, "~ [DA_MEM]   куча %u", (u32)h);
+                pad_to(line, 20);
+                for (const Run& r : g_runs)
+                {
+                    string64 cell;
+                    if (h < r.heap_kb_by_heap.size())
+                        xr_sprintf(cell, " %6u/%-6u", (u32)(r.heap_kb_by_heap[h] / 1024),
+                            r.heap_susp_by_heap[h]);
+                    else
+                        xr_sprintf(cell, " %13s", "-");
+                    xr_strcat(line, cell);
+                }
+                Msg("%s", line);
+            }
+        }
     }
 
     Msg("~ [DA_MEM] Растут ЖИВЫЕ мегабайты — это утечка. Растёт только закоммичено, а живые стоят —"
