@@ -20,6 +20,9 @@
 // Крутилки объявлены здесь, а определены ниже: обход куч лежит в безымянном пространстве имён выше
 // по файлу и обращается к ним.
 extern int g_da_mem_trap_size;
+// Ловушка в аллокаторе живёт в ядре (xrMemory.cpp); отсюда её только взводим.
+extern int g_da_alloc_trap_size;
+extern int g_da_alloc_trap_left;
 
 namespace
 {
@@ -249,6 +252,12 @@ void DA_MemRunBegin(const char* what)
     g_runs.push_back(Run());
     g_runs.back().what = what ? what : "?";
     g_run_open = true;
+
+    // Взвести ловушку аллокатора на каждую загрузку. Вручную это бесполезно: счётчик срабатываний
+    // расходуется на первых же выделениях при старте игры, а нужны те, что происходят В МОМЕНТ
+    // перезагрузки мира. Ровно на этом первая попытка и промахнулась.
+    if (g_da_alloc_trap_size > 0)
+        g_da_alloc_trap_left = 6;
 
     DA_MemMark("начало");
 }
