@@ -8,6 +8,7 @@
 
 #include "xrScriptEngine/script_engine.hpp"
 #include "xrEngine/IGame_Persistent.h"
+#include "xrSound/Sound.h"
 #include "xrEngine/XR_IOConsole.h"
 #include "Common/object_broker.h"
 
@@ -16,6 +17,7 @@ namespace
 // Прогонов держим немного: таблица должна оставаться читаемой в логе, а протокол требует трёх.
 constexpr size_t MAX_RUNS = 8;
 constexpr size_t MAX_MARKS = 24;
+constexpr int SETTLE_FRAMES = 180; // три секунды при 60 кадрах
 
 struct Mark
 {
@@ -40,6 +42,11 @@ struct Run
     size_t lua_kb = 0;
     size_t objects = 0;
     size_t alife_objects = 0;
+    size_t snd_playing = 0;   // звуков проигрывается сейчас
+    size_t snd_events = 0;    // событий звуковой сцены
+    size_t ps_active = 0;     // живых систем частиц
+    size_t ps_destroy = 0;    // ждут уничтожения
+    size_t ps_needtoplay = 0; // ждут запуска
     bool objects_pending = false; // объекты считаются не сразу, см. DA_MemTick
 };
 
@@ -187,6 +194,23 @@ void finish_run(Run& run)
 
     run.alife_objects = ai().get_alife() ? ai().alife().objects().objects().size() : 0;
 
+    // Звук и частицы: обе подсистемы создаются пачками на каждую загрузку и обе живут вне счётчиков
+    // движка, поэтому в прошлых замерах их никто не проверял. В логе после каждой перезагрузки
+    // висят жалобы «Playing sound is not completed, but is destroying» — повод посмотреть.
+    if (GEnv.Sound)
+    {
+        CSound_stats s0{};
+        GEnv.Sound->statistic(&s0, nullptr);
+        run.snd_playing = s0._rendered + s0._simulated;
+        run.snd_events = s0._events;
+    }
+    if (g_pGamePersistent)
+    {
+        run.ps_active = g_pGamePersistent->ps_active.size();
+        run.ps_destroy = g_pGamePersistent->ps_destroy.size();
+        run.ps_needtoplay = g_pGamePersistent->ps_needtoplay.size();
+    }
+
     Msg("~ [DA_MEM] прогон %u (%s) завершён: %u МБ", (u32)g_runs.size(), run.what.c_str(),
         (u32)(run.committed_kb / 1024));
 
@@ -225,9 +249,16 @@ void DA_MemTick()
 
         run.objects = count;
         run.objects_pending = false;
+
+        g_run_open = true;
+        DA_MemMark("объекты заспавнены");
+        g_run_open = false;
+
         // Дать миру устояться, прежде чем снимать итог и грузить снова: спавн продолжается и после
         // появления первых объектов, а PreCache прогревает кадры уже за пределами загрузки.
-        g_settle_frames = 180;
+        // Замер показал, что весь прирост даёт именно это окно, поэтому оно размечено посекундно —
+        // видно, растёт ли равномерно (значит что-то продолжает создаваться) или ступенькой.
+        g_settle_frames = SETTLE_FRAMES;
         g_finish_pending = true;
         return;
     }
@@ -235,6 +266,16 @@ void DA_MemTick()
     if (g_settle_frames > 0)
     {
         --g_settle_frames;
+
+        const int passed = SETTLE_FRAMES - g_settle_frames;
+        if (passed % 60 == 0)
+        {
+            string64 label;
+            xr_sprintf(label, "прогрев +%dс", passed / 60);
+            g_run_open = true;
+            DA_MemMark(label);
+            g_run_open = false;
+        }
         return;
     }
 
@@ -365,7 +406,7 @@ void DA_MemDump()
 
     // --- подсистемы: что уже отсеяно замером, а что нет ---
     Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
-    Msg("~ [DA_MEM] прогон | текстуры МБ | Lua МБ | строк | объектов | ALife");
+    Msg("~ [DA_MEM] прогон | текстуры МБ | Lua МБ | строк | объектов | ALife | звуков | событий | частиц");
     for (size_t i = 0; i < g_runs.size(); ++i)
     {
         const Run& r = g_runs[i];
@@ -378,9 +419,19 @@ void DA_MemDump()
         else
             xr_sprintf(objects, "%8u", (u32)r.objects);
 
-        Msg("~ [DA_MEM]   %-4u | %11u | %6u | %5u | %s | %u", (u32)(i + 1),
+        Msg("~ [DA_MEM]   %-4u | %11u | %6u | %5u | %s | %5u | %6u | %7u | %u+%u+%u", (u32)(i + 1),
             (u32)(r.textures_kb / 1024), (u32)(r.lua_kb / 1024), (u32)r.strings_count,
-            objects, (u32)r.alife_objects);
+            objects, (u32)r.alife_objects, (u32)r.snd_playing, (u32)r.snd_events,
+            (u32)r.ps_active, (u32)r.ps_destroy, (u32)r.ps_needtoplay);
+    }
+
+    // Полный список ресурсов рендера: кроме текстур там геометрия, шейдеры, состояния и константы,
+    // которых не видно ни в одном счётчике выше. Список длинный, поэтому печатается только когда
+    // авто-прогон закончился, — иначе он повторился бы после каждой загрузки и утопил лог.
+    if (GEnv.Render && g_repeat_left <= 0)
+    {
+        Msg("~ [DA_MEM] --- ресурсы рендера (полный список движка) ---");
+        GEnv.Render->ResourcesDumpMemoryUsage();
     }
 
     Msg("~ [DA_MEM] Текстуры, строки и Lua уже отсеивались замером — если растут именно они, это "
