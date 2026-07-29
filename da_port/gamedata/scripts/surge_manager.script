@@ -14,6 +14,24 @@ halt_alife_info = {
 	["gonta_quest_moved"] = true,
 }
 
+-- [DA_PORT] Предупреждение о выбросе: восстановлена оборванная проводка.
+--
+-- Ниже по файлу три ветки вида `if (warn=="radio" or warn=="radio_siren")` — фразы бармена, медика
+-- и Ковальского на первой фазе, на второй и после выброса. Переменная `warn` при этом не
+-- присваивалась НИГДЕ: ни в этом файле, ни в остальных 384 скриптах мода. Все три ветки были мертвы,
+-- а `play_siren_sound()` объявлена и не вызывалась ниоткуда. Опцию `opt_blowout_warning` меню
+-- записывало, и не читал никто.
+--
+-- Значения опции (atmosfear_default_settings.ltx): nowarning / radio / siren / radio_siren.
+-- Умолчание там — radio_siren, то есть предупреждения задумывались включёнными.
+warn = "nowarning"
+
+function read_warning_option()
+	warn = atmosfear_options.config
+		and atmosfear_options.config:r_value("atmosfear_current_parameters","opt_blowout_warning",0,"nowarning")
+		or "nowarning"
+end
+
 
 
 local alife, math_random, pairs, tostring = alife,  math.random, pairs, tostring
@@ -144,6 +162,8 @@ function CSurgeManager:initialize()
 	self.condlist = ini:r_string_to_condlist("settings","condlist")
 	self.survive = ini:r_string_to_condlist("settings","survive")
 
+	read_warning_option() -- [DA_PORT]
+
 	self.surge_message = ""
 	self.surge_task_sect = ""
 	
@@ -154,10 +174,12 @@ end
 
 function CSurgeManager:start(manual)
 	--alun_utils.debug_write("CSurgeManager:start()")
-	if not (self._state_loaded) then 
+	if not (self._state_loaded) then
 		self:initialize()
 	end
-	
+
+	read_warning_option() -- [DA_PORT] перечитываем на каждый выброс: опцию могли сменить в меню
+
 	self.game_time_factor=level.get_time_factor()
 
 	local Y, M, D, h, m, s, ms = 0, 0, 0, 0, 0, 0, 0
@@ -532,6 +554,12 @@ function CSurgeManager:update()
 					elseif (level_name == "l03_agroprom") then
 						xr_sound.set_sound_play(db.actor:id(), "kovalsky_surge_phase_1")
 					end
+				end
+				-- [DA_PORT] Сирена: единственный вызов play_siren_sound() во всём моде. Играется от
+				-- точки на уровне (позиции зашиты в самой функции), поэтому слышна только вблизи —
+				-- в отличие от радиофраз, которые идут прямо игроку.
+				if (warn=="siren" or warn=="radio_siren") then
+					self:play_siren_sound()
 				end
 				--self:launch_rockets()
 
