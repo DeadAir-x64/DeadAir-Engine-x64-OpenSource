@@ -230,6 +230,26 @@ void DA_MemDump()
             "из игры. Сделано: %u", (u32)g_runs.size());
     }
 
+    // --- сколько памяти было НА ВХОДЕ в каждую загрузку ---
+    // Это самая говорящая строка таблицы: отметка «начало» снимается уже после выгрузки предыдущего
+    // уровня. Если память возвращается — числа стоят на месте. Если каждая следующая загрузка
+    // начинается с большего, значит выгрузка не отдаёт, и вот это и есть утечка.
+    {
+        string512 line;
+        xr_strcpy(line, "~ [DA_MEM]   на входе (после выгрузки)");
+        pad_to(line, 36 + 11);
+        for (size_t i = 0; i < g_runs.size(); ++i)
+        {
+            string32 cell;
+            if (!g_runs[i].marks.empty())
+                xr_sprintf(cell, " %7u", (u32)(g_runs[i].marks.front().committed_kb / 1024));
+            else
+                xr_sprintf(cell, " %7s", "-");
+            xr_strcat(line, cell);
+        }
+        Msg("%s", line);
+    }
+
     // --- по фазам: где именно прибавляется ---
     Msg("~ [DA_MEM] --- прирост по фазам загрузки, МБ ---");
     const Run& first = g_runs.front();
@@ -256,9 +276,18 @@ void DA_MemDump()
     for (size_t i = 0; i < g_runs.size(); ++i)
     {
         const Run& r = g_runs[i];
-        Msg("~ [DA_MEM]   %-4u | %11u | %6u | %5u | %8u | %u", (u32)(i + 1),
+        // Объекты у ТОЛЬКО ЧТО завершившейся загрузки ещё не посчитаны: спавн приходит сетевыми
+        // сообщениями уже после того, как эта таблица печатается. Пишем прочерк, а не ноль, —
+        // ноль читался бы как настоящий замер. Значение появится в следующем da_mem_dump.
+        string32 objects;
+        if (r.objects_pending)
+            xr_sprintf(objects, "%8s", "-");
+        else
+            xr_sprintf(objects, "%8u", (u32)r.objects);
+
+        Msg("~ [DA_MEM]   %-4u | %11u | %6u | %5u | %s | %u", (u32)(i + 1),
             (u32)(r.textures_kb / 1024), (u32)(r.lua_kb / 1024), (u32)r.strings_count,
-            (u32)r.objects, (u32)r.alife_objects);
+            objects, (u32)r.alife_objects);
     }
 
     Msg("~ [DA_MEM] Текстуры, строки и Lua уже отсеивались замером — если растут именно они, это "
