@@ -43,7 +43,10 @@ struct Run
     size_t lua_kb = 0;
     size_t objects = 0;
     size_t alife_objects = 0;
-    xr_vector<std::pair<shared_str, u32>> snd_top; // какие звуки звучат и сколько копий каждого
+    // Какие звуки звучат: имя -> {всего копий, из них БЕЗ живого объекта-владельца}.
+    // Осиротевший эмиттер — это и есть утечка в чистом виде: объект снесён, звук продолжает играть.
+    struct SndItem { shared_str name; u32 total; u32 orphan; };
+    xr_vector<SndItem> snd_top;
     size_t snd_playing = 0;   // звуков проигрывается сейчас
     size_t snd_events = 0;    // событий звуковой сцены
     size_t ps_active = 0;     // живых систем частиц
@@ -211,19 +214,21 @@ void finish_run(Run& run)
         // больше — значит эмиттеры прошлого мира не гасятся, и это уже не догадка, а имя файла.
         for (const auto& item : s1.items)
         {
+            const u32 orphan = item.game_object ? 0 : 1;
             bool found = false;
-            for (auto& pair : run.snd_top)
-                if (pair.first == item.name)
+            for (auto& snd : run.snd_top)
+                if (snd.name == item.name)
                 {
-                    ++pair.second;
+                    ++snd.total;
+                    snd.orphan += orphan;
                     found = true;
                     break;
                 }
             if (!found)
-                run.snd_top.push_back({ item.name, 1 });
+                run.snd_top.push_back({ item.name, 1, orphan });
         }
         std::sort(run.snd_top.begin(), run.snd_top.end(),
-            [](const auto& a, const auto& b) { return a.second > b.second; });
+            [](const Run::SndItem& a, const Run::SndItem& b) { return a.total > b.total; });
     }
     if (g_pGamePersistent)
     {
@@ -468,25 +473,26 @@ void DA_MemDump()
     // именно: если строка идёт 1, 2, 3, 4, 5 по прогонам, виновник назван по имени.
     if (!g_runs.back().snd_top.empty())
     {
-        Msg("~ [DA_MEM] --- звучит копий по именам (первые 12) ---");
+        Msg("~ [DA_MEM] --- звучит копий по именам, в скобках без владельца (первые 12) ---");
         const Run& last = g_runs.back();
         const size_t shown = last.snd_top.size() < 12 ? last.snd_top.size() : 12;
         for (size_t k = 0; k < shown; ++k)
         {
             string512 line;
-            xr_sprintf(line, "~ [DA_MEM]   %s", last.snd_top[k].first.c_str());
-            pad_to(line, 60);
+            xr_sprintf(line, "~ [DA_MEM]   %s", last.snd_top[k].name.c_str());
+            pad_to(line, 56);
             for (const Run& r : g_runs)
             {
-                u32 n = 0;
-                for (const auto& pair : r.snd_top)
-                    if (pair.first == last.snd_top[k].first)
+                u32 total = 0, orphan = 0;
+                for (const auto& snd : r.snd_top)
+                    if (snd.name == last.snd_top[k].name)
                     {
-                        n = pair.second;
+                        total = snd.total;
+                        orphan = snd.orphan;
                         break;
                     }
                 string32 cell;
-                xr_sprintf(cell, " %5u", n);
+                xr_sprintf(cell, " %4u(%u)", total, orphan);
                 xr_strcat(line, cell);
             }
             Msg("%s", line);
