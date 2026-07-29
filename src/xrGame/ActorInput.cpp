@@ -285,6 +285,27 @@ void CActor::IR_OnKeyboardRelease(int cmd)
 
 void CActor::IR_OnKeyboardHold(int cmd)
 {
+    // [DA_PORT] Парная отметка к пульсу из CLevel::IR_OnKeyboardHold. Печатается только пока актёр
+    // стоит, и сразу называет ту из четырёх дверей, на которой команда разворачивается.
+    if (!AnyMove())
+    {
+        static u32 last = 0;
+        if (Device.dwTimeGlobal - last >= 2000)
+        {
+            last = Device.dwTimeGlobal;
+            pcstr why = "дошла до движения";
+            if (GamePersistent().GetHudTuner().is_active()) why = "перехвачена настройщиком HUD";
+            else if (Remote()) why = "актёр помечен как Remote";
+            else if (!g_Alive()) why = "актёр НЕ ЖИВ";
+            else if (m_input_external_handler && !m_input_external_handler->authorized(cmd))
+                why = "запрещена внешним обработчиком ввода";
+            else if (IsTalking()) why = "идёт диалог (IsTalking)";
+            else if (m_holder) why = "актёр в держателе (транспорт/укрытие)";
+            Msg("~ [DA_PORT] актёр: команда %d — %s", cmd, why);
+            FlushLog();
+        }
+    }
+
     if (GamePersistent().GetHudTuner().is_active())
         return;
 

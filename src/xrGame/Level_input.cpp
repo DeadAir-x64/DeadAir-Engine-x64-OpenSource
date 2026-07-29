@@ -530,6 +530,27 @@ static void da_report_input_block(pcstr reason)
 
 void CLevel::IR_OnKeyboardHold(int key)
 {
+    // [DA_PORT] Пульс: печатается ТОЛЬКО пока актёр стоит на месте, хотя клавишу держат.
+    //
+    // Прошлый заход молчал, и молчание оказалось двусмысленным: оно означало и «нажатия проходят», и
+    // «до этой функции они не доходят вовсе». Теперь строка есть в обоих случаях, а различает их
+    // отметка `актёр:` — она печатается из CActor::IR_OnKeyboardHold. Если в логе только `уровень:`,
+    // значит нажатие съедено между уровнем и актёром; если нет ни одной — значит ввод перехватили
+    // раньше уровня (интерфейс на вершине стека приёмников), и искать надо там.
+    //
+    // Спама в обычной игре нет: пока актёр движется, пульс молчит.
+    if (g_actor && !g_actor->AnyMove())
+    {
+        static u32 last = 0;
+        if (Device.dwTimeGlobal - last >= 2000)
+        {
+            last = Device.dwTimeGlobal;
+            Msg("~ [DA_PORT] уровень: клавиша дошла, актёр не движется (пауза=%d, жив=%d, mstate=%08x)",
+                Device.Paused() ? 1 : 0, g_actor->g_Alive() ? 1 : 0, g_actor->MovingState());
+            FlushLog();
+        }
+    }
+
     if (g_bDisableAllInput)
     {
         da_report_input_block("взведён g_bDisableAllInput (level.disable_input без парного enable)");
