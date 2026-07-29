@@ -83,6 +83,8 @@ struct Run
     size_t ps_needtoplay = 0; // ждут запуска
     size_t ev_ready = 0;      // событий сервера в очереди
     size_t ev_unused = 0;     // и в пуле свободных — каждое несёт пакет на 16 КБ
+    size_t net_ready = 0;     // входящих пакетов у клиента
+    size_t net_unused = 0;    // и в его пуле — вот это и есть NET_Packet по 16405 байт
     bool objects_pending = false; // объекты считаются не сразу, см. DA_MemTick
 };
 
@@ -374,6 +376,12 @@ void finish_run(Run& run)
                 run.ev_unused = q->unused_count();
             }
         }
+    }
+
+    if (g_pGameLevel)
+    {
+        run.net_ready = Level().net_queue_ready();
+        run.net_unused = Level().net_queue_unused();
     }
 
     if (g_pGamePersistent)
@@ -732,12 +740,13 @@ void DA_MemDump()
 
     Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
     Msg("~ [DA_MEM] --- очередь событий сервера (каждое событие = пакет 16 КБ) ---");
-    Msg("~ [DA_MEM] прогон | в очереди | в пуле свободных | пул в МБ");
+    Msg("~ [DA_MEM] прогон | события: в очереди/в пуле | пакеты клиента: в очереди/в пуле | пул МБ");
     for (size_t i = 0; i < g_runs.size(); ++i)
     {
         const Run& r = g_runs[i];
-        Msg("~ [DA_MEM]   %-4u | %9u | %16u | %u", (u32)(i + 1), (u32)r.ev_ready, (u32)r.ev_unused,
-            (u32)(r.ev_unused * 16413 / 1024 / 1024));
+        Msg("~ [DA_MEM]   %-4u | %11u/%-11u | %16u/%-10u | %u", (u32)(i + 1), (u32)r.ev_ready,
+            (u32)r.ev_unused, (u32)r.net_ready, (u32)r.net_unused,
+            (u32)((r.net_ready + r.net_unused) * 16405 / 1024 / 1024));
     }
 
     Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");

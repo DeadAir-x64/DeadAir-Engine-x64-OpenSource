@@ -23,6 +23,12 @@ public:
     NET_Packet* Create(const NET_Packet& _other);
     NET_Packet* Retreive();
     void Release();
+
+    // [DA_PORT] Счётчики для замера памяти. Пул хранит NET_Packet целиком — по шестнадцать
+    // килобайт на штуку, — а сокращается лишь по одному за вызов и только если минуту никто не
+    // создавал пакетов. В живой игре это условие не выполняется никогда, поэтому пул надо видеть.
+    u32 ready_count() const { return (u32)ready.size(); }
+    u32 unused_count() const { return (u32)unused.size(); }
     void Lock() { cs.Enter(); }
     void Unlock() { cs.Leave(); }
 };
@@ -109,6 +115,10 @@ public:
     pcstr net_SessionName() { return net_Hosts.front().dpSessionName.c_str(); }
 
     // receive
+    // [DA_PORT] см. INetQueue::ready_count
+    u32 net_queue_ready() const { return net_Queue.ready_count(); }
+    u32 net_queue_unused() const { return net_Queue.unused_count(); }
+
     void StartProcessQueue() { net_Queue.Lock(); } // WARNING ! after Start must be End !!! <-
     virtual NET_Packet* net_msg_Retreive() { return net_Queue.Retreive(); } //							|
     void net_msg_Release() { net_Queue.Release(); } //							|

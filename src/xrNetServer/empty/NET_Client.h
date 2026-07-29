@@ -24,6 +24,10 @@ public:
     void Release();
     void LockQ();
     void UnlockQ();
+
+    // [DA_PORT] Счётчики для замера памяти: пул хранит NET_Packet целиком, по 16 килобайт на штуку.
+    u32 ready_count() const { return (u32)ready.size(); }
+    u32 unused_count() const { return (u32)unused.size(); }
 };
 
 //==============================================================================
@@ -106,6 +110,11 @@ public:
         return m_game_description;
     }
     pcstr net_SessionName() { return net_Hosts.front().dpSessionName.c_str(); }
+
+    // [DA_PORT] см. INetQueue::ready_count
+    u32 net_queue_ready() const { return net_Queue.ready_count(); }
+    u32 net_queue_unused() const { return net_Queue.unused_count(); }
+
     // receive
     void StartProcessQueue()
     {
