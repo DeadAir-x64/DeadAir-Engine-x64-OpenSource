@@ -1,0 +1,955 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;; WEAPON REPAIR ITEMS ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Section configs for 'repair kits' - items which initiate the manual repair UI. Kits are allowed to use other items as 'materials' boosting repair efficiency. 30.05.2013 ponney (GFX), damjancd (SFX), alundaio (scripting), trojanuch (concept & gameplay implementation), trikzter (text)
+
+;------Sharpening stones-----
+
+[sharpening_stones]:booster ;x4
+$spawn 				= "devices\repair_kit_10"
+description			= st_sharpening_stones_descr
+inv_name			= st_sharpening_stones
+inv_name_short			= st_sharpening_stones
+can_trade			= true
+quest_item      	= false
+cost				= 400
+inv_weight			= 0.096
+visual				= dynamics\repair\sharpening_stones.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 5
+inv_grid_y			= 54
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.01		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.20		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.11		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true	;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= knife
+repair_parts_include    = steel_wool, steel_wool2, powder_poltergeist, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene
+repair_parts_exclude	= knife
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+;use_sound			= interface\inv_repair_spray_oil
+
+[sharpening_stones_2]:sharpening_stones
+cost				= 800
+inv_weight			= 0.156
+inv_grid_y			= 53
+
+[sharpening_stones_3]:sharpening_stones
+cost				= 1200
+inv_weight			= 0.216
+inv_grid_y			= 52
+
+[sharpening_stones_4]:sharpening_stones
+cost				= 1600
+inv_weight			= 0.276
+inv_grid_y			= 51
+
+;------ Cleaning -----
+
+[cleaning_kit_p]:booster ; Cleaning kit 9mm .357 .45 ;x3
+$spawn 				= "devices\repair_kit_10"
+description			= st_cleaning_kit_p_descr
+inv_name			= st_cleaning_kit_p
+inv_name_short		= st_cleaning_kit_p
+can_trade			= true
+quest_item      	= false
+cost				= 200
+inv_weight			= 0.307
+visual				= dynamics\repair\cleaning_kit_p.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 0
+inv_grid_y			= 55
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.74		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.05		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.05		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 270828564
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= pistol
+repair_parts_include    = textile_patch_b, textile_patch_m, grease, grease2, steel_wool, steel_wool2, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, water_drink, grooming, cutlery, swiss, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= pistol
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+;use_sound			= interface\inv_repair_brushes
+
+[cleaning_kit_p_2]:cleaning_kit_p
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 56
+cost				= 400
+inv_weight			= 0.369
+
+[cleaning_kit_p_3]:cleaning_kit_p
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 57
+cost				= 600
+inv_weight			= 0.431
+
+
+[cleaning_kit_s]:booster ; Cleaning kit 12ga ;x3
+$spawn 				= "devices\repair_kit_10"
+description			= st_cleaning_kit_s_descr
+inv_name			= st_cleaning_kit_s
+inv_name_short		= st_cleaning_kit_s
+can_trade			= true
+quest_item      	= false
+cost				= 400
+inv_weight			= 0.326
+visual				= dynamics\repair\cleaning_kit_s.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 1
+inv_grid_y			= 55
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.74		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.05		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.05		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 270828564
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= shotgun
+repair_parts_include    = textile_patch_b, textile_patch_m, grease, grease2, steel_wool, steel_wool2, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, water_drink, grooming, cutlery, swiss, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= shotgun
+repair_use_actor_effects = true
+
+;use_sound			= interface\inv_repair_brushes
+
+[cleaning_kit_s_2]:cleaning_kit_s
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 56
+cost				= 800
+inv_weight			= 0.404
+
+[cleaning_kit_s_3]:cleaning_kit_s
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 57
+cost				= 1200
+inv_weight			= 0.482
+
+
+[cleaning_kit_r]:booster ; Cleaning kit 5.54mm 5.56mm ;x3
+$spawn 				= "devices\repair_kit_10"
+description			= st_cleaning_kit_r_descr
+inv_name			= st_cleaning_kit_r
+inv_name_short		= st_cleaning_kit_r
+can_trade			= true
+quest_item      	= false
+cost				= 700
+inv_weight			= 0.340
+visual				= dynamics\repair\cleaning_kit_r5.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 2
+inv_grid_y			= 55
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.74		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.05		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.05		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 270828564
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= rifle
+repair_parts_include    = textile_patch_b, textile_patch_m, grease, grease2, steel_wool, steel_wool2, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, water_drink, grooming, cutlery, swiss, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= rifle
+repair_use_actor_effects = true
+
+;use_sound			= interface\inv_repair_brushes
+
+[cleaning_kit_r_2]:cleaning_kit_r
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 56
+cost				= 1400
+inv_weight			= 0.418
+
+[cleaning_kit_r_3]:cleaning_kit_r
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 57
+cost				= 2100
+inv_weight			= 0.496
+
+;------Gunsmith toolkits-----
+
+[toolkit_p]:booster ; Pistol toolkit with replacement parts ;x4
+$spawn 				= "devices\toolkit_p"
+description			= st_toolkit_p_descr
+inv_name			= st_toolkit_p
+inv_name_short		= st_toolkit_p
+can_trade			= true
+quest_item      	= false
+cost				= 1500
+inv_weight			= 2.223
+visual				= dynamics\repair\toolkit_p.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 1
+inv_grid_x			= 3
+inv_grid_y			= 55
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.49		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.15		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.15		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 541665568
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= pistol
+repair_parts_include	= swiss, grease, grease2, steel_wool, steel_wool2, spareparts, wpn_hand_hammer, wpn_hand_crowbar, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= pistol
+repair_use_actor_effects = true
+
+
+[toolkit_p_0]:identity_immunities ; empty container
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_toolkit_p_empty_descr
+inv_name			= st_toolkit_p_empty
+inv_name_short		= st_toolkit_p_empty
+cost				= 200
+inv_weight			= 2.012
+visual				= dynamics\repair\toolkit_p.ogf
+inv_grid_width     = 2
+inv_grid_height    = 1
+inv_grid_x         = 3
+inv_grid_y         = 56
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.04
+
+[toolkit_s]:booster ; Shotgun toolkit with replacement parts ;x4
+$spawn 				= "devices\toolkit_s"
+description			= st_toolkit_s_descr
+inv_name			= st_toolkit_s
+inv_name_short		= st_toolkit_s
+can_trade			= true
+quest_item      	= false
+cost				= 1750
+inv_weight			= 2.271
+visual				= dynamics\repair\toolkit_s.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 1
+inv_grid_x			= 5
+inv_grid_y			= 55
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.49		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.15		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.15		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 541665568
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= shotgun
+repair_parts_include	= swiss, grease, grease2, steel_wool, steel_wool2, spareparts, wpn_hand_hammer, wpn_hand_crowbar, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= shotgun
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+[toolkit_s_0]:identity_immunities
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_toolkit_s_empty_descr
+inv_name			= st_toolkit_s_empty
+inv_name_short		= st_toolkit_s_empty
+cost				= 200
+inv_weight			= 1.962
+visual				= dynamics\repair\toolkit_s.ogf
+inv_grid_width     = 2
+inv_grid_height    = 1
+inv_grid_x         = 5
+inv_grid_y         = 56
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.04
+
+
+[toolkit_r]:booster ; rifle toolkit with replacement parts ;x4
+$spawn 				= "devices\toolkit_r"
+description			= st_toolkit_r_descr
+inv_name			= st_toolkit_r
+inv_name_short		= st_toolkit_r
+can_trade			= true
+quest_item      	= false
+cost				= 4000
+inv_weight			= 2.494
+visual				= dynamics\repair\toolkit_r.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 1
+inv_grid_x			= 7
+inv_grid_y			= 55
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.49		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.15		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.15		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 541665568
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= rifle
+repair_parts_include	= swiss, grease, grease2, steel_wool, steel_wool2, spareparts, wpn_hand_hammer, wpn_hand_crowbar, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= rifle
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+[toolkit_r_0]:identity_immunities
+$spawn 				= "devices\toolkit_r_0"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_toolkit_r_empty_descr
+inv_name			= st_toolkit_r_empty
+inv_name_short		= st_toolkit_r_empty
+cost				= 200
+inv_weight			= 2.012
+visual				= dynamics\repair\toolkit_r.ogf
+inv_grid_width     = 2
+inv_grid_height    = 1
+inv_grid_x         = 7
+inv_grid_y         = 56
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.04
+
+;------Gunsmith toolkits-----
+
+[repairkit_p]:booster ; Pistol toolkit with replacement parts ;x4
+$spawn 				= "devices\repair_kit_p"
+description			= st_repair_kit_p_descr
+inv_name			= st_repair_kit_p
+inv_name_short		= st_repair_kit_p
+can_trade			= true
+quest_item      	= false
+cost				= 2500
+inv_weight			= 2.223
+visual				= dynamics\repair\repairkit_p.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 2
+inv_grid_x			= 6
+inv_grid_y			= 51
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.09		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.25		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.25		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 1490178763
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= pistol
+repair_parts_include	= swiss, grease, grease2, steel_wool, steel_wool2, spareparts, wpn_hand_hammer, wpn_hand_crowbar, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= pistol
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+
+[repairkit_p_0]:identity_immunities ; empty container
+$spawn 				= "devices\repair_kit_p_0"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_repair_kit_p_empty_descr
+inv_name			= st_repair_kit_p_empty
+inv_name_short		= st_repair_kit_p_empty
+cost				= 200
+inv_weight			= 2.012
+visual				= dynamics\repair\repairkit_p.ogf
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 6
+inv_grid_y         = 53
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.04
+
+[repairkit_s]:booster ; Shotgun toolkit with replacement parts ;x4
+$spawn 				= "devices\repair_kit_s"
+description			= st_repair_kit_s_descr
+inv_name			= st_repair_kit_s
+inv_name_short		= st_repair_kit_s
+can_trade			= true
+quest_item      	= false
+cost				= 4000
+inv_weight			= 2.271
+visual				= dynamics\repair\repairkit_s.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 2
+inv_grid_x			= 8
+inv_grid_y			= 51
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.09		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.25		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.25		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 1490178763
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= shotgun
+repair_parts_include	= swiss, grease, grease2, steel_wool, steel_wool2, spareparts, wpn_hand_hammer, wpn_hand_crowbar, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= shotgun
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+[repairkit_s_0]:identity_immunities
+$spawn 				= "devices\repair_kit_s_0"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_repair_kit_s_empty_descr
+inv_name			= st_repair_kit_s_empty
+inv_name_short		= st_repair_kit_s_empty
+cost				= 200
+inv_weight			= 1.962
+visual				= dynamics\repair\repairkit_s.ogf
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 8
+inv_grid_y         = 53
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.04
+
+
+[repairkit_r]:booster
+$spawn 				= "devices\repair_kit_r"
+description			= st_repair_kit_r_descr
+inv_name			= st_repair_kit_r
+inv_name_short		= st_repair_kit_r
+can_trade			= true
+quest_item      	= false
+cost				= 7000
+inv_weight			= 2.494
+visual				= dynamics\repair\repairkit_r.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 2
+inv_grid_x			= 10
+inv_grid_y			= 51
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.09		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.25		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.25		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_condition_type	= 1490178763
+repair_type			 	= weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= rifle
+repair_parts_include	= swiss, grease, grease2, steel_wool, steel_wool2, spareparts, wpn_hand_hammer, wpn_hand_crowbar, kerosene_5, kerosene_4, kerosene_3, kerosene_2, kerosene, explo_jerrycan_fuel_8, explo_jerrycan_fuel_7, explo_jerrycan_fuel_6, explo_jerrycan_fuel_5, explo_jerrycan_fuel_4, explo_jerrycan_fuel_3, explo_jerrycan_fuel_2, explo_jerrycan_fuel, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0, flask, flask2, flask3, mineral_water, mineral_water2, mineral_water3, vodka, vodka_2, vodka_3, vodka_quality, vodka_quality2, vodka_quality3, bottle_metal, bottle_metal2, bottle_metal3, mutant_part_flesh_meat, mutant_part_boar_chop, mutant_part_dog_meat, mutant_part_psevdodog_meat, mutant_part_krovosos_meat, mutant_part_chimera_meat
+repair_parts_exclude	= rifle
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+[repairkit_r_0]:identity_immunities
+$spawn 				= "devices\repair_kit_r_0"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_repair_kit_r_empty_descr
+inv_name			= st_repair_kit_r_empty
+inv_name_short		= st_repair_kit_r_empty
+cost				= 200
+inv_weight			= 2.012
+visual				= dynamics\repair\repairkit_r.ogf
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 10
+inv_grid_y         = 53
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.04
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;; ARMOR REPAIR ITEMS ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;------Sewing kits-----
+
+[sewing_kit_b]:booster ; (Basic sewing kit) ;x4
+$spawn 				= "devices\repair_kit_10"
+description			= st_sewing_kit_b_descr
+inv_name			= st_sewing_kit_b
+inv_name_short		= st_sewing_kit_b
+can_trade			= true
+quest_item      	= false
+cost				= 500
+inv_weight			= 0.1
+visual				= dynamics\repair\sewing_kit_b.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 0
+inv_grid_y			= 54
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.84		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.06		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.06		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit, helmet
+repair_parts_include	= af_camelbak, swiss, rope, toolkit_u, toolkit_u_2, toolkit_u_3, toolkit_u_4, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, glue_e, glue_e_2, glue_a, glue_a_2, glue_b, glue_b_2, armor_repair_fa, armor_repair_fa_2, textile_patch_b, textile_patch_m, textile_patch_e, survival_kit, helm_cloth_mask, underwear, hide_psy_dog, hide_pseudodog, hide_bloodsucker, hide_boar, hide_flesh, hide_burer, hide_controller, helmet_repair_kit_0, armor_repair_pro_0		;Add sections of items to include to be considered repair parts
+repair_parts_exclude	= outfit, helmet
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+;use_sound			= interface\inv_sewing_kit
+
+[sewing_kit_b_2]:sewing_kit_b
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 53
+cost				= 1000
+inv_weight			= 0.12
+
+[sewing_kit_b_3]:sewing_kit_b
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 52
+cost				= 2000
+inv_weight			= 0.14
+
+[sewing_kit_b_4]:sewing_kit_b
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 51
+cost				= 3000
+inv_weight			= 0.16
+
+[sewing_kit_a]:booster ; (Advanced sewing kit) ;x4
+$spawn 				= "devices\repair_kit_10"
+description			= st_sewing_kit_a_descr
+inv_name			= st_sewing_kit_a
+inv_name_short			= st_sewing_kit_a
+can_trade			= true
+quest_item      	= false
+cost				= 3000
+inv_weight			= 0.221
+visual				= dynamics\repair\sewing_kit_a.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 1
+inv_grid_y			= 54
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.69		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.09		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.09		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit, helmet
+repair_parts_include	= af_camelbak, swiss, rope, toolkit_u, toolkit_u_2, toolkit_u_3, toolkit_u_4, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, glue_e, glue_e_2, glue_a, glue_a_2, glue_b, glue_b_2, armor_repair_fa, armor_repair_fa_2, textile_patch_b, textile_patch_m, textile_patch_e, survival_kit, helm_cloth_mask, underwear, hide_psy_dog, hide_pseudodog, hide_bloodsucker, hide_boar, hide_flesh, hide_burer, hide_controller, helmet_repair_kit_0, armor_repair_pro_0		;Add sections of items to include to be considered repair parts
+repair_parts_exclude	= outfit, helmet
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+;use_sound			= interface\inv_sewing_kit
+
+[sewing_kit_a_2]:sewing_kit_a
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 53
+cost				= 6000
+inv_weight			= 0.293
+
+[sewing_kit_a_3]:sewing_kit_a
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 52
+cost				= 9000
+inv_weight			= 0.365
+
+[sewing_kit_a_4]:sewing_kit_a
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 51
+cost				= 18000
+inv_weight			= 0.437
+
+[sewing_kit_h]:booster ; (Heavy sewing kit) ;x4
+$spawn 				= "devices\repair_kit_10"
+description			= st_sewing_kit_h_descr
+inv_name			= st_sewing_kit_h
+inv_name_short			= st_sewing_kit_h
+can_trade			= true
+quest_item      	= false
+cost				= 9000
+inv_weight			= 0.286
+visual				= dynamics\repair\sewing_kit_h.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 2
+inv_grid_y			= 54
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.54		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.12		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.12		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit, helmet
+repair_parts_include	= af_camelbak, swiss, rope, toolkit_u, toolkit_u_2, toolkit_u_3, toolkit_u_4, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, glue_e, glue_e_2, glue_a, glue_a_2, glue_b, glue_b_2, armor_repair_fa, armor_repair_fa_2, textile_patch_b, textile_patch_m, textile_patch_e, survival_kit, helm_cloth_mask, underwear, hide_psy_dog, hide_pseudodog, hide_bloodsucker, hide_boar, hide_flesh, hide_burer, hide_controller, helmet_repair_kit_0, armor_repair_pro_0		;Add sections of items to include to be considered repair parts
+repair_parts_exclude	= outfit, helmet
+repair_use_actor_effects = true      ;Uses actor_effects script. Setup a *_dummy section for the item in actor_effects_data.script
+
+;use_sound			= interface\inv_sewing_kit
+
+;------Glues-----
+
+[glue_b]:booster ; (Basic glue) ;x2
+$spawn 				= "devices\repair_kit_10"
+description			= st_glue_b_descr
+inv_name			= st_glue_b
+inv_name_short			= st_glue_b
+can_trade			= true
+quest_item      	= false
+cost				= 300
+inv_weight			= 0.069
+visual				= dynamics\repair\glue_b.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 14
+inv_grid_y			= 57
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.89		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.02		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.02		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit, helmet
+repair_parts_include	= swiss, toolkit_u, toolkit_u_2, toolkit_u_3, toolkit_u_4, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, sewing_kit_b, sewing_kit_b_2, sewing_kit_b_3, sewing_kit_b_4, glue_e, glue_e_2, glue_a, glue_a_2, armor_repair_fa, armor_repair_fa_2, textile_patch_b, textile_patch_m, textile_patch_e, survival_kit, helm_cloth_mask
+repair_parts_exclude	= outfit, helmet
+repair_use_actor_effects = true
+
+;use_sound			= interface\inv_glue
+
+[glue_b_2]:glue_b
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 56
+cost				= 600
+inv_weight			= 0.124
+
+[glue_a]:booster ; (Advanced glue) ;x2
+$spawn 				= "devices\repair_kit_10"
+description			= st_glue_a_descr
+inv_name			= st_glue_a
+inv_name_short			= st_glue_a
+can_trade			= true
+quest_item      	= false
+cost				= 1000
+inv_weight			= 0.095
+visual				= dynamics\repair\glue_a.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 15
+inv_grid_y			= 57
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.74		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.04		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.04		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit, helmet
+repair_parts_include	= swiss, toolkit_u, toolkit_u_2, toolkit_u_3, toolkit_u_4, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, sewing_kit_b, sewing_kit_b_2, sewing_kit_b_3, sewing_kit_b_4, glue_e, glue_e_2, glue_a, glue_a_2, armor_repair_fa, armor_repair_fa_2, textile_patch_b, textile_patch_m, textile_patch_e, survival_kit, helm_cloth_mask
+repair_parts_exclude	= outfit, helmet
+repair_use_actor_effects = true
+
+;use_sound			= interface\inv_glue
+
+[glue_a_2]:glue_a
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 56
+cost				= 2000
+inv_weight			= 0.167
+
+[glue_e]:booster ; (Extreme glue) ;x2
+$spawn 				= "devices\repair_kit_10"
+description			= st_glue_e_descr
+inv_name			= st_glue_e
+inv_name_short		= st_glue_e
+can_trade			= true
+quest_item      	= false
+cost				= 3200
+inv_weight			= 0.104
+visual				= dynamics\repair\glue_e.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 16
+inv_grid_y			= 57
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.59		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.06		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.06		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit, helmet
+repair_parts_include	= swiss, toolkit_u, toolkit_u_2, toolkit_u_3, toolkit_u_4, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, sewing_kit_b, sewing_kit_b_2, sewing_kit_b_3, sewing_kit_b_4, glue_e, glue_e_2, glue_a, glue_a_2, armor_repair_fa, armor_repair_fa_2, textile_patch_b, textile_patch_m, textile_patch_e, survival_kit, helm_cloth_mask
+repair_parts_exclude	= outfit, helmet
+repair_use_actor_effects = true
+
+;use_sound			= interface\inv_glue
+
+[glue_e_2]:glue_e
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 56
+cost				= 6400
+inv_weight			= 0.194
+
+;------Repair kits-----
+
+[armor_repair_fa]:booster ; (First aid armor repair set (Textile residues and duct tape)) ;x2
+$spawn 				= "devices\repair_kit_10"
+description			= st_armor_repair_fa_descr
+inv_name			= st_armor_repair_fa
+inv_name_short			= st_armor_repair_fa
+can_trade			= true
+quest_item      	= false
+cost				= 1000
+inv_weight			= 0.08
+visual				= dynamics\repair\armor_repair_fa.ogf
+
+inv_grid_width			= 1
+inv_grid_height			= 1
+inv_grid_x			= 17
+inv_grid_y			= 57
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.79		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.06		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.06		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit, helmet
+repair_parts_include	= swiss, toolkit_u, toolkit_u_2, toolkit_u_3, toolkit_u_4, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, sewing_kit_b, sewing_kit_b_2, sewing_kit_b_3, sewing_kit_b_4, glue_e, glue_e_2, glue_a, glue_a_2, armor_repair_fa, armor_repair_fa_2, textile_patch_b, textile_patch_m, textile_patch_e, survival_kit, helm_cloth_mask
+repair_parts_exclude	= outfit, helmet
+repair_use_actor_effects = true
+
+;use_sound			= interface\inv_tape
+
+[armor_repair_fa_2]:armor_repair_fa
+$spawn 				= "devices\repair_kit_10"
+inv_grid_y			= 56
+cost				= 2000
+inv_weight			= 0.16
+
+[armor_repair_pro]:booster ; (Professional armor repair set (Chemical substance to fix closed respiratory material shredding)) ;x4
+$spawn 				= "devices\repair_kit_10"
+description			= st_armor_repair_pro_descr
+inv_name			= st_armor_repair_pro
+inv_name_short			= st_armor_repair_pro
+can_trade			= true
+quest_item      	= false
+cost				= 11000
+inv_weight			= 0.31
+visual				= dynamics\repair\armor_repair_pro.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 1
+inv_grid_x			= 3
+inv_grid_y			= 51
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.39		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.14		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.14		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= outfit
+repair_parts_include	= helmet_repair_kit, helmet_repair_kit_2, helmet_repair_kit_3, af_camelbak, af_aam, af_aac, af_iam, af_cooler, af_surge, af_grid, af_frames, swiss, boots, rope, synthrope, mutant_part_snork_mask, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, sewing_kit_b, sewing_kit_b_2, sewing_kit_b_3, sewing_kit_b_4, glue_e, glue_e_2, glue_a, glue_a_2, glue_b, glue_b_2, armor_repair_fa, armor_repair_fa_2, hide_chimera, hide_pseudogiant, hide_psy_dog, hide_pseudodog, hide_burer, hide_controller, hide_bloodsucker, hide_boar, hide_flesh, textile_patch_b, textile_patch_m, textile_patch_e, af_ironplate, af_kevlar, af_plates, survival_kit, helm_cloth_mask, tarpaulin, bedspread, underwear, wpn_hand_hammer, wpn_hand_crowbar, toolkit_p_0, toolkit_s_0, toolkit_r5_0, toolkit_r7_0, toolkit_u_0, helmet_repair_kit_0, armor_repair_pro_0, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0		;Add sections of items to include to be considered repair parts
+repair_parts_exclude	= outfit
+repair_use_actor_effects = true
+
+[armor_repair_pro_0]:identity_immunities
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_armor_repair_pro_empty_descr
+inv_name			= st_armor_repair_pro_empty
+inv_name_short		= st_armor_repair_pro_empty
+cost				= 400
+inv_weight			= 0.224
+visual				= dynamics\repair\armor_repair_pro.ogf
+inv_grid_width     = 2
+inv_grid_height    = 1
+inv_grid_x         = 3
+inv_grid_y         = 52
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.03
+
+[helmet_repair_kit]:booster ;x3
+$spawn 				= "devices\repair_kit_10"
+description			= st_helmet_repair_kit_descr
+inv_name			= st_helmet_repair_kit
+inv_name_short			= st_helmet_repair_kit
+can_trade			= true
+quest_item      	= false
+cost				= 7500
+inv_weight			= 0.2
+visual				= dynamics\repair\helmet_repair.ogf
+
+inv_grid_width		= 2
+inv_grid_height		= 1
+inv_grid_x			= 3
+inv_grid_y			= 53
+
+use_condition                            = false
+max_uses                                 = 1
+remove_after_use                         = true
+
+repair_min_condition 	= 0.44		;Min required condition to use
+repair_max_condition 	= 0.99		;Max required condition to use
+repair_add_condition 	= 0.12		;Amount of condition added to repaired item
+repair_part_bonus	 	= 0.12		;Amount bonus to add_condition if parts are used
+repair_use_parts	 	= true		;Allows the use of lesser conditioned weapons to be used for parts to add overall bonus to repair
+repair_type			 	= outfit 	;weapon	;weapon or outfit
+repair_refuse			= 
+repair_only				= helmet
+repair_parts_include	= helmet_repair_kit, helmet_repair_kit_2, helmet_repair_kit_3, af_camelbak, af_aam, af_aac, af_iam, af_cooler, af_surge, af_grid, af_frames, swiss, boots, rope, synthrope, mutant_part_snork_mask, armor_repair_pro, armor_repair_pro_2, armor_repair_pro_3, armor_repair_pro_4, sewing_kit_h, sewing_kit_h_2, sewing_kit_h_3, sewing_kit_h_4, sewing_kit_a, sewing_kit_a_2, sewing_kit_a_3, sewing_kit_a_4, sewing_kit_b, sewing_kit_b_2, sewing_kit_b_3, sewing_kit_b_4, glue_e, glue_e_2, glue_a, glue_a_2, glue_b, glue_b_2, armor_repair_fa, armor_repair_fa_2, hide_chimera, hide_pseudogiant, hide_psy_dog, hide_pseudodog, hide_burer, hide_controller, hide_bloodsucker, hide_boar, hide_flesh, textile_patch_b, textile_patch_m, textile_patch_e, af_ironplate, af_kevlar, af_plates, survival_kit, helm_cloth_mask, tarpaulin, bedspread, underwear, wpn_hand_hammer, wpn_hand_crowbar, toolkit_p_0, toolkit_s_0, toolkit_r5_0, toolkit_r7_0, toolkit_u_0, helmet_repair_kit_0, armor_repair_pro_0, explo_jerrycan_fuel_0, explo_balon_gas_8, explo_balon_gas_7, explo_balon_gas_6, explo_balon_gas_5, explo_balon_gas_4, explo_balon_gas_3, explo_balon_gas_2, explo_balon_gas, explo_balon_gas_0		;Add sections of items to include to be considered repair parts
+repair_parts_exclude	= helmet
+repair_use_actor_effects = true
+
+[helmet_repair_kit_0]:identity_immunities
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= S_PDA
+cform				= skeleton
+radius				= 68; 50
+description			= st_helmet_repair_kit_empty_descr
+inv_name			= st_helmet_repair_kit_empty
+inv_name_short		= st_helmet_repair_kit_empty
+cost				= 308
+inv_weight			= 0.196
+visual				= dynamics\repair\helmet_repair.ogf
+inv_grid_width     = 2
+inv_grid_height    = 1
+inv_grid_x         = 3
+inv_grid_y         = 54
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+repair_part_bonus	 	= 0.04
