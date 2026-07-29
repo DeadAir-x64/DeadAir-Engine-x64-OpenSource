@@ -114,7 +114,7 @@ int g_inv_highlight_equipped = 0;
 
 // [DA_PORT] see WeaponMagazined::state_Fire - weapons pick up breakages while being fired.
 //
-// ON by default at Pavel's decision (27.07). The mechanic is the author's own, written and then left
+// ON by default (27.07), deliberately. The mechanic is the author's own, written and then left
 // commented out in his sources, which is why weapons never wear into faults in the original. With it on
 // the three ported systems that read the malfunction mask finally do something: wear accelerates,
 // rate of fire goes ragged, dispersion widens - and CheckForMisfire starts producing real jams.

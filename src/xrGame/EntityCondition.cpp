@@ -347,7 +347,7 @@ float CEntityCondition::HitPowerEffect(float power_loss)
     //   * Even with that default corrected the sum charges 1.12 where stock charges 0.62, and the
     //     effect is not the 80% it looks like. Drain and income (artefacts + satiety) nearly cancel
     //     under the multiplier, so the extra 0.5 turned ~85 seconds of continuous sprint into ~12.
-    //     Measured in game at 16 seconds with Pavel's kit: 17.2 kg against a carry limit of 12.
+    //     Measured in game at 16 seconds with a test loadout: 17.2 kg against a carry limit of 12.
     // The configs read as multiplier semantics too - a suit at 0.62 says "sprinting costs 62% here",
     // and its upgrades subtract from that number.
     //

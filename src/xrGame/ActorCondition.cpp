@@ -641,7 +641,7 @@ void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
     // We did try measuring it against MaxCarryWeight instead, to make the penalty reachable. It works,
     // but the base carry limit is only 5 kg ([inventory] max_weight) plus gear bonuses, so in practice
     // the actor is over it almost always and the penalty stopped reading as "overloaded" and started
-    // reading as "tired all the time". Reverted on Pavel's call; restoring it is a one-word change.
+    // reading as "tired all the time". Reverted deliberately; restoring it is a one-word change.
     const float k = 0.0015f;
     const float walk_limit = m_object->MaxWalkWeight(); // walks the belt - compute once, this runs every frame
     float overweight_k = (object().inventory().TotalWeight() - walk_limit) * (walk_limit * k);

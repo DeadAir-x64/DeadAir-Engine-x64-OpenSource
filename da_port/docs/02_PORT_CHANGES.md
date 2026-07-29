@@ -1225,15 +1225,15 @@
 - **:2453** — extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
 - **:2455** — extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
 - **:2457** — Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного
-- **:2503** — Dead Air compatibility aliases
-- **:2509** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
-- **:2519** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
-- **:2526** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
-- **:2538** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
-- **:2540** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
-- **:2679** — Developer commands: registered only when the game was started with "-dev".
-- **:2698** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
-- **:2878** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+- **:2505** — Dead Air compatibility aliases
+- **:2511** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+- **:2521** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
+- **:2528** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+- **:2540** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+- **:2542** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+- **:2681** — Developer commands: registered only when the game was started with "-dev".
+- **:2700** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+- **:2880** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
 
 ### `xrGame/da_memory_probe.h`
 
@@ -1658,7 +1658,7 @@
 
 - **:2** — #include "Debug/StackTrace.h" // [DA_PORT] ловушка на выделение памяти
 - **:202** — Ловушка на выделение памяти заданного размера — со снимком стека.
-- **:248** — da_alloc_trap(size); // [DA_PORT]
+- **:257** — da_alloc_trap(size); // [DA_PORT]
 
 ### `xrNetServer/NET_Client.h`
 

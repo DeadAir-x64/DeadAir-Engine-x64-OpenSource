@@ -277,7 +277,7 @@ float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
 // The sun renders the whole scene again into each of its shadow cascades, and the far cascade is by far
 // the most expensive: on Cordon it was 5.1 ms of a 6.0 ms GPU frame at 180. At 51 the shadows look the
 // same in play - the difference only shows on terrain hundreds of metres out - and the level went from
-// 130 to 240-500 fps. This is Pavel's call, made after measuring; going above 51 is not worth it.
+// 130 to 240-500 fps. Chosen deliberately after measuring; going above 51 is not worth it.
 float ps_r2_sun_far = 51.f;
 float ps_r2_sun_depth_far_scale = 1.00000f; // 1.00001f
 float ps_r2_sun_depth_far_bias = -0.00002f; // -0.0000f
