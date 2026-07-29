@@ -30,12 +30,13 @@ struct Run
     // Полный снимок по подсистемам, снятый в конце прогона.
     size_t committed_kb = 0;
     size_t textures_kb = 0;
-    size_t strings_kb = 0;
-    size_t strings_count = 0;
-    size_t shared_kb = 0;
+    size_t strings_count = 0; // ЧИСЛО уникальных строк. Именно оно показательно: stat_economy()
+                              // возвращает не занятую память, а сэкономленную на разделении, и как
+                              // мера потребления не годится вовсе.
     size_t lua_kb = 0;
     size_t objects = 0;
     size_t alife_objects = 0;
+    bool objects_pending = false; // объекты считаются не сразу, см. DA_MemTick
 };
 
 xr_vector<Run> g_runs;
@@ -60,6 +61,23 @@ size_t textures_kb()
 }
 
 const char* sign(long long v) { return v > 0 ? "+" : ""; }
+
+// Ширина строки В СИМВОЛАХ, а не в байтах: подписи фаз русские, в UTF-8 это два байта на букву,
+// и обычное "%-22s" разъезжает колонки ровно на длину подписи.
+size_t utf8_width(const char* s)
+{
+    size_t n = 0;
+    for (const unsigned char* p = (const unsigned char*)s; *p; ++p)
+        if ((*p & 0xC0) != 0x80) // считаем только ведущие байты
+            ++n;
+    return n;
+}
+
+void pad_to(string512& dst, size_t width)
+{
+    for (size_t w = utf8_width(dst); w < width; ++w)
+        xr_strcat(dst, " ");
+}
 } // namespace
 
 // Выключатель: da_mem_probe 0 гасит автоматические отметки и печать в конце загрузки.
@@ -126,14 +144,17 @@ void DA_MemRunEnd()
     if (g_pStringContainer)
     {
         const auto [bytes, count] = g_pStringContainer->stat_economy();
-        run.strings_kb = (size_t)(bytes / 1024);
+        (void)bytes; // не занятая память, а экономия от разделения — вводит в заблуждение
         run.strings_count = (size_t)count;
     }
-    if (g_pSharedMemoryContainer)
-        run.shared_kb = (size_t)g_pSharedMemoryContainer->stat_economy();
 
-    run.objects = g_pGameLevel ? Level().Objects.o_count() : 0;
     run.alife_objects = ai().get_alife() ? ai().alife().objects().objects().size() : 0;
+
+    // Клиентские объекты в этот момент ещё НЕ созданы: сюда мы попадаем в конце net_start6, а спавн
+    // приходит сетевыми сообщениями позже. Первый замер честно показывал ноль. Поэтому счёт объектов
+    // откладывается до первого кадра, в котором они появились, — см. DA_MemTick.
+    run.objects = 0;
+    run.objects_pending = true;
 
     // Имя уровня в начале прогона ещё неизвестно — уточняем его здесь, чтобы в таблице было видно,
     // что сравниваются загрузки ОДНОГО уровня. Сравнивать разные бессмысленно: у них разное
@@ -147,6 +168,23 @@ void DA_MemRunEnd()
         (u32)(run.committed_kb / 1024));
 
     DA_MemDump();
+}
+
+void DA_MemTick()
+{
+    if (!g_da_mem_probe || g_runs.empty())
+        return;
+
+    Run& run = g_runs.back();
+    if (!run.objects_pending || !g_pGameLevel)
+        return;
+
+    const u32 count = Level().Objects.o_count();
+    if (count == 0)
+        return; // спавн ещё идёт
+
+    run.objects = count;
+    run.objects_pending = false;
 }
 
 void DA_MemDump()
@@ -198,7 +236,8 @@ void DA_MemDump()
     for (size_t m = 0; m < first.marks.size(); ++m)
     {
         string512 line;
-        xr_sprintf(line, "~ [DA_MEM]   %-22s", first.marks[m].label.c_str());
+        xr_sprintf(line, "~ [DA_MEM]   %s", first.marks[m].label.c_str());
+        pad_to(line, 36); // выравнивание по символам: подписи русские
         for (size_t i = 0; i < g_runs.size(); ++i)
         {
             string32 cell;
@@ -213,13 +252,13 @@ void DA_MemDump()
 
     // --- подсистемы: что уже отсеяно замером, а что нет ---
     Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
-    Msg("~ [DA_MEM] прогон | текстуры МБ | строки МБ/шт | общая МБ | Lua МБ | объектов | ALife");
+    Msg("~ [DA_MEM] прогон | текстуры МБ | Lua МБ | строк | объектов | ALife");
     for (size_t i = 0; i < g_runs.size(); ++i)
     {
         const Run& r = g_runs[i];
-        Msg("~ [DA_MEM]   %-4u | %11u | %6u/%-5u | %8u | %6u | %8u | %u", (u32)(i + 1),
-            (u32)(r.textures_kb / 1024), (u32)(r.strings_kb / 1024), (u32)r.strings_count,
-            (u32)(r.shared_kb / 1024), (u32)(r.lua_kb / 1024), (u32)r.objects, (u32)r.alife_objects);
+        Msg("~ [DA_MEM]   %-4u | %11u | %6u | %5u | %8u | %u", (u32)(i + 1),
+            (u32)(r.textures_kb / 1024), (u32)(r.lua_kb / 1024), (u32)r.strings_count,
+            (u32)r.objects, (u32)r.alife_objects);
     }
 
     Msg("~ [DA_MEM] Текстуры, строки и Lua уже отсеивались замером — если растут именно они, это "

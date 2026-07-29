@@ -50,6 +50,7 @@
 #include "xrPhysics/console_vars.h"
 #include "xrNetServer/NET_Messages.h"
 #include "xrEngine/GameFont.h"
+#include "da_memory_probe.h" // [DA_PORT]
 
 #ifdef DEBUG
 #include "level_debug.h"
@@ -411,6 +412,8 @@ void CLevel::MakeReconnect()
 void CLevel::OnFrame()
 {
     ZoneScoped;
+
+    DA_MemTick(); // [DA_PORT] досчитать объекты после спавна, см. da_memory_probe.h
 
 #ifdef DEBUG
     DBG_RenderUpdate();
