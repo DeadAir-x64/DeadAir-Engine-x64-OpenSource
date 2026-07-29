@@ -4,16 +4,22 @@
 # третьей неделе. Здесь единственный источник правды — сами комментарии в исходниках, а документ
 # всегда можно перегенерировать одной командой:
 #
-#     python docs/_regen_changes.py
+#     python xray-16/da_port/docs/_regen_changes.py
 #
-# Запускать из корня репозитория (там, где лежит папка xray-16).
+# Каталог запуска значения не имеет — пути берутся от самого файла.
 import json
 import os
 import re
 
-SRC = os.path.join("xray-16", "src")
-OUT_INDEX = os.path.join("docs", "_da_port_index.json")
-OUT_DOC = os.path.join("docs", "02_PORT_CHANGES.md")
+# Пути считаются от самого файла, а не от текущего каталога: документы переехали из корня в
+# xray-16/da_port/docs, и прежние относительные пути после переезда молча писали в старое место —
+# запуск «из корня репозитория» стирал документ в ноль правок.
+HERE = os.path.dirname(os.path.abspath(__file__))  # xray-16/da_port/docs
+REPO = os.path.dirname(os.path.dirname(HERE))  # xray-16
+SRC = os.path.join(REPO, "src")
+PATH_PREFIX = os.path.basename(REPO) + "/src/"  # как пути выглядят в документе
+OUT_INDEX = os.path.join(HERE, "_da_port_index.json")
+OUT_DOC = os.path.join(HERE, "02_PORT_CHANGES.md")
 
 GROUPS = [
     ("Рендер — DirectX 11 (R4)", lambda p: p.startswith("xray-16/src/Layers/")),
@@ -45,7 +51,8 @@ def collect():
                     text = re.sub(r"^\[DA_PORT\]\s*", "", text).replace("DA: ", "")
                     hits.append((i + 1, text))
             if hits:
-                found[path.replace("\\", "/")] = hits
+                rel = os.path.relpath(path, SRC).replace("\\", "/")
+                found[PATH_PREFIX + rel] = hits
     return found
 
 
@@ -69,7 +76,7 @@ def render(index):
     add("(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **%d правк(и) в %d файлах**.\n"
         % (total, len(index)))
     add("Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,")
-    add("пока маркеры на месте. Пересобрать: `python docs/_regen_changes.py`.\n")
+    add("пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.\n")
     add("> Как читать: каждая строка — это `файл:строка` и первая строка комментария, объясняющего правку.")
     add("> Развёрнутое объяснение «почему» лежит рядом с кодом — комментарии писались как основная документация,")
     add("> потому что они не теряются при переносе и видны тому, кто читает функцию.\n")

@@ -1,10 +1,10 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **920 правк(и) в 199 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **931 правк(и) в 199 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
-пока маркеры на месте. Пересобрать: `python docs/_regen_changes.py`.
+пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
 
 > Как читать: каждая строка — это `файл:строка` и первая строка комментария, объясняющего правку.
 > Развёрнутое объяснение «почему» лежит рядом с кодом — комментарии писались как основная документация,
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*66 файл(ов), 358 правк(и)*
+*66 файл(ов), 366 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_StandartBinding.cpp`
@@ -147,44 +147,49 @@
 
 ### `Layers/xrRender/xrRender_console.cpp`
 
-- **:143** — The author's value; governs STATIC visuals - trees and bushes, grass is unaffected by it.
-- **:186** — 64 is what the original actually rendered with, not merely the stock value: the author's
-- **:209** — Tone mapping and bloom below are the author's values, taken from the Dead Air sources
-- **:214** — float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
-- **:215** — float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
-- **:216** — float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
-- **:218** — float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
-- **:220** — float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
-- **:224** — float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
-- **:239** — float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
-- **:240** — 180, the value beside it, which is the author's and also the console maximum. At 100 the
-- **:244** — 51 instead of the stock 180.
-- **:255** — The author's lighting balance: a much stronger sun against a heavily damped ambient and
-- **:258** — float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
-- **:259** — float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
-- **:260** — float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
-- **:283** — Dead Air compatibility stubs (x32 mod commands)
-- **:311** — Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
-- **:321** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
-- **:336** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
-- **:348** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
-- **:380** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
-- **:520** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
-- **:527** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
-- **:564** — Presets for the shadow-casting light ceiling, exposed in the video options.
-- **:566** — One-touch performance preset for the Performance tab.
-- **:635** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
-- **:808** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
-- **:1099** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
-- **:1101** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
-- **:1108** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
-- **:1120** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
-- **:1122** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
-- **:1190** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
-- **:1254** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
-- **:1346** — Dead Air compatibility stub commands
-- **:1372** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
-- **:1373** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
+- **:26** — Which entry the upscaler list stands on; needed by CCC_MSAA further down. Declared HERE,
+- **:113** — 8x убран из списка (значение 3 в стоковой таблице). Три причины, и все три — про то, что
+- **:166** — The author's value; governs STATIC visuals - trees and bushes, grass is unaffected by it.
+- **:209** — 64 is what the original actually rendered with, not merely the stock value: the author's
+- **:232** — Tone mapping and bloom below are the author's values, taken from the Dead Air sources
+- **:237** — float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
+- **:238** — float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
+- **:239** — float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
+- **:241** — float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
+- **:243** — float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
+- **:247** — float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
+- **:262** — float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
+- **:263** — 180, the value beside it, which is the author's and also the console maximum. At 100 the
+- **:267** — 51 instead of the stock 180.
+- **:278** — The author's lighting balance: a much stronger sun against a heavily damped ambient and
+- **:281** — float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
+- **:282** — float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
+- **:283** — float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
+- **:306** — Dead Air compatibility stubs (x32 mod commands)
+- **:334** — Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
+- **:344** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
+- **:359** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
+- **:371** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
+- **:403** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
+- **:543** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
+- **:550** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
+- **:587** — Presets for the shadow-casting light ceiling, exposed in the video options.
+- **:589** — One-touch performance preset for the Performance tab.
+- **:602** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран по решению Павла:
+- **:666** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
+- **:839** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
+- **:873** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
+- **:1164** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
+- **:1166** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
+- **:1173** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
+- **:1185** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
+- **:1187** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
+- **:1255** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
+- **:1319** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
+- **:1380** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
+- **:1411** — Dead Air compatibility stub commands
+- **:1437** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+- **:1438** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
 
 ### `Layers/xrRender/xrRender_console.h`
 
@@ -508,22 +513,25 @@
 - **:21** — extern ENGINE_API int ps_r__dlss; // [DA_PORT]
 - **:215** — Make sure the internal render resolution is current before any target is sized from it.
 - **:225** — Msg("* [DA_PORT] render targets: output %ux%u, scene %ux%u", Device.dwWidth, Device.dwHeight,
-- **:282** — Scene targets follow the internal render resolution ("r__render_scale"); only the
-- **:305** — scene-grab target for water SSLR ("$user$ssr", bound to s_image by r3\effects_water.s).
-- **:354** — temporal AA buffers. They live on rt_Color, which is where the finished frame lands after
-- **:369** — Motion vectors: where each pixel was on the previous frame, in screen space.
-- **:379** — Reactive mask: one channel, 1 where the pixel belongs to something a temporal
-- **:390** — Same format and size as the velocity buffer: the guard pass writes here and the
-- **:396** — Working pair for phase_reactive. Widening happens one axis at a time - a maximum
-- **:404** — FSR 2 writes its result here. Two things set it apart from every other target:
-- **:427** — Intel XeSS, the alternative. Created alongside rather than instead: both are
-- **:432** — Intel XeSS. Was nested inside the FSR 2 branch above, which meant it could only
-- **:445** — NVIDIA DLSS. Независимо от остальных, по той же причине, что и XeSS: выбор одного
-- **:463** — FSR 3. Same reasoning as FSR 2 for the sizes: maxRenderSize is declared as the full
-- **:734** — temporal AA resolve (R4-only). Skipped under MSAA: common.h then types s_position as
-- **:740** — Script blender, unlike the TAA one - it needs no textures beyond two
-- **:743** — Object-motion reactivity, see phase_reactive. Two blenders share one pixel
-- **:816** — see phase_pp: no depth when targeting the back buffer (sizes may differ)
+- **:241** — The stock report just below is #ifdef DEBUG, so a release build never says whether
+- **:246** — Msg("* [DA_PORT] MSAA: %u samples, per-sample lighting on edges only: %s", SampleCount,
+- **:249** — Msg("* [DA_PORT] MSAA: off");
+- **:292** — Scene targets follow the internal render resolution ("r__render_scale"); only the
+- **:315** — scene-grab target for water SSLR ("$user$ssr", bound to s_image by r3\effects_water.s).
+- **:364** — temporal AA buffers. They live on rt_Color, which is where the finished frame lands after
+- **:379** — Motion vectors: where each pixel was on the previous frame, in screen space.
+- **:389** — Reactive mask: one channel, 1 where the pixel belongs to something a temporal
+- **:400** — Same format and size as the velocity buffer: the guard pass writes here and the
+- **:406** — Working pair for phase_reactive. Widening happens one axis at a time - a maximum
+- **:414** — FSR 2 writes its result here. Two things set it apart from every other target:
+- **:437** — Intel XeSS, the alternative. Created alongside rather than instead: both are
+- **:442** — Intel XeSS. Was nested inside the FSR 2 branch above, which meant it could only
+- **:455** — NVIDIA DLSS. Независимо от остальных, по той же причине, что и XeSS: выбор одного
+- **:473** — FSR 3. Same reasoning as FSR 2 for the sizes: maxRenderSize is declared as the full
+- **:744** — temporal AA resolve (R4-only). Skipped under MSAA: common.h then types s_position as
+- **:750** — Script blender, unlike the TAA one - it needs no textures beyond two
+- **:753** — Object-motion reactivity, see phase_reactive. Two blenders share one pixel
+- **:826** — see phase_pp: no depth when targeting the back buffer (sizes may differ)
 
 ### `Layers/xrRender_R2/r2_rendertarget_phase_PP.cpp`
 
@@ -575,7 +583,7 @@
 
 ## Движок и устройство
 
-*18 файл(ов), 133 правк(и)*
+*18 файл(ов), 135 правк(и)*
 
 
 ### `xrEngine/CameraManager.cpp`
@@ -682,79 +690,81 @@
 ### `xrEngine/xr_ioc_cmd.cpp`
 
 - **:22** — Frame-rate cap offered as a list in the video options. The numeric token names are
-- **:353** — Internal render resolution, as a percentage of the output. Every scene render target is
-- **:358** — FSR 2 quality mode. Setting it also sets the render scale, because the two are not free
-- **:374** — ---- Upscaler registry: only one may be on ------------------------------------------
-- **:383** — extern ENGINE_API int ps_r__dlss; // [DA_PORT]
-- **:401** — Our own temporal AA belongs here too: it owns the frame's history exactly as the
-- **:407** — Is a TEMPORAL upscaler reconstructing this frame?
-- **:423** — ---- Сброс истории временных фильтров -------------------------------------------------
-- **:440** — Msg("* [DA_PORT] temporal history discarded: %s", why);
-- **:477** — Msg("! [DA_PORT] %s switched off - only one upscaler may reconstruct a frame, and two at once "
-- **:483** — ---- What the menu actually shows: which upscaler, and how hard -----------------------
-- **:494** — Our own temporal AA belongs in this list, not beside it.
-- **:511** — { "ui_mm_upscaler_dlss", 6 }, // [DA_PORT]
-- **:586** — Msg("* [DA_PORT] upscaler %d, quality step %d: scene renders at %d%% of the output", ps_r__upscaler,
-- **:605** — Same idea as CCC_FSR2 below: the quality mode also sets the render scale, because Intel's
-- **:632** — Msg("* [DA_PORT] XeSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
-- **:636** — DLSS. Устроен как XeSS выше, но коэффициенты свои: они замерены у самой NGX через
-- **:668** — Msg("* [DA_PORT] DLSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
-- **:716** — Msg("* [DA_PORT] FSR 2 mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
-- **:738** — Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible
-- **:926** — Exported: the renderer now applies these itself when the hardware gamma ramp is
-- **:1136** — Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
-- **:1154** — Percentage of the output resolution the 3D scene is rendered at (see
-- **:1158** — Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
-- **:1164** — Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
-- **:1169** — Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
-- **:1175** — AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
-- **:1180** — Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
-- **:1183** — ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества
-- **:1185** — Отдавать ли DLSS нашу реактивную маску.
-- **:1196** — Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
-- **:1199** — FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
-- **:1204** — D3D11 validation layer, plus draining its messages into the engine log. Off by
-- **:1209** — Halves the FSR 3 path so the damage can be attributed without a validation layer.
-- **:1215** — How much the upscalers should distrust their history on alpha-tested foliage. Not a switch
-- **:1221** — Reactivity from screen-space motion, against ghosting behind moving objects. The
-- **:1231** — Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
-- **:1269** — Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
-- **:1276** — One-shot readback of the pass's inputs and output into the log, with figures rather than a
-- **:1280** — The frame rate the three settings above are stated at.
-- **:1295** — Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
-- **:1299** — Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
-- **:1309** — Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
-- **:1331** — ---- Detail-bump stability under a temporal upscaler --------------------------------
-- **:1355** — Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
-- **:1362** — Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
-- **:1369** — ---- Glossy surfaces opt out of temporal accumulation -------------------------------
-- **:1383** — 0 = vegetation stands still in the shadow map while still swaying on screen. See
-- **:1387** — 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
-- **:1392** — Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
-- **:1406** — Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
-- **:1412** — Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
-- **:1418** — One control instead of two. The pair that actually drives the upscale — render scale and
-- **:1430** — Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
-- **:1435** — Show the temporal resolve where it fetches history from - see da_taa.ps.
-- **:1441** — How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
-- **:1464** — Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
-- **:1468** — Projection jitter, separately switchable. TAA has two halves that fail in different ways —
-- **:1517** — Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
-- **:1522** — What the options menu shows. The three per-vendor variables above stay for the console.
-- **:1548** — Detail-bump damping, see the declarations. Sensitivity and strength in one number:
-- **:1562** — CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
-- **:1563** — CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
-- **:1564** — CMD4(CCC_Integer, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
-- **:1566** — CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
-- **:1567** — CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
-- **:1568** — CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer res...
-- **:1569** — CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
-- **:1570** — CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
-- **:1572** — CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
-- **:1573** — CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
-- **:1574** — CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
-- **:1575** — CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
-- **:1580** — CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
+- **:237** — Skip comment lines. Every other .ltx in the game marks comments with ';' and the
+- **:371** — Internal render resolution, as a percentage of the output. Every scene render target is
+- **:376** — FSR 2 quality mode. Setting it also sets the render scale, because the two are not free
+- **:392** — ---- Upscaler registry: only one may be on ------------------------------------------
+- **:401** — extern ENGINE_API int ps_r__dlss; // [DA_PORT]
+- **:419** — Our own temporal AA belongs here too: it owns the frame's history exactly as the
+- **:425** — Is a TEMPORAL upscaler reconstructing this frame?
+- **:441** — ---- Сброс истории временных фильтров -------------------------------------------------
+- **:458** — Msg("* [DA_PORT] temporal history discarded: %s", why);
+- **:495** — Msg("! [DA_PORT] %s switched off - only one upscaler may reconstruct a frame, and two at once "
+- **:501** — ---- What the menu actually shows: which upscaler, and how hard -----------------------
+- **:512** — Our own temporal AA belongs in this list, not beside it.
+- **:523** — Порядок строк — это порядок пунктов в меню, и он выбран, а не унаследован: сначала то,
+- **:610** — MSAA cannot run next to a RECONSTRUCTING upscaler, and loses to it.
+- **:637** — Msg("* [DA_PORT] upscaler %d, quality step %d: scene renders at %d%% of the output", ps_r__upscaler,
+- **:656** — Same idea as CCC_FSR2 below: the quality mode also sets the render scale, because Intel's
+- **:683** — Msg("* [DA_PORT] XeSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:687** — DLSS. Устроен как XeSS выше, но коэффициенты свои: они замерены у самой NGX через
+- **:719** — Msg("* [DA_PORT] DLSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:767** — Msg("* [DA_PORT] FSR 2 mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:789** — Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible
+- **:977** — Exported: the renderer now applies these itself when the hardware gamma ramp is
+- **:1187** — Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
+- **:1205** — Percentage of the output resolution the 3D scene is rendered at (see
+- **:1209** — Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
+- **:1215** — Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
+- **:1220** — Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
+- **:1226** — AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
+- **:1231** — Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
+- **:1234** — ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества
+- **:1236** — Отдавать ли DLSS нашу реактивную маску.
+- **:1247** — Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
+- **:1250** — FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
+- **:1255** — D3D11 validation layer, plus draining its messages into the engine log. Off by
+- **:1260** — Halves the FSR 3 path so the damage can be attributed without a validation layer.
+- **:1266** — How much the upscalers should distrust their history on alpha-tested foliage. Not a switch
+- **:1272** — Reactivity from screen-space motion, against ghosting behind moving objects. The
+- **:1282** — Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
+- **:1320** — Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
+- **:1327** — One-shot readback of the pass's inputs and output into the log, with figures rather than a
+- **:1331** — The frame rate the three settings above are stated at.
+- **:1346** — Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
+- **:1350** — Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
+- **:1360** — Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
+- **:1382** — ---- Detail-bump stability under a temporal upscaler --------------------------------
+- **:1406** — Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
+- **:1413** — Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
+- **:1420** — ---- Glossy surfaces opt out of temporal accumulation -------------------------------
+- **:1434** — 0 = vegetation stands still in the shadow map while still swaying on screen. See
+- **:1438** — 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
+- **:1443** — Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
+- **:1457** — Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
+- **:1463** — Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
+- **:1469** — One control instead of two. The pair that actually drives the upscale — render scale and
+- **:1481** — Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
+- **:1486** — Show the temporal resolve where it fetches history from - see da_taa.ps.
+- **:1492** — How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
+- **:1515** — Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
+- **:1519** — Projection jitter, separately switchable. TAA has two halves that fail in different ways —
+- **:1568** — Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
+- **:1573** — What the options menu shows. The three per-vendor variables above stay for the console.
+- **:1599** — Detail-bump damping, see the declarations. Sensitivity and strength in one number:
+- **:1613** — CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
+- **:1614** — CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
+- **:1615** — CMD4(CCC_Integer, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
+- **:1617** — CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
+- **:1618** — CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
+- **:1619** — CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer res...
+- **:1620** — CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
+- **:1621** — CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
+- **:1623** — CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
+- **:1624** — CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
+- **:1625** — CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
+- **:1626** — CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
+- **:1631** — CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
 
 ### `xrEngine/xr_level_controller.cpp`
 
@@ -768,7 +778,7 @@
 
 ## Игровая логика
 
-*60 файл(ов), 281 правк(и)*
+*60 файл(ов), 282 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -791,16 +801,17 @@
 - **:2068** — Artefact radiation is deliberately NOT applied here — Dead Air's own engine has
 - **:2085** — Helmets were read but never applied: CHelmet loads health/radiation/power/bleeding/
 - **:2106** — as above: the outfit's stamina drain only bites while sprinting
-- **:2133** — Scaled by wear, so that the protection actually granted matches the number the
+- **:2126** — How much artefacts take off a hit of this type. ONE function, used both by the damage path
 
 ### `xrGame/Actor.h`
 
 - **:24** — class IRenderVisual; // [DA_PORT] item placement-preview ghost
-- **:443** — how hard the carried weapon / worn outfit cut into sprint speed (sprint_*_koef)
-- **:494** — "Установить" placement-preview mode (kerosene lamp etc.): a ghost of the item follows
-- **:504** — item placement-preview state
-- **:510** — Ghost highlight. The model itself cannot be tinted from here — IRenderVisual does not
-- **:522** — hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):
+- **:208** — Belt AND backpack slot - the tank and the exo backpack are artefacts too. Shared by the
+- **:446** — how hard the carried weapon / worn outfit cut into sprint speed (sprint_*_koef)
+- **:497** — "Установить" placement-preview mode (kerosene lamp etc.): a ghost of the item follows
+- **:507** — item placement-preview state
+- **:513** — Ghost highlight. The model itself cannot be tinted from here — IRenderVisual does not
+- **:525** — hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):
 
 ### `xrGame/ActorAnimation.cpp`
 
