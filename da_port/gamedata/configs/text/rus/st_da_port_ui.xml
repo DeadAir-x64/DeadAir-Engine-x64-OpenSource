@@ -126,6 +126,10 @@
 	<string id="ui_mm_dlss_ultra_performance">
 		<text>Ультра-производительность</text>
 	</string>
+	<!-- [DA_PORT] Multisampling, offered only when no temporal filter is running -->
+	<string id="ui_mm_msaa">
+		<text>Сглаживание MSAA</text>
+	</string>
 	<string id="ui_mm_upscaler_quality">
 		<text>Качество</text>
 	</string>

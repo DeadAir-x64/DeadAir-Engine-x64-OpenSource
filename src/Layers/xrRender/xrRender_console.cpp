@@ -23,6 +23,13 @@
 #endif // (RENDER == R_R3) || (RENDER == R_R4)
 
 
+// [DA_PORT] Which entry the upscaler list stands on; needed by CCC_MSAA further down. Declared HERE,
+// outside the namespace, and not next to its use: an extern written inside
+// xray::render::RENDER_NAMESPACE looks for the symbol in that namespace and the link fails with an
+// undefined reference to a mangled name that still reads like the right variable. Same reason the
+// engine externs at the top of r2.cpp sit outside the namespace.
+extern ENGINE_API u32 ps_r__upscaler;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 u32 ps_Preset = 2;
@@ -103,7 +110,23 @@ const xr_token qwater_reflection_quality_token[] =
 };
 
 u32 ps_r3_msaa = 0; // = 0;
-const xr_token qmsaa_token[] = {{"st_opt_off", 0}, {"2x", 1}, {"4x", 2}, {"8x", 3},
+// [DA_PORT] 8x убран из списка (значение 3 в стоковой таблице). Три причины, и все три — про то, что
+// пункт обещал больше, чем движок может обеспечить.
+//
+// 1. Рендер отложенный, поэтому цена памяти умножается БУКВАЛЬНО: весь G-буфер создаётся с восемью
+//    сэмплами. На 1920x1080 это порядка 400 МБ на целях сцены против примерно 50 без MSAA.
+// 2. Поддержку никто не проверяет: во всём рендере нет ни одного CheckMultisampleQualityLevels, а
+//    DirectX 11 гарантирует для обычных форматов целей только 4x — 8x опционален и зависит от
+//    формата и видеокарты. Отката на меньший множитель тоже нет: отказ драйвера приводит к падению
+//    на CHK_DX при создании цели.
+// 3. Сглаживаются только края геометрии, и поверх обычно работает TAA, которая их и так разбирает.
+//    Разница 4x против 8x на этом фоне не стоит своей цены.
+//
+// Значения остальных пунктов НЕ сдвинуты: 2x остаётся 1, 4x остаётся 2 — по ним считается
+// o.msaa_samples = (1 << ps_r3_msaa), и сдвиг сломал бы сохранённые настройки. Старый user.ltx с
+// "r3_msaa 8x" просто не найдёт токен: команда сообщит о неверном аргументе и оставит прежнее
+// значение, а не выставит мусор.
+const xr_token qmsaa_token[] = {{"st_opt_off", 0}, {"2x", 1}, {"4x", 2},
     {nullptr, 0}};
 
 u32 ps_r3_msaa_atest = 0; // = 0;
@@ -570,12 +593,21 @@ float o_optimize_dynamic_l3_size = O_D_L3_S_MED;
 // go through its own handler too. Writing the variables directly would set the number and skip the work.
 // The ordering of the rows below matches what was actually measured - the shadow settings are the ones
 // that move the frame, the rest is trim.
+//
+// The ten commands this runs belong to THIS tab and to nothing else. The mod's own quality presets
+// (gamedata/configs/rspec_*.ltx, reached through `_preset` / CCC_Preset below) deliberately do not
+// name any of them: two controls writing the same variable overwrite each other, and the player has
+// no way to tell which one won. Adding a knob here means removing it from those five files.
+//
+// [DA_PORT] Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран по решению Павла:
+// он гасил тени у ВСЕХ источников разом и обрезал видимость до предела — картинка ломалась заметнее,
+// чем росли кадры, а «Низкие» и так покрывают слабые машины. Строка st_opt_perf_max_fps в
+// text/*/st_da_port_ui.xml оставлена намеренно: вернуть пункт = одна строка здесь плюс шестой ряд ниже.
 xr_token q_perf_preset[] = {
     { "st_opt_perf_low", 0 },
     { "st_opt_perf_medium", 1 },
     { "st_opt_perf_high", 2 },
     { "st_opt_perf_ultra", 3 },
-    { "st_opt_perf_max_fps", 4 },
     { nullptr, 0 },
 };
 u32 ps_r__perf_preset = 1;
@@ -594,8 +626,8 @@ public:
             pcstr shadow_lights, sun_far, smap, opt_static, opt_dyn;
             pcstr vis_dist, detail_radius, detail_density, geometry_lod, detail_height;
         };
-        // low, medium, high, ultra, max fps
-        static const Preset presets[5] = {
+        // low, medium, high, ultra
+        static const Preset presets[4] = {
             { "st_opt_shadow_lights_low",    "51",  "1024", "st_optimize_high", "st_optimize_high",
               "0.8", "60",  "0.75", "0.7", "1.0" },
             { "st_opt_shadow_lights_medium", "51",  "1024", "st_optimize_med",  "st_optimize_med",
@@ -604,11 +636,10 @@ public:
               "1.0", "150", "0.4",  "1.3", "1.5" },
             { "st_opt_shadow_lights_high",   "120", "2048", "st_optimize_off",  "st_optimize_off",
               "1.0", "200", "0.3",  "1.6", "1.8" },
-            { "st_opt_shadow_lights_off",    "51",  "1024", "st_optimize_high", "st_optimize_high",
-              "0.6", "49",  "0.9",  "0.5", "1.0" },
         };
 
-        const Preset& p = presets[(*value < 5) ? *value : 1];
+        // Старые user.ltx могли сохранить убранный пятый пункт — такое значение уводим на «Средние».
+        const Preset& p = presets[(*value < 4) ? *value : 1];
         string256 cmd;
 
         xr_sprintf(cmd, "r__light_shadow_budget %s", p.shadow_lights);   Console->Execute(cmd);
@@ -802,6 +833,40 @@ public:
         FS.update_path(_cfg, "$game_config$", _cfg);
         strconcat(sizeof(cmd), cmd, "cfg_load", " ", _cfg);
         Console->Execute(cmd);
+    }
+};
+
+// [DA_PORT] Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
+// exactly as picking one of them clears this (da_apply_upscaler, xr_ioc_cmd.cpp).
+//
+// Why they cannot share a frame: FSR/XeSS/DLSS reconstruct edges FROM the jittered samples of several
+// frames, and MSAA resolves those same edges inside one frame before they ever see them - the
+// sub-pixel information they exist to use is gone, and the extra samples were paid for anyway. Worse,
+// rt_Velocity and rt_Reactive are single-sample by construction while the rest of the G-buffer follows
+// the MSAA count; with vectors on they are bound together, and D3D11 refuses a mismatched set without
+// a word.
+//
+// ⚠ Our own temporal AA (entry 1 in the list) is NOT one of them. It is absent from
+// da_upscaler_active(), so it never switches the velocity buffer on, the scene pass binds no extra
+// targets, and MSAA is free to run beside it - the two cover different things, geometry edges against
+// shading and specular. Hence the `> 1` below rather than a bare non-zero test.
+//
+// The menu already hides this row for the reconstructing choices, so through the interface the
+// conflict cannot arise. This exists for the console, where it can.
+//
+// No loop is possible: each side acts only when ITS OWN setting is set, and each hands the other a
+// zero. "r3_msaa 4x" clears the upscaler, whose handler then sees zero and stops.
+class CCC_MSAA : public CCC_Token
+{
+public:
+    CCC_MSAA(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+        // Global scope: the declaration lives outside this namespace, see the top of the file.
+        if (*value != 0 && ::ps_r__upscaler > 1)
+            Console->Execute("r__upscaler ui_mm_upscaler_off");
     }
 };
 
@@ -1312,7 +1377,7 @@ void xrRender_initconsole()
     CMD3(CCC_Mask, "r3_water_refl_jitter", &ps_r2_ls_flags_ext, R3FLAGEXT_SSR_JITTER);
 
     //CMD3(CCC_Mask, "r3_msaa", &ps_r2_ls_flags, R3FLAG_MSAA);
-    CMD3(CCC_Token, "r3_msaa", &ps_r3_msaa, qmsaa_token);
+    CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
     //CMD3(CCC_Mask, "r3_msaa_hybrid", &ps_r2_ls_flags, R3FLAG_MSAA_HYBRID);
     //CMD3(CCC_Mask, "r3_msaa_opt", &ps_r2_ls_flags, R3FLAG_MSAA_OPT);
     CMD3(CCC_Mask, "r3_gbuffer_opt", &ps_r2_ls_flags, R3FLAG_GBUFFER_OPT);

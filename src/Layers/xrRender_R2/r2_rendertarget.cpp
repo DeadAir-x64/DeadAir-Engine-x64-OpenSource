@@ -238,6 +238,16 @@ CRenderTarget::CRenderTarget()
     const u32 SampleCount  = options.msaa ? options.msaa_samples : 1u;
     const u32 BoundSamples = options.msaa_opt ? 1u : options.msaa_samples;
 
+    // [DA_PORT] The stock report just below is #ifdef DEBUG, so a release build never says whether
+    // multisampling actually came on - and "is this setting doing anything at all" is a question that
+    // has cost this port whole evenings. The scene targets are built from these two numbers, so one
+    // line here answers it for good. Cheap: once per renderer create.
+    if (options.msaa)
+        Msg("* [DA_PORT] MSAA: %u samples, per-sample lighting on edges only: %s", SampleCount,
+            options.msaa_opt ? "yes" : "no");
+    else
+        Msg("* [DA_PORT] MSAA: off");
+
 #ifdef DEBUG
     Msg("MSAA samples = %d", SampleCount);
     if (options.msaa_opt)

@@ -184,7 +184,7 @@
 		<cap_upscaler x="215" y="212" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_upscaler</text>
 		</cap_upscaler>
-		<list_upscaler x="360" y="210" width="150" height="21" list_length="6">
+		<list_upscaler x="360" y="210" width="150" height="21" list_length="7">
 			<options_item entry="r__upscaler" group="mm_opt_video" depend="restart"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
@@ -204,6 +204,25 @@
 			</text_color>
 			<list_font_s r="240" g="240" b="240"/>
 		</list_upscaler_quality>
+
+		<!-- [DA_PORT] Multisampling: the anti-aliasing for players who run no temporal filter at all.
+		     It shares its coordinates with the quality row above ON PURPOSE. The two can never be on
+		     screen together - the quality steps belong to a reconstructing upscaler (list id above 1),
+		     this belongs to "off" (id 0) - so one slot serves both and nothing below has to move.
+		     OnUpscalerChanged in ui_mm_opt_main.script sets Show() on both in the same breath, which is
+		     what keeps the invariant true. Marked restart: the sample count is baked into every scene
+		     render target when the renderer is created. -->
+		<cap_msaa x="215" y="240" width="90" height="21">
+			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_msaa</text>
+		</cap_msaa>
+		<list_msaa x="360" y="238" width="150" height="21" list_length="3">
+			<options_item entry="r3_msaa" group="mm_opt_video" depend="restart"/>
+			<text_color>
+				<e r="220" g="220" b="220"/>
+				<d r="125" g="125" b="125"/>
+			</text_color>
+			<list_font_s r="240" g="240" b="240"/>
+		</list_msaa>
 
 		<cap_color_correction x="215" y="444" width="90" height="21">
             <text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_color_correction</text>
@@ -327,7 +346,7 @@
 		<cap_perf_preset x="215" y="20" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_perf_preset</text>
 		</cap_perf_preset>
-		<list_perf_preset x="360" y="18" width="150" height="21" list_length="5">
+		<list_perf_preset x="360" y="18" width="150" height="21" list_length="4">
 			<options_item entry="r__perf_preset" group="mm_opt_video" depend="runtime"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>

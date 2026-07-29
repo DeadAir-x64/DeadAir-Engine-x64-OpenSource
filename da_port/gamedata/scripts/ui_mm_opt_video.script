@@ -58,6 +58,16 @@ function opt_video:InitControls(x, y, xml, handler)
 	handler.cap_upscaler_quality = xml:InitStatic("tab_video:cap_upscaler_quality", self)
 	handler.combo_upscaler_quality = xml:InitComboBox("tab_video:list_upscaler_quality", self)
 
+	-- [DA_PORT] Multisampling, for players running no temporal filter at all. It occupies the SAME row
+	-- as the quality steps above: the two are mutually exclusive by construction - quality belongs to a
+	-- reconstructing upscaler, this belongs to "off" - so one slot serves both and the rows below stay
+	-- where they are. OnUpscalerChanged decides which of the two is visible.
+	--
+	-- Stored on the handler rather than on self for the same reason combo_upscaler is: OnUpscalerChanged
+	-- lives on the options dialog, and looking these up under dlg_video found nil every time.
+	handler.cap_msaa = xml:InitStatic("tab_video:cap_msaa", self)
+	handler.combo_msaa = xml:InitComboBox("tab_video:list_msaa", self)
+
 	-- [DA_PORT] Потолок теневых ламп ЖИВЁТ ВО ВКЛАДКЕ ПРОИЗВОДИТЕЛЬНОСТИ, не здесь.
 	-- Привязка осталась после переноса и каждый запуск писала в лог, что узла нет. Хуже того,
 	-- InitComboBox по отсутствующему узлу возвращает nil, и этот nil затирал бы рабочую ссылку,

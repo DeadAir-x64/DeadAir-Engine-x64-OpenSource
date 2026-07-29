@@ -233,6 +233,24 @@ void CCC_LoadCFG::Execute(pcstr args)
         while (!F->eof())
         {
             F->r_string(str, sizeof(str));
+
+            // [DA_PORT] Skip comment lines. Every other .ltx in the game marks comments with ';' and the
+            // LTX parser strips them - but this loop hands each line straight to the console, which has
+            // never heard of comments. A documented config script therefore reported one
+            // "! Unknown command:  ;" per comment line: twenty-one on every startup from the quality
+            // presets alone, plus more from the ready-made sets in gamedata/configs.
+            //
+            // Known noise in a log is not harmless. It is exactly what hides the lines that are not
+            // noise, and this file is read before anything interesting has had a chance to go wrong.
+            //
+            // Leading ';' only. A trailing one would have to be told apart from a legitimate argument -
+            // console commands take the whole rest of the line - and no shipped script needs that.
+            pcstr line = str;
+            while (*line == ' ' || *line == '\t')
+                ++line;
+            if (*line == ';')
+                continue;
+
             if (allow(str))
                 Console->Execute(str);
         }
@@ -502,13 +520,23 @@ ENGINE_API u32 ps_r__upscaler = 0;
 // Values renumbered to put it in a sensible order. Safe: the config stores the token NAME, not the
 // number, so existing settings keep meaning what they meant.
 ENGINE_API xr_token qupscaler_token[] = {
+    // [DA_PORT] Порядок строк — это порядок пунктов в меню, и он выбран, а не унаследован: сначала то,
+    // что стоит попробовать первым. «Выкл» и TAA — для тех, кто не масштабирует вовсе; дальше DLSS как
+    // лучший из реконструирующих там, где он вообще доступен; затем семейство FSR по возрастанию версии;
+    // XeSS последним, потому что на D3D11 он работает только на Intel Arc.
+    //
+    // ⚠ ЗНАЧЕНИЯ ПРИ ПЕРЕСТАНОВКЕ НЕ МЕНЯЮТСЯ, и это обязательное условие. Значение токена — это то, что
+    // ложится в user.ltx, по нему же ветвится da_apply_upscaler, и по нему меню решает, показывать ли
+    // ряд «Качество» (id > 1) и ряд MSAA (id <= 1): CUIComboBox кладёт в элемент списка именно
+    // tok->id, а CurrentID() возвращает его, а НЕ порядковый номер строки. Поменяйте значения местами —
+    // и сохранённые настройки игроков станут означать другой апскейлер.
     { "ui_mm_upscaler_off", 0 },
     { "ui_mm_upscaler_taa", 1 },
+    { "ui_mm_upscaler_dlss", 6 },
     { "ui_mm_upscaler_fsr1", 2 },
     { "ui_mm_upscaler_fsr2", 3 },
     { "ui_mm_upscaler_fsr3", 4 },
     { "ui_mm_upscaler_xess", 5 },
-    { "ui_mm_upscaler_dlss", 6 }, // [DA_PORT]
     { nullptr, 0 },
 };
 
@@ -578,6 +606,29 @@ static void da_apply_upscaler()
         ps_r__upscale_sharpness = 0;
         break;
     }
+
+    // [DA_PORT] MSAA cannot run next to a RECONSTRUCTING upscaler, and loses to it.
+    //
+    // Two reasons, the second one hard. Multisampling resolves geometry edges inside a single frame,
+    // and those resolved edges are exactly the sub-pixel information FSR/XeSS/DLSS reconstruct from
+    // across frames - handing them a pre-resolved image throws away what they exist to use, and the
+    // extra samples are paid for anyway. And: rt_Velocity and rt_Reactive are created with one sample
+    // (r2_rendertarget.cpp) while the rest of the G-buffer follows the MSAA count, and with vectors on
+    // they are bound alongside it. D3D11 requires every bound target and the depth buffer to agree on
+    // sample count - a mismatch there is refused silently, the worst kind of failure we have.
+    //
+    // ⚠ The test is `> 1`, not `!= 0`, and the difference matters: entry 1 is our own temporal AA,
+    // which is NOT in da_upscaler_active() and therefore does not switch the velocity buffer on. With
+    // TAA the scene pass binds no extra targets, so MSAA is free to run beside it - the two cover
+    // different things, geometry edges against shading and specular. Only the reconstructing entries
+    // above it are exclusive with MSAA.
+    //
+    // Switched off through the console rather than by poking ps_r3_msaa: the variable lives in the render
+    // DLL, and its command is what makes the value stick. The reverse direction is enforced in
+    // CCC_MSAA (xrRender_console.cpp); the two cannot loop, because each only acts when ITS OWN setting
+    // is set and both hand the other a zero.
+    if (ps_r__upscaler > 1)
+        Console->Execute("r3_msaa st_opt_off");
 
     Device.UpdateRenderResolution();
     if (Device.b_is_Ready)

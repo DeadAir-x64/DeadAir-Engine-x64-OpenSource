@@ -389,22 +389,63 @@ end
 -- combo_renderer in OnAOOptionChange just above. Looking for them under dlg_video found nil every time,
 -- the guard below returned, and the grey-out this function exists for had in fact never once run.
 function options_dialog:OnUpscalerChanged()
-	local combo = self.combo_upscaler_quality
-	if not combo or not self.combo_upscaler then return end
+	if not self.combo_upscaler then return end
 
 	-- 0 = off, 1 = TAA. Everything above reconstructs from a smaller frame and needs the steps.
 	local id = self.combo_upscaler:CurrentID()
 	local applicable = id > 1
 
-	combo:Show(applicable)
-	-- Kept alongside Show: hiding takes it off the screen, disabling takes it out of the tab order and
-	-- out of reach of the mouse, and the two are separate flags in this UI. Both are set together every
-	-- time, so the control can never come back visible-but-dead.
-	combo:Enable(applicable)
+	-- [DA_PORT] MSAA is shown for "off" AND for our own temporal AA - that is, for everything that does
+	-- not reconstruct the frame. It shares the quality row's slot in the layout, and the two conditions
+	-- stay complementary (quality is id > 1, this is id <= 1), so exactly one of them can be on screen.
+	--
+	-- Why TAA counts as compatible: it is absent from da_upscaler_active(), so it never turns the
+	-- velocity buffer on, and the scene pass binds no extra targets whose sample count could disagree
+	-- with the G-buffer. The two also cover different defects - MSAA the geometry edges, TAA the
+	-- shading and specular - so running them together is a choice, not a mistake.
+	--
+	-- For the reconstructing choices the row is hidden rather than greyed out, and hidden rather than
+	-- merely ignored: multisampling resolves edges inside one frame, which is precisely the sub-pixel
+	-- information those upscalers reconstruct from, so offering it there would invite the player to pay
+	-- for making the picture worse. The engine enforces the same split from the console side
+	-- (CCC_MSAA / da_apply_upscaler, both testing "> 1").
+	local msaa_applicable = id <= 1
+
+	local combo = self.combo_upscaler_quality
+	if combo then
+		combo:Show(applicable)
+		-- Kept alongside Show: hiding takes it off the screen, disabling takes it out of the tab order
+		-- and out of reach of the mouse, and the two are separate flags in this UI. Both are set together
+		-- every time, so the control can never come back visible-but-dead.
+		combo:Enable(applicable)
+	end
 
 	local cap = self.cap_upscaler_quality
 	if cap then
 		cap:Show(applicable)
+	end
+
+	if self.combo_msaa then
+		self.combo_msaa:Show(msaa_applicable)
+		self.combo_msaa:Enable(msaa_applicable)
+
+		-- [DA_PORT] Hiding is not enough - the value has to be zeroed here, in the UI.
+		--
+		-- Options rows do not write to the console when the player picks something; they all write on
+		-- "Apply", and the order in which they write is not defined anywhere. So "upscaler = FSR 2" and
+		-- "MSAA = 4x" could be saved in either order: engine-side exclusion sets MSAA to off when the
+		-- upscaler is applied, and then this row, saved afterwards, would put 4x straight back. The
+		-- player would end up with both, which is the one combination that cannot work.
+		--
+		-- Setting the row itself to "off" makes the outcome the same whichever order the save takes.
+		-- Item 0 is "off" in qmsaa_token, and there index and token value agree (0/1/2/3 -> off/2x/4x/8x).
+		if not msaa_applicable then
+			self.combo_msaa:SetCurrentID(0)
+		end
+	end
+
+	if self.cap_msaa then
+		self.cap_msaa:Show(msaa_applicable)
 	end
 end
 
@@ -464,6 +505,13 @@ function options_dialog:Update()
 	
 	-- [DA_PORT] Every slider shows its value on the right. One loop instead of a hand-written
 	-- "if track then label:SetText" per control - a new slider only needs its two fields.
+	--
+	-- ⚠ A trackbar declared is_integer="1" in ui_mm_opt_16.xml fills ONLY m_i_val; m_f_val keeps its
+	-- constructor zero (UITrackBar.cpp, SetCurrentOptValue). Reading such a slider with GetFValue
+	-- therefore prints a confident "0" next to a knob sitting at the far right - which is exactly how
+	-- anisotropy and the grass radius looked. Integer sliders must be read with GetIValue, and the set
+	-- below has to match the is_integer="1" attributes in the layout.
+	local int_track = { aniso = true, detail_radius = true }
 	for _, dlg in ipairs({ self.dlg_video, self.dlg_performance, self }) do
 		if dlg then
 			for _, n in ipairs({ "gamma", "contrast", "brightness", "aniso",
@@ -473,7 +521,7 @@ function options_dialog:Update()
 			                     "bloom" }) do
 				local tr, lb = dlg[n.."_track"], dlg[n.."_val"]
 				if tr and lb then
-					local v = tr:GetFValue()
+					local v = int_track[n] and tr:GetIValue() or tr:GetFValue()
 					lb:TextControl():SetText(string.format(v == math.floor(v) and "%.0f" or "%.2f", v))
 				end
 			end
