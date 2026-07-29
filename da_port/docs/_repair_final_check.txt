@@ -1,0 +1,15 @@
+1. Опасных переходов (предмет есть, замены нет): НЕТ
+2. Цепочки в ветке расходования набора:
+   toolkit_p            toolkit_p_4 -> toolkit_p_3 -> toolkit_p_2 -> toolkit_p -> toolkit_p_0   OK
+   toolkit_s            toolkit_s_4 -> toolkit_s_3 -> toolkit_s_2 -> toolkit_s -> toolkit_s_0   OK
+   toolkit_r            toolkit_r_4 -> toolkit_r_3 -> toolkit_r_2 -> toolkit_r -> toolkit_r_0   OK
+   sewing_kit_h         sewing_kit_h_4 -> sewing_kit_h_3 -> sewing_kit_h_2 -> sewing_kit_h   OK
+   armor_repair_pro     armor_repair_pro_4 -> armor_repair_pro_3 -> armor_repair_pro_2 -> armor_repair_pro -> armor_repair_pro_0   OK
+   helmet_repair_kit    helmet_repair_kit_3 -> helmet_repair_kit_2 -> helmet_repair_kit -> helmet_repair_kit_0   OK
+3. Поломки: выпадает 28, покрыто 28, дыры нет, пересечений нет
+4. Лут:
+   death_generic.ltx                  +17    потеряно 0
+   death_items_by_communities.ltx     +553   потеряно 0
+   ph_box_items_by_levels.ltx         +34    потеряно 0
+   ph_box_items_by_communities.ltx    +23    потеряно 0
+5. Lua: 179 открытий / 179 end -> сходится

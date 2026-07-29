@@ -527,6 +527,69 @@ function repair_ui:OnButton_repair()
 		alife():create("cleaning_kit_u", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
 		end
 
+		-- [DA_PORT] Ступени этих наборов были ТОЛЬКО в ветке запчастей (se_parts ниже), а в
+		-- ветке расходования самого набора их не было. Движок удаляет применённый набор сам
+		-- (max_uses = 1, remove_after_use = true), поэтому без строк ниже применение
+		-- многозарядного набора уничтожало его целиком вместе со всеми оставшимися
+		-- зарядами. У рабочих наборов мода (чистящие, швейные, точильный камень) лестница
+		-- стоит в ОБЕИХ ветках — приведено к ним.
+		-- toolkit_p x4
+		if self.section =="toolkit_p_4" then
+		alife():create("toolkit_p_3", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="toolkit_p_3" then
+		alife():create("toolkit_p_2", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="toolkit_p_2" then
+		alife():create("toolkit_p", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		-- toolkit_s x4
+		if self.section =="toolkit_s_4" then
+		alife():create("toolkit_s_3", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="toolkit_s_3" then
+		alife():create("toolkit_s_2", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="toolkit_s_2" then
+		alife():create("toolkit_s", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		-- toolkit_r x4
+		if self.section =="toolkit_r_4" then
+		alife():create("toolkit_r_3", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="toolkit_r_3" then
+		alife():create("toolkit_r_2", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="toolkit_r_2" then
+		alife():create("toolkit_r", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		-- sewing_kit_h x4
+		if self.section =="sewing_kit_h_4" then
+		alife():create("sewing_kit_h_3", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="sewing_kit_h_3" then
+		alife():create("sewing_kit_h_2", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="sewing_kit_h_2" then
+		alife():create("sewing_kit_h", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		-- armor_repair_pro x4
+		if self.section =="armor_repair_pro_4" then
+		alife():create("armor_repair_pro_3", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="armor_repair_pro_3" then
+		alife():create("armor_repair_pro_2", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="armor_repair_pro_2" then
+		alife():create("armor_repair_pro", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		-- helmet_repair_kit x3
+		if self.section =="helmet_repair_kit_3" then
+		alife():create("helmet_repair_kit_2", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
+		if self.section =="helmet_repair_kit_2" then
+		alife():create("helmet_repair_kit", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
+		end
 		-- toolkit_p
 		if self.section =="toolkit_p" then
 		alife():create("toolkit_p_0", db.actor:position(), db.actor:level_vertex_id(), db.actor:game_vertex_id(), db.actor:id())
