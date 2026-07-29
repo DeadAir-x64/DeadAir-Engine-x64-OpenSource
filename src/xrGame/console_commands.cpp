@@ -340,6 +340,20 @@ public:
     virtual void Execute(LPCSTR /*args*/) { DA_MemReset(); }
 };
 
+// [DA_PORT] Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число
+// раз и печатает вывод. Руками это делается ровно так же, но легко сбиться — а перезапуск игры
+// обнуляет накопленное, потому что таблица живёт в памяти процесса.
+class CCC_DaMemTest : public IConsole_Command
+{
+public:
+    CCC_DaMemTest(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR args)
+    {
+        const int runs = (args && xr_strlen(args)) ? atoi(args) : 3;
+        DA_MemTestStart(runs);
+    }
+};
+
 class CCC_GameDifficulty : public CCC_Token
 {
 public:
@@ -2432,6 +2446,7 @@ void CCC_RegisterCommands()
     CMD1(CCC_MemStats, "stat_memory");
     CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
     CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
+    CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
     {
         extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
         CMD4(CCC_Integer, "da_mem_probe", &g_da_mem_probe, 0, 1);

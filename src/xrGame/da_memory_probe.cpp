@@ -8,6 +8,7 @@
 
 #include "xrScriptEngine/script_engine.hpp"
 #include "xrEngine/IGame_Persistent.h"
+#include "xrEngine/XR_IOConsole.h"
 #include "Common/object_broker.h"
 
 namespace
@@ -83,6 +84,12 @@ void pad_to(string512& dst, size_t width)
 // Выключатель: da_mem_probe 0 гасит автоматические отметки и печать в конце загрузки.
 // Ручной da_mem_dump работает всегда — он печатает то, что успели накопить.
 int g_da_mem_probe = 1;
+
+namespace
+{
+int g_repeat_left = 0;    // сколько загрузок осталось в авто-прогоне
+int g_settle_frames = 0;  // пауза перед следующей загрузкой, кадров
+} // namespace
 
 void DA_MemReset()
 {
@@ -170,21 +177,55 @@ void DA_MemRunEnd()
     DA_MemDump();
 }
 
+void DA_MemTestStart(int runs)
+{
+    if (runs < 2)
+        runs = 3;
+
+    DA_MemReset();
+    g_repeat_left = runs - 1; // первую загрузку запускаем прямо сейчас
+    g_settle_frames = 0;
+
+    Msg("~ [DA_MEM] авто-прогон: %d загрузок последнего сохранения подряд. Не выходите из игры.", runs);
+    Console->Execute("load_last_save");
+}
+
 void DA_MemTick()
 {
     if (!g_da_mem_probe || g_runs.empty())
         return;
 
-    Run& run = g_runs.back();
-    if (!run.objects_pending || !g_pGameLevel)
+    if (!g_pGameLevel)
         return;
 
-    const u32 count = Level().Objects.o_count();
-    if (count == 0)
-        return; // спавн ещё идёт
+    Run& run = g_runs.back();
 
-    run.objects = count;
-    run.objects_pending = false;
+    if (run.objects_pending)
+    {
+        const u32 count = Level().Objects.o_count();
+        if (count == 0)
+            return; // спавн ещё идёт
+
+        run.objects = count;
+        run.objects_pending = false;
+        // Дать миру устояться, прежде чем грузить снова: спавн продолжается и после появления
+        // первых объектов, а перезагрузка в середине заселения мерила бы не то.
+        g_settle_frames = 180;
+        return;
+    }
+
+    if (g_repeat_left <= 0)
+        return;
+
+    if (g_settle_frames > 0)
+    {
+        --g_settle_frames;
+        return;
+    }
+
+    --g_repeat_left;
+    Msg("~ [DA_MEM] авто-прогон: следующая загрузка, осталось после неё %d", g_repeat_left);
+    Console->Execute("load_last_save");
 }
 
 void DA_MemDump()
