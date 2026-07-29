@@ -20,7 +20,10 @@ namespace
 constexpr size_t MAX_RUNS = 8;
 constexpr size_t MAX_MARKS = 24;
 constexpr int SETTLE_FRAMES = 180; // три секунды при 60 кадрах
-constexpr size_t SIZE_BUCKETS = 4097; // точные размеры блоков от 0 до 4096 байт
+// Точные размеры блоков от 0 до 64 КБ. Порог поднят с 4 КБ после того, как замер показал: весь вес
+// утечки лежит в блоках около двадцати килобайт, а мелочь объясняла четыре процента роста.
+// 64 тысячи счётчиков по четыре байта — четверть мегабайта на прогон, это ничто.
+constexpr size_t SIZE_BUCKETS = 65537;
 // Крупные блоки — по степеням двойки от 4 КБ и выше. Первая версия гистограммы обрывалась на 4 КБ,
 // и это было ошибкой: мелочь объяснила лишь несколько мегабайт из ста восьмидесяти, а весь вес
 // оказался в блоках, которых она не видела.
@@ -102,14 +105,14 @@ const char* sign(long long v) { return v > 0 ? "+" : ""; }
 //
 // Стоит дорого: HeapLock останавливает остальные потоки на время обхода. Поэтому вызывается один
 // раз за прогон, в момент, когда мир уже устоялся, и гасится крутилкой da_mem_heapwalk.
+// Ведро по старшему значащему биту: границы — честные степени двойки. Прошлая версия делила размер
+// пополам до 4096 и для «некруглых» размеров промахивалась на ведро, из-за чего подпись в таблице
+// не сходилась с суммой мегабайт.
 size_t big_bucket(size_t size)
 {
     size_t bucket = 0;
-    while (size > 4096 && bucket + 1 < BIG_BUCKETS)
-    {
-        size >>= 1;
+    while (size >= (size_t(1) << (17 + bucket)) && bucket + 1 < BIG_BUCKETS)
         ++bucket;
-    }
     return bucket;
 }
 
@@ -564,7 +567,7 @@ void DA_MemDump()
         std::sort(growth.begin(), growth.end(),
             [](const auto& a, const auto& b) { return a.second * (long long)a.first > b.second * (long long)b.first; });
 
-        Msg("~ [DA_MEM] --- какие блоки прибавились с первого прогона (по весу) ---");
+        Msg("~ [DA_MEM] --- какие блоки прибавились с первого прогона (по весу; размеры до 64 КБ) ---");
         Msg("~ [DA_MEM] размер, байт | прибавилось штук | это МБ | было -> стало");
         const size_t shown = growth.size() < 12 ? growth.size() : 12;
         for (size_t k = 0; k < shown; ++k)
@@ -585,7 +588,7 @@ void DA_MemDump()
             if (last_run.big_hist[b] == 0 && first_run.big_hist[b] == 0)
                 continue;
 
-            const size_t from_kb = (size_t(4) << b);
+            const size_t from_kb = (size_t(64) << b); // ведро b начинается с 64 КБ << b
             string512 line;
             xr_sprintf(line, "~ [DA_MEM]   %6u..%-6u КБ", (u32)from_kb, (u32)(from_kb * 2));
             pad_to(line, 32);
