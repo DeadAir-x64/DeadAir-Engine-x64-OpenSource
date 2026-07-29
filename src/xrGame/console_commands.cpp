@@ -2452,6 +2452,8 @@ void CCC_RegisterCommands()
         CMD4(CCC_Integer, "da_mem_probe", &g_da_mem_probe, 0, 1);
         extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
         CMD4(CCC_Integer, "da_mem_heapwalk", &g_da_mem_heapwalk, 0, 1);
+        extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
+        CMD4(CCC_Integer, "da_mem_trap_size", &g_da_mem_trap_size, 0, 1024 * 1024);
     }
 
     // game

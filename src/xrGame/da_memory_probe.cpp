@@ -14,6 +14,10 @@
 #include <algorithm>
 #include <windows.h>
 
+// Крутилки объявлены здесь, а определены ниже: обход куч лежит в безымянном пространстве имён выше
+// по файлу и обращается к ним.
+extern int g_da_mem_trap_size;
+
 namespace
 {
 // Прогонов держим немного: таблица должна оставаться читаемой в логе, а протокол требует трёх.
@@ -120,9 +124,16 @@ size_t big_bucket(size_t size)
     return bucket;
 }
 
+// Образцы содержимого пойманных блоков: начало каждого, столько байт, сколько влезает в строку лога.
+constexpr size_t SAMPLES = 4;
+constexpr size_t SAMPLE_BYTES = 96;
+u8 g_samples[SAMPLES][SAMPLE_BYTES];
+size_t g_samples_taken = 0;
+
 void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u32>& big,
     xr_vector<size_t>& big_kb, xr_vector<size_t>& per_heap_kb, xr_vector<u32>& per_heap_susp)
 {
+    g_samples_taken = 0;
     blocks = 0;
     bytes = 0;
     hist.assign(SIZE_BUCKETS, 0);
@@ -148,6 +159,15 @@ void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u
             {
                 ++blocks;
                 bytes += entry.cbData;
+                // Образец содержимого — только пока держим кучу залоченной, иначе блок могут
+                // освободить у нас под руками.
+                if ((int)entry.cbData == g_da_mem_trap_size && g_samples_taken < SAMPLES &&
+                    entry.lpData)
+                {
+                    CopyMemory(g_samples[g_samples_taken], entry.lpData, SAMPLE_BYTES);
+                    ++g_samples_taken;
+                }
+
                 per_heap_kb.back() += entry.cbData / 1024;
                 if (entry.cbData >= 16 * 1024 && entry.cbData < 32 * 1024)
                     ++per_heap_susp.back();
@@ -191,6 +211,11 @@ int g_da_mem_probe = 1;
 // Обход куч: даёт ЖИВЫЕ аллокации вместо закоммиченной памяти, но останавливает потоки на время
 // обхода. Для охоты за утечкой включён, в обычной игре имеет смысл гасить.
 int g_da_mem_heapwalk = 1;
+
+// Размер блока, по которому идёт охота. Замер назвал 16413 байт: их прибавляется ровно 2547 штук на
+// каждую перезагрузку. Ни файла, ни структуры такого размера не нашлось, поэтому смотрим внутрь —
+// содержимое блока называет владельца быстрее любых догадок.
+int g_da_mem_trap_size = 16413;
 
 namespace
 {
@@ -647,6 +672,29 @@ void DA_MemDump()
                 }
                 Msg("%s", line);
             }
+        }
+    }
+
+    // Что лежит внутри пойманных блоков.
+    if (g_samples_taken)
+    {
+        Msg("~ [DA_MEM] --- начало блоков размером %d байт ---", g_da_mem_trap_size);
+        for (size_t k = 0; k < g_samples_taken; ++k)
+        {
+            string512 text, hex;
+            xr_strcpy(text, "");
+            xr_strcpy(hex, "");
+            for (size_t b = 0; b < 48; ++b)
+            {
+                const u8 c = g_samples[k][b];
+                string16 t;
+                xr_sprintf(t, "%c", (c >= 32 && c < 127) ? (char)c : '.');
+                xr_strcat(text, t);
+                xr_sprintf(t, "%02X ", c);
+                xr_strcat(hex, t);
+            }
+            Msg("~ [DA_MEM]   #%u текст: %s", (u32)k, text);
+            Msg("~ [DA_MEM]   #%u байты: %s", (u32)k, hex);
         }
     }
 
