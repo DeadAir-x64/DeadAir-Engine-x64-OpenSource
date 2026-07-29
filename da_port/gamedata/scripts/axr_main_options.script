@@ -113,7 +113,11 @@ function opt_menu_on_init(menu)
 	-- debug_only здесь оставлено как было, но поле ћ®–“¬ќ≈: меню скрывает пункт только по
 	-- t.disabled (ui_mm_opt_main.script:19). ќпци€ была видна игроку и раньше.
 	menu.gameplay_options["alife_mutant_pop"]			= {default=1.00, 	debug_only=true, 	typ="list", list={0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00}}
-	menu.gameplay_options["alife_stalker_pop"]			= {default=1.00, 	debug_only=true, 	typ="list", list={0.25,0.50,0.75,1.00}}
+	-- [DA_PORT] “от же шаг 0.25, что и у мутантов. ¬ерхн€€ половина списка здесь рискованнее:
+	-- авторское предостережение строкой выше про Ђне хватит работы в лагер€хї относитс€ именно
+	-- к сталкерам Ч у мутантов работ нет, а лишние сталкеры без работы толп€тс€ и нагружают
+	-- симул€цию. ќтр€ды отбираютс€ по префиксу "sim_squad", мутанты Ч по "simulation".
+	menu.gameplay_options["alife_stalker_pop"]			= {default=1.00, 	debug_only=true, 	typ="list", list={0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00}}
 	
 	-- excl_dist
 	-- note: shouldn't be greater than switch distance or no simulation squads will come online. Instead it should create a border zone between excl_dist and switch_distance where stuff can come online
