@@ -711,6 +711,28 @@ void CInput::RemoveKeyMapChangeWatcher(pureKeyMapChanged* watcher)
     seqKeyMapChanged.Remove(watcher);
 }
 
+// [DA_PORT] Кто сейчас владеет вводом.
+//
+// Замеры показали: после смерти и загрузки сохранения нажатия не доходят даже до уровня — молчат обе
+// отметки из Level_input/ActorInput, при этом не работают ни движение, ни инвентарь, ни Escape. Ввод
+// получает ТОЛЬКО верхний приёмник (`cbStack.back()`), значит наверху застрял кто-то чужой и всё
+// съедает. Догадки про «невыгруженный элемент интерфейса» надо не строить, а прочитать по имени.
+//
+// Печатается только на смену владельца — событий мало, спама нет.
+static void da_dump_ir_stack(pcstr what, const xr_vector<IInputReceiver*>& stack)
+{
+    string512 tail;
+    tail[0] = 0;
+    const size_t shown = stack.size() < 4 ? stack.size() : 4;
+    for (size_t i = stack.size() - shown; i < stack.size(); ++i)
+    {
+        xr_strcat(tail, sizeof(tail), i + 1 == stack.size() ? " <= ВЕРХ " : " ");
+        xr_strcat(tail, sizeof(tail), stack[i] ? typeid(*stack[i]).name() : "nullptr");
+    }
+    Msg("~ [DA_PORT] ввод %s, приёмников %u:%s", what, (u32)stack.size(), tail);
+    FlushLog();
+}
+
 void CInput::iCapture(IInputReceiver* p)
 {
     VERIFY(p);
@@ -720,6 +742,8 @@ void CInput::iCapture(IInputReceiver* p)
         cbStack.back()->IR_OnDeactivate();
     cbStack.push_back(p);
     cbStack.back()->IR_OnActivate();
+
+    da_dump_ir_stack("захвачен", cbStack);
 
     // prepare for _new_ controller
     controllerState = {};
@@ -732,6 +756,7 @@ void CInput::iRelease(IInputReceiver* p)
         cbStack.back()->IR_OnDeactivate();
         cbStack.pop_back();
         cbStack.back()->IR_OnActivate();
+        da_dump_ir_stack("отпущен", cbStack);
     }
     else
     {
