@@ -87,8 +87,9 @@ int g_da_mem_probe = 1;
 
 namespace
 {
-int g_repeat_left = 0;    // сколько загрузок осталось в авто-прогоне
-int g_settle_frames = 0;  // пауза перед следующей загрузкой, кадров
+int g_repeat_left = 0;      // сколько загрузок осталось в авто-прогоне
+int g_settle_frames = 0;    // пауза, пока мир устаивается, кадров
+bool g_finish_pending = false; // итог прогона ещё не снят
 } // namespace
 
 void DA_MemReset()
@@ -141,9 +142,37 @@ void DA_MemRunEnd()
     if (!g_run_open || g_runs.empty())
         return;
 
-    DA_MemMark("конец");
+    DA_MemMark("конец загрузки");
 
     Run& run = g_runs.back();
+
+    // Клиентские объекты в этот момент ещё НЕ созданы (спавн приходит позже), а прогрев после
+    // PreCache ещё не закончился. Поэтому ИТОГ прогона снимается не здесь, а когда мир устоится, —
+    // см. DA_MemTick. Иначе меряется середина процесса, а не результат.
+    run.objects = 0;
+    run.objects_pending = true;
+
+    // Имя уровня в начале прогона ещё неизвестно — уточняем его здесь, чтобы в таблице было видно,
+    // что сравниваются загрузки ОДНОГО уровня. Сравнивать разные бессмысленно: у них разное
+    // население и геометрия, и любая разница объясняется этим, а не утечкой.
+    if (g_pGameLevel && Level().name().size())
+        run.what = Level().name();
+
+    g_run_open = false;
+
+    Msg("~ [DA_MEM] прогон %u (%s): загрузка закончилась, жду, пока мир устоится",
+        (u32)g_runs.size(), run.what.c_str());
+}
+
+namespace
+{
+// Итог прогона: снимается после того, как объекты заспавнились и прогрев закончился.
+void finish_run(Run& run)
+{
+    g_run_open = true; // чтобы прошла отметка
+    DA_MemMark("после прогрева");
+    g_run_open = false;
+
     run.committed_kb = committed_kb();
     run.textures_kb = textures_kb();
     run.lua_kb = lua_kb();
@@ -157,25 +186,12 @@ void DA_MemRunEnd()
 
     run.alife_objects = ai().get_alife() ? ai().alife().objects().objects().size() : 0;
 
-    // Клиентские объекты в этот момент ещё НЕ созданы: сюда мы попадаем в конце net_start6, а спавн
-    // приходит сетевыми сообщениями позже. Первый замер честно показывал ноль. Поэтому счёт объектов
-    // откладывается до первого кадра, в котором они появились, — см. DA_MemTick.
-    run.objects = 0;
-    run.objects_pending = true;
-
-    // Имя уровня в начале прогона ещё неизвестно — уточняем его здесь, чтобы в таблице было видно,
-    // что сравниваются загрузки ОДНОГО уровня. Сравнивать разные бессмысленно: у них разное
-    // население и геометрия, и любая разница объясняется этим, а не утечкой.
-    if (g_pGameLevel && Level().name().size())
-        run.what = Level().name();
-
-    g_run_open = false;
-
     Msg("~ [DA_MEM] прогон %u (%s) завершён: %u МБ", (u32)g_runs.size(), run.what.c_str(),
         (u32)(run.committed_kb / 1024));
 
     DA_MemDump();
 }
+} // namespace
 
 void DA_MemTestStart(int runs)
 {
@@ -208,20 +224,28 @@ void DA_MemTick()
 
         run.objects = count;
         run.objects_pending = false;
-        // Дать миру устояться, прежде чем грузить снова: спавн продолжается и после появления
-        // первых объектов, а перезагрузка в середине заселения мерила бы не то.
+        // Дать миру устояться, прежде чем снимать итог и грузить снова: спавн продолжается и после
+        // появления первых объектов, а PreCache прогревает кадры уже за пределами загрузки.
         g_settle_frames = 180;
+        g_finish_pending = true;
         return;
     }
-
-    if (g_repeat_left <= 0)
-        return;
 
     if (g_settle_frames > 0)
     {
         --g_settle_frames;
         return;
     }
+
+    if (g_finish_pending)
+    {
+        g_finish_pending = false;
+        finish_run(run);
+        return; // следующую загрузку запускаем со следующего кадра, чтобы таблица успела лечь в лог
+    }
+
+    if (g_repeat_left <= 0)
+        return;
 
     --g_repeat_left;
     Msg("~ [DA_MEM] авто-прогон: следующая загрузка, осталось после неё %d", g_repeat_left);

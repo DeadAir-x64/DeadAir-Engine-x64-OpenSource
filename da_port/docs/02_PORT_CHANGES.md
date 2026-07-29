@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **968 правк(и) в 202 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **976 правк(и) в 204 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -788,7 +788,7 @@
 
 ## Игровая логика
 
-*63 файл(ов), 309 правк(и)*
+*65 файл(ов), 317 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -943,6 +943,11 @@
 - **:404** — Dead Air starts from "this hit wounds" and lets the switch below veto it, rather than
 - **:430** — No per-bone scaling on burns - Dead Air drops m_fHitBoneScale here. Fire damage
 
+### `xrGame/GamePersistent.cpp`
+
+- **:3** — #include "da_memory_probe.h" // [DA_PORT]
+- **:684** — Загрузка сохранения ИЗНУТРИ игры — отдельный путь: уровень остаётся в памяти,
+
 ### `xrGame/HudItem.cpp`
 
 - **:10** — #include "xrCDB/xr_collide_defs.h" // [DA_PORT] nearwall: collide::rq_result for the forward wall ray
@@ -968,7 +973,9 @@
 
 ### `xrGame/Level.cpp`
 
-- **:587** — 10, which is what the author's Dead Air uses. OpenXRay raised it to 100 upstream and left
+- **:53** — #include "da_memory_probe.h" // [DA_PORT]
+- **:416** — DA_MemTick(); // [DA_PORT] досчитать объекты после спавна, см. da_memory_probe.h
+- **:590** — 10, which is what the author's Dead Air uses. OpenXRay raised it to 100 upstream and left
 
 ### `xrGame/Level_input.cpp`
 
@@ -1193,34 +1200,36 @@
 - **:306** — Msg("~ [DA_PORT] shader dump: cannot write [%s]", dst);
 - **:310** — Msg("~ [DA_PORT] dumped %u/%u shader files from [%s] to appdata" DELIMITER "logs" DELIMITER
 - **:328** — Поиск утечки памяти. Подробности и протокол — в da_memory_probe.h.
-- **:688** — Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
-- **:791** — Walk the live in-game HUD window tree and report what is actually on screen: every widget's
-- **:812** — Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
-- **:824** — Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
-- **:831** — Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
-- **:835** — Msg("~ [DA_PORT] --- HUD tree ---");
-- **:837** — Msg("~ [DA_PORT] --- end of HUD tree ---");
-- **:841** — Report what every belt item actually gives the actor.
-- **:860** — Msg("! [DA_PORT] no level loaded - run this in the game world");
-- **:867** — Msg("! [DA_PORT] no actor - run this in the game world");
-- **:871** — Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
-- **:879** — Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
-- **:883** — Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
-- **:889** — Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
-- **:894** — Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
-- **:897** — Msg("~ [DA_PORT] --- end of belt ---");
-- **:2433** — CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
-- **:2434** — CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
-- **:2436** — extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
-- **:2475** — Dead Air compatibility aliases
-- **:2481** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
-- **:2491** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
-- **:2498** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
-- **:2510** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
-- **:2512** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
-- **:2651** — Developer commands: registered only when the game was started with "-dev".
-- **:2670** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
-- **:2850** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+- **:343** — Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число
+- **:702** — Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
+- **:805** — Walk the live in-game HUD window tree and report what is actually on screen: every widget's
+- **:826** — Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
+- **:838** — Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
+- **:845** — Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
+- **:849** — Msg("~ [DA_PORT] --- HUD tree ---");
+- **:851** — Msg("~ [DA_PORT] --- end of HUD tree ---");
+- **:855** — Report what every belt item actually gives the actor.
+- **:874** — Msg("! [DA_PORT] no level loaded - run this in the game world");
+- **:881** — Msg("! [DA_PORT] no actor - run this in the game world");
+- **:885** — Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
+- **:893** — Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
+- **:897** — Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
+- **:903** — Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
+- **:908** — Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
+- **:911** — Msg("~ [DA_PORT] --- end of belt ---");
+- **:2447** — CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
+- **:2448** — CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
+- **:2449** — CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
+- **:2451** — extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
+- **:2490** — Dead Air compatibility aliases
+- **:2496** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+- **:2506** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
+- **:2513** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+- **:2525** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+- **:2527** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+- **:2666** — Developer commands: registered only when the game was started with "-dev".
+- **:2685** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+- **:2865** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
 
 ### `xrGame/da_memory_probe.h`
 
@@ -1229,6 +1238,11 @@
 ### `xrGame/game_base.cpp`
 
 - **:9** — This was hardcoded to 10 (10x real time speed) - normally overwritten immediately by
+
+### `xrGame/game_sv_single.cpp`
+
+- **:3** — #include "da_memory_probe.h" // [DA_PORT]
+- **:337** — Самая говорящая отметка перезагрузки: сколько памяти ВЕРНУЛОСЬ, когда старый
 
 ### `xrGame/level_path_builder.h`
 

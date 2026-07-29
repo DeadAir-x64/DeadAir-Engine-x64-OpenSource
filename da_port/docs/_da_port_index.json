@@ -2727,115 +2727,123 @@
 "Поиск утечки памяти. Подробности и протокол — в da_memory_probe.h."
 ],
 [
-688,
+343,
+"Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число"
+],
+[
+702,
 "Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side"
 ],
 [
-791,
+805,
 "Walk the live in-game HUD window tree and report what is actually on screen: every widget's"
 ],
 [
-812,
+826,
 "Msg(\"~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f\", pad, name ? name : \"<noname>\","
 ],
 [
-824,
+838,
 "Msg(\"~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d\", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,"
 ],
 [
-831,
+845,
 "Msg(\"! [DA_PORT] no in-game HUD right now - run this while in the game world\");"
 ],
 [
-835,
+849,
 "Msg(\"~ [DA_PORT] --- HUD tree ---\");"
 ],
 [
-837,
+851,
 "Msg(\"~ [DA_PORT] --- end of HUD tree ---\");"
 ],
 [
-841,
+855,
 "Report what every belt item actually gives the actor."
 ],
 [
-860,
+874,
 "Msg(\"! [DA_PORT] no level loaded - run this in the game world\");"
 ],
 [
-867,
+881,
 "Msg(\"! [DA_PORT] no actor - run this in the game world\");"
 ],
 [
-871,
+885,
 "Msg(\"~ [DA_PORT] --- belt contents (%u item(s)) ---\", (u32)actor->inventory().m_belt.size());"
 ],
 [
-879,
+893,
 "Msg(\"~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing\", sect);"
 ],
 [
-883,
+897,
 "Msg(\"~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f\", sect,"
 ],
 [
-889,
+903,
 "Msg(\"~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)\","
 ],
 [
-894,
+908,
 "Msg(\"~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f\","
 ],
 [
-897,
+911,
 "Msg(\"~ [DA_PORT] --- end of belt ---\");"
 ],
 [
-2433,
+2447,
 "CMD1(CCC_DaMemDump, \"da_mem_dump\");   // [DA_PORT] таблица памяти по загрузкам"
 ],
 [
-2434,
+2448,
 "CMD1(CCC_DaMemReset, \"da_mem_reset\"); // [DA_PORT] забыть накопленное"
 ],
 [
-2436,
+2449,
+"CMD1(CCC_DaMemTest, \"da_mem_test\");   // [DA_PORT] авто-прогон: N загрузок подряд"
+],
+[
+2451,
 "extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок"
 ],
 [
-2475,
+2490,
 "Dead Air compatibility aliases"
 ],
 [
-2481,
+2496,
 "\"hud_draw_map\" used to be mapped onto the shared HUD_DRAW bit - toggling it off"
 ],
 [
-2491,
+2506,
 "psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise"
 ],
 [
-2498,
+2513,
 "nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)"
 ],
 [
-2510,
+2525,
 "CMD4(CCC_Float, \"scope_fov\", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat"
 ],
 [
-2512,
+2527,
 "Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left"
 ],
 [
-2651,
+2666,
 "Developer commands: registered only when the game was started with \"-dev\"."
 ],
 [
-2670,
+2685,
 "Msg(\"~ [DA_PORT] developer mode: cheat and script commands registered\");"
 ],
 [
-2850,
+2865,
 "Registered outside the DEBUG block on purpose: we need it in the Release build we ship"
 ]
 ],
@@ -3033,10 +3041,30 @@
 "Dead Air's debug menu (ui_debug_main.script - the \"Advanced\"/animations tab, opened via"
 ]
 ],
+"xray-16/src/xrGame/GamePersistent.cpp": [
+[
+3,
+"#include \"da_memory_probe.h\" // [DA_PORT]"
+],
+[
+684,
+"Загрузка сохранения ИЗНУТРИ игры — отдельный путь: уровень остаётся в памяти,"
+]
+],
 "xray-16/src/xrGame/game_base.cpp": [
 [
 9,
 "This was hardcoded to 10 (10x real time speed) - normally overwritten immediately by"
+]
+],
+"xray-16/src/xrGame/game_sv_single.cpp": [
+[
+3,
+"#include \"da_memory_probe.h\" // [DA_PORT]"
+],
+[
+337,
+"Самая говорящая отметка перезагрузки: сколько памяти ВЕРНУЛОСЬ, когда старый"
 ]
 ],
 "xray-16/src/xrGame/HudItem.cpp": [
@@ -3103,7 +3131,15 @@
 ],
 "xray-16/src/xrGame/Level.cpp": [
 [
-587,
+53,
+"#include \"da_memory_probe.h\" // [DA_PORT]"
+],
+[
+416,
+"DA_MemTick(); // [DA_PORT] досчитать объекты после спавна, см. da_memory_probe.h"
+],
+[
+590,
 "10, which is what the author's Dead Air uses. OpenXRay raised it to 100 upstream and left"
 ]
 ],

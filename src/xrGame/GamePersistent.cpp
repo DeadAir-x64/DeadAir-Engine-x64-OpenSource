@@ -1,5 +1,6 @@
 #include "pch_script.h"
 #include "GamePersistent.h"
+#include "da_memory_probe.h" // [DA_PORT]
 #include "xrCore/FMesh.hpp"
 #include "xrEngine/XR_IOConsole.h"
 #include "xrMaterialSystem/GameMtlLib.h"
@@ -680,10 +681,20 @@ void CGamePersistent::OnEvent(EVENT E, u64 P1, u64 P2)
 
         pstr saved_name = (pstr)(P1);
 
+        // [DA_PORT] Загрузка сохранения ИЗНУТРИ игры — отдельный путь: уровень остаётся в памяти,
+        // заново создаётся только симулятор и объекты. Именно этот путь повторяется в протоколе
+        // «один сейв три раза», поэтому замер обязан видеть и его, а не только полную загрузку
+        // уровня через net_Start.
+        DA_MemRunBegin("перезагрузка сейва");
+
         Level().remove_objects();
+        DA_MemMark("объекты удалены");
+
         game_sv_Single* game = smart_cast<game_sv_Single*>(Level().Server->GetGameState());
         R_ASSERT(game);
         game->restart_simulator(saved_name);
+        DA_MemMark("симулятор пересоздан");
+        DA_MemRunEnd();
         xr_free(saved_name);
         return;
     }

@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "game_sv_single.h"
+#include "da_memory_probe.h" // [DA_PORT]
 #include "xrServer_Objects_ALife_Monsters.h"
 #include "alife_simulator.h"
 #include "alife_object_registry.h"
@@ -21,6 +22,7 @@ void game_sv_Single::Create(shared_str& options)
     inherited::Create(options);
     if (strstr(options.c_str(), "/alife"))
         m_alife_simulator = xr_new<CALifeSimulator>(&server(), &options);
+    DA_MemMark("новый симулятор загружен");
     switch_Phase(GAME_PHASE_INPROGRESS);
 }
 
@@ -332,8 +334,11 @@ void game_sv_Single::restart_simulator(LPCSTR saved_game_name)
 {
     shared_str& options = *alife().server_command_line();
 
+    // [DA_PORT] Самая говорящая отметка перезагрузки: сколько памяти ВЕРНУЛОСЬ, когда старый
+    // симулятор со всеми объектами уничтожен. Если ничего — течёт именно здесь.
     delete_data(m_alife_simulator);
     server().clear_ids();
+    DA_MemMark("старый симулятор удалён");
 
     xr_strcpy(g_pGamePersistent->m_game_params.m_game_or_spawn, saved_game_name);
     xr_strcpy(g_pGamePersistent->m_game_params.m_new_or_load, "load");
