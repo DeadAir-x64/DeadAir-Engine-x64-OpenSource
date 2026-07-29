@@ -1,5 +1,18 @@
 #include "common.h"
 
+// [DA_PORT] One Load that works whether or not the G-buffer is multisampled.
+//
+// Texture2DMS::Load takes (int2 pixel, int sample) - there is no one-argument form, so the plain
+// int3 call below fails to COMPILE under USE_MSAA, and a shader that fails to compile is silently
+// replaced with stub_default. Sample 0 is the right answer here: these passes ask about geometry
+// presence and depth, not about coverage inside a pixel.
+#ifndef USE_MSAA
+#	define DA_LOAD_GBUF(tex, px) tex.Load(px)
+#else
+#	define DA_LOAD_GBUF(tex, px) tex.Load((px).xy, 0)
+#endif
+
+
 // [DA_PORT] Mark the neighbourhood of genuinely moving objects as reactive, against the ghost that
 // trails an NPC.
 //
@@ -45,7 +58,7 @@ float da_object_motion(int2 p)
 	// this pixel, scaled by the depth stored in the G-buffer.
 	const float2 sp = float2(p) + 0.5;
 	const float3 ray = float3(sp * pos_decompression_params.zw - pos_decompression_params.xy, 1.0);
-	const float eye_z = s_position.Load(px).z;
+	const float eye_z = DA_LOAD_GBUF(s_position, px).z;
 
 	// .z == 0 is sky - no geometry wrote there, and nothing in it moves through the world.
 	if (abs(eye_z) < 0.001)
@@ -94,7 +107,7 @@ float4 main(vf I) : SV_Target
 		if (da_reactive.w < 2.5)
 			return float4(length(s_velocity.Load(px).xy) * 200.0, 0, 0, 0);  // the motion vector
 		if (da_reactive.w < 3.5)
-			return float4(abs(s_position.Load(px).z) * 0.02, 0, 0, 0);       // eye-space depth
+			return float4(abs(DA_LOAD_GBUF(s_position, px).z) * 0.02, 0, 0, 0);       // eye-space depth
 		return float4(da_object_motion(px.xy) * 250.0, 0, 0, 0);             // motion through the world
 	}
 

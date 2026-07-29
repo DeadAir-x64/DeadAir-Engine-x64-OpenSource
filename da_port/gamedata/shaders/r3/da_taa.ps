@@ -184,7 +184,13 @@ _out main(vf I)
 	// so leaving it out of the accumulation made it the one part of the frame that shimmered, and its
 	// edge against the ground read as a moving band along the horizon. It reprojects fine as a very
 	// distant point.
+// [DA_PORT] See postprocess.ps: s_position becomes Texture2DMS under USE_MSAA, which has no
+// Sample method. Sample 0 is enough here - this read only asks "is this pixel sky".
+#ifndef USE_MSAA
 	const float eye_z = s_position.Sample(smp_nofilter, tc).z;
+#else
+	const float eye_z = s_position.Load(int2(tc * pos_decompression_params2.xy), 0).z;
+#endif
 	const bool is_sky = abs(eye_z) < 0.001;
 	const float depth = is_sky ? TAA_SKY_DEPTH : eye_z;
 

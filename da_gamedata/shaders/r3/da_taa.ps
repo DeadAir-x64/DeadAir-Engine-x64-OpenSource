@@ -19,7 +19,7 @@
 #include "common.h"
 
 uniform float4x4	m_prev_VP;	// eye-space -> previous frame's clip space
-uniform float4		taa_params;	// x = sharpening amount (r__taa_sharp / 100)
+uniform float4		taa_params;	// x = sharpening (r__taa_sharp/100), y = r__taa_debug, z = sky feedback scale
 
 Texture2D		s_history;
 
@@ -184,8 +184,15 @@ _out main(vf I)
 	// so leaving it out of the accumulation made it the one part of the frame that shimmered, and its
 	// edge against the ground read as a moving band along the horizon. It reprojects fine as a very
 	// distant point.
+// [DA_PORT] See postprocess.ps: s_position becomes Texture2DMS under USE_MSAA, which has no
+// Sample method. Sample 0 is enough here - this read only asks "is this pixel sky".
+#ifndef USE_MSAA
 	const float eye_z = s_position.Sample(smp_nofilter, tc).z;
-	const float depth = abs(eye_z) < 0.001 ? TAA_SKY_DEPTH : eye_z;
+#else
+	const float eye_z = s_position.Load(int2(tc * pos_decompression_params2.xy), 0).z;
+#endif
+	const bool is_sky = abs(eye_z) < 0.001;
+	const float depth = is_sky ? TAA_SKY_DEPTH : eye_z;
 
 	float4 near_clip = mul(m_prev_VP, float4(ray * depth, 1.0));
 	float4 far_clip = mul(m_prev_VP, float4(ray * TAA_SKY_DEPTH, 1.0));
@@ -206,7 +213,7 @@ _out main(vf I)
 	// directions of the offset, blue marks a pixel whose history was rejected outright. A sky that comes
 	// up black while the camera turns means the pass is sampling history from where the pixel already
 	// is, which is exactly what "moves with me" looks like.
-	if (taa_params.y > 0.5)
+	if (taa_params.y > 0.5 && taa_params.y < 1.5)
 	{
 		const float2 offset = (prev_tc - tc) / texel; // in texels, so the reading does not depend on resolution
 		const bool rejected = near_clip.w <= 0.0 || far_clip.w <= 0.0 ||
@@ -216,18 +223,58 @@ _out main(vf I)
 		return O;
 	}
 
+	// [DA_PORT] "r__taa_debug 2" - the sky mask AS THIS PASS SEES IT.
+	//
+	// That the position buffer holds a clean zero over the sky has been measured before, but with
+	// r__motion_vectors, which reads a different target at a different point in the frame. This pass runs
+	// at the very end of combine, after lighting, bloom, sun shafts and the flares have all had the
+	// render targets, and the only thing that settles what IT reads is reading it here. Green is sky,
+	// red is geometry: any red in open sky, or any speckle, and the branch above sends those pixels down
+	// the parallax path with a stale depth, which is exactly what a trailing sky looks like.
+	if (taa_params.y > 1.5 && taa_params.y < 2.5)
+	{
+		O.history = float4(current, 1.0);
+		O.screen = float4(is_sky ? 0.0 : 1.0, is_sky ? 1.0 : 0.0, 0.0, 1.0);
+		return O;
+	}
+
 	const bool reprojected = near_clip.w > 0.0 && far_clip.w > 0.0 &&
 		prev_tc.x >= 0.0 && prev_tc.x <= 1.0 && prev_tc.y >= 0.0 && prev_tc.y <= 1.0;
 
 	if (!reprojected)
 	{
 		O.history = float4(current, 1.0);
-		O.screen = float4(max(current + sharpen_kick, 0.0), 1.0);
+		// Blue in the residual view means "no history was used here at all", so an edge of blue while
+		// turning is the newly uncovered strip and is correct; blue in the middle of the screen is not.
+		O.screen = taa_params.y > 2.5 ? float4(0.0, 0.0, 1.0, 1.0)
+			: float4(max(current + sharpen_kick, 0.0), 1.0);
 		return O;
 	}
 
-	float3 history = da_sample_history(prev_tc, size, texel);
-	history = da_clip_to_aabb(history, mean, max(sigma * TAA_CLIP_GAMMA, TAA_CLIP_FLOOR));
+	float3 history_raw = da_sample_history(prev_tc, size, texel);
+	float3 history = da_clip_to_aabb(history_raw, mean, max(sigma * TAA_CLIP_GAMMA, TAA_CLIP_FLOOR));
+
+	// [DA_PORT] "r__taa_debug 3" - how far the history that is about to be blended in sits from the
+	// pixel it is being blended into, before any clipping.
+	//
+	// This is the measurement the sky question has been missing. Every check so far has confirmed that
+	// the reprojection MOVES; none has confirmed that it moves to the RIGHT PLACE, and on a smooth sky
+	// those are very different statements: the neighbourhood clip below cannot tell a correctly fetched
+	// sky from one fetched fifteen pixels away, because both are the same colour to within its floor.
+	// The difference itself can, because a reprojection error times the sky's gradient is exactly what
+	// this shows. Turn the camera: ground stays dark (it reprojects correctly and its detail would light
+	// this up immediately if it did not), so if the sky lights up, the fetch is wrong and the cause is
+	// in the reprojection; if the sky ALSO stays dark, the history matches, the resolve is doing its job,
+	// and the trail is already present in what this pass was handed - look upstream, at the sky pass.
+	//
+	// x40 because a sky gradient is a hundredth of a unit across many pixels; without the gain a real
+	// error would be invisible in the very buffer meant to expose it.
+	if (taa_params.y > 2.5)
+	{
+		O.history = float4(current, 1.0);
+		O.screen = float4(abs(history_raw - current) * 40.0, 1.0);
+		return O;
+	}
 
 	// Trust the history less the further the pixel travelled. Measured in texels so it does not change
 	// meaning with resolution; past ~16 texels of movement the history is mostly guesswork.
@@ -237,6 +284,19 @@ _out main(vf I)
 	// Fade the history out towards the screen border, where reprojection has the least to work with.
 	float2 edge = abs(prev_tc - 0.5) * 2.0;
 	feedback *= saturate(1.0 - pow(max(edge.x, edge.y), 8.0));
+
+	// [DA_PORT] The sky's own share of the history, "r__taa_sky" in percent.
+	//
+	// It gets its own control because it is the one surface where nothing else can catch a mistake. The
+	// clip above bounds the history by the spread of the 3x3 neighbourhood, and on open sky that spread
+	// collapses to the floor - neighbouring pixels are the same colour - so a history fetched from the
+	// wrong place passes through unchanged, and at a feedback of 0.93 a stale value survives roughly
+	// fourteen frames. Every other part of the frame has texture to give it away.
+	//
+	// At 100 this line does nothing and the pass behaves exactly as before. At 0 the sky is the current
+	// frame alone, which is the test worth running first: it says whether the trailing sky is made here.
+	if (is_sky)
+		feedback *= saturate(taa_params.z);
 
 	// Luminance-weighted blend rather than a plain lerp — compress, mix, expand back.
 	const float3 blended = max(da_tonemap_inv(lerp(da_tonemap(current), da_tonemap(history), feedback)), 0.0);

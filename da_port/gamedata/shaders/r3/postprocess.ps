@@ -214,7 +214,14 @@ Texture2D s_reactive;
 // Green means the pixel reads as sky. Red is the depth itself. A sky that comes up red is the bug.
 float3 da_debug_depth(float2 uv)
 {
+// [DA_PORT] s_position is Texture2DMS under USE_MSAA (common_samplers.h), and a multisampled
+// texture object has no Sample method at all - the shader then fails to COMPILE and the engine
+// quietly swaps in stub_default.ps. Same shape as the stock reads in common_functions.h.
+#ifndef USE_MSAA
 	const float z = s_position.Sample(smp_nofilter, uv).z;
+#else
+	const float z = s_position.Load(int2(uv * pos_decompression_params2.xy), 0).z;
+#endif
 	return float3(saturate(abs(z) * 0.02), abs(z) < 0.001 ? 1.0 : 0.0, 0.0);
 }
 

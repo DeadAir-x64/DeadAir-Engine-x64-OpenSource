@@ -99,9 +99,8 @@ uniform float4 da_upscale;   // x = sharpening strength (r__upscale_sharpness / 
 //
 // Four taps in a cross, sampled in SCENE texels (pos_decompression_params2.zw), not screen ones -
 // sharpening must act on the pixels that actually exist, otherwise it just re-sharpens interpolation.
-float3 da_sharpen_upscaled(Texture2D tex, float2 uv, float3 centre, float strength)
+float3 da_sharpen_texel(Texture2D tex, float2 uv, float3 centre, float strength, float2 texel)
 {
-	const float2 texel = pos_decompression_params2.zw;
 
 	float3 up    = da_fetch_scene(tex, uv + float2(0.0, -texel.y));
 	float3 left  = da_fetch_scene(tex, uv + float2(-texel.x, 0.0));
@@ -117,6 +116,38 @@ float3 da_sharpen_upscaled(Texture2D tex, float2 uv, float3 centre, float streng
 	float amount = sqrt(saturate(min(headroom.r, min(headroom.g, headroom.b))));
 
 	// Negative weight on the neighbours, normalised so overall brightness is preserved.
+	float w = -amount * strength * 0.25;
+	float3 sharpened = (up + down + left + right) * w + centre;
+	return max(sharpened / (1.0 + 4.0 * w), 0.0);
+}
+
+// [DA_PORT] Обёртка со старым поведением - тексел сцены. Бикубический путь не тронут.
+float3 da_sharpen_upscaled(Texture2D tex, float2 uv, float3 centre, float strength)
+{
+	return da_sharpen_texel(tex, uv, centre, strength, pos_decompression_params2.zw);
+}
+
+// [DA_PORT] То же самое, но для ВЫХОДА временного апскейлера, а не для низкоразрешённой сцены.
+//
+// Отличие одно и оно принципиальное: отсчёты берутся ПРОСТОЙ билинейной выборкой, без da_fetch_scene.
+// Та под капотом делает бикубическую реконструкцию, когда сцена меньше окна, и написана она под
+// низкое разрешение. Прогнать её по кадру, который апскейлер уже собрал в полном разрешении, значит
+// восстанавливать уже восстановленное: соседние отсчёты берутся не оттуда, нерезкая маска вычитает
+// неверное среднее, и вместо резкости получается развал краёв - на глаз читается как «всё пиксельное».
+// Ровно на это я и наступил, когда переиспользовал помощник целиком.
+float3 da_sharpen_output(Texture2D tex, float2 uv, float3 centre, float strength, float2 texel)
+{
+	float3 up    = tex.Sample(smp_rtlinear, uv + float2(0.0, -texel.y)).rgb;
+	float3 left  = tex.Sample(smp_rtlinear, uv + float2(-texel.x, 0.0)).rgb;
+	float3 right = tex.Sample(smp_rtlinear, uv + float2( texel.x, 0.0)).rgb;
+	float3 down  = tex.Sample(smp_rtlinear, uv + float2(0.0,  texel.y)).rgb;
+
+	float3 mn = min(min(up, down), min(left, right));
+	float3 mx = max(max(up, down), max(left, right));
+
+	float3 headroom = min(mn, 1.0 - mx) / max(mx, 0.0001);
+	float amount = sqrt(saturate(min(headroom.r, min(headroom.g, headroom.b))));
+
 	float w = -amount * strength * 0.25;
 	float3 sharpened = (up + down + left + right) * w + centre;
 	return max(sharpened / (1.0 + 4.0 * w), 0.0);
@@ -150,8 +181,21 @@ Texture2D s_fsr2;
 
 float3 da_debug_velocity(float2 uv)
 {
-	float2 v = s_velocity.Sample(smp_rtlinear, uv).xy * 200.0;
-	return float3(saturate(v.x), saturate(-v.x), saturate(abs(v.y)));
+	float2 v = s_velocity.Sample(smp_rtlinear, uv).xy;
+
+	// [DA_PORT] МАЛИНОВЫЙ - в буфере РОВНО ноль, то есть сюда никто не писал.
+	//
+	// Раньше этот случай был неотличим от «объект стоял на месте»: оба давали чёрный. А для апскейлера
+	// это принципиально разные вещи - ноль он читает как «пиксель не двигался» и уверенно переносит
+	// историю, тогда как на самом деле данных нет вовсе. Ровно на этой двусмысленности мы потеряли
+	// день: пустой буфер выглядел как исправный, потому что чёрное поле никого не смущало.
+	if (v.x == 0.0 && v.y == 0.0)
+		return float3(0.7, 0.0, 0.7);
+
+	// Векторы в NDC и очень малы - быстрый разворот сдвигает пиксель на сотые доли экрана, поэтому
+	// масштаб большой. Красный и зелёный - две стороны горизонтали, синий - вертикаль.
+	float2 s = v * 200.0;
+	return float3(saturate(s.x), saturate(-s.x), saturate(abs(s.y)));
 }
 
 // [DA_PORT] The reactive mask itself, switched on with "r__motion_vectors 4". White is where the
@@ -170,7 +214,14 @@ Texture2D s_reactive;
 // Green means the pixel reads as sky. Red is the depth itself. A sky that comes up red is the bug.
 float3 da_debug_depth(float2 uv)
 {
+// [DA_PORT] s_position is Texture2DMS under USE_MSAA (common_samplers.h), and a multisampled
+// texture object has no Sample method at all - the shader then fails to COMPILE and the engine
+// quietly swaps in stub_default.ps. Same shape as the stock reads in common_functions.h.
+#ifndef USE_MSAA
 	const float z = s_position.Sample(smp_nofilter, uv).z;
+#else
+	const float z = s_position.Load(int2(uv * pos_decompression_params2.xy), 0).z;
+#endif
 	return float3(saturate(abs(z) * 0.02), abs(z) < 0.001 ? 1.0 : 0.0, 0.0);
 }
 
@@ -226,6 +277,17 @@ float4 main( p_postpr I ) : SV_Target
 	// grows a crunchy speckle that reads as "too sharp" when the setting itself is fine.
 	if (da_upscale.x > 0.001 && da_upscale.z < 0.5 && pos_decompression_params2.x < screen_res.x - 0.5)
 		image = da_sharpen_upscaled(s_base0, I.Tex0, image, da_upscale.x);
+
+	// [DA_PORT] DLSS и XeSS не точат кадр вовсе, в отличие от FSR 2 и FSR 3, которые делают это
+	// внутри себя тем же ползунком. Отсюда и ощущение, что DLSS «хуже»: он отдаёт честный, но
+	// неподточенный кадр, а рядом лежит подточенный.
+	//
+	// Точим по s_fsr2 - это и есть то, что видно на экране - и в текселях ЭКРАНА (screen_res.zw),
+	// а не сцены: выход апскейлера уже в полном разрешении, шаг сцены был бы шире нужного и дал бы
+	// ореолы. Признак .w ставит C++ только для тех бэкендов, что не точат сами, иначе вышло бы
+	// дважды - ровно та ошибка, из-за которой этот проход когда-то отключили для FSR 2.
+	if (da_upscale.w > 0.5 && da_upscale.x > 0.001)
+		image = da_sharpen_output(s_fsr2, I.Tex0, image, da_upscale.x, screen_res.zw);
 	float	gray 	= dot		(image,I.Gray);			// dp3
 			image 	= lerp 		(gray,image,I.Gray.w);		// mul/mad
 

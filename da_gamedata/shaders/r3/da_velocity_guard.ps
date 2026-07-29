@@ -1,5 +1,18 @@
 #include "common.h"
 
+// [DA_PORT] One Load that works whether or not the G-buffer is multisampled.
+//
+// Texture2DMS::Load takes (int2 pixel, int sample) - there is no one-argument form, so the plain
+// int3 call below fails to COMPILE under USE_MSAA, and a shader that fails to compile is silently
+// replaced with stub_default. Sample 0 is the right answer here: these passes ask about geometry
+// presence and depth, not about coverage inside a pixel.
+#ifndef USE_MSAA
+#	define DA_LOAD_GBUF(tex, px) tex.Load(px)
+#else
+#	define DA_LOAD_GBUF(tex, px) tex.Load((px).xy, 0)
+#endif
+
+
 // [DA_PORT] Damp vegetation motion in the neighbourhood of glossy, standing surfaces.
 //
 // The problem this exists for, measured over several sessions: FSR reconstructs each pixel by looking up
@@ -56,7 +69,7 @@ float4 main(vf I) : SV_Target
 		[unroll] for (int x = -1; x <= 1; ++x)
 		{
 			const int3 spx = int3(px.xy + int2(x, y) * r, 0);
-			const float gloss = s_diffuse.Load(spx).w;
+			const float gloss = DA_LOAD_GBUF(s_diffuse, spx).w;
 			if (gloss >= da_vguard.x && found < 0.5)
 			{
 				found = 1.0;
