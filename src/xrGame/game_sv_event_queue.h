@@ -34,5 +34,11 @@ public:
     void Release();
 
     u32 EraseEvents(event_predicate to_del);
+
+    // [DA_PORT] Размеры для замера памяти. Очередь держит пул свободных событий, а каждое событие
+    // несёт в себе сетевой пакет на 16 килобайт — если пул растёт от перезагрузки к перезагрузке,
+    // это видно только отсюда.
+    u32 ready_count() const { return (u32)ready.size(); }
+    u32 unused_count() const { return (u32)unused.size(); }
     void SetIgnoreEventsFor(bool ignore, ClientID clientID);
 };

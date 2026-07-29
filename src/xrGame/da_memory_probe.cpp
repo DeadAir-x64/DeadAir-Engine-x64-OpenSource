@@ -9,6 +9,9 @@
 #include "xrScriptEngine/script_engine.hpp"
 #include "xrEngine/IGame_Persistent.h"
 #include "xrSound/Sound.h"
+#include "game_sv_event_queue.h"
+#include "game_sv_base.h"
+#include "xrServer.h"
 #include "xrEngine/XR_IOConsole.h"
 #include "Common/object_broker.h"
 #include <algorithm>
@@ -78,6 +81,8 @@ struct Run
     size_t ps_active = 0;     // живых систем частиц
     size_t ps_destroy = 0;    // ждут уничтожения
     size_t ps_needtoplay = 0; // ждут запуска
+    size_t ev_ready = 0;      // событий сервера в очереди
+    size_t ev_unused = 0;     // и в пуле свободных — каждое несёт пакет на 16 КБ
     bool objects_pending = false; // объекты считаются не сразу, см. DA_MemTick
 };
 
@@ -356,6 +361,21 @@ void finish_run(Run& run)
         std::sort(run.snd_top.begin(), run.snd_top.end(),
             [](const Run::SndItem& a, const Run::SndItem& b) { return a.total > b.total; });
     }
+    // Очередь событий сервера: каждое событие несёт NET_Packet на 16 КБ, и пул свободных событий
+    // движок сокращает лишь по одному за вызов и только если минуту никто ничего не создавал.
+    if (g_pGameLevel && Level().Server)
+    {
+        // GetGameState отдаёт интерфейс; очередь событий живёт в конкретной реализации.
+        if (game_sv_GameState* game = smart_cast<game_sv_GameState*>(Level().Server->GetGameState()))
+        {
+            if (GameEventQueue* q = game->event_queue())
+            {
+                run.ev_ready = q->ready_count();
+                run.ev_unused = q->unused_count();
+            }
+        }
+    }
+
     if (g_pGamePersistent)
     {
         run.ps_active = g_pGamePersistent->ps_active.size();
@@ -377,8 +397,17 @@ void finish_run(Run& run)
 }
 } // namespace
 
+// Размеры кандидатов: сравнить с размером пойманного блока и не гадать по полям.
+void DA_MemSizes()
+{
+    Msg("~ [DA_MEM] sizeof: NET_Buffer=%u NET_Packet=%u GameEvent=%u",
+        (u32)sizeof(NET_Buffer), (u32)sizeof(NET_Packet), (u32)sizeof(GameEvent));
+}
+
 void DA_MemTestStart(int runs)
 {
+    DA_MemSizes();
+
     if (runs < 2)
         runs = 3;
 
@@ -700,6 +729,16 @@ void DA_MemDump()
 
     Msg("~ [DA_MEM] Растут ЖИВЫЕ мегабайты — это утечка. Растёт только закоммичено, а живые стоят —"
         " память держит аллокатор, и это не дефект.");
+
+    Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
+    Msg("~ [DA_MEM] --- очередь событий сервера (каждое событие = пакет 16 КБ) ---");
+    Msg("~ [DA_MEM] прогон | в очереди | в пуле свободных | пул в МБ");
+    for (size_t i = 0; i < g_runs.size(); ++i)
+    {
+        const Run& r = g_runs[i];
+        Msg("~ [DA_MEM]   %-4u | %9u | %16u | %u", (u32)(i + 1), (u32)r.ev_ready, (u32)r.ev_unused,
+            (u32)(r.ev_unused * 16413 / 1024 / 1024));
+    }
 
     Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
     Msg("~ [DA_MEM] прогон | текстуры МБ | Lua МБ | строк | объектов | ALife | звуков | событий | частиц");

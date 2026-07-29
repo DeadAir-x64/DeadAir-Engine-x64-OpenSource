@@ -125,6 +125,11 @@ protected:
     xrServer* m_server;
 
     GameEventQueue* m_event_queue;
+
+public:
+    GameEventQueue* event_queue() const { return m_event_queue; } // [DA_PORT] для замера памяти
+
+protected:
     item_respawn_manager m_item_respawner;
 
     // Events

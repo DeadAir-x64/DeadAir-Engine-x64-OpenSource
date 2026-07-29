@@ -37,6 +37,8 @@ void DA_MemTick();
 void DA_MemTestStart(int runs);
 
 // Печать всей накопленной таблицы: фазы по вертикали, прогоны по горизонтали.
+void DA_MemSizes();
+
 void DA_MemDump();
 
 // Забыть накопленное (консольная команда da_mem_reset).
