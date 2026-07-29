@@ -663,7 +663,17 @@ public:
     }
 };
 
+// [DA_PORT] Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
+// the stock behaviour where every shadowing light gets its own pass. Without it the menu could not
+// express what the engine did before this setting existed - the list started at 1, so a player whose
+// lamps had stopped casting had no way back to the original behaviour, and no way to tell our cap
+// apart from a broken level. That is a diagnostic dead end, which is why the entry exists.
+//
+// "off" is kept but it is NOT the absence of a limit - it is a budget of one, i.e. the harshest
+// setting in the list. The two sit at opposite ends and their names are one letter apart in meaning,
+// so the label matters: it reads "Минимум", not "Отключить".
 xr_token q_light_shadow_budget[] = {
+    { "st_opt_shadow_lights_unlimited", 0 },
     { "st_opt_shadow_lights_off", 1 },
     { "st_opt_shadow_lights_low", 6 },
     { "st_opt_shadow_lights_medium", 12 },

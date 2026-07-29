@@ -154,8 +154,11 @@
 	<string id="ui_mm_shadow_lights">
 		<text>Light shadows</text>
 	</string>
+	<string id="st_opt_shadow_lights_unlimited">
+		<text>Unlimited</text>
+	</string>
 	<string id="st_opt_shadow_lights_off">
-		<text>Disabled</text>
+		<text>Minimum</text>
 	</string>
 	<string id="st_opt_shadow_lights_low">
 		<text>Low</text>

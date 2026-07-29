@@ -154,8 +154,11 @@
 	<string id="ui_mm_shadow_lights">
 		<text>Тени от источников света</text>
 	</string>
+	<string id="st_opt_shadow_lights_unlimited">
+		<text>Без ограничения</text>
+	</string>
 	<string id="st_opt_shadow_lights_off">
-		<text>Отключить</text>
+		<text>Минимум</text>
 	</string>
 	<string id="st_opt_shadow_lights_low">
 		<text>Низкие</text>
