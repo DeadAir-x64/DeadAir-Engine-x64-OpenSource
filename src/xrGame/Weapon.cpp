@@ -262,6 +262,15 @@ void CWeapon::ForceUpdateFireParticles()
     }
 }
 
+// [DA_PORT] Размытие (глубина резкости) при прицеливании и перезарядке — ВЫКЛЮЧЕНО по умолчанию.
+//
+// Эффект приходит из данных: у ствола читаются zoom_dof, reload_dof и reload_empty_dof, и движок
+// послушно ставит эффектор камеры. Правка не трогает конфиги — она гасит применение, поэтому
+// значения в секциях оружия остаются на месте и включаются одной командой обратно.
+//
+// 0 — не размывать (по умолчанию), 1 — как в данных ствола.
+int g_weapon_dof = 0;
+
 void CWeapon::Load(LPCSTR section)
 {
     inherited::Load(section);
@@ -1480,7 +1489,7 @@ void CWeapon::OnZoomIn()
     // Отключаем инерцию (Заменено GetInertionFactor())
     // EnableHudInertion(FALSE);
 
-    if (m_zoom_params.m_bZoomDofEnabled && !IsScopeAttached())
+    if (g_weapon_dof && m_zoom_params.m_bZoomDofEnabled && !IsScopeAttached())
         GamePersistent().SetEffectorDOF(m_zoom_params.m_ZoomDof);
 
     if (GetHUDmode())
@@ -1963,7 +1972,7 @@ void CWeapon::OnStateSwitch(u32 S, u32 oldState)
         if (current_actor && H_Parent() == Level().CurrentEntity())
         {
             const Fvector4& reloadDof = iAmmoElapsed == 0 ? m_zoom_params.m_ReloadEmptyDof : m_zoom_params.m_ReloadDof;
-            if (!fsimilar(reloadDof.w, -1.0f))
+            if (g_weapon_dof && !fsimilar(reloadDof.w, -1.0f))
                 current_actor->Cameras().AddCamEffector(xr_new<CEffectorDOF>(reloadDof));
         }
     }
