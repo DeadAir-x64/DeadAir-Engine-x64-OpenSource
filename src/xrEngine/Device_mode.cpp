@@ -8,10 +8,23 @@ extern ENGINE_API int ps_r__render_scale; // [DA_PORT] defined in xr_ioc_cmd.cpp
 xr_vector<xr_token> vid_monitor_token;
 xr_map<u32, xr_vector<xr_token>> vid_mode_token;
 
+// [DA_PORT] Одно разрешение — одна строка, с наибольшей частотой обновления.
+//
+// Монитор рапортует каждое разрешение столько раз, сколько частот он для него умеет: на панели с
+// 260 Гц это два десятка строк вида «1920x1080 (60Hz)», «(120Hz)», «(144Hz)»… и настоящих
+// разрешений среди них всего несколько. Выбирать в таком списке невозможно, а низкая частота там
+// никому не нужна: единственная причина взять её осознанно — сломанный кабель или переходник, и это
+// случай для консоли, а не для меню.
+//
+// Порядок остаётся прежним, от меньшего разрешения к большему: SDL отдаёт режимы по убыванию,
+// поэтому идём с конца.
 void FillResolutionsForMonitor(const int monitorID)
 {
     const int modeCount = SDL_GetNumDisplayModes(monitorID);
     R_ASSERT3(modeCount > 0, "Failed to find display modes", SDL_GetError());
+
+    xr_vector<SDL_DisplayMode> best;
+    best.reserve(modeCount);
 
     for (int i = modeCount - 1; i >= 0; --i)
     {
@@ -19,10 +32,27 @@ void FillResolutionsForMonitor(const int monitorID)
         const int result = SDL_GetDisplayMode(monitorID, i, &mode);
         R_ASSERT3(result == 0, "Failed to find specified display mode", SDL_GetError());
 
+        const auto same_size = [&mode](const SDL_DisplayMode& m) { return m.w == mode.w && m.h == mode.h; };
+        const auto it = std::find_if(best.begin(), best.end(), same_size);
+
+        if (it == best.end())
+            best.push_back(mode);
+        else if (mode.refresh_rate > it->refresh_rate)
+            *it = mode; // то же разрешение, частота выше — берём его
+    }
+
+    // Номер обязан быть СВОИМ у каждой строки: список настроек сохраняет выбор через
+    // get_token_name(id), и одинаковые номера означали бы, что любое выбранное разрешение
+    // записывается как первое в списке.
+    int id = 0;
+    for (const SDL_DisplayMode& mode : best)
+    {
         string256 buf;
         xr_sprintf(buf, sizeof(buf), "%ux%u (%dHz)", mode.w, mode.h, mode.refresh_rate);
-        vid_mode_token[monitorID].emplace_back(xr_strdup(buf), i);
+        vid_mode_token[monitorID].emplace_back(xr_strdup(buf), id++);
     }
+
+    Msg("* [DA_PORT] монитор %d: режимов %d, разрешений %u", monitorID, modeCount, (u32)best.size());
 
     vid_mode_token[monitorID].emplace_back(nullptr, -1);
 }

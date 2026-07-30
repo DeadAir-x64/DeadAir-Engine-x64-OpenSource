@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1103 правк(и) в 230 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1107 правк(и) в 230 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -685,7 +685,7 @@
 
 ## Движок и устройство
 
-*20 файл(ов), 156 правк(и)*
+*20 файл(ов), 160 правк(и)*
 
 
 ### `xrEngine/CameraManager.cpp`
@@ -746,11 +746,13 @@
 ### `xrEngine/Device_mode.cpp`
 
 - **:6** — extern ENGINE_API int ps_r__render_scale; // [DA_PORT] defined in xr_ioc_cmd.cpp
-- **:150** — Порядок здесь был перевёрнут, и из-за этого монопольный полный экран включался
-- **:192** — Принимаем то, что монитор реально показал. Драйвер вправе дать не тот режим, о
-- **:201** — Msg("~ [DA_PORT] полный экран: просили %ux%u, монитор показывает %dx%d - берём второе",
-- **:295** — Derive the internal scene resolution from "r__render_scale" (a percentage of the output).
-- **:316** — Msg("* [DA_PORT] render scale %d%%: scene renders at %ux%u, presented at %ux%u", scale, dwRenderWidth,
+- **:11** — Одно разрешение — одна строка, с наибольшей частотой обновления.
+- **:55** — Msg("* [DA_PORT] монитор %d: режимов %d, разрешений %u", monitorID, modeCount, (u32)best.size());
+- **:180** — Порядок здесь был перевёрнут, и из-за этого монопольный полный экран включался
+- **:222** — Принимаем то, что монитор реально показал. Драйвер вправе дать не тот режим, о
+- **:231** — Msg("~ [DA_PORT] полный экран: просили %ux%u, монитор показывает %dx%d - берём второе",
+- **:325** — Derive the internal scene resolution from "r__render_scale" (a percentage of the output).
+- **:346** — Msg("* [DA_PORT] render scale %d%%: scene renders at %ux%u, presented at %ux%u", scale, dwRenderWidth,
 
 ### `xrEngine/Engine.cpp`
 
@@ -836,64 +838,66 @@
 - **:719** — Msg("* [DA_PORT] DLSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
 - **:767** — Msg("* [DA_PORT] FSR 2 mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
 - **:789** — Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible
-- **:923** — Режима три, а не четыре, и порядок в списке — от оконного к полноэкранному.
-- **:946** — Старое имя режима из прежних конфигов приводим к ближайшему из оставшихся.
-- **:951** — Msg("~ [DA_PORT] режим окна без рамки больше не предлагается, включён оконный");
-- **:978** — Выключение полного экрана даёт полный экран В ОКНЕ, а не окно без рамки:
-- **:997** — Exported: the renderer now applies these itself when the hardware gamma ramp is
-- **:1207** — Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
-- **:1225** — Percentage of the output resolution the 3D scene is rendered at (see
-- **:1229** — Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
-- **:1235** — Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
-- **:1240** — Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
-- **:1246** — AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
-- **:1251** — Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
-- **:1254** — ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества
-- **:1256** — Отдавать ли DLSS нашу реактивную маску.
-- **:1267** — Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
-- **:1270** — FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
-- **:1275** — D3D11 validation layer, plus draining its messages into the engine log. Off by
-- **:1280** — Halves the FSR 3 path so the damage can be attributed without a validation layer.
-- **:1286** — Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности.
-- **:1303** — Reactivity from screen-space motion, against ghosting behind moving objects. The
-- **:1313** — Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
-- **:1351** — Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
-- **:1358** — One-shot readback of the pass's inputs and output into the log, with figures rather than a
-- **:1362** — The frame rate the three settings above are stated at.
-- **:1377** — Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
-- **:1381** — Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
-- **:1391** — Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
-- **:1413** — ---- Detail-bump stability under a temporal upscaler --------------------------------
-- **:1437** — Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
-- **:1444** — Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
-- **:1451** — ---- Glossy surfaces opt out of temporal accumulation -------------------------------
-- **:1465** — 0 = vegetation stands still in the shadow map while still swaying on screen. See
-- **:1469** — 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
-- **:1474** — Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
-- **:1488** — Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
-- **:1494** — Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
-- **:1500** — One control instead of two. The pair that actually drives the upscale — render scale and
-- **:1512** — Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
-- **:1517** — Show the temporal resolve where it fetches history from - see da_taa.ps.
-- **:1523** — How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
-- **:1546** — Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
-- **:1550** — Projection jitter, separately switchable. TAA has two halves that fail in different ways —
-- **:1599** — Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
-- **:1604** — What the options menu shows. The three per-vendor variables above stay for the console.
-- **:1630** — Detail-bump damping, see the declarations. Sensitivity and strength in one number:
-- **:1644** — CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
-- **:1645** — CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
-- **:1646** — CMD4(CCC_Integer, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
-- **:1648** — CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
-- **:1649** — CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
-- **:1650** — CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer res...
-- **:1651** — CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
-- **:1652** — CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
-- **:1654** — CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
-- **:1655** — CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
-- **:1656** — CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
-- **:1657** — CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
-- **:1662** — CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
+- **:861** — Частоту приводим к той, что есть в списке для этого разрешения.
+- **:900** — Msg("~ [DA_PORT] режим %s: в списке для этого разрешения только %u Гц, беру её",
+- **:970** — Режима три, а не четыре, и порядок в списке — от оконного к полноэкранному.
+- **:993** — Старое имя режима из прежних конфигов приводим к ближайшему из оставшихся.
+- **:998** — Msg("~ [DA_PORT] режим окна без рамки больше не предлагается, включён оконный");
+- **:1025** — Выключение полного экрана даёт полный экран В ОКНЕ, а не окно без рамки:
+- **:1044** — Exported: the renderer now applies these itself when the hardware gamma ramp is
+- **:1254** — Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
+- **:1272** — Percentage of the output resolution the 3D scene is rendered at (see
+- **:1276** — Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
+- **:1282** — Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
+- **:1287** — Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
+- **:1293** — AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
+- **:1298** — Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
+- **:1301** — ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества
+- **:1303** — Отдавать ли DLSS нашу реактивную маску.
+- **:1314** — Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
+- **:1317** — FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
+- **:1322** — D3D11 validation layer, plus draining its messages into the engine log. Off by
+- **:1327** — Halves the FSR 3 path so the damage can be attributed without a validation layer.
+- **:1333** — Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности.
+- **:1350** — Reactivity from screen-space motion, against ghosting behind moving objects. The
+- **:1360** — Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
+- **:1398** — Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
+- **:1405** — One-shot readback of the pass's inputs and output into the log, with figures rather than a
+- **:1409** — The frame rate the three settings above are stated at.
+- **:1424** — Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
+- **:1428** — Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
+- **:1438** — Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
+- **:1460** — ---- Detail-bump stability under a temporal upscaler --------------------------------
+- **:1484** — Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
+- **:1491** — Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
+- **:1498** — ---- Glossy surfaces opt out of temporal accumulation -------------------------------
+- **:1512** — 0 = vegetation stands still in the shadow map while still swaying on screen. See
+- **:1516** — 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
+- **:1521** — Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
+- **:1535** — Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
+- **:1541** — Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
+- **:1547** — One control instead of two. The pair that actually drives the upscale — render scale and
+- **:1559** — Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
+- **:1564** — Show the temporal resolve where it fetches history from - see da_taa.ps.
+- **:1570** — How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
+- **:1593** — Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
+- **:1597** — Projection jitter, separately switchable. TAA has two halves that fail in different ways —
+- **:1646** — Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
+- **:1651** — What the options menu shows. The three per-vendor variables above stay for the console.
+- **:1677** — Detail-bump damping, see the declarations. Sensitivity and strength in one number:
+- **:1691** — CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
+- **:1692** — CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
+- **:1693** — CMD4(CCC_Integer, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
+- **:1695** — CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
+- **:1696** — CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
+- **:1697** — CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer res...
+- **:1698** — CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
+- **:1699** — CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
+- **:1701** — CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
+- **:1702** — CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
+- **:1703** — CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
+- **:1704** — CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
+- **:1709** — CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
 
 ### `xrEngine/xr_level_controller.cpp`
 

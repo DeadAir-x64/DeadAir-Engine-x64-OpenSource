@@ -857,6 +857,53 @@ public:
                 psDeviceMode.RefreshRate = r;
                 m_Refresh60hz.set(fl_Refresh60hz, psDeviceMode.RefreshRate == 60);
             }
+
+            // [DA_PORT] Частоту приводим к той, что есть в списке для этого разрешения.
+            //
+            // Список теперь показывает каждое разрешение один раз, с наибольшей частотой
+            // (FillResolutionsForMonitor). Значит сохранённое «1920x1080 (60Hz)» из прежних
+            // конфигов в списке не найдётся, и строка настроек откроется пустой — выбор есть, а
+            // показать его нечем. Подгоняем молчаливое несоответствие здесь, один раз, со строкой
+            // в лог: пусть настройки показывают то, что реально будет включено.
+            //
+            // Точное совпадение не трогаем, поэтому осознанный выбор из консоли переживает эту
+            // правку, если такой режим в списке есть.
+            if (!vid_mode_token[psDeviceMode.Monitor].empty())
+            {
+                string64 exact;
+                xr_sprintf(exact, "%ux%u (%uHz)", psDeviceMode.Width, psDeviceMode.Height, psDeviceMode.RefreshRate);
+
+                string64 prefix;
+                xr_sprintf(prefix, "%ux%u (", psDeviceMode.Width, psDeviceMode.Height);
+                const size_t prefix_len = xr_strlen(prefix);
+
+                bool found_exact = false;
+                pcstr listed = nullptr;
+                for (const xr_token& token : vid_mode_token[psDeviceMode.Monitor])
+                {
+                    if (!token.name)
+                        continue;
+                    if (0 == xr_strcmp(token.name, exact))
+                    {
+                        found_exact = true;
+                        break;
+                    }
+                    if (!listed && 0 == strncmp(token.name, prefix, prefix_len))
+                        listed = token.name;
+                }
+
+                if (!found_exact && listed)
+                {
+                    u32 lw, lh, lr = 0;
+                    if (sscanf(listed, "%ux%u (%uHz)", &lw, &lh, &lr) == 3 && lr != psDeviceMode.RefreshRate)
+                    {
+                        Msg("~ [DA_PORT] режим %s: в списке для этого разрешения только %u Гц, беру её",
+                            exact, lr);
+                        psDeviceMode.RefreshRate = lr;
+                        m_Refresh60hz.set(fl_Refresh60hz, psDeviceMode.RefreshRate == 60);
+                    }
+                }
+            }
         }
         else
         {

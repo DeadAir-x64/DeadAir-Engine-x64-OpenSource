@@ -2225,23 +2225,31 @@
 "extern ENGINE_API int ps_r__render_scale; // [DA_PORT] defined in xr_ioc_cmd.cpp"
 ],
 [
-150,
+11,
+"Одно разрешение — одна строка, с наибольшей частотой обновления."
+],
+[
+55,
+"Msg(\"* [DA_PORT] монитор %d: режимов %d, разрешений %u\", monitorID, modeCount, (u32)best.size());"
+],
+[
+180,
 "Порядок здесь был перевёрнут, и из-за этого монопольный полный экран включался"
 ],
 [
-192,
+222,
 "Принимаем то, что монитор реально показал. Драйвер вправе дать не тот режим, о"
 ],
 [
-201,
+231,
 "Msg(\"~ [DA_PORT] полный экран: просили %ux%u, монитор показывает %dx%d - берём второе\","
 ],
 [
-295,
+325,
 "Derive the internal scene resolution from \"r__render_scale\" (a percentage of the output)."
 ],
 [
-316,
+346,
 "Msg(\"* [DA_PORT] render scale %d%%: scene renders at %ux%u, presented at %ux%u\", scale, dwRenderWidth,"
 ]
 ],
@@ -2421,235 +2429,243 @@
 "Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible"
 ],
 [
-923,
+861,
+"Частоту приводим к той, что есть в списке для этого разрешения."
+],
+[
+900,
+"Msg(\"~ [DA_PORT] режим %s: в списке для этого разрешения только %u Гц, беру её\","
+],
+[
+970,
 "Режима три, а не четыре, и порядок в списке — от оконного к полноэкранному."
 ],
 [
-946,
+993,
 "Старое имя режима из прежних конфигов приводим к ближайшему из оставшихся."
 ],
 [
-951,
+998,
 "Msg(\"~ [DA_PORT] режим окна без рамки больше не предлагается, включён оконный\");"
 ],
 [
-978,
+1025,
 "Выключение полного экрана даёт полный экран В ОКНЕ, а не окно без рамки:"
 ],
 [
-997,
+1044,
 "Exported: the renderer now applies these itself when the hardware gamma ramp is"
 ],
 [
-1207,
+1254,
 "Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in \"nearwall\" weapon"
 ],
 [
-1225,
+1272,
 "Percentage of the output resolution the 3D scene is rendered at (see"
 ],
 [
-1229,
+1276,
 "Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera"
 ],
 [
-1235,
+1282,
 "Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent."
 ],
 [
-1240,
+1287,
 "Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is"
 ],
 [
-1246,
+1293,
 "AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,"
 ],
 [
-1251,
+1298,
 "Intel XeSS. A separate variable rather than one shared \"upscaler\" enum: each builds its"
 ],
 [
-1254,
+1301,
 "ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества"
 ],
 [
-1256,
+1303,
 "Отдавать ли DLSS нашу реактивную маску."
 ],
 [
-1267,
+1314,
 "Разовый замер векторов движения: числа в лог вместо перебора знаков глазами."
 ],
 [
-1270,
+1317,
 "FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build"
 ],
 [
-1275,
+1322,
 "D3D11 validation layer, plus draining its messages into the engine log. Off by"
 ],
 [
-1280,
+1327,
 "Halves the FSR 3 path so the damage can be attributed without a validation layer."
 ],
 [
-1286,
+1333,
 "Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности."
 ],
 [
-1303,
+1350,
 "Reactivity from screen-space motion, against ghosting behind moving objects. The"
 ],
 [
-1313,
+1360,
 "Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC."
 ],
 [
-1351,
+1398,
 "Which ingredient of the pass to write out instead of the mask, so that \"r__motion_vectors 4\""
 ],
 [
-1358,
+1405,
 "One-shot readback of the pass's inputs and output into the log, with figures rather than a"
 ],
 [
-1362,
+1409,
 "The frame rate the three settings above are stated at."
 ],
 [
-1377,
+1424,
 "Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch"
 ],
 [
-1381,
+1428,
 "Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail"
 ],
 [
-1391,
+1438,
 "Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's"
 ],
 [
-1413,
+1460,
 "---- Detail-bump stability under a temporal upscaler --------------------------------"
 ],
 [
-1437,
+1484,
 "Paints the damping weight instead of the surface: 1 = the weight the normal path applies,"
 ],
 [
-1444,
+1491,
 "Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while"
 ],
 [
-1451,
+1498,
 "---- Glossy surfaces opt out of temporal accumulation -------------------------------"
 ],
 [
-1465,
+1512,
 "0 = vegetation stands still in the shadow map while still swaying on screen. See"
 ],
 [
-1469,
+1516,
 "0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the"
 ],
 [
-1474,
+1521,
 "Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its"
 ],
 [
-1488,
+1535,
 "Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),"
 ],
 [
-1494,
+1541,
 "Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),"
 ],
 [
-1500,
+1547,
 "One control instead of two. The pair that actually drives the upscale — render scale and"
 ],
 [
-1512,
+1559,
 "Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every"
 ],
 [
-1517,
+1564,
 "Show the temporal resolve where it fetches history from - see da_taa.ps."
 ],
 [
-1523,
+1570,
 "How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour"
 ],
 [
-1546,
+1593,
 "Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens"
 ],
 [
-1550,
+1597,
 "Projection jitter, separately switchable. TAA has two halves that fail in different ways —"
 ],
 [
-1599,
+1646,
 "Above 100 the scene is rendered LARGER than the window and downsampled on the way out,"
 ],
 [
-1604,
+1651,
 "What the options menu shows. The three per-vendor variables above stay for the console."
 ],
 [
-1630,
+1677,
 "Detail-bump damping, see the declarations. Sensitivity and strength in one number:"
 ],
 [
-1644,
+1691,
 "CMD3(CCC_DLSS, \"r__dlss\", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]"
 ],
 [
-1645,
+1692,
 "CMD4(CCC_Integer, \"r__dlss_reactive\", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу"
 ],
 [
-1646,
+1693,
 "CMD4(CCC_Integer, \"r__dlss_selftest\", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог"
 ],
 [
-1648,
+1695,
 "CMD4(CCC_Integer, \"r__d3d_debug\", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply"
 ],
 [
-1649,
+1696,
 "CMD4(CCC_Integer, \"r__fsr3_debug\", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch"
 ],
 [
-1650,
+1697,
 "CMD4(CCC_Integer, \"r__fsr3\", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer restart"
 ],
 [
-1651,
+1698,
 "CMD4(CCC_Integer, \"r__upscale_sharpness\", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS"
 ],
 [
-1652,
+1699,
 "CMD4(CCC_Integer, \"r__taa\", &ps_r__taa, 0, 1); // [DA_PORT]"
 ],
 [
-1654,
+1701,
 "CMD4(CCC_Integer, \"r__taa_sky\", &ps_r__taa_sky, 0, 100); // [DA_PORT]"
 ],
 [
-1655,
+1702,
 "CMD4(CCC_Integer, \"r__taa_sharp\", &ps_r__taa_sharp, 0, 100); // [DA_PORT]"
 ],
 [
-1656,
+1703,
 "CMD4(CCC_Integer, \"r__taa_mipbias\", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]"
 ],
 [
-1657,
+1704,
 "CMD4(CCC_Integer, \"r__taa_jitter\", &ps_r__taa_jitter, 0, 1); // [DA_PORT]"
 ],
 [
-1662,
+1709,
 "CMD3(CCC_Token, \"rs_fps_limit\", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number"
 ]
 ],
