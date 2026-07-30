@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1144 правк(и) в 234 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1145 правк(и) в 234 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*76 файл(ов), 464 правк(и)*
+*76 файл(ов), 465 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_R2.cpp`
@@ -83,10 +83,11 @@
 ### `Layers/xrRender/R_Backend_Runtime.cpp`
 
 - **:11** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here: an extern written inside
-- **:456** — Compensate the mip selection for r__render_scale. Rendering the scene smaller makes the
-- **:465** — With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection
-- **:488** — Результат обязательно проверять и говорить о нём в лог. Интерфейс появился в
-- **:498** — Msg("* [DA_PORT] отладочные метки GPU недоступны (нет ID3DUserDefinedAnnotation, "
+- **:46** — Глубину привязываем ТОЛЬКО когда её размер совпадает с целью.
+- **:476** — Compensate the mip selection for r__render_scale. Rendering the scene smaller makes the
+- **:485** — With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection
+- **:508** — Результат обязательно проверять и говорить о нём в лог. Интерфейс появился в
+- **:518** — Msg("* [DA_PORT] отладочные метки GPU недоступны (нет ID3DUserDefinedAnnotation, "
 
 ### `Layers/xrRender/R_Backend_Runtime.h`
 

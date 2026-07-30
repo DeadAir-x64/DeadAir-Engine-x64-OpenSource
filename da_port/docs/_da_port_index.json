@@ -223,19 +223,23 @@
 "Defined in the engine (xr_ioc_cmd.cpp). Declared out here: an extern written inside"
 ],
 [
-456,
+46,
+"Глубину привязываем ТОЛЬКО когда её размер совпадает с целью."
+],
+[
+476,
 "Compensate the mip selection for r__render_scale. Rendering the scene smaller makes the"
 ],
 [
-465,
+485,
 "With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection"
 ],
 [
-488,
+508,
 "Результат обязательно проверять и говорить о нём в лог. Интерфейс появился в"
 ],
 [
-498,
+518,
 "Msg(\"* [DA_PORT] отладочные метки GPU недоступны (нет ID3DUserDefinedAnnotation, \""
 ]
 ],
