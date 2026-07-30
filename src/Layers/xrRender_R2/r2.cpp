@@ -177,7 +177,11 @@ static class cl_taa_jitter : public R_constant_setup
         // [DA_PORT] Any temporal upscaler, not FSR 2 alone - see da_upscaler_active(). While this named
         // FSR 2 only, selecting FSR 3 or XeSS handed the scene shaders a shift of zero, so nothing was
         // jittered and the upscaler had no sub-pixel samples to work from.
-        if (da_upscaler_active())
+        // [DA_PORT] Сдвиг выдаётся ВСЕГДА, когда джиттер вообще включён — и для апскейлеров, и для
+        // нашей темпоралки. Раньше под TAA здесь возвращался ноль, потому что джиттер шёл в матрицу
+        // проекции; теперь он в матрицу не идёт ни в одном режиме (см. CCameraManager::ApplyDevice).
+        // Ноль тут означал бы, что геометрию никто не сдвигает, а снятие сдвига при восстановлении
+        // позиции всё равно вычтет ноль — то есть путь без апскейлера остался бы несогласованным.
         {
             // [DA_PORT] Converted to clip space HERE, from the pixel offset the upscaler is handed, so
             // the two can never describe different shifts. Device.dwRenderWidth is the scene size at
@@ -193,8 +197,6 @@ static class cl_taa_jitter : public R_constant_setup
             // than through a constant of their own, so it costs no extra binding.
             cmd_list.set_c(C, jx, jy, ::ps_r__reactive_foliage, 0.f);
         }
-        else
-            cmd_list.set_c(C, 0.f, 0.f, ::ps_r__reactive_foliage, 0.f);
     }
 } binder_taa_jitter;
 

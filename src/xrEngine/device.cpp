@@ -257,15 +257,11 @@ void CRenderDevice::OnCameraUpdated()
     // jitter, which is exactly what survived moving the jitter into the shaders.
     //
     // Named FSR 2 alone until FSR 3 and XeSS were added beside it; see da_upscaler_active().
-    if (!da_upscaler_active() && (g_da_taa_jitter.x != 0.f || g_da_taa_jitter.y != 0.f))
-    {
-        Fmatrix unjittered_project = mProject;
-        unjittered_project._31 -= g_da_taa_jitter.x;
-        unjittered_project._32 -= g_da_taa_jitter.y;
-        g_da_taa_unjittered_VP.mul(unjittered_project, mView);
-    }
-    else
-        g_da_taa_unjittered_VP.set(mFullTransform);
+    // [DA_PORT] Вычитать больше нечего: джиттер не попадает в mProject НИ В ОДНОМ режиме — его
+    // накладывают шейдеры сцены. Значит mFullTransform уже несдвинутая, и прежнее вычитание для
+    // пути без апскейлера теперь запекло бы в векторы движения фантомный отрицательный джиттер —
+    // ровно та остаточная тряска, о которой предупреждал комментарий выше.
+    g_da_taa_unjittered_VP.set(mFullTransform);
     GEnv.Render->OnCameraUpdated();
     GEnv.Render->SetCacheXform(mView, mProject);
 

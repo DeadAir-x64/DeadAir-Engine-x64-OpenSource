@@ -347,6 +347,11 @@ void CCameraManager::ApplyDevice()
     // evenly over the pixel with no clumping. _31/_32 shift the projection in NDC, which is exactly what
     // Ansel above uses them for, so this rides on an offset the engine already supports.
     g_da_taa_jitter.set(0.f, 0.f);
+    // [DA_PORT] Пиксельный джиттер сбрасывается ЗДЕСЬ ЖЕ. Раньше он только присваивался внутри
+    // условия ниже и никогда не обнулялся: страховкой служил ноль в cl_taa_jitter под «без
+    // апскейлера». Теперь сдвиг выдаётся всегда, поэтому не сброшенное значение осталось бы
+    // висеть на геометрии после выключения и TAA, и апскейлера.
+    g_da_fsr2_jitter_px.set(0.f, 0.f);
 
     // Not while the menu is up. Since the paused scene is now drawn behind the menu, the menu itself
     // ends up inside the temporal history — and with the projection shifting by a sub-pixel every frame
@@ -403,16 +408,21 @@ void CCameraManager::ApplyDevice()
         g_da_taa_jitter.set(2.f * g_da_fsr2_jitter_px.x / float(Device.dwRenderWidth),
             2.f * g_da_fsr2_jitter_px.y / float(Device.dwRenderHeight));
 
-        // [DA_PORT] Only our own temporal AA gets the jitter through the projection matrix. An upscaler
-        // must not: that matrix drives shadow cascades, particles and the HUD as well, while the
-        // upscaler compensates the scene alone — everything else would then dither with nothing to undo
-        // it, and the whole picture reads as shaking. Under an upscaler the scene shaders apply it
-        // themselves, from the m_taa_jitter constant.
-        if (!da_upscaler_active())
-        {
-            Device.mProject._31 += g_da_taa_jitter.x;
-            Device.mProject._32 += g_da_taa_jitter.y;
-        }
+        // [DA_PORT] Джиттер НЕ идёт в матрицу проекции ни в одном режиме — его накладывают сами
+        // шейдеры сцены, из константы m_taa_jitter (см. cl_taa_jitter в r2.cpp).
+        //
+        // Раньше через матрицу шла наша собственная темпоралка, а апскейлеры — через шейдеры, и это
+        // разошлось в двух местах сразу. Матрица правит ещё и каскады теней, частицы и HUD, которым
+        // сдвиг никто не компенсирует. А главное: снятие сдвига в gbuffer_load_data сделано ровно на
+        // m_taa_jitter, а под нашей темпоралкой эта константа была нулевой — «поправка обращается в
+        // ничто», как и написано там в комментарии. Картинка при этом сдвинута матрицей, позиция
+        // восстанавливается из несдвинутой экранной координаты, история в da_taa.ps ложится мимо на
+        // величину джиттера — и кадр ездит влево-вправо с частотой кадров. На низком FPS это видно
+        // как рывки, на высоком сливается в мыло.
+        //
+        // Теперь путь один и тот же для TAA и для апскейлеров — тот, который заведомо не качает.
+        // Плата: под TAA тени, частицы и HUD больше не дрожат, то есть сглаживаются слабее. Это
+        // ровно то поведение, которое у апскейлеров и так работает.
     }
 
     if (g_pGamePersistent && g_pGamePersistent->m_pMainMenu->IsActive())
