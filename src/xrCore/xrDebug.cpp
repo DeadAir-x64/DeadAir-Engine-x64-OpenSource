@@ -704,6 +704,60 @@ void xrDebug::OnThreadExit()
 #endif
 }
 
+#if defined(XR_PLATFORM_WINDOWS)
+// [DA_PORT] Перехватчик отказов, которых штатный обработчик НЕ ВИДИТ.
+//
+// Заведён по факту: игра исчезла, оставив лог, оборванный на середине, - без строки «stack trace» и
+// вообще без единого слова. UnhandledFilter при этом исправен и стоит под замком, значит до него
+// просто не дошло. Так умирают ровно два класса отказов:
+//   • порча кучи (0xC0000374) - Windows обрывает процесс немедленно, минуя ЛЮБЫЕ фильтры;
+//   • fail-fast (0xC0000409) и переполнение стека (0xC00000FD) - по той же причине.
+// Общее у них то, что причина всегда в другом месте и раньше по времени, поэтому потерянный отчёт
+// стоит дороже обычного: без него о таком отказе не известно ничего, даже его вид.
+//
+// Векторный перехватчик вызывается ДО раскрутки и до фильтров, то есть до момента, когда процесс
+// уже нельзя спросить ни о чём. Мы не пытаемся ничего чинить - только называем вид отказа и снимаем
+// стек, после чего отдаём управление дальше, как будто ничего не перехватывали.
+//
+// ⚠️ Берём только заведомо смертельные коды. Первая ошибка (first-chance) - вещь обычная: через
+// исключения работают luabind и часть кода Windows, и печатать их все значило бы залить лог.
+static LONG WINAPI da_fatal_vectored(EXCEPTION_POINTERS* ptrs)
+{
+    if (!ptrs || !ptrs->ExceptionRecord)
+        return EXCEPTION_CONTINUE_SEARCH;
+
+    const DWORD code = ptrs->ExceptionRecord->ExceptionCode;
+
+    pcstr name = nullptr;
+    switch (code)
+    {
+    case 0xC0000374: name = "порча кучи"; break;
+    case 0xC0000409: name = "аварийное завершение по проверке (fail-fast)"; break;
+    case 0xC00000FD: name = "переполнение стека"; break;
+    default: return EXCEPTION_CONTINUE_SEARCH;
+    }
+
+    // Один раз: повторный проход тем же путём только испортит уже записанное.
+    static std::atomic<bool> reported{ false };
+    if (reported.exchange(true))
+        return EXCEPTION_CONTINUE_SEARCH;
+
+    Msg("! [DA_PORT] СМЕРТЕЛЬНЫЙ ОТКАЗ: %s (код %08X), обычный обработчик такое не увидит", name, code);
+    FlushLog();
+
+    CONTEXT save = *ptrs->ContextRecord;
+    const auto trace = BuildStackTrace(ptrs->ContextRecord, 1024);
+    *ptrs->ContextRecord = save;
+
+    Msg("stack trace:\n");
+    for (const auto& frame : trace)
+        Log(frame.c_str());
+    FlushLog();
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 void xrDebug::Initialize(pcstr commandLine)
 {
     ZoneScoped;
@@ -714,6 +768,8 @@ void xrDebug::Initialize(pcstr commandLine)
     // exception handler to all "unhandled" exceptions
 #if defined(XR_PLATFORM_WINDOWS)
     PrevFilter = SetUnhandledExceptionFilter(UnhandledFilter);
+    // [DA_PORT] Первым в цепочке: см. da_fatal_vectored.
+    AddVectoredExceptionHandler(1, &da_fatal_vectored);
 #endif
 #ifdef MASTER_GOLD
     ShowErrorMessage = commandLine ? !!strstr(commandLine, "-show_error_window") : false;
