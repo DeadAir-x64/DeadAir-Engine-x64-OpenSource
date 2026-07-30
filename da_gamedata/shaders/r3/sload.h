@@ -192,7 +192,26 @@ surface_bumped sload_i( p_bumped I)
 	S.gloss				= S.gloss * lerp( 1.0h, NDetail.x * GLOSS_MUL, da_wg );
 	S.normal			+= da_dN * da_wn;
 	float4 detail		= s_detail.Sample( smp_base, I.tcdbump);
-	S.base.rgb			= S.base.rgb * detail.rgb * 2;
+	// [DA_PORT] Цвет подавляется СВОЕЙ мерой, не привязанной к блеску.
+	//
+	// Выше мера домножена на saturate(S.gloss), и для нормали с блеском это верно: там рассыпается
+	// узкий зеркальный блик, а дерево и кирпич сходятся сами - замерено 26.07. Но цвет ломается по
+	// другой причине: цветная детальная текстура идёт в альбедо с множителем два, и как только она
+	// становится мельче пикселя, оттенок меняется от кадра к кадру вслед за дрожанием. На матовой
+	// поверхности это видно ничуть не меньше, чем на металле.
+	//
+	// А через блеск оно было заглушено: у дороги S.gloss около нуля, вся мера обнулялась, и ручка
+	// r__detail_albedo_fix на ней не делала НИЧЕГО. Симптом - «земля впереди моргает»: детальная
+	// текстура колеи то накладывается, то нет.
+	//
+	// Меряем так же, как это уже сделано в ветке БЕЗ детального бампа - по самому цвету детали.
+	// Разница между двумя ветками была недоделкой, а не замыслом.
+	float  da_inst_a	= da_detail_instability( detail.rgb );
+	float  da_wa1		= 1.0h - saturate(da_inst_a * da_detail_fix.w);
+	if (da_detail_fix.z > 7.5h && da_detail_fix.z < 8.5h)	da_wa1 = 0.0h;	// 8: без детали в цвете
+	// Нейтраль - ЕДИНИЦА: средний тексел детали около .5 и множитель два, так что полное подавление
+	// значит «как если бы у поверхности не было детальной карты», а не «чёрный» и не «матовый».
+	S.base.rgb			= S.base.rgb * lerp( 1.0h, detail.rgb * 2, da_wa1 );
 
 	// [DA_PORT] r__detail_debug 1 and 2 paint the weight itself rather than the surface, so its magnitude
 	// can be read off the screen instead of guessed; 3 paints every pixel this branch touches at all,
@@ -289,7 +308,26 @@ surface_bumped sload_i( p_bumped I, float2 pixeloffset )
 	S.gloss				= S.gloss * lerp( 1.0h, NDetail.x * GLOSS_MUL, da_wg );
 	S.normal			+= da_dN * da_wn;
 	float4 detail		= s_detail.Sample( smp_base, I.tcdbump);
-	S.base.rgb			= S.base.rgb * detail.rgb * 2;
+	// [DA_PORT] Цвет подавляется СВОЕЙ мерой, не привязанной к блеску.
+	//
+	// Выше мера домножена на saturate(S.gloss), и для нормали с блеском это верно: там рассыпается
+	// узкий зеркальный блик, а дерево и кирпич сходятся сами - замерено 26.07. Но цвет ломается по
+	// другой причине: цветная детальная текстура идёт в альбедо с множителем два, и как только она
+	// становится мельче пикселя, оттенок меняется от кадра к кадру вслед за дрожанием. На матовой
+	// поверхности это видно ничуть не меньше, чем на металле.
+	//
+	// А через блеск оно было заглушено: у дороги S.gloss около нуля, вся мера обнулялась, и ручка
+	// r__detail_albedo_fix на ней не делала НИЧЕГО. Симптом - «земля впереди моргает»: детальная
+	// текстура колеи то накладывается, то нет.
+	//
+	// Меряем так же, как это уже сделано в ветке БЕЗ детального бампа - по самому цвету детали.
+	// Разница между двумя ветками была недоделкой, а не замыслом.
+	float  da_inst_a	= da_detail_instability( detail.rgb );
+	float  da_wa1		= 1.0h - saturate(da_inst_a * da_detail_fix.w);
+	if (da_detail_fix.z > 7.5h && da_detail_fix.z < 8.5h)	da_wa1 = 0.0h;	// 8: без детали в цвете
+	// Нейтраль - ЕДИНИЦА: средний тексел детали около .5 и множитель два, так что полное подавление
+	// значит «как если бы у поверхности не было детальной карты», а не «чёрный» и не «матовый».
+	S.base.rgb			= S.base.rgb * lerp( 1.0h, detail.rgb * 2, da_wa1 );
 
 	// [DA_PORT] r__detail_debug 1 and 2 paint the weight itself rather than the surface, so its magnitude
 	// can be read off the screen instead of guessed; 3 paints every pixel this branch touches at all,

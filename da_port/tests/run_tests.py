@@ -11,6 +11,7 @@
   globals   — глобалы, которые читаются, но нигде не присваиваются (класс бага `warn`);
   engine    — вызовы level.* и game.* против биндингов порта;
   options   — ключи opt_* без единого читателя;
+  gamedata  — da_gamedata в репозитории против развёрнутого в игре;
   unit      — поведение конкретных функций на моках движка.
 
 Интерпретатор собирается из Externals/LuaJIT при первом запуске (нужен mingw32-make из msys2)
@@ -211,56 +212,55 @@ def check_options():
 # ---------------------------------------------------------------------------
 # Проверка: разметка интерфейса для НЕширокоформатных экранов
 # ---------------------------------------------------------------------------
-def check_ui_xml():
-    """У каждого `*_16.xml` обязан быть близнец без суффикса, и они обязаны совпадать.
+def check_gamedata():
+    """Всё, что лежит в `da_gamedata`, обязано совпадать с развёрнутым в игре.
 
-    Движок выбирает файл по отношению сторон (`UICore::get_xml_name`) и запасного варианта не
-    имеет: на 4:3 и 5:4 он возьмёт файл без `_16`, каким бы тот ни был. Dead Air поставляет только
-    широкоформатную разметку настроек, поэтому там подставлялась стоковая разметка Call of
-    Chernobyl — ни одного нужного узла, настройки открывались пустыми, а `combo_msaa:SetCurrentID(0)`
-    ронял игру на пустом списке. Разрешение 4:3 есть в списке режимов любого монитора, так что это
-    не про редкое железо: достаточно понизить разрешение ради кадров.
+    Правки удобно делать прямо в игре — там их видно сразу, — и именно поэтому копия в репозитории
+    отстаёт молча. Когда проверку написали, разошлись СЕМЬ файлов из сорока трёх: разметка настроек
+    на 543 строки, все три скрипта вкладок видео, обе таблицы строк (вдвое короче!) и два шейдерных
+    заголовка. Релиз, собранный из репозитория, увёз бы старое меню и половину подписей, а заметили
+    бы это тестеры.
 
-    Заодно сверяется копия в репозитории (`da_gamedata`) с той, что лежит в игре. Расхождение уже
-    было: игровая ушла вперёд на 543 строки, и релиз, собранный из репозитория, увёз бы старое меню.
+    Обратный случай тоже настоящий: `ui_mm_opt_video_adv.script` в репозитории был длиннее игрового
+    — он остался от той поры, когда вкладка ещё строила давно убранные строки. Значит «в репозитории
+    больше, значит новее» — неверная догадка, и сверять надо содержимое, а не размер.
     """
-    game_ui = os.path.join(GAME, 'gamedata', 'configs', 'ui')
-    repo_ui = os.path.join(REPO, 'da_gamedata', 'configs', 'ui')
-    if not os.path.isdir(game_ui):
-        report('ui_xml', True, 'пропущено: нет configs/ui')
+    game_root = os.path.join(GAME, 'gamedata')
+    repo_root = os.path.join(REPO, 'da_gamedata')
+    if not os.path.isdir(game_root) or not os.path.isdir(repo_root):
+        report('gamedata', True, 'пропущено: нет da_gamedata')
         return True
 
     def content(path):
         """Содержимое без оглядки на переводы строк.
 
-        Сравнивать сырые байты здесь нельзя: в .gitattributes стоит `* text=auto`, поэтому копия в
-        репозитории после выгрузки на Windows окажется с CRLF, а копия в игре так и останется с LF.
+        Сравнивать сырые байты нельзя: в `.gitattributes` стоит `* text=auto`, поэтому копия в
+        репозитории после выгрузки на Windows окажется с CRLF, а копия в игре останется с LF.
         Побайтовая сверка провалилась бы на свежем клоне, ничего не сообщив о настоящем расхождении.
         """
         return open(path, 'rb').read().replace(b'\r\n', b'\n')
 
+    # README.md описывает сам каталог и в игру не разворачивается.
+    skip = {'README.md'}
+
     problems = []
-    pairs = 0
-    for name in sorted(os.listdir(game_ui)):
-        if not name.endswith('_16.xml'):
-            continue
-        pairs += 1
-        twin = name[:-len('_16.xml')] + '.xml'
-        wide = os.path.join(game_ui, name)
-        narrow = os.path.join(game_ui, twin)
-        if not os.path.exists(narrow):
-            problems.append('%s есть, а %s нет — на 4:3 движок возьмёт чужую разметку' % (name, twin))
-            continue
-        if content(wide) != content(narrow):
-            problems.append('%s и %s разошлись — правку надо вносить в оба' % (name, twin))
-        for fn in (name, twin):
-            in_repo = os.path.join(repo_ui, fn)
-            if os.path.exists(in_repo) and content(in_repo) != content(os.path.join(game_ui, fn)):
-                problems.append('%s в da_gamedata не совпадает с игровым' % fn)
+    checked = 0
+    for dirpath, _, filenames in os.walk(repo_root):
+        for name in sorted(filenames):
+            if name in skip:
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, name), repo_root)
+            in_game = os.path.join(game_root, rel)
+            if not os.path.exists(in_game):
+                problems.append('%s есть в da_gamedata, но не развёрнут в игре' % rel)
+                continue
+            checked += 1
+            if content(os.path.join(repo_root, rel)) != content(in_game):
+                problems.append('%s: копия в игре и в da_gamedata разошлись' % rel)
 
     for p in problems:
         print('         %s' % p)
-    report('ui_xml', not problems, 'пар: %d' % pairs)
+    report('gamedata', not problems, 'файлов: %d' % checked)
     return not problems
 
 
@@ -290,7 +290,7 @@ def main():
     check_hygiene()
     check_engine_calls()
     check_options()
-    check_ui_xml()
+    check_gamedata()
 
     if not ensure_luajit():
         print('  ПРОВАЛ luajit                       не собран, проверки на Lua пропущены')

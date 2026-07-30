@@ -2968,6 +2968,15 @@ void CCC_RegisterCommands()
 
     CMD1(CCC_UIStyle, "ui_style");
     CMD1(CCC_UIRestart, "ui_restart");
+    {
+        // [DA_PORT] Брать широкоформатную разметку и на узком экране. Подробности - у самой
+        // переменной в xrUICore/ui_base.cpp: у Dead Air настоящий интерфейс лежит только в файлах
+        // _16, а файлы без суффикса остались от основы. Ноль возвращает выбор по соотношению сторон
+        // и нужен тому, кто соберёт мод с честной парой разметок. Действует со следующего открытия
+        // экрана (разметка читается при создании окна), полностью - после ui_restart.
+        extern XRUICORE_API int ps_ui_widescreen_layout;
+        CMD4(CCC_Integer, "ui_widescreen_layout", &ps_ui_widescreen_layout, 0, 1);
+    }
 
 #ifdef DEBUG
     CMD4(CCC_Float, "ai_smart_cover_animation_speed_factor", &g_smart_cover_animation_speed_factor, .1f, 10.f);

@@ -12,12 +12,14 @@ function options_dialog:__init() super()
 	-- auto-generate UI elements for Gameplay Tab
 	local checks, lists, elements = {}, {}, {}
 	local _st 
+	local by_key = {} -- [DA_PORT] option key -> row, so the list can be emitted by group
 	self.scroll_v:Clear()
 	
 	-- add UI elements to scroll view in specific order
 	for cap,t in pairs(self.gameplay_options) do
 		if not (t.disabled) then
 			_st = self.xml:InitStatic("tab_gameplay:templ_item", nil)
+			by_key[cap] = _st
 			
 			-- caption
 			local ctrl = self.xml:InitStatic("tab_gameplay:cap_check_axr",_st) -- ctrl needs scoped here because we pass it to wrapper or else ref will get replaced
@@ -49,7 +51,16 @@ function options_dialog:__init() super()
 				-- setup the list
 				if (t.list) then
 					for i,v in ipairs(t.list) do 
-						ctrl:AddItem(v,i-1)
+						-- [DA_PORT] Пометка значения по умолчанию прямо в списке.
+						-- Безопасно: при сохранении значение берётся как tonumber(GetText()),
+						-- а на непарсящемся тексте срабатывает откат `or v.default` — то есть
+						-- в конфиг всё равно уходит ровно default. Парная правка, ставящая ту же
+						-- пометку в поле после перезахода в меню, лежит в axr_main_options.script.
+						if (t.default_label and v == t.default) then
+							ctrl:AddItem(tostring(v).." "..t.default_label,i-1)
+						else
+							ctrl:AddItem(v,i-1)
+						end
 					end
 				end
 		
@@ -69,20 +80,49 @@ function options_dialog:__init() super()
 		end
 	end 
 	
-	-- sort ui elements to display in alphabetical order
-	table.sort(lists)
-	table.sort(checks)
-	
-	for i=1,#lists do 
-		-- add to UIScrollView
-		self.gameplay_scroll_v:AddWindow(elements[lists[i]],true) 
-		elements[lists[i]]:SetAutoDelete(false)
+	-- [DA_PORT] Emitted by group instead of alphabetically: headers first, then the rows that
+	-- belong under them. Anything not listed falls into the last group, so a new option added
+	-- later still shows up instead of silently vanishing.
+	local groups = {
+		-- [DA_PORT] Ordered by affinity inside each group - no extra headings, the neighbours just
+		-- make sense: simulation together, world items together, sleep together, and so on.
+		{ "difficulty", { "difficulty",
+		                  "alife_stalker_pop", "alife_mutant_pop", "offline_battles", "excl_dist",
+		                  "heli_spawn",
+		                  "ground_items", "release_dropped_items",
+		                  "only_campfire", "sleep_deprived",
+		                  "use_battery", "mechanic_feature" } },
+		{ "save",       { "important_save", "quicksave_cnt" } },
+		{ "crosshair",  { "show_crosshair", "dyn_crosshair", "crosshair_distance",
+		                  "show_enemy_health", "show_tracers" } },
+		{ "interface",  { "tips", "dynamic_news",
+		                  "hud_draw_info", "hud_draw_map", "show_weapon", "slot_hud", "mask_hud",
+		                  "letterbox", "photomode",
+		                  "localization", "debug_hud" } },
+		{ "sound",      { "radio_mod", "heli_engine_sound" } },
+		{ "controls",   { "crouch_toggle", "extra_animations" } },
+	}
+
+	local placed = {}
+	for _, g in ipairs(groups) do
+		local hdr = self.xml:InitStatic("tab_gameplay:templ_header", nil)
+		self.xml:InitStatic("tab_gameplay:cap_grp_"..g[1], hdr)
+		self.gameplay_scroll_v:AddWindow(hdr, true)
+		hdr:SetAutoDelete(false)
+		for _, key in ipairs(g[2]) do
+			if by_key[key] then
+				self.gameplay_scroll_v:AddWindow(by_key[key], true)
+				by_key[key]:SetAutoDelete(false)
+				placed[key] = true
+			end
+		end
 	end
 
-	for i=1,#checks do 
-		-- add to UIScrollView
-		self.gameplay_scroll_v:AddWindow(elements[checks[i]],true) 
-		elements[checks[i]]:SetAutoDelete(false)
+	for key, ctl in pairs(by_key) do
+		if not placed[key] then
+			self.gameplay_scroll_v:AddWindow(ctl, true)
+			ctl:SetAutoDelete(false)
+		end
 	end
 
 	--self.message_box = CUIMessageBoxEx()
@@ -128,6 +168,13 @@ function options_dialog:InitControls()
 	self.dlg_controls:Show		(false)
 	self.dialog:AttachChild		(self.dlg_controls)
 	xml:InitWindow				("tab_size", 0, self.dlg_controls)
+
+	-- [DA_PORT] Performance tab
+	self.dlg_performance		= ui_mm_opt_performance.opt_performance()
+	self.dlg_performance:InitControls(0,0, xml, self)
+	self.dlg_performance:Show	(false)
+	self.dialog:AttachChild		(self.dlg_performance)
+	xml:InitWindow				("tab_size", 0, self.dlg_performance)
 
 	self.dlg_video_adv			= ui_mm_opt_video_adv.opt_video_adv()
 	self.dlg_video_adv:InitControls(0,0, xml, self)
@@ -201,7 +248,8 @@ function options_dialog:UpdateDependControls()
 		end
 	end
 
-	self.texture_lod_track:SetOptIBounds(min_texture_lod, max_texture_lod)
+	-- [DA_PORT] texture_lod removed from the Advanced tab: the console variable is registered but
+	-- nothing in the engine ever reads psTextureLOD, so the slider did nothing at all.
 	self:OnAOOptionChange()
 	self:OnUpscalerChanged()
 end
@@ -308,6 +356,7 @@ function options_dialog:OnTabChange()
 	self.dlg_gameplay:Show	(false)
 	self.dlg_controls:Show	(false)
 	self.dlg_video_adv:Show	(false)
+	self.dlg_performance:Show(false)
 
 	local ids = self.tab:GetActiveId()
 	if ids == "video" then
@@ -318,6 +367,8 @@ function options_dialog:OnTabChange()
 		self.dlg_gameplay:Show(true)
 	elseif ids == "controls" then
 		self.dlg_controls:Show(true)
+	elseif ids == "performance" then
+		self.dlg_performance:Show(true)
 	end
 
 end
@@ -337,13 +388,74 @@ end
 -- upscaling off, or with our own temporal AA, the scene is drawn at full size. Leaving the control
 -- live there invites the player to move a slider that changes nothing, which reads as a broken option
 -- rather than an inapplicable one.
+--
+-- Hidden rather than greyed out. A disabled control still says "this setting exists for what you have
+-- chosen, you just may not touch it", which is the wrong statement: for "off" and for temporal AA there
+-- is no quality step at all, and a row that is simply absent asks no questions. The caption goes with
+-- it, otherwise a label sits over an empty space.
+-- The controls are read off SELF, not off self.dlg_video. opt_video:InitControls is handed the options
+-- dialog as its "handler" argument and stores these on it, which is the stock convention here - see
+-- combo_renderer in OnAOOptionChange just above. Looking for them under dlg_video found nil every time,
+-- the guard below returned, and the grey-out this function exists for had in fact never once run.
 function options_dialog:OnUpscalerChanged()
-	local combo = self.dlg_video and self.dlg_video.combo_upscaler_quality
-	if not combo then return end
+	if not self.combo_upscaler then return end
 
 	-- 0 = off, 1 = TAA. Everything above reconstructs from a smaller frame and needs the steps.
-	local id = self.dlg_video.combo_upscaler:CurrentID()
-	combo:Enable(id > 1)
+	local id = self.combo_upscaler:CurrentID()
+	local applicable = id > 1
+
+	-- [DA_PORT] MSAA is shown for "off" AND for our own temporal AA - that is, for everything that does
+	-- not reconstruct the frame. It shares the quality row's slot in the layout, and the two conditions
+	-- stay complementary (quality is id > 1, this is id <= 1), so exactly one of them can be on screen.
+	--
+	-- Why TAA counts as compatible: it is absent from da_upscaler_active(), so it never turns the
+	-- velocity buffer on, and the scene pass binds no extra targets whose sample count could disagree
+	-- with the G-buffer. The two also cover different defects - MSAA the geometry edges, TAA the
+	-- shading and specular - so running them together is a choice, not a mistake.
+	--
+	-- For the reconstructing choices the row is hidden rather than greyed out, and hidden rather than
+	-- merely ignored: multisampling resolves edges inside one frame, which is precisely the sub-pixel
+	-- information those upscalers reconstruct from, so offering it there would invite the player to pay
+	-- for making the picture worse. The engine enforces the same split from the console side
+	-- (CCC_MSAA / da_apply_upscaler, both testing "> 1").
+	local msaa_applicable = id <= 1
+
+	local combo = self.combo_upscaler_quality
+	if combo then
+		combo:Show(applicable)
+		-- Kept alongside Show: hiding takes it off the screen, disabling takes it out of the tab order
+		-- and out of reach of the mouse, and the two are separate flags in this UI. Both are set together
+		-- every time, so the control can never come back visible-but-dead.
+		combo:Enable(applicable)
+	end
+
+	local cap = self.cap_upscaler_quality
+	if cap then
+		cap:Show(applicable)
+	end
+
+	if self.combo_msaa then
+		self.combo_msaa:Show(msaa_applicable)
+		self.combo_msaa:Enable(msaa_applicable)
+
+		-- [DA_PORT] Hiding is not enough - the value has to be zeroed here, in the UI.
+		--
+		-- Options rows do not write to the console when the player picks something; they all write on
+		-- "Apply", and the order in which they write is not defined anywhere. So "upscaler = FSR 2" and
+		-- "MSAA = 4x" could be saved in either order: engine-side exclusion sets MSAA to off when the
+		-- upscaler is applied, and then this row, saved afterwards, would put 4x straight back. The
+		-- player would end up with both, which is the one combination that cannot work.
+		--
+		-- Setting the row itself to "off" makes the outcome the same whichever order the save takes.
+		-- Item 0 is "off" in qmsaa_token, and there index and token value agree (0/1/2/3 -> off/2x/4x/8x).
+		if not msaa_applicable then
+			self.combo_msaa:SetCurrentID(0)
+		end
+	end
+
+	if self.cap_msaa then
+		self.cap_msaa:Show(msaa_applicable)
+	end
 end
 
 function options_dialog:OnBtnAdvGraphic()
@@ -400,6 +512,31 @@ function options_dialog:Update()
 		end
 	end
 	
+	-- [DA_PORT] Every slider shows its value on the right. One loop instead of a hand-written
+	-- "if track then label:SetText" per control - a new slider only needs its two fields.
+	--
+	-- вљ  A trackbar declared is_integer="1" in ui_mm_opt_16.xml fills ONLY m_i_val; m_f_val keeps its
+	-- constructor zero (UITrackBar.cpp, SetCurrentOptValue). Reading such a slider with GetFValue
+	-- therefore prints a confident "0" next to a knob sitting at the far right - which is exactly how
+	-- anisotropy and the grass radius looked. Integer sliders must be read with GetIValue, and the set
+	-- below has to match the is_integer="1" attributes in the layout.
+	local int_track = { aniso = true, detail_radius = true }
+	for _, dlg in ipairs({ self.dlg_video, self.dlg_performance, self }) do
+		if dlg then
+			for _, n in ipairs({ "gamma", "contrast", "brightness", "aniso",
+			                     "sun_far", "vis_dist", "detail_radius", "detail_density",
+			                     "geometry_lod", "detail_height",
+			                     "r2_gloss_factor", "light_distance", "particles_distance",
+			                     "bloom" }) do
+				local tr, lb = dlg[n.."_track"], dlg[n.."_val"]
+				if tr and lb then
+					local v = int_track[n] and tr:GetIValue() or tr:GetFValue()
+					lb:TextControl():SetText(string.format(v == math.floor(v) and "%.0f" or "%.2f", v))
+				end
+			end
+		end
+	end
+
 	if (self.dlg_video) then
 		if (self.dlg_video.fov_track) then 
 			self.dlg_video.fov_value:TextControl():SetText(tostring(self.dlg_video.fov_track:GetFValue()))

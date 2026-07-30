@@ -302,10 +302,17 @@ struct	v_static_color
 // Declared as a loose global rather than added to the dynamic_transforms cbuffer on purpose: that
 // buffer's layout is shared with the engine side, and growing it would change the offsets of matrices
 // every vertex shader already relies on.
-#ifdef DA_VELOCITY
 // [DA_PORT] Sub-pixel jitter, applied by the shader rather than baked into the projection.
-// Zero unless FSR 2 is running - see cl_taa_jitter in r2.cpp.
+// Zero unless a temporal upscaler is running - see cl_taa_jitter in r2.cpp.
+//
+// Объявлена ВНЕ блока DA_VELOCITY намеренно. Раньше она жила внутри него — вместе с матрицами для
+// векторов движения, — и была видна только шейдерам G-буфера. Но сдвиг нужен и там, где по глубине
+// восстанавливают позицию (gbuffer_load_data в common_functions.h): эти шейдеры собираются без
+// DA_VELOCITY, и обращение к константе ломало им сборку, а движок молча подставлял заглушку.
+// Неиспользованная константа ничего не стоит: компилятор её выбрасывает.
 uniform float4		m_taa_jitter;
+
+#ifdef DA_VELOCITY
 uniform float4x4	m_WVP_old;
 // [DA_PORT] Same pair without any world part, for geometry already in world space (trees).
 uniform float4x4	m_VP_nojit_ws;
