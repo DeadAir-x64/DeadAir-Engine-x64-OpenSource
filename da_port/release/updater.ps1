@@ -26,6 +26,17 @@
 # каталог bin. Скрипт распознаёт такую систему и говорит об этом прямо, вместо того чтобы падать
 # на первой же незнакомой команде.
 
+# Режим «поставить из готового файла»:
+#
+#   powershell -ExecutionPolicy Bypass -File updater.ps1 -Archive C:\путь\DeadAir-x64-bin-....zip
+#
+# Нужен в двух случаях. Первый — Windows 7 и всё, откуда GitHub недоступен: архив скачивается
+# как угодно, а ставится всё равно правильно, с проверками и запасной копией. Второй — проверка
+# самого обновлятора: установку можно прогнать целиком, не выкладывая релиз.
+param(
+    [string]$Archive
+)
+
 $ErrorActionPreference = 'Stop'
 
 $Owner = 'DanesCrai1'
@@ -83,52 +94,72 @@ if (Get-Process -Name 'xrEngine' -ErrorAction SilentlyContinue)
 $local = if (Test-Path $VersionFile) { (Get-Content $VersionFile -First 1).Trim() } else { '(неизвестно)' }
 Say "  Установлено: $local"
 
-# --- какая версия доступна --------------------------------------------------------------------
-$api = "https://api.github.com/repos/$Owner/$Repo/releases/latest"
-try
-{
-    $release = Invoke-RestMethod $api -Headers @{ 'User-Agent' = 'DeadAir-updater' } -TimeoutSec 30
-}
-catch
-{
-    Say ''
-    Say '  Не удалось узнать последнюю версию.' Yellow
-    Say "  $($_.Exception.Message)" DarkGray
-    Say ''
-    Say '  Обычные причины: нет интернета, или релизов ещё нет вовсе.' DarkGray
-    exit 1
-}
-
-$latest = $release.tag_name
-Say "  Доступно:    $latest"
-Say ''
-
-if ($latest -eq $local)
-{
-    Say '  У вас последняя версия, обновлять нечего.' Green
-    exit 0
-}
-
-$asset = $release.assets | Where-Object { $_.name -like "$AssetPrefix*" } | Select-Object -First 1
-if (-not $asset)
-{
-    Say "  В релизе $latest нет файла, начинающегося на $AssetPrefix - обновить нечем." Yellow
-    exit 1
-}
-
-$sizeMb = [math]::Round($asset.size / 1MB, 1)
-Say "  Скачиваю $($asset.name) ($sizeMb МБ)..."
-
+# --- откуда берём обновление -------------------------------------------------------------------
 $tmp = Join-Path $env:TEMP ("da_update_" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-$archive = Join-Path $tmp $asset.name
+
+if ($Archive)
+{
+    # Готовый файл: версию берём из него самого, из bin\da_version.txt. Сверять её с установленной
+    # незачем — раз человек указал файл руками, он и решил, что ставить.
+    if (-not (Test-Path $Archive))
+    {
+        Say "  Файл не найден: $Archive" Yellow
+        exit 1
+    }
+    $archive = (Resolve-Path $Archive).Path
+    $latest = '(из файла)'
+    Say "  Ставлю из файла: $(Split-Path -Leaf $archive)"
+}
+else
+{
+    $api = "https://api.github.com/repos/$Owner/$Repo/releases/latest"
+    try
+    {
+        $release = Invoke-RestMethod $api -Headers @{ 'User-Agent' = 'DeadAir-updater' } -TimeoutSec 30
+    }
+    catch
+    {
+        Say ''
+        Say '  Не удалось узнать последнюю версию.' Yellow
+        Say "  $($_.Exception.Message)" DarkGray
+        Say ''
+        Say '  Обычные причины: нет интернета, или релизов ещё нет вовсе.' DarkGray
+        exit 1
+    }
+
+    $latest = $release.tag_name
+    Say "  Доступно:    $latest"
+    Say ''
+
+    if ($latest -eq $local)
+    {
+        Say '  У вас последняя версия, обновлять нечего.' Green
+        exit 0
+    }
+
+    $asset = $release.assets | Where-Object { $_.name -like "$AssetPrefix*" } | Select-Object -First 1
+    if (-not $asset)
+    {
+        Say "  В релизе $latest нет файла, начинающегося на $AssetPrefix - обновить нечем." Yellow
+        exit 1
+    }
+
+    $sizeMb = [math]::Round($asset.size / 1MB, 1)
+    Say "  Скачиваю $($asset.name) ($sizeMb МБ)..."
+    $archive = Join-Path $tmp $asset.name
+
+    # curl, а не Invoke-WebRequest: он показывает ход загрузки и не держит весь файл в памяти.
+    & $SysCurl -L --fail --progress-bar -o "$archive" $asset.browser_download_url
+    if ($LASTEXITCODE -ne 0)
+    {
+        Say "  Скачать не удалось (curl вернул код $LASTEXITCODE)." Red
+        exit 1
+    }
+}
 
 try
 {
-    # curl, а не Invoke-WebRequest: он показывает ход загрузки и не держит весь файл в памяти.
-    & $SysCurl -L --fail --progress-bar -o "$archive" $asset.browser_download_url
-    if ($LASTEXITCODE -ne 0) { throw "curl вернул код $LASTEXITCODE" }
-
     Say '  Распаковываю...'
     & $SysTar -xf "$archive" -C "$tmp"
     if ($LASTEXITCODE -ne 0) { throw "tar вернул код $LASTEXITCODE" }
@@ -172,7 +203,16 @@ try
     }
     Move-Item -Path $newData -Destination $dataDir -Force
 
-    Set-Content -Path $VersionFile -Value $latest -Encoding ASCII
+    # При установке из готового файла версия уже лежит внутри архива (её пишет make_release), и
+    # перезаписывать её нечем: тега мы не знаем. Читаем то, что приехало, — чтобы отчёт не соврал.
+    if ($Archive)
+    {
+        $latest = if (Test-Path $VersionFile) { (Get-Content $VersionFile -First 1).Trim() } else { '(без версии)' }
+    }
+    else
+    {
+        Set-Content -Path $VersionFile -Value $latest -Encoding ASCII
+    }
 
     Say ''
     Say "  Готово: $local -> $latest" Green
