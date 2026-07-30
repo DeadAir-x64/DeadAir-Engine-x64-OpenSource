@@ -1513,6 +1513,22 @@ ENGINE_API float ps_r__wind_scale = 1.f;
 // FTreeVisual::Render for the measurement behind it.
 ENGINE_API int ps_r__wind_shadow = 1;
 
+// [DA_PORT] Сила и частота качания ТРАВЫ, множителями к тому, что задано в данных.
+//
+// Заведены потому, что в самой Dead Air качание разогнано против исходного: в [details] стоит
+// swing_fast_amp1 = 0.65 при 0.25 у основы и swing_fast_speed = 20 при 1 - прежние значения автор
+// оставил рядом в комментарии. На сильном ветру трава от этого не качается, а мелко трясётся.
+//
+// Множители, а не абсолютные значения: данные мода остаются нетронутыми, и всё, что автор задумал
+// про разную погоду, продолжает работать - меняется только общая громкость. Единица = как в данных.
+//
+// Частота стоит отдельной ручкой не для симметрии. Ощущение «трясётся» даёт именно она, а не
+// размах; и она же дороже всего обходится временной реконструкции - чем быстрее стебель мечется,
+// тем меньше смысла в накопленной истории (см. r__reactive_foliage). Уменьшить частоту, оставив
+// размах, - это и спокойнее на глаз, и чище в движении.
+ENGINE_API float ps_r__grass_sway = 1.f;
+ENGINE_API float ps_r__grass_sway_speed = 1.f;
+
 // [DA_PORT] 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
 // nearest-depth neighbour, so grass and branches standing in front of a static surface can push their
 // own motion onto it; the surface then has its history fetched as though it had moved with them.
@@ -1686,6 +1702,9 @@ void CCC_Register()
     CMD4(CCC_Integer, "r__detail_debug", &ps_r__detail_debug, 0, 9);
     CMD4(CCC_Float, "r__wind_scale", &ps_r__wind_scale, 0.f, 4.f); // 0 = vegetation frozen
     CMD4(CCC_Integer, "r__wind_shadow", &ps_r__wind_shadow, 0, 1); // 0 = still foliage in shadow map
+    // [DA_PORT] Качание травы: размах и частота, множителями к данным. 1 = как задумано модом.
+    CMD4(CCC_Float, "r__grass_sway", &ps_r__grass_sway, 0.f, 2.f);
+    CMD4(CCC_Float, "r__grass_sway_speed", &ps_r__grass_sway_speed, 0.f, 2.f);
     CMD4(CCC_Integer, "r__foliage_tandc", &ps_r__foliage_tandc, 0, 1);
     CMD3(CCC_XESS, "r__xess", (u32*)&ps_r__xess, qxess_token);
     CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]

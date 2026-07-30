@@ -20,6 +20,10 @@
 
 #include "xrCore/Threading/TaskManager.hpp"
 
+// [DA_PORT] Множители качания травы, см. MT_Render ниже. Определены в xrEngine/xr_ioc_cmd.cpp.
+extern ENGINE_API float ps_r__grass_sway;
+extern ENGINE_API float ps_r__grass_sway_speed;
+
 #if defined(XR_ARCHITECTURE_X86) || defined(XR_ARCHITECTURE_X64) || defined(XR_ARCHITECTURE_E2K) || defined(XR_ARCHITECTURE_PPC64)
 #include <xmmintrin.h>
 #elif defined(XR_ARCHITECTURE_ARM) || defined(XR_ARCHITECTURE_ARM64)
@@ -424,6 +428,14 @@ void CDetailManager::Render(CBackend& cmd_list)
     float factor = 0.3f;
 #endif
     swing_current.lerp(swing_desc[0], swing_desc[1], factor);
+
+    // [DA_PORT] Общая громкость качания травы, множителями к данным. Пояснение - у самих переменных
+    // в xr_ioc_cmd.cpp; коротко: в Dead Air размах и частота разогнаны против исходных значений, и на
+    // сильном ветру трава мелко трясётся. Правится здесь, СРАЗУ ПОСЛЕ смешивания «тихо/сильно»,
+    // поэтому зависимость от погоды сохраняется полностью - меняется только общий уровень.
+    swing_current.amp1 *= ps_r__grass_sway;
+    swing_current.amp2 *= ps_r__grass_sway;
+    swing_current.speed *= ps_r__grass_sway_speed;
 
     cmd_list.set_CullMode(CULL_NONE);
     cmd_list.set_xform_world(Fidentity);
