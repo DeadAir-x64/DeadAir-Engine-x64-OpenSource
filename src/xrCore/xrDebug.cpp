@@ -522,6 +522,39 @@ LONG WINAPI xrDebug::UnhandledFilter(EXCEPTION_POINTERS* exPtrs)
     FormatLastError(errMsg, sizeof(errMsg));
     if (!ErrorAfterDialog && !strstr(GetCommandLine(), "-no_call_stack_assert"))
     {
+        // [DA_PORT] Сначала - ЧТО и ГДЕ, потом стек. Прежде отчёт начинался сразу со стека, и вид
+        // отказа приходилось угадывать: обращение по пустому указателю, деление на ноль и обращение
+        // по неверному адресу дают совершенно разные направления поиска, а выглядят в логе одинаково.
+        // Адрес обращения для нарушения доступа не менее важен: маленькое смещение от нуля - это
+        // разыменование пустого указателя со сдвигом на поле, а произвольное число - испорченный
+        // указатель, и это разные дефекты.
+        {
+            const auto* er = exPtrs->ExceptionRecord;
+            pcstr kind = "неизвестный";
+            switch (er->ExceptionCode)
+            {
+            case EXCEPTION_ACCESS_VIOLATION:      kind = "обращение по неверному адресу"; break;
+            case EXCEPTION_ILLEGAL_INSTRUCTION:   kind = "недопустимая инструкция"; break;
+            case EXCEPTION_INT_DIVIDE_BY_ZERO:    kind = "целочисленное деление на ноль"; break;
+            case EXCEPTION_FLT_DIVIDE_BY_ZERO:    kind = "деление на ноль с плавающей точкой"; break;
+            case EXCEPTION_FLT_STACK_CHECK:       kind = "переполнение стека сопроцессора"; break;
+            case EXCEPTION_PRIV_INSTRUCTION:      kind = "привилегированная инструкция"; break;
+            case EXCEPTION_IN_PAGE_ERROR:         kind = "страница недоступна"; break;
+            default: break;
+            }
+
+            Msg("! [DA_PORT] отказ: %s (код %08X), адрес кода %p", kind, er->ExceptionCode,
+                er->ExceptionAddress);
+
+            if (er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2)
+            {
+                pcstr what = er->ExceptionInformation[0] == 0 ? "чтение"
+                    : (er->ExceptionInformation[0] == 1 ? "запись" : "исполнение");
+                Msg("! [DA_PORT]   %s по адресу %p", what, (void*)er->ExceptionInformation[1]);
+            }
+            FlushLog();
+        }
+
         CONTEXT save = *exPtrs->ContextRecord;
         xr_vector<xr_string> stackTrace = BuildStackTrace(exPtrs->ContextRecord, 1024);
         *exPtrs->ContextRecord = save;
