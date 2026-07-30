@@ -529,9 +529,16 @@ protected:
     //    it from actor psy_health; cigarettes etc. lower it). 0 = no extra sway.
     float m_fBreathKoef{0.02f};
     float m_fZoomInertionScale{0.f};
+    float m_fCamRecoilCoeff{1.f}; // [DA_PORT] см. SetCamRecoilCoeff
 
 public:
     void SetZoomInertionScale(float f) { m_fZoomInertionScale = f; }
+
+    // [DA_PORT] Множитель отдачи камеры, через который работает перк «Твёрдая рука». Скрипты ставят
+    // его через db.actor:set_actor_recoil_coeff, читает CCameraShotEffector::ProcessCam.
+    // Единица — отдача как задумана оружием; ноль тоже допустим, это «совсем без отдачи».
+    void SetCamRecoilCoeff(float f) { m_fCamRecoilCoeff = f; }
+    float GetCamRecoilCoeff() const { return m_fCamRecoilCoeff; }
 
 protected:
 

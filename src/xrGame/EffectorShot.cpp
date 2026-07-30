@@ -50,7 +50,24 @@ void CWeaponShotEffector::Shot(CWeapon* weapon)
     }
     m_single_shot = (weapon->GetCurrentFireMode() == 1);
 
-    float angle = m_cam_recoil.Dispersion * weapon->cur_silencer_koef.cam_dispersion;
+    // [DA_PORT] Отдача растёт у сломанного оружия. Перенесено из исходников автора (EffectorShot.cpp).
+    //
+    // Биты 6 и 7 маски поломок — это «расшатанный ствол» и «сбитая механика»; каждый добавляет свою
+    // долю к разбросу камеры. Разные веса намеренно: у автора 0.6 и 0.4, то есть первая поломка бьёт
+    // сильнее. Маска та же самая, что показывается в описании оружия строкой «Состояние».
+    // Поле маски у нас открытое (Weapon.h), отдельного метода чтения нет — у автора он назывался
+    // GetConditionType() и возвращал ровно это.
+    const u32 condition = weapon->m_weapon_condition_type;
+    float cond = 1.f;
+    if (condition & (1 << 6))
+        cond += 0.6f;
+    if (condition & (1 << 7))
+        cond += 0.4f;
+
+    // [DA_PORT] И множитель отдачи от перка «Твёрдая рука» — см. m_recoil_coeff.
+    float angle = m_cam_recoil.Dispersion * weapon->cur_silencer_koef.cam_dispersion * cond;
+    angle *= m_recoil_coeff;
+
     angle += m_cam_recoil.DispersionInc * weapon->cur_silencer_koef.cam_disper_inc * (float)m_shot_numer;
     Shot2(angle);
 }
@@ -68,6 +85,10 @@ void CWeaponShotEffector::Shot2(float angle)
 
     float rdm = m_Random.randF(-1.0f, 1.0f);
     m_angle_horz += (m_angle_vert / m_cam_recoil.MaxAngleVert) * rdm * m_cam_recoil.StepAngleHorz;
+
+    // [DA_PORT] Горизонталь множится отдельно, как у автора: вертикаль уже получила множитель через
+    // угол в Shot(), а горизонталь считается от неё и потому взяла бы его дважды.
+    m_angle_horz *= m_recoil_coeff;
 
     clamp(m_angle_horz, -m_cam_recoil.MaxAngleHorz, m_cam_recoil.MaxAngleHorz);
 
@@ -190,6 +211,11 @@ CCameraShotEffector::CCameraShotEffector(const CameraRecoil& cam_recoil) : CEffe
 CCameraShotEffector::~CCameraShotEffector() {}
 bool CCameraShotEffector::ProcessCam(SCamEffectorInfo& info)
 {
+    // [DA_PORT] Множитель забирается у актёра каждый кадр, а не запоминается при создании эффектора.
+    // Так у автора, и так правильно: перк может быть выдан посреди игры, а эффектор живёт с оружием.
+    if (m_pActor)
+        m_recoil_coeff = m_pActor->GetCamRecoilCoeff();
+
     Update();
     return TRUE;
 }

@@ -33,6 +33,14 @@ protected:
     bool m_actived;
     bool m_single_shot;
 
+    // [DA_PORT] Множитель отдачи камеры. Единица — как задумано оружием.
+    //
+    // Через него работает перк «Твёрдая рука» (perk_steady_hands): скрипт зовёт
+    // db.actor:set_actor_recoil_coeff(0.4), значение ложится в CActor::m_fCamRecoilCoeff, а сюда
+    // приходит перед каждым кадром эффектора (CCameraShotEffector::ProcessCam). До этого биндинг был
+    // заглушкой и печатал в лог «Called missing function» — перк существовал только на бумаге.
+    float m_recoil_coeff{ 1.f };
+
 private:
     CRandom m_Random;
     s32 m_LastSeed;

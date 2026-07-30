@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1146 правк(и) в 234 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1153 правк(и) в 236 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -942,7 +942,7 @@
 
 ## Игровая логика
 
-*70 файл(ов), 338 правк(и)*
+*72 файл(ов), 345 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -976,6 +976,8 @@
 - **:507** — item placement-preview state
 - **:513** — Ghost highlight. The model itself cannot be tinted from here — IRenderVisual does not
 - **:525** — hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):
+- **:532** — float m_fCamRecoilCoeff{1.f}; // [DA_PORT] см. SetCamRecoilCoeff
+- **:537** — Множитель отдачи камеры, через который работает перк «Твёрдая рука». Скрипты ставят
 
 ### `xrGame/ActorAnimation.cpp`
 
@@ -1088,6 +1090,17 @@
 
 - **:111** — Dead Air's inverse filters: skip living entities / skip large objects. The alpha
 - **:252** — Dead Air detailed volumetric idle-light params
+
+### `xrGame/EffectorShot.cpp`
+
+- **:53** — Отдача растёт у сломанного оружия. Перенесено из исходников автора (EffectorShot.cpp).
+- **:67** — И множитель отдачи от перка «Твёрдая рука» — см. m_recoil_coeff.
+- **:89** — Горизонталь множится отдельно, как у автора: вертикаль уже получила множитель через
+- **:214** — Множитель забирается у актёра каждый кадр, а не запоминается при создании эффектора.
+
+### `xrGame/EffectorShot.h`
+
+- **:36** — Множитель отдачи камеры. Единица — как задумано оружием.
 
 ### `xrGame/EntityCondition.cpp`
 
@@ -1459,10 +1472,10 @@
 - **:1057** — An already-accessible position answers itself - return the vertex under it.
 - **:2270** — Dead Air's zone-detector switch. itms_manager.script calls this on the actor every tick:
 - **:2305** — set_actor_zoom_inertion: DA scripts (xr_actor.script) push an extra aim-sway factor
-- **:2318** — Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
-- **:2321** — Click period of the nearest radiation zone. Returns a float, not a bool — DA's scripts do
-- **:2344** — Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
-- **:2372** — 32-bit bitmask (bit=malfunction). Was u8 -> truncated bits 8..31 (scripts use bit 28, loop 0..31).
+- **:2315** — set_actor_recoil_coeff: множитель отдачи камеры. Раз-заглушен.
+- **:2333** — Click period of the nearest radiation zone. Returns a float, not a bool — DA's scripts do
+- **:2356** — Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+- **:2384** — 32-bit bitmask (bit=malfunction). Was u8 -> truncated bits 8..31 (scripts use bit 28, loop 0..31).
 
 ### `xrGame/script_game_object_use2.cpp`
 

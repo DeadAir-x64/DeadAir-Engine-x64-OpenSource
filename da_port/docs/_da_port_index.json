@@ -2979,6 +2979,14 @@
 [
 525,
 "hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):"
+],
+[
+532,
+"float m_fCamRecoilCoeff{1.f}; // [DA_PORT] см. SetCamRecoilCoeff"
+],
+[
+537,
+"Множитель отдачи камеры, через который работает перк «Твёрдая рука». Скрипты ставят"
 ]
 ],
 "xray-16/src/xrGame/ActorAnimation.cpp": [
@@ -3659,6 +3667,30 @@
 "Поиск утечки памяти по повторным загрузкам одного и того же сохранения."
 ]
 ],
+"xray-16/src/xrGame/EffectorShot.cpp": [
+[
+53,
+"Отдача растёт у сломанного оружия. Перенесено из исходников автора (EffectorShot.cpp)."
+],
+[
+67,
+"И множитель отдачи от перка «Твёрдая рука» — см. m_recoil_coeff."
+],
+[
+89,
+"Горизонталь множится отдельно, как у автора: вертикаль уже получила множитель через"
+],
+[
+214,
+"Множитель забирается у актёра каждый кадр, а не запоминается при создании эффектора."
+]
+],
+"xray-16/src/xrGame/EffectorShot.h": [
+[
+36,
+"Множитель отдачи камеры. Единица — как задумано оружием."
+]
+],
 "xray-16/src/xrGame/EntityCondition.cpp": [
 [
 14,
@@ -4037,19 +4069,19 @@
 "set_actor_zoom_inertion: DA scripts (xr_actor.script) push an extra aim-sway factor"
 ],
 [
-2318,
-"Msg(\"! [DA_PORT_STUB] Called missing function: %s\", __FUNCTION__);"
+2315,
+"set_actor_recoil_coeff: множитель отдачи камеры. Раз-заглушен."
 ],
 [
-2321,
+2333,
 "Click period of the nearest radiation zone. Returns a float, not a bool — DA's scripts do"
 ],
 [
-2344,
+2356,
 "Msg(\"! [DA_PORT_STUB] Called missing function: %s\", __FUNCTION__);"
 ],
 [
-2372,
+2384,
 "32-bit bitmask (bit=malfunction). Was u8 -> truncated bits 8..31 (scripts use bit 28, loop 0..31)."
 ]
 ],

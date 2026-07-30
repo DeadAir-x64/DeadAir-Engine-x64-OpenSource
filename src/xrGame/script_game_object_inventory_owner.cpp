@@ -2312,10 +2312,22 @@ void CScriptGameObject::SetActorZoomInertion(float f)
     actor->SetZoomInertionScale(f);
 }
 
-// Dead Air compat stub: set_actor_recoil_coeff
+// [DA_PORT] set_actor_recoil_coeff: множитель отдачи камеры. Раз-заглушен.
+//
+// Через него работает перк «Твёрдая рука» (perk_steady_hands): xr_actor.script при наличии
+// информпорции зовёт db.actor:set_actor_recoil_coeff(0.4). Пока здесь стояла заглушка, перк
+// существовал только на бумаге — выбор в начале игры был, информпорция выдавалась, читатель её
+// находил, а до отдачи дело не доходило вовсе, и в лог уходило «Called missing function».
+//
+// Реализация повторяет авторскую: значение хранится у актёра, а эффектор выстрела забирает его
+// каждый кадр (CCameraShotEffector::ProcessCam), поэтому перк, полученный посреди игры, действует
+// сразу и не требует переполучения оружия.
 void CScriptGameObject::SetActorRecoilCoeff(float f)
 {
-    Msg("! [DA_PORT_STUB] Called missing function: %s", __FUNCTION__);
+    CActor* actor = smart_cast<CActor*>(&object());
+    if (!actor)
+        return; // скрипты мода зовут это только у db.actor
+    actor->SetCamRecoilCoeff(f);
 }
 
 // [DA_PORT] Click period of the nearest radiation zone. Returns a float, not a bool — DA's scripts do
