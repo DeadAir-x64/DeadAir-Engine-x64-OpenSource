@@ -1,0 +1,98 @@
+ЛИЦЕНЗИИ И ИСХОДНЫЕ КОДЫ
+========================
+
+Этот файл перечисляет всё, из чего собрана сборка, и говорит, где взять исходный код каждой
+части. Он лежит в пакете не для галочки: часть библиотек распространяется на условиях, которые
+прямо требуют указать место, откуда исходники можно скачать.
+
+
+1. ДВИЖОК
+---------
+
+Основа — OpenXRay, свободная переработка движка X-Ray Engine компании GSC Game World.
+Правки команды OpenXRay и её участников выпущены под лицензией MIT. Сам X-Ray Engine остаётся
+собственностью GSC Game World; сборка является фан-контентом и следует правилам GSC:
+
+    https://www.gsc-game.com/eula/
+    https://www.gsc-game.com/guidelines/
+
+Исходный код этой сборки, со всеми правками порта:
+
+    https://github.com/DanesCrai1/DeadAir-Engine-x64-OpenSource
+
+Исходный код OpenXRay, от которого порт унаследован:
+
+    https://github.com/OpenXRay/xray-16
+
+
+2. МОД
+------
+
+Dead Air — модификация, созданная её автором. Данные мода (конфигурации, скрипты, модели, звуки,
+текстуры) принадлежат ему и распространяются с его разрешения. Порт не менял данные мода нигде,
+кроме отдельно оговорённых случаев; их перечень — в документации порта, файл 02_PORT_CHANGES.md.
+
+
+3. БИБЛИОТЕКИ С ОБЯЗАТЕЛЬСТВАМИ ПО ИСХОДНОМУ КОДУ
+-------------------------------------------------
+
+Две библиотеки распространяются на условиях, требующих доступности исходного кода. Обе включены
+в сборку как отдельные файлы .dll, то есть заменяемы без пересборки игры.
+
+LZO — liblzo2-2.dll, GNU GPL версии 2.
+    Используется для распаковки архивов игры. Исходный код:
+    https://www.oberhumer.com/opensource/lzo/
+
+OpenAL Soft — libopenal-1.dll, GNU LGPL версии 2.
+    Звуковой вывод. Исходный код:
+    https://github.com/kcat/openal-soft
+
+Исходный код движка, собранного вместе с ними, доступен по ссылке из раздела 1.
+
+
+4. ОСТАЛЬНЫЕ СТОРОННИЕ КОМПОНЕНТЫ
+----------------------------------
+
+Ogg, Vorbis, Theora (libogg-0.dll, libvorbis-0.dll, libvorbisfile-3.dll, libtheora-1.dll)
+    Xiph.Org Foundation, лицензия BSD. https://xiph.org/
+
+zlib (libz-1.dll)             https://zlib.net/
+bzip2 (libbz2-1.dll)          https://sourceware.org/bzip2/
+libjpeg (libjpeg-8.dll)       https://ijg.org/
+    Разрешительные лицензии, требуют сохранения уведомления об авторстве.
+
+SDL2 (SDL2.dll)               лицензия zlib. https://www.libsdl.org/
+LuaJIT (LuaJIT.dll, xrLuaJIT.dll)   лицензия MIT. https://luajit.org/
+luabind (luabind.dll, xrLuabind.dll) лицензия MIT.
+ODE (ODE.dll, xrODE.dll)      двойная лицензия BSD / LGPL. https://www.ode.org/
+OPCODE (OPCODE.dll, xrOPCODE.dll)   свободная библиотека определения столкновений.
+OpenSSL (libcrypto-3-x64.dll) лицензия Apache 2.0. https://www.openssl.org/
+
+Среда выполнения GCC (libgcc_s_seh-1.dll, libstdc++-6.dll, libgomp-1.dll, libwinpthread-1.dll)
+    GPL с исключением для среды выполнения — использование в программе не накладывает обязательств.
+
+Среда выполнения Microsoft Visual C++ (msvcp140*.dll, vcruntime140*.dll, concrt140.dll,
+vcamp140.dll, vcomp140.dll, vccorlib140.dll)
+    Распространяется по условиям Microsoft для сопровождающих компонентов.
+
+d3dcompiler_47.dll — компилятор шейдеров из состава Windows SDK, распространяемый компонент.
+
+
+5. МАСШТАБИРОВАНИЕ ИЗОБРАЖЕНИЯ
+-------------------------------
+
+NVIDIA DLSS (nvngx_dlss.dll, da_ngx.dll)
+    Проприетарная библиотека. Полный текст лицензии — в файле bin\NVIDIA_DLSS_LICENSE.txt.
+    Собственная прослойка da_ngx.dll написана для этого порта, её исходники — в репозитории.
+
+Intel XeSS (libxess_dx11.dll)   лицензия MIT. https://github.com/intel/xess
+AMD FidelityFX Super Resolution — собран в составе движка, лицензия MIT.
+    https://github.com/GPUOpen-Effects/FidelityFX-FSR2
+AMD AGS (amd_ags_x64.dll)       лицензия MIT. https://github.com/GPUOpen-LibrariesAndSDKs/AGS_SDK
+
+
+6. ЕСЛИ ЧЕГО-ТО НЕ ХВАТАЕТ
+---------------------------
+
+Список составлен по фактическим зависимостям собранных библиотек. Если в сборке обнаружится
+компонент, не упомянутый здесь, это недосмотр, а не умысел: напишите, и файл будет дополнен.
