@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1136 правк(и) в 231 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1137 правк(и) в 231 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -934,7 +934,7 @@
 
 ## Игровая логика
 
-*68 файл(ов), 333 правк(и)*
+*68 файл(ов), 334 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -1195,14 +1195,15 @@
 
 - **:107** — multiplier domain (CoC lineage): identity magnification, not fov degrees
 - **:265** — Размытие (глубина резкости) при прицеливании и перезарядке — ВЫКЛЮЧЕНО по умолчанию.
-- **:457** — Запоминаем конфигурационные статусы: биты поломок 28/29/30 глушат крепление в
-- **:595** — pick the malfunction mask back up from the server object, which is what carried it
-- **:660** — P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon
-- **:690** — must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would
-- **:942** — Поломка КРЕПЛЕНИЯ аддона (биты маски 28 — прицел, 29 — глушитель, 30 — подствольник).
-- **:1259** — Dead Air belt-only reload for the actor: backpack ammo can't be chambered,
-- **:1309** — шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type).
-- **:1519** — multiplier domain: back to identity magnification (was g_fov degrees)
+- **:463** — Запоминаем конфигурационные статусы: биты поломок 28/29/30 глушат крепление в
+- **:601** — pick the malfunction mask back up from the server object, which is what carried it
+- **:666** — P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon
+- **:696** — must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would
+- **:948** — Поломка КРЕПЛЕНИЯ аддона (биты маски 28 — прицел, 29 — глушитель, 30 — подствольник).
+- **:1265** — Dead Air belt-only reload for the actor: backpack ammo can't be chambered,
+- **:1315** — шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type).
+- **:1501** — Это и есть ГЛАВНОЕ размытие при прицеливании, а вовсе не zoom_dof выше.
+- **:1538** — multiplier domain: back to identity magnification (was g_fov degrees)
 
 ### `xrGame/Weapon.h`
 
