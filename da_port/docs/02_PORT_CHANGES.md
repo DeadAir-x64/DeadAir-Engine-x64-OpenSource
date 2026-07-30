@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1098 правк(и) в 230 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1103 правк(и) в 230 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*75 файл(ов), 436 правк(и)*
+*75 файл(ов), 441 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_R2.cpp`
@@ -255,20 +255,25 @@
 ### `Layers/xrRenderDX11/dx11HW.cpp`
 
 - **:3** — Defined in the engine (xr_ioc_cmd.cpp).
-- **:125** — The validation layer, on a console variable and available in Release.
-- **:136** — Msg("* [DA_PORT] D3D11 validation layer requested (r__d3d_debug)");
-- **:190** — The validation layer is refused outright when the "Graphics Tools" Windows feature is
-- **:195** — Msg("! [DA_PORT] device creation failed WITH the validation layer - is the 'Graphics Tools' "
-- **:201** — Drain the validation layer into our own log.
-- **:220** — Msg("* [DA_PORT] validation layer active, messages will appear in this log");
-- **:509** — Поимённый список живых объектов D3D при выходе.
-- **:525** — Msg("* [DA_PORT] живые объекты D3D на выходе:");
-- **:527** — Снять потолок очереди ДО переписи. По умолчанию слой отладки хранит 1024
-- **:545** — Перепись уходит в очередь сообщений слоя отладки, а не в наш лог. Сливаем её
-- **:553** — Msg("* [DA_PORT] строк переписи: %u", (u32)count);
-- **:568** — Msg("! [DA_PORT] очередь сообщений недоступна, перепись ушла в отладочный вывод");
-- **:572** — Msg("! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен");
-- **:691** — Pull whatever the validation layer has to say into the engine log, once per frame.
+- **:35** — Полноэкранным режимом распоряжается ТОЛЬКО SDL — отсюда и пустота в этих двух функциях.
+- **:132** — The validation layer, on a console variable and available in Release.
+- **:143** — Msg("* [DA_PORT] D3D11 validation layer requested (r__d3d_debug)");
+- **:197** — The validation layer is refused outright when the "Graphics Tools" Windows feature is
+- **:202** — Msg("! [DA_PORT] device creation failed WITH the validation layer - is the 'Graphics Tools' "
+- **:208** — Drain the validation layer into our own log.
+- **:227** — Msg("* [DA_PORT] validation layer active, messages will appear in this log");
+- **:390** — Цепочка всегда оконная: полноэкранный режим держит SDL, см. CHW::OnAppActivate.
+- **:448** — Цепочка всегда оконная (пустое описание полноэкранного = nullptr): полноэкранный
+- **:493** — Условие теперь не срабатывает никогда — цепочка всегда оконная, полноэкранным
+- **:519** — Поимённый список живых объектов D3D при выходе.
+- **:535** — Msg("* [DA_PORT] живые объекты D3D на выходе:");
+- **:537** — Снять потолок очереди ДО переписи. По умолчанию слой отладки хранит 1024
+- **:555** — Перепись уходит в очередь сообщений слоя отладки, а не в наш лог. Сливаем её
+- **:563** — Msg("* [DA_PORT] строк переписи: %u", (u32)count);
+- **:578** — Msg("! [DA_PORT] очередь сообщений недоступна, перепись ушла в отладочный вывод");
+- **:582** — Msg("! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен");
+- **:597** — Ни SetFullscreenState, ни ResizeTarget здесь больше нет.
+- **:711** — Pull whatever the validation layer has to say into the engine log, once per frame.
 
 ### `Layers/xrRenderDX11/dx11R_Backend_Runtime.h`
 

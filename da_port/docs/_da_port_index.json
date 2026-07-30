@@ -655,59 +655,79 @@
 "Defined in the engine (xr_ioc_cmd.cpp)."
 ],
 [
-125,
+35,
+"Полноэкранным режимом распоряжается ТОЛЬКО SDL — отсюда и пустота в этих двух функциях."
+],
+[
+132,
 "The validation layer, on a console variable and available in Release."
 ],
 [
-136,
+143,
 "Msg(\"* [DA_PORT] D3D11 validation layer requested (r__d3d_debug)\");"
 ],
 [
-190,
+197,
 "The validation layer is refused outright when the \"Graphics Tools\" Windows feature is"
 ],
 [
-195,
+202,
 "Msg(\"! [DA_PORT] device creation failed WITH the validation layer - is the 'Graphics Tools' \""
 ],
 [
-201,
+208,
 "Drain the validation layer into our own log."
 ],
 [
-220,
+227,
 "Msg(\"* [DA_PORT] validation layer active, messages will appear in this log\");"
 ],
 [
-509,
+390,
+"Цепочка всегда оконная: полноэкранный режим держит SDL, см. CHW::OnAppActivate."
+],
+[
+448,
+"Цепочка всегда оконная (пустое описание полноэкранного = nullptr): полноэкранный"
+],
+[
+493,
+"Условие теперь не срабатывает никогда — цепочка всегда оконная, полноэкранным"
+],
+[
+519,
 "Поимённый список живых объектов D3D при выходе."
 ],
 [
-525,
+535,
 "Msg(\"* [DA_PORT] живые объекты D3D на выходе:\");"
 ],
 [
-527,
+537,
 "Снять потолок очереди ДО переписи. По умолчанию слой отладки хранит 1024"
 ],
 [
-545,
+555,
 "Перепись уходит в очередь сообщений слоя отладки, а не в наш лог. Сливаем её"
 ],
 [
-553,
+563,
 "Msg(\"* [DA_PORT] строк переписи: %u\", (u32)count);"
 ],
 [
-568,
+578,
 "Msg(\"! [DA_PORT] очередь сообщений недоступна, перепись ушла в отладочный вывод\");"
 ],
 [
-572,
+582,
 "Msg(\"! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен\");"
 ],
 [
-691,
+597,
+"Ни SetFullscreenState, ни ResizeTarget здесь больше нет."
+],
+[
+711,
 "Pull whatever the validation layer has to say into the engine log, once per frame."
 ]
 ],

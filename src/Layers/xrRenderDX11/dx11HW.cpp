@@ -32,23 +32,30 @@ CHW::~CHW()
     Device.seqAppDeactivate.Remove(this);
 }
 
+// [DA_PORT] Полноэкранным режимом распоряжается ТОЛЬКО SDL — отсюда и пустота в этих двух функциях.
+//
+// Раньше хозяев было два: окно переводил в полноэкранный SDL (Device_mode.cpp), а цепочка буферов
+// делала это же сама через SetFullscreenState. Пока никто не переключался, оба говорили одно и то же,
+// но стоило свернуть игру — и они расходились: здесь DXGI выходил из полноэкранного, SDL про это не
+// знал и режим монитора не возвращал, а при возврате DXGI входил обратно, хотя окно у SDL уже не
+// числилось полноэкранным. Получалось окно 1280x1024 в углу рабочего стола 1920x1080 — та самая
+// «половина экрана», которая лечилась переоткрытием окна: только полный цикл закрыть-открыть заново
+// сводил два состояния в одно.
+//
+// Одного хозяина достаточно: SDL меняет режим монитора и флаги окна, DXGI получает цепочку под
+// готовый размер. На Windows 10 и новее это ничего не стоит — при цепочке flip-модели, накрывающей
+// экран целиком, система и так отдаёт независимый переворот, то есть тот же путь, ради которого
+// монопольный режим и нужен.
+//
+// Сворачивание тоже отдано SDL: у полноэкранного окна он сворачивает сам при потере фокуса, а
+// «полный экран в окне» специально НЕ сворачивает — в этом весь смысл режима, и прежний
+// принудительный SW_MINIMIZE его ломал.
 void CHW::OnAppActivate()
 {
-    if (m_pSwapChain && !m_ChainDesc.Windowed)
-    {
-        ShowWindow(m_ChainDesc.OutputWindow, SW_RESTORE);
-        m_pSwapChain->SetFullscreenState(ThisInstanceIsGlobal() ? psDeviceMode.WindowStyle == rsFullscreen : false, NULL);
-    }
 }
 
 void CHW::OnAppDeactivate()
 {
-    if (m_pSwapChain && !m_ChainDesc.Windowed)
-    {
-        m_pSwapChain->SetFullscreenState(FALSE, NULL);
-        if (psDeviceMode.WindowStyle == rsFullscreen || psDeviceMode.WindowStyle == rsFullscreenBorderless)
-            ShowWindow(m_ChainDesc.OutputWindow, SW_MINIMIZE);
-    }
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -380,7 +387,8 @@ bool CHW::CreateSwapChain(HWND hwnd)
 
     sd.OutputWindow = hwnd;
 
-    sd.Windowed = ThisInstanceIsGlobal() ? psDeviceMode.WindowStyle != rsFullscreen : true;
+    // [DA_PORT] Цепочка всегда оконная: полноэкранный режим держит SDL, см. CHW::OnAppActivate.
+    sd.Windowed = TRUE;
 
     //  Additional set up
     sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
@@ -434,15 +442,14 @@ bool CHW::CreateSwapChain2(HWND hwnd)
     desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
     desc.Scaling = DXGI_SCALING_STRETCH;
 
-    DXGI_SWAP_CHAIN_FULLSCREEN_DESC fulldesc{};
-    fulldesc.Windowed = ThisInstanceIsGlobal() ? psDeviceMode.WindowStyle != rsFullscreen : true;
-
     // Additional setup
     desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
+    // [DA_PORT] Цепочка всегда оконная (пустое описание полноэкранного = nullptr): полноэкранный
+    // режим держит SDL, см. CHW::OnAppActivate.
     IDXGISwapChain1* swapchain{};
     const HRESULT result = pFactory2->CreateSwapChainForHwnd(pDevice, hwnd, &desc,
-        fulldesc.Windowed ? nullptr : &fulldesc, nullptr, &swapchain);
+        nullptr, nullptr, &swapchain);
     _RELEASE(pFactory2);
 
     if (FAILED(result))
@@ -483,6 +490,9 @@ void CHW::DestroyDevice()
         SSManager.ClearStateArray();
     }
     //  Must switch to windowed mode to release swap chain
+    // [DA_PORT] Условие теперь не срабатывает никогда — цепочка всегда оконная, полноэкранным
+    // распоряжается SDL. Оставлено намеренно: если кто-то вернёт полноэкранную цепочку, освобождать
+    // её всё равно придётся из оконного состояния, и правило должно попасться ему на глаза здесь.
     if (!m_ChainDesc.Windowed && m_pSwapChain)
         m_pSwapChain->SetFullscreenState(FALSE, NULL);
 #ifdef HAS_DX11_2
@@ -583,14 +593,24 @@ void CHW::Reset()
 {
     ZoneScoped;
     DXGI_SWAP_CHAIN_DESC& cd = m_ChainDesc;
-    const bool bWindowed = ThisInstanceIsGlobal() ? psDeviceMode.WindowStyle != rsFullscreen : true;
-    cd.Windowed = bWindowed;
-    m_pSwapChain->SetFullscreenState(!bWindowed, NULL);
-    DXGI_MODE_DESC& desc = m_ChainDesc.BufferDesc;
+
+    // [DA_PORT] Ни SetFullscreenState, ни ResizeTarget здесь больше нет.
+    //
+    // Первое отдано SDL целиком (см. CHW::OnAppActivate) — двоевластие над полноэкранным режимом и
+    // было причиной окна на пол-экрана. Второе изменяет размер САМОГО ОКНА, а окном тоже
+    // распоряжается SDL (SDL_SetWindowSize и смена режима монитора в UpdateWindowProps); два
+    // источника размера спорили бы ровно так же, как два источника полноэкранности.
+    //
+    // Порядок вызовов при этом был ещё и обратным рекомендованному: сначала переход, потом
+    // объявление режима. Ровно та же ошибка, что нашлась на стороне SDL, — и она тоже давала
+    // полный экран в разрешении «от прошлого раза».
+    //
+    // Остаётся то, ради чего Reset и зовут: пересоздать буферы под текущий размер кадра.
+    cd.Windowed = TRUE;
+    DXGI_MODE_DESC& desc = cd.BufferDesc;
     desc.Width = Device.dwWidth;
     desc.Height = Device.dwHeight;
 
-    CHK_DX(m_pSwapChain->ResizeTarget(&desc));
     CHK_DX(m_pSwapChain->ResizeBuffers(
         cd.BufferCount, desc.Width, desc.Height, desc.Format, cd.Flags));
 }
