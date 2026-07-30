@@ -2063,6 +2063,12 @@
 "Dead Air's own flag, gating the bottom-left readout: health bar, stamina bar, ammo counts,"
 ]
 ],
+"xray-16/src/xrEngine/defines.cpp": [
+[
+12,
+"По умолчанию — полный экран в окне, а не окно без рамки. Во-первых, это то, чего"
+]
+],
 "xray-16/src/xrEngine/Device.cpp": [
 [
 26,
@@ -2383,219 +2389,235 @@
 "Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible"
 ],
 [
-977,
+923,
+"Режима три, а не четыре, и порядок в списке — от оконного к полноэкранному."
+],
+[
+946,
+"Старое имя режима из прежних конфигов приводим к ближайшему из оставшихся."
+],
+[
+951,
+"Msg(\"~ [DA_PORT] режим окна без рамки больше не предлагается, включён оконный\");"
+],
+[
+978,
+"Выключение полного экрана даёт полный экран В ОКНЕ, а не окно без рамки:"
+],
+[
+997,
 "Exported: the renderer now applies these itself when the hardware gamma ramp is"
 ],
 [
-1187,
+1207,
 "Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in \"nearwall\" weapon"
 ],
 [
-1205,
+1225,
 "Percentage of the output resolution the 3D scene is rendered at (see"
 ],
 [
-1209,
+1229,
 "Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera"
 ],
 [
-1215,
+1235,
 "Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent."
 ],
 [
-1220,
+1240,
 "Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is"
 ],
 [
-1226,
+1246,
 "AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,"
 ],
 [
-1231,
+1251,
 "Intel XeSS. A separate variable rather than one shared \"upscaler\" enum: each builds its"
 ],
 [
-1234,
+1254,
 "ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества"
 ],
 [
-1236,
+1256,
 "Отдавать ли DLSS нашу реактивную маску."
 ],
 [
-1247,
+1267,
 "Разовый замер векторов движения: числа в лог вместо перебора знаков глазами."
 ],
 [
-1250,
+1270,
 "FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build"
 ],
 [
-1255,
+1275,
 "D3D11 validation layer, plus draining its messages into the engine log. Off by"
 ],
 [
-1260,
+1280,
 "Halves the FSR 3 path so the damage can be attributed without a validation layer."
 ],
 [
-1266,
+1286,
 "Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности."
 ],
 [
-1283,
+1303,
 "Reactivity from screen-space motion, against ghosting behind moving objects. The"
 ],
 [
-1293,
+1313,
 "Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC."
 ],
 [
-1331,
+1351,
 "Which ingredient of the pass to write out instead of the mask, so that \"r__motion_vectors 4\""
 ],
 [
-1338,
+1358,
 "One-shot readback of the pass's inputs and output into the log, with figures rather than a"
 ],
 [
-1342,
+1362,
 "The frame rate the three settings above are stated at."
 ],
 [
-1357,
+1377,
 "Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch"
 ],
 [
-1361,
+1381,
 "Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail"
 ],
 [
-1371,
+1391,
 "Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's"
 ],
 [
-1393,
+1413,
 "---- Detail-bump stability under a temporal upscaler --------------------------------"
 ],
 [
-1417,
+1437,
 "Paints the damping weight instead of the surface: 1 = the weight the normal path applies,"
 ],
 [
-1424,
+1444,
 "Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while"
 ],
 [
-1431,
+1451,
 "---- Glossy surfaces opt out of temporal accumulation -------------------------------"
 ],
 [
-1445,
+1465,
 "0 = vegetation stands still in the shadow map while still swaying on screen. See"
 ],
 [
-1449,
+1469,
 "0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the"
 ],
 [
-1454,
+1474,
 "Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its"
 ],
 [
-1468,
+1488,
 "Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),"
 ],
 [
-1474,
+1494,
 "Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),"
 ],
 [
-1480,
+1500,
 "One control instead of two. The pair that actually drives the upscale — render scale and"
 ],
 [
-1492,
+1512,
 "Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every"
 ],
 [
-1497,
+1517,
 "Show the temporal resolve where it fetches history from - see da_taa.ps."
 ],
 [
-1503,
+1523,
 "How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour"
 ],
 [
-1526,
+1546,
 "Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens"
 ],
 [
-1530,
+1550,
 "Projection jitter, separately switchable. TAA has two halves that fail in different ways —"
 ],
 [
-1579,
+1599,
 "Above 100 the scene is rendered LARGER than the window and downsampled on the way out,"
 ],
 [
-1584,
+1604,
 "What the options menu shows. The three per-vendor variables above stay for the console."
 ],
 [
-1610,
+1630,
 "Detail-bump damping, see the declarations. Sensitivity and strength in one number:"
 ],
 [
-1624,
+1644,
 "CMD3(CCC_DLSS, \"r__dlss\", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]"
 ],
 [
-1625,
+1645,
 "CMD4(CCC_Integer, \"r__dlss_reactive\", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу"
 ],
 [
-1626,
+1646,
 "CMD4(CCC_Integer, \"r__dlss_selftest\", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог"
 ],
 [
-1628,
+1648,
 "CMD4(CCC_Integer, \"r__d3d_debug\", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply"
 ],
 [
-1629,
+1649,
 "CMD4(CCC_Integer, \"r__fsr3_debug\", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch"
 ],
 [
-1630,
+1650,
 "CMD4(CCC_Integer, \"r__fsr3\", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer restart"
 ],
 [
-1631,
+1651,
 "CMD4(CCC_Integer, \"r__upscale_sharpness\", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS"
 ],
 [
-1632,
+1652,
 "CMD4(CCC_Integer, \"r__taa\", &ps_r__taa, 0, 1); // [DA_PORT]"
 ],
 [
-1634,
+1654,
 "CMD4(CCC_Integer, \"r__taa_sky\", &ps_r__taa_sky, 0, 100); // [DA_PORT]"
 ],
 [
-1635,
+1655,
 "CMD4(CCC_Integer, \"r__taa_sharp\", &ps_r__taa_sharp, 0, 100); // [DA_PORT]"
 ],
 [
-1636,
+1656,
 "CMD4(CCC_Integer, \"r__taa_mipbias\", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]"
 ],
 [
-1637,
+1657,
 "CMD4(CCC_Integer, \"r__taa_jitter\", &ps_r__taa_jitter, 0, 1); // [DA_PORT]"
 ],
 [
-1642,
+1662,
 "CMD3(CCC_Token, \"rs_fps_limit\", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number"
 ]
 ],
@@ -3259,6 +3281,10 @@
 [
 2920,
 "Registered outside the DEBUG block on purpose: we need it in the Release build we ship"
+],
+[
+2972,
+"Брать широкоформатную разметку и на узком экране. Подробности - у самой"
 ]
 ],
 "xray-16/src/xrGame/CustomDetector.cpp": [
@@ -4761,6 +4787,12 @@
 "if (source()->channels_num() == 1 && _valid(pos)) // не ставить NaN-позицию (краш/глитч звука)"
 ]
 ],
+"xray-16/src/xrUICore/ui_base.cpp": [
+[
+335,
+"На НЕширокоформатном экране всё равно берём широкоформатную разметку, если она есть."
+]
+],
 "xray-16/src/xrUICore/ui_export_script.cpp": [
 [
 635,
@@ -4773,7 +4805,15 @@
 "Order swapped, and it is not cosmetic. Both texture sets are complete in this mod's"
 ],
 [
-256,
+209,
+"Пустой список больше не роняет игру."
+],
+[
+230,
+"Msg(\"! [DA_PORT] список [%s]: нельзя выбрать пункт %d, в списке %u пунктов \""
+],
+[
+281,
 "An expanded list has to cover whatever sits below it, and by default it does not: windows"
 ]
 ],
