@@ -228,7 +228,17 @@ Flags32 ps_r2_ls_flags = {R2FLAG_SUN
     R3FLAG_DYN_WET_SURF | R3FLAG_VOLUMETRIC_SMOKE
     //| R3FLAG_MSAA
     //| R3FLAG_MSAA_OPT
-    | R3FLAG_GBUFFER_OPT | R2FLAG_DETAIL_BUMP | R2FLAG_DOF | R2FLAG_SOFT_PARTICLES | R2FLAG_SOFT_WATER |
+    // [DA_PORT] R2FLAG_DOF убран из значений по умолчанию.
+    //
+    // Глубина резкости в этом моде размывает при прицеливании и перезарядке и мешает целиться;
+    // ничего взамен она не даёт, потому что настроена под неподвижные планы, а не под бой. Три
+    // источника размытия у оружия закрыты ручкой g_weapon_dof, но остаётся ещё погодная глубина
+    // резкости из level_weathers.script — она идёт через этот же флаг, и гасится только им.
+    //
+    // Флаг никуда не делся: r2_dof_enable on включает всё обратно, строка в настройках на месте.
+    // Убрано ровно то, из-за чего он возвращался сам: значение по умолчанию и три набора качества
+    // (rspec_default, rspec_high, rspec_extreme), где стояло on.
+    | R3FLAG_GBUFFER_OPT | R2FLAG_DETAIL_BUMP | R2FLAG_SOFT_PARTICLES | R2FLAG_SOFT_WATER |
     R2FLAG_STEEP_PARALLAX | R2FLAG_SUN_FOCUS | R2FLAG_SUN_TSM | R2FLAG_TONEMAP | R2FLAG_VOLUMETRIC_LIGHTS}; // r2-only
 
 Flags32 ps_r2_ls_flags_ext = {

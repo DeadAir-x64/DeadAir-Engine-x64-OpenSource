@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1154 правк(и) в 236 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1155 правк(и) в 236 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*76 файл(ов), 466 правк(и)*
+*76 файл(ов), 467 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_R2.cpp`
@@ -184,53 +184,54 @@
 - **:166** — The author's value; governs STATIC visuals - trees and bushes, grass is unaffected by it.
 - **:185** — 16 rather than the stock 8, and this is not a "more is prettier" bump. Under any upscaler
 - **:217** — 64 is what the original actually rendered with, not merely the stock value: the author's
-- **:240** — Tone mapping and bloom below are the author's values, taken from the Dead Air sources
-- **:245** — float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
-- **:246** — float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
-- **:247** — float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
-- **:249** — float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
-- **:251** — float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
-- **:255** — float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
-- **:270** — float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
-- **:271** — 180, the value beside it, which is the author's and also the console maximum. At 100 the
-- **:275** — 51 instead of the stock 180.
-- **:286** — The author's lighting balance: a much stronger sun against a heavily damped ambient and
-- **:289** — float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
-- **:290** — float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
-- **:291** — float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
-- **:314** — Dead Air compatibility stubs (x32 mod commands)
-- **:342** — Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
-- **:352** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
-- **:367** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
-- **:379** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
-- **:411** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
-- **:551** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
-- **:558** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
-- **:577** — Счётчик кадров для da_sun_log (замер по каскадам солнца). 0 = молчит.
-- **:580** — da_sun_only N: накапливать солнечный свет только от каскада N (1..3), 0 = все.
-- **:603** — Presets for the shadow-casting light ceiling, exposed in the video options.
-- **:605** — One-touch performance preset for the Performance tab.
-- **:618** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:
-- **:622** — Пятый пункт списка — «Своё». Он ничего не применяет, и это не заглушка, а починка.
-- **:712** — Отсюда значение и берут: и список настроек для показа, и Save для записи в конфиг
-- **:736** — Размер теневой карты - единственное в наборе, что не применяется до перезапуска
-- **:745** — Msg("~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры",
-- **:758** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
-- **:776** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
-- **:949** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
-- **:983** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
-- **:1274** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
-- **:1276** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
-- **:1281** — Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
-- **:1287** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
-- **:1299** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
-- **:1301** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
-- **:1369** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
-- **:1433** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
-- **:1494** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
-- **:1525** — Dead Air compatibility stub commands
-- **:1551** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
-- **:1552** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
+- **:231** — R2FLAG_DOF убран из значений по умолчанию.
+- **:250** — Tone mapping and bloom below are the author's values, taken from the Dead Air sources
+- **:255** — float ps_r2_tonemap_adaptation = 2.f; // r2-only  [DA_PORT] was 1.f
+- **:256** — float ps_r2_tonemap_low_lum = 0.2f; // r2-only  [DA_PORT] was 0.0001f
+- **:257** — float ps_r2_tonemap_amount = 0.4f; // r2-only  [DA_PORT] was 0.7f
+- **:259** — float ps_r2_ls_bloom_kernel_b = .5f; // r2-only  [DA_PORT] was .7f
+- **:261** — float ps_r2_ls_bloom_kernel_scale = 0.55f; // r2-only // gauss  [DA_PORT] was .7f
+- **:265** — float ps_r2_ls_bloom_threshold = 0.f; // r2-only  [DA_PORT] was .00001f (author's value)
+- **:280** — float ps_r2_sun_near_border = 1.0f; // [DA_PORT] was 0.75f (author's value)
+- **:281** — 180, the value beside it, which is the author's and also the console maximum. At 100 the
+- **:285** — 51 instead of the stock 180.
+- **:296** — The author's lighting balance: a much stronger sun against a heavily damped ambient and
+- **:299** — float ps_r2_sun_lumscale = 1.6f; // [DA_PORT] was 1.0f
+- **:300** — float ps_r2_sun_lumscale_hemi = 0.6f; // [DA_PORT] was 1.0f
+- **:301** — float ps_r2_sun_lumscale_amb = 0.4f; // [DA_PORT] was 1.0f
+- **:324** — Dead Air compatibility stubs (x32 mod commands)
+- **:352** — Vibrance, not saturation: it lifts muted colours and leaves vivid ones alone, so night
+- **:362** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
+- **:377** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
+- **:389** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
+- **:421** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
+- **:561** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
+- **:568** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
+- **:587** — Счётчик кадров для da_sun_log (замер по каскадам солнца). 0 = молчит.
+- **:590** — da_sun_only N: накапливать солнечный свет только от каскада N (1..3), 0 = все.
+- **:613** — Presets for the shadow-casting light ceiling, exposed in the video options.
+- **:615** — One-touch performance preset for the Performance tab.
+- **:628** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:
+- **:632** — Пятый пункт списка — «Своё». Он ничего не применяет, и это не заглушка, а починка.
+- **:722** — Отсюда значение и берут: и список настроек для показа, и Save для записи в конфиг
+- **:746** — Размер теневой карты - единственное в наборе, что не применяется до перезапуска
+- **:755** — Msg("~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры",
+- **:768** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
+- **:786** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
+- **:959** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
+- **:993** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
+- **:1284** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
+- **:1286** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
+- **:1291** — Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
+- **:1297** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
+- **:1309** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
+- **:1311** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
+- **:1379** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
+- **:1443** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
+- **:1504** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
+- **:1535** — Dead Air compatibility stub commands
+- **:1561** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+- **:1562** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
 
 ### `Layers/xrRender/xrRender_console.h`
 
