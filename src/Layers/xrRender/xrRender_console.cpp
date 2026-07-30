@@ -619,43 +619,115 @@ float o_optimize_dynamic_l3_size = O_D_L3_S_MED;
 // он гасил тени у ВСЕХ источников разом и обрезал видимость до предела — картинка ломалась заметнее,
 // чем росли кадры, а «Низкие» и так покрывают слабые машины. Строка st_opt_perf_max_fps в
 // text/*/st_da_port_ui.xml оставлена намеренно: вернуть пункт = одна строка здесь плюс шестой ряд ниже.
+// [DA_PORT] Пятый пункт списка — «Своё». Он ничего не применяет, и это не заглушка, а починка.
+//
+// Набор сохранялся в user.ltx наравне с остальными строками и при следующем запуске выполнялся
+// СНОВА, переписывая всё, что игрок настроил вручную. Причём последним: строки конфига идут по
+// алфавиту, а `r__perf_preset` стоит после `r__detail_*`, `r__geometry_lod` и `r2_*`. Со стороны это
+// выглядело как «настройки производительности не сохраняются» — хотя сохранялись они исправно, их
+// затирал набор.
+//
+// Теперь набор — это ДЕЙСТВИЕ, а не состояние: как только текущие значения перестают совпадать с
+// каким-либо из наборов, список показывает «Своё», в конфиг уходит оно же, и при загрузке не
+// применяется ничего. Выбор набора руками работает как раньше.
+constexpr u32 PERF_PRESET_CUSTOM = 4;
+
 xr_token q_perf_preset[] = {
     { "st_opt_perf_low", 0 },
     { "st_opt_perf_medium", 1 },
     { "st_opt_perf_high", 2 },
     { "st_opt_perf_ultra", 3 },
+    { "st_opt_perf_custom", PERF_PRESET_CUSTOM },
     { nullptr, 0 },
 };
 u32 ps_r__perf_preset = 1;
+
+namespace
+{
+struct Preset
+{
+    pcstr shadow_lights, sun_far, smap, opt_static, opt_dyn;
+    pcstr vis_dist, detail_radius, detail_density, geometry_lod, detail_height;
+};
+
+// low, medium, high, ultra
+const Preset s_perf_presets[4] = {
+    { "st_opt_shadow_lights_low",    "51",  "1024", "st_optimize_high", "st_optimize_high",
+      "0.8", "60",  "0.75", "0.7", "1.0" },
+    { "st_opt_shadow_lights_medium", "51",  "1024", "st_optimize_med",  "st_optimize_med",
+      "1.0", "100", "0.5",  "1.0", "1.3" },
+    { "st_opt_shadow_lights_high",   "80",  "2048", "st_optimize_low",  "st_optimize_low",
+      "1.0", "150", "0.4",  "1.3", "1.5" },
+    { "st_opt_shadow_lights_high",   "120", "2048", "st_optimize_off",  "st_optimize_off",
+      "1.0", "200", "0.3",  "1.6", "1.8" },
+};
+
+// Сверяем через саму консоль, а не через десяток внешних переменных: так список настроек набора
+// остаётся в одном месте, и добавить в него строку — значит дописать её только в таблицу выше.
+bool da_perf_value_matches(pcstr command, pcstr expected)
+{
+    IConsole_Command* cc = Console->GetCommand(command);
+    if (!cc)
+        return false;
+
+    IConsole_Command::TStatus current;
+    current[0] = 0;
+    cc->GetStatus(current);
+
+    // Числа сравниваем числами: «0.75» и «0.750000» — одно значение, а строки разные.
+    const bool numeric = expected[0] == '-' || expected[0] == '.' || (expected[0] >= '0' && expected[0] <= '9');
+    if (numeric)
+        return _abs(float(atof(current)) - float(atof(expected))) < 0.001f;
+
+    return 0 == xr_stricmp(current, expected);
+}
+
+// Какому набору соответствуют текущие значения; PERF_PRESET_CUSTOM — ни одному.
+u32 da_perf_detect_preset()
+{
+    for (u32 i = 0; i < 4; ++i)
+    {
+        const Preset& p = s_perf_presets[i];
+        if (da_perf_value_matches("r__light_shadow_budget", p.shadow_lights) &&
+            da_perf_value_matches("r2_sun_far", p.sun_far) &&
+            da_perf_value_matches("r2_smap_size", p.smap) &&
+            da_perf_value_matches("r__optimize_static_geom", p.opt_static) &&
+            da_perf_value_matches("r__optimize_dynamic_geom", p.opt_dyn) &&
+            da_perf_value_matches("rs_vis_distance", p.vis_dist) &&
+            da_perf_value_matches("r__detail_radius", p.detail_radius) &&
+            da_perf_value_matches("r__detail_density", p.detail_density) &&
+            da_perf_value_matches("r__geometry_lod", p.geometry_lod) &&
+            da_perf_value_matches("r__detail_height", p.detail_height))
+            return i;
+    }
+    return PERF_PRESET_CUSTOM;
+}
+} // namespace
 
 class CCC_PerfPreset : public CCC_Token
 {
 public:
     CCC_PerfPreset(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
 
+    // [DA_PORT] Отсюда значение и берут: и список настроек для показа, и Save для записи в конфиг
+    // (IConsole_Command::Save печатает именно GetStatus). Поэтому пересчёт стоит здесь — одно место
+    // на оба случая, и «Своё» попадает в конфиг само, без отдельного обработчика на каждую строку.
+    void GetStatus(TStatus& S) override
+    {
+        *value = da_perf_detect_preset();
+        CCC_Token::GetStatus(S);
+    }
+
     void Execute(pcstr args) override
     {
         CCC_Token::Execute(args);
 
-        struct Preset
-        {
-            pcstr shadow_lights, sun_far, smap, opt_static, opt_dyn;
-            pcstr vis_dist, detail_radius, detail_density, geometry_lod, detail_height;
-        };
-        // low, medium, high, ultra
-        static const Preset presets[4] = {
-            { "st_opt_shadow_lights_low",    "51",  "1024", "st_optimize_high", "st_optimize_high",
-              "0.8", "60",  "0.75", "0.7", "1.0" },
-            { "st_opt_shadow_lights_medium", "51",  "1024", "st_optimize_med",  "st_optimize_med",
-              "1.0", "100", "0.5",  "1.0", "1.3" },
-            { "st_opt_shadow_lights_high",   "80",  "2048", "st_optimize_low",  "st_optimize_low",
-              "1.0", "150", "0.4",  "1.3", "1.5" },
-            { "st_opt_shadow_lights_high",   "120", "2048", "st_optimize_off",  "st_optimize_off",
-              "1.0", "200", "0.3",  "1.6", "1.8" },
-        };
+        // «Своё» не применяет ничего - см. пояснение у PERF_PRESET_CUSTOM. Именно эта ветка и
+        // отрабатывает при загрузке user.ltx у того, кто настраивал значения вручную.
+        if (*value >= PERF_PRESET_CUSTOM)
+            return;
 
-        // Старые user.ltx могли сохранить убранный пятый пункт — такое значение уводим на «Средние».
-        const Preset& p = presets[(*value < 4) ? *value : 1];
+        const Preset& p = s_perf_presets[*value];
         string256 cmd;
 
         xr_sprintf(cmd, "r__light_shadow_budget %s", p.shadow_lights);   Console->Execute(cmd);

@@ -292,6 +292,10 @@
 	<string id="st_opt_perf_ultra">
 		<text>Ultra</text>
 	</string>
+	<!-- [DA_PORT] Пункт списка наборов: значения не совпадают ни с одним набором. -->
+	<string id="st_opt_perf_custom">
+		<text>Custom</text>
+	</string>
 	<string id="st_opt_perf_max_fps">
 		<text>Ultra performance</text>
 	</string>

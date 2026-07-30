@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1134 правк(и) в 231 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1136 правк(и) в 231 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*75 файл(ов), 459 правк(и)*
+*75 файл(ов), 461 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_R2.cpp`
@@ -208,24 +208,26 @@
 - **:603** — Presets for the shadow-casting light ceiling, exposed in the video options.
 - **:605** — One-touch performance preset for the Performance tab.
 - **:618** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:
-- **:664** — Размер теневой карты - единственное в наборе, что не применяется до перезапуска
-- **:673** — Msg("~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры",
-- **:686** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
-- **:704** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
-- **:877** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
-- **:911** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
-- **:1202** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
-- **:1204** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
-- **:1209** — Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
-- **:1215** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
-- **:1227** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
-- **:1229** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
-- **:1297** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
-- **:1361** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
-- **:1422** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
-- **:1453** — Dead Air compatibility stub commands
-- **:1479** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
-- **:1480** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
+- **:622** — Пятый пункт списка — «Своё». Он ничего не применяет, и это не заглушка, а починка.
+- **:712** — Отсюда значение и берут: и список настроек для показа, и Save для записи в конфиг
+- **:736** — Размер теневой карты - единственное в наборе, что не применяется до перезапуска
+- **:745** — Msg("~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры",
+- **:758** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
+- **:776** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
+- **:949** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
+- **:983** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
+- **:1274** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
+- **:1276** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
+- **:1281** — Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
+- **:1287** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
+- **:1299** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
+- **:1301** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
+- **:1369** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
+- **:1433** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
+- **:1494** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
+- **:1525** — Dead Air compatibility stub commands
+- **:1551** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+- **:1552** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
 
 ### `Layers/xrRender/xrRender_console.h`
 
