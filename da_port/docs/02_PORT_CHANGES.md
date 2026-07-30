@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1145 правк(и) в 234 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1146 правк(и) в 234 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*76 файл(ов), 465 правк(и)*
+*76 файл(ов), 466 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_R2.cpp`
@@ -656,6 +656,7 @@
 - **:763** — Script blender, unlike the TAA one - it needs no textures beyond two
 - **:766** — Object-motion reactivity, see phase_reactive. Two blenders share one pixel
 - **:839** — see phase_pp: no depth when targeting the back buffer (sizes may differ)
+- **:907** — ⭐ Контексты апскейлеров уничтожаются ЗДЕСЬ. Раньше их не уничтожал никто.
 
 ### `Layers/xrRender_R2/r2_rendertarget_phase_PP.cpp`
 

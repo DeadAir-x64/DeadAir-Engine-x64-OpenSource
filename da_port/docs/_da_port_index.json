@@ -1837,6 +1837,10 @@
 [
 839,
 "see phase_pp: no depth when targeting the back buffer (sizes may differ)"
+],
+[
+907,
+"⭐ Контексты апскейлеров уничтожаются ЗДЕСЬ. Раньше их не уничтожал никто."
 ]
 ],
 "xray-16/src/Layers/xrRender_R2/r2_rendertarget_phase_bloom.cpp": [
