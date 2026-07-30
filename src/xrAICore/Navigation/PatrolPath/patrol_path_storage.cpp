@@ -12,7 +12,36 @@
 #include "patrol_point.h"
 #include "Common/LevelGameDef.h"
 
-CPatrolPathStorage::~CPatrolPathStorage() { delete_data(m_registry); }
+// [DA_PORT] Освобождение реестра. Удалять его через delete_data НЕЛЬЗЯ, хотя именно так и было.
+//
+// В реестре один и тот же CPatrolPath* может лежать под ДВУМЯ ключами: add_alias_if_exist() кладёт
+// второе имя, указывающее на тот же объект (`m_registry.emplace(duplicate_name, it->second)`), и
+// делает это по ходу игры — из задач смарт-террейнов. Такая запись НЕ владеет путём, она ссылка.
+// delete_data проходит по всем парам подряд и освобождает каждую, то есть аллокатор получает один и
+// тот же блок дважды.
+//
+// Двойное освобождение почти никогда не падает на месте: оно портит кучу, а убивает позже и в
+// стороне. Поэтому искать его по месту падения бесполезно — здесь оно названо по построению.
+//
+// Указатели сначала собираются и обеззначиваются, и только потом удаляются по одному разу.
+void CPatrolPathStorage::destroy_registry()
+{
+    xr_vector<CPatrolPath*> owned;
+    owned.reserve(m_registry.size());
+    for (auto& it : m_registry)
+        if (it.second)
+            owned.push_back(it.second);
+
+    std::sort(owned.begin(), owned.end());
+    owned.erase(std::unique(owned.begin(), owned.end()), owned.end());
+
+    for (CPatrolPath* path : owned)
+        xr_delete(path);
+
+    m_registry.clear();
+}
+
+CPatrolPathStorage::~CPatrolPathStorage() { destroy_registry(); }
 void CPatrolPathStorage::load_raw(
     const CLevelGraph* level_graph, const CGameLevelCrossTable* cross, const CGameGraph* game_graph, IReader& stream)
 {
@@ -50,7 +79,11 @@ void CPatrolPathStorage::load(IReader& stream)
     const u32 size = chunk->r_u32();
     chunk->close();
 
-    m_registry.clear();
+    // [DA_PORT] Через destroy_registry(), а не clear(): в реестре лежат УКАЗАТЕЛИ, и clear() про них
+    // ничего не знает. Утечки здесь, впрочем, не было — единственный путь к load() это
+    // AISpaceBase::patrol_path_storage(), а он всегда пересоздаёт хранилище, так что реестр пуст.
+    // Правка приводит владение в соответствие с деструктором на случай второго вызова.
+    destroy_registry();
 
     chunk = stream.open_chunk(1);
     for (u32 i = 0; i < size; ++i)
@@ -69,10 +102,17 @@ void CPatrolPathStorage::load(IReader& stream)
 
         chunk1->close();
 
-        const_iterator I = m_registry.find(pair.first);
+        iterator I = m_registry.find(pair.first);
         VERIFY3(I == m_registry.end(), "Duplicated patrol path found ", pair.first.c_str());
         if (I != m_registry.end())
+        {
             Log("~ Duplicated patrol path found ", pair.first.c_str());
+            // [DA_PORT] И этот путь надо освободить. insert по существующему ключу не отбрасывает
+            // новое значение, а ПЕРЕЗАПИСЫВАЕТ им старое (AssociativeVector::insert: `*I = value`),
+            // поэтому вытесненный указатель просто выпадал из карты. В данных DA дубликаты
+            // настоящие — около семи имён на каждую загрузку.
+            xr_delete(I->second);
+        }
 
 #ifdef DEBUG
         pair.second->name(pair.first);

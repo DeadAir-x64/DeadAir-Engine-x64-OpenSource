@@ -33,6 +33,9 @@ protected:
 public:
     IC CPatrolPathStorage();
     virtual ~CPatrolPathStorage();
+    // [DA_PORT] Освободить пути, помня про алиасы: одно значение лежит под несколькими ключами,
+    // и удалять надо КАЖДЫЙ УКАЗАТЕЛЬ ОДИН РАЗ. Подробности — в .cpp.
+    void destroy_registry();
     virtual void load(IReader& stream);
     virtual void save(IWriter& stream);
 

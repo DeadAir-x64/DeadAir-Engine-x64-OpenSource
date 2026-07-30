@@ -41,7 +41,24 @@ void CLevelGraph::Initialize(const char* filePath)
     unpack_xz(vertex_position(box.vMax), m_max_x, m_max_z);
 }
 
-CLevelGraph::~CLevelGraph() { FS.r_close(m_reader); }
+CLevelGraph::~CLevelGraph()
+{
+    // [DA_PORT] Менеджер узлов удалялся... нигде. Деструктор закрывал только m_reader, а
+    // m_nodes = xr_new<CLevelGraphManager>(...) из Initialize() оставался висеть в куче.
+    //
+    // Цена ошибки не в самом объекте, он крошечный. В режиме совместимости (а level.ai в DA именно
+    // старой версии — XRAI_VERSION_CS_COP и ниже) конструктор менеджера ПЕРЕКЛАДЫВАЕТ узлы в свежий
+    // массив: xr_alloc<NodeCompressed>(vertex_count + 1) в convert_nodes(). Освобождает его
+    // ~CLevelGraphManager, до которого дело не доходило. На Кордоне это 15 624 200 байт, и граф ИИ
+    // пересоздаётся на КАЖДУЮ перезагрузку сохранения (CAI_Space::load -> AISpaceBase::Load).
+    //
+    // Найдено замером: живые аллокации росли на 16-17 МБ за перезагрузку, ровно по одному блоку
+    // в ведре 8-16 МБ, и ловушка аллокатора на точный размер назвала эту строку по стеку.
+    //
+    // Баг самого OpenXRay: наших правок в этом файле нет.
+    xr_delete(m_nodes);
+    FS.r_close(m_reader);
+}
 u32 CLevelGraph::vertex(const Fvector& position) const
 {
     CLevelGraph::CPosition _node_position;
