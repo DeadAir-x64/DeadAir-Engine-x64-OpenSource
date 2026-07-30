@@ -56,7 +56,8 @@ if(MINGW)
         xrParticles         0x19C000000
         xrPhysics           0x19E000000
         xrRenderPC_R4       0x1A0000000
-        xrRender_GL         0x1A2000000
+        # 0x1A2000000 — освободился после удаления xrRender_GL, слот намеренно не переиспользуется:
+        # адреса в старых логах крашей должны и дальше раскладываться по этой таблице.
         xrScriptEngine      0x1A4000000
         xrSound             0x1A6000000
         xrUICore            0x1A8000000

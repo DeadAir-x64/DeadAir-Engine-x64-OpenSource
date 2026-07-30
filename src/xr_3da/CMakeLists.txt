@@ -29,7 +29,8 @@ target_link_libraries(xr_3da
     xrCore
     xrAPI
     xrEngine
-    xrRender_GL
+    # [DA_PORT] xrRender_GL убран. Он был статическим импортом exe, то есть библиотека
+    # требовалась для САМОГО ЗАПУСКА даже на DX11, хотя её код не исполнялся никогда.
     $<$<BOOL:${WIN32}>:xrRenderPC_R4>
     xrGame
 )
