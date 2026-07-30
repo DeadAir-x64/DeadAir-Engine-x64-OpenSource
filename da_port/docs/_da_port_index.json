@@ -1,4 +1,16 @@
 {
+"xray-16/src/Include/xrRender/xrRender.h": [
+[
+5,
+"OpenGL-рендерер удалён из сборки: остался единственный модуль — R4."
+]
+],
+"xray-16/src/Layers/xrRender/Blender_Recorder_R2.cpp": [
+[
+33,
+"Разметка по программам. Именно ЭТА перегрузка r_Pass используется рендером DX11"
+]
+],
 "xray-16/src/Layers/xrRender/Blender_Recorder_StandartBinding.cpp": [
 [
 27,
@@ -115,6 +127,28 @@
 "shadow_world пропускаем молча: этот рендер его не реализует ПО ЗАМЫСЛУ —"
 ]
 ],
+"xray-16/src/Layers/xrRender/ResourceManager_Scripting.cpp": [
+[
+441,
+"Ошибка в скрипте шейдера больше не убивает игру молча."
+],
+[
+457,
+"Msg(\"! [DA_PORT] шейдер [%s], элемент [%s]: ОШИБКА В СКРИПТЕ\", namesp, name);"
+],
+[
+461,
+"Msg(\"! [DA_PORT]   %s\", lua_tostring(L, -1));"
+],
+[
+467,
+"Msg(\"! [DA_PORT] шейдер [%s], элемент [%s]: исключение: %s\", namesp, name, e.what());"
+],
+[
+471,
+"Msg(\"! [DA_PORT] шейдер [%s], элемент [%s]: неизвестное исключение\", namesp, name);"
+]
+],
 "xray-16/src/Layers/xrRender/R_Backend_Runtime.cpp": [
 [
 11,
@@ -127,6 +161,14 @@
 [
 465,
 "With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection"
+],
+[
+488,
+"Результат обязательно проверять и говорить о нём в лог. Интерфейс появился в"
+],
+[
+498,
+"Msg(\"* [DA_PORT] отладочные метки GPU недоступны (нет ID3DUserDefinedAnnotation, \""
 ]
 ],
 "xray-16/src/Layers/xrRender/R_Backend_Runtime.h": [
@@ -403,75 +445,87 @@
 "Both levels default to off, unlike the author's 1/1. This subsystem comes from his"
 ],
 [
-595,
+577,
+"Счётчик кадров для da_sun_log (замер по каскадам солнца). 0 = молчит."
+],
+[
+580,
+"da_sun_only N: накапливать солнечный свет только от каскада N (1..3), 0 = все."
+],
+[
+603,
 "Presets for the shadow-casting light ceiling, exposed in the video options."
 ],
 [
-597,
+605,
 "One-touch performance preset for the Performance tab."
 ],
 [
-610,
+618,
 "Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:"
 ],
 [
-666,
+674,
 "Note the first entry, and that it is 0 rather than a count: 0 means \"no budget at all\","
 ],
 [
-684,
+692,
 "r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно."
 ],
 [
-857,
+865,
 "Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -"
 ],
 [
-891,
+899,
 "Applies one of the grading profiles. Values mirror the .ltx profiles shipped in"
 ],
 [
-1182,
+1190,
 "Geometry cut-off, ported from the author's build. Defaults match his: both levels on"
 ],
 [
-1184,
+1192,
 "Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are"
 ],
 [
-1191,
-"GPU time per render phase, N frames into the log. See da_gpu_timer.h."
+1197,
+"Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против"
 ],
 [
 1203,
+"GPU time per render phase, N frames into the log. See da_gpu_timer.h."
+],
+[
+1215,
 "CMD3(CCC_PerfPreset, \"r__perf_preset\", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]"
 ],
 [
-1205,
+1217,
 "CMD3(CCC_Token, \"r__light_shadow_budget\", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]"
 ],
 [
-1273,
+1285,
 "The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the"
 ],
 [
-1337,
+1349,
 "Un-commented: this drives r_dtex_range, the distance over which the detail texture"
 ],
 [
-1398,
+1410,
 "CMD3(CCC_MSAA, \"r3_msaa\", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list"
 ],
 [
-1429,
+1441,
 "Dead Air compatibility stub commands"
 ],
 [
-1455,
+1467,
 "CMD4(CCC_Float, \"r2_vibrance_val\",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate"
 ],
 [
-1456,
+1468,
 "CMD3(CCC_GradingPreset, \"r__grading_preset\", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]"
 ]
 ],
@@ -491,6 +545,14 @@
 [
 272,
 "---- Geometry cut-off by size and distance (author's optimisation) --------------------"
+],
+[
+358,
+"extern ECORE_API int ps_da_sun_log;  // [DA_PORT] замер по каскадам солнца"
+],
+[
+359,
+"extern ECORE_API int ps_da_sun_only; // [DA_PORT] изолировать один каскад солнца"
 ]
 ],
 "xray-16/src/Layers/xrRender/xr_effgamma.cpp": [
@@ -515,6 +577,28 @@
 [
 5,
 "temporal anti-aliasing resolve (R4 only). Blends the previous frame into the current one after"
+]
+],
+"xray-16/src/Layers/xrRenderDX11/Blender_Recorder_R3.cpp": [
+[
+150,
+"Отметки по программам: отказ в сборке шейдера не оставляет ни стека, ни сообщения,"
+],
+[
+152,
+"Msg(\"*       [DA_PORT] сборка ps[%s]\", _ps);"
+],
+[
+157,
+"Msg(\"*       [DA_PORT] сборка vs[%s]\", _vs);"
+],
+[
+159,
+"Msg(\"*       [DA_PORT] сборка gs[%s]\", _gs ? _gs : \"null\");"
+],
+[
+161,
+"Msg(\"*       [DA_PORT] программы собраны\");"
 ]
 ],
 "xray-16/src/Layers/xrRenderDX11/dx11ConstantBuffer.cpp": [
@@ -595,7 +679,35 @@
 "Msg(\"* [DA_PORT] validation layer active, messages will appear in this log\");"
 ],
 [
-624,
+509,
+"Поимённый список живых объектов D3D при выходе."
+],
+[
+525,
+"Msg(\"* [DA_PORT] живые объекты D3D на выходе:\");"
+],
+[
+527,
+"Снять потолок очереди ДО переписи. По умолчанию слой отладки хранит 1024"
+],
+[
+545,
+"Перепись уходит в очередь сообщений слоя отладки, а не в наш лог. Сливаем её"
+],
+[
+553,
+"Msg(\"* [DA_PORT] строк переписи: %u\", (u32)count);"
+],
+[
+568,
+"Msg(\"! [DA_PORT] очередь сообщений недоступна, перепись ушла в отладочный вывод\");"
+],
+[
+572,
+"Msg(\"! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен\");"
+],
+[
+691,
 "Pull whatever the validation layer has to say into the engine log, once per frame."
 ]
 ],
@@ -603,6 +715,44 @@
 [
 189,
 "Look in the other contexts before giving up. Buffers are filed under the context that"
+]
+],
+"xray-16/src/Layers/xrRenderDX11/dx11ResourceManager_Scripting.cpp": [
+[
+235,
+"Разметка прохода: именно здесь компилируются программы, и именно здесь отказ не"
+],
+[
+578,
+"Пошаговая разметка компиляции элемента. Отказ на этом пути не оставляет ни стека, ни"
+],
+[
+594,
+"Ошибка в скрипте шейдера больше не убивает игру молча."
+],
+[
+615,
+"Msg(\"! [DA_PORT] шейдер [%s], элемент [%s]: ОШИБКА В СКРИПТЕ: %s\", namesp, name, e.what());"
+],
+[
+619,
+"Msg(\"! [DA_PORT] шейдер [%s], элемент [%s]: неизвестное исключение\", namesp, name);"
+]
+],
+"xray-16/src/Layers/xrRenderDX11/dx11R_Backend_Runtime.h": [
+[
+828,
+"Проверка на пустоту обязательна. ID3DUserDefinedAnnotation — часть рантайма D3D11.1,"
+]
+],
+"xray-16/src/Layers/xrRenderDX11/dx11SH_Texture.cpp": [
+[
+506,
+"Основное представление текстуры (m_pSRView) здесь не освобождалось ВООБЩЕ, хотя"
+],
+[
+559,
+"И собственное представление — см. пояснение в начале функции. Обнуляем в любом"
 ]
 ],
 "xray-16/src/Layers/xrRenderPC_R4/da_dlss.cpp": [
@@ -695,6 +845,12 @@
 [
 3,
 "Common interface for temporal upscalers: FSR 2, XeSS, DLSS."
+]
+],
+"xray-16/src/Layers/xrRenderPC_R4/da_win7_compat.cpp": [
+[
+3,
+"Совместимость с Windows 7: убираем импорт CreateFile2."
 ]
 ],
 "xray-16/src/Layers/xrRenderPC_R4/da_xess.cpp": [
@@ -817,6 +973,12 @@
 [
 296,
 "bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // FSR 2 upscale; false when it did not run, so the caller can fall back"
+]
+],
+"xray-16/src/Layers/xrRenderPC_R4/r4_rendertarget_accum_direct.cpp": [
+[
+581,
+"Проверка флага ВОЗВРАЩЕНА (была закомментирована)."
 ]
 ],
 "xray-16/src/Layers/xrRenderPC_R4/r4_rendertarget_phase_combine.cpp": [
@@ -1189,115 +1351,119 @@
 "Any temporal upscaler, not FSR 2 alone - see da_upscaler_active(). While this named"
 ],
 [
-182,
+180,
+"Сдвиг выдаётся ВСЕГДА, когда джиттер вообще включён — и для апскейлеров, и для"
+],
+[
+186,
 "Converted to clip space HERE, from the pixel offset the upscaler is handed, so"
 ],
 [
-202,
+204,
 "Detail-bump damping weights, see xr_ioc_cmd.cpp for what they are for. An ordinary pass"
 ],
 [
-205,
+207,
 "Gloss-driven reactive mask, see xr_ioc_cmd.cpp. x = weight, y = gloss threshold."
 ],
 [
-215,
+217,
 "Motion-driven reactivity, see da_motion_reactive in common_functions.h."
 ],
 [
-233,
+235,
 "Motion-vector camera matrices WITHOUT any world part, for geometry that is already in world"
 ],
 [
-254,
+256,
 "Same reasoning: this is the G-buffer's size, used for texel-exact fetches."
 ],
 [
-612,
+614,
 "Motion vectors. R4 only — the extra target and the shader option are DX11-side, and R2"
 ],
 [
-617,
+619,
 "Every consumer of the velocity buffer has to be listed here, FSR 3 included. Missing"
 ],
 [
-623,
+625,
 "Через da_upscaler_active(), а не перечислением. Перечисление тут и подвело: строка"
 ],
 [
-634,
+636,
 "Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every"
 ],
 [
-638,
+640,
 "The debug map and an upscaler must not run together: FSR 2 reads the very buffer the"
 ],
 [
-644,
+646,
 "if (o.velocity_debug_ids && da_upscaler_active()) // [DA_PORT] любой апскейлер, не FSR 2 один"
 ],
 [
-645,
+647,
 "Msg(\"! [DA_PORT] r__motion_vectors 3 with an upscaler enabled: it is being fed shader \""
 ],
 [
-700,
+702,
 "Resources->RegisterConstantSetup(\"m_prev_VP\", &binder_prev_vp); // [DA_PORT] temporal reprojection"
 ],
 [
-701,
+703,
 "Resources->RegisterConstantSetup(\"m_taa_jitter\", &binder_taa_jitter); // [DA_PORT] jitter for shaders"
 ],
 [
-702,
+704,
 "Resources->RegisterConstantSetup(\"m_VP_nojit_ws\", &binder_vp_nojit_ws); // [DA_PORT] world-space geometry"
 ],
 [
-703,
+705,
 "Resources->RegisterConstantSetup(\"m_VP_old_ws\", &binder_vp_old_ws); // [DA_PORT] world-space geometry"
 ],
 [
-704,
+706,
 "Resources->RegisterConstantSetup(\"da_detail_fix\", &binder_detail_fix); // [DA_PORT] detail-bump damping"
 ],
 [
-705,
+707,
 "Resources->RegisterConstantSetup(\"da_reactive_motion\", &binder_reactive_motion); // [DA_PORT]"
 ],
 [
-706,
+708,
 "Resources->RegisterConstantSetup(\"da_gloss_reactive\", &binder_gloss_reactive); // [DA_PORT] gloss opts out of history"
 ],
 [
-711,
+713,
 "Msg(\"* [DA_PORT] create: before CRenderTarget\"); FlushLog();"
 ],
 [
-713,
+715,
 "Msg(\"* [DA_PORT] create: after CRenderTarget\"); FlushLog();"
 ],
 [
-718,
+720,
 "Msg(\"* [DA_PORT] create: after Models/PSLibrary/HWOCC\"); FlushLog();"
 ],
 [
-722,
+724,
 "Msg(\"* [DA_PORT] create: after q_sync_point\"); FlushLog();"
 ],
 [
-726,
+728,
 "Msg(\"* [DA_PORT] create: before FluidManager.Initialize\"); FlushLog();"
 ],
 [
-730,
+732,
 "Msg(\"* [DA_PORT] create: after FluidManager\"); FlushLog();"
 ],
 [
-733,
+735,
 "g_da_gpu_timer.create(); // [DA_PORT] per-phase GPU timing, see da_gpu_timer.h"
 ],
 [
-735,
+737,
 "Msg(\"* [DA_PORT] create: DONE\"); FlushLog();"
 ]
 ],
@@ -1309,6 +1475,10 @@
 [
 253,
 "u32 velocity_debug_ids : 1; // [DA_PORT] mode 3: shaders stamp their identity instead of motion"
+],
+[
+355,
+"Объёмы объёмного тумана течь не должны, а текли — по одному набору на каждую"
 ]
 ],
 "xray-16/src/Layers/xrRender_R2/r2_loader.cpp": [
@@ -1317,16 +1487,132 @@
 "Объявляется СНАРУЖИ пространства имён: внутри линкер искал бы символ в"
 ],
 [
-25,
+21,
+"Счётчик ссылок на устройство D3D — без слоя отладки DirectX."
+],
+[
+45,
 "История временных фильтров относится к прошлому уровню и переносить её некуда:"
 ],
 [
-54,
+49,
+"Отметки стадий загрузки уровня рендером."
+],
+[
+56,
+"Msg(\"* [DA_PORT] level_Load: начало | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+67,
+"Msg(\"* [DA_PORT] level_Load: шейдеры уровня | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+84,
 "The result was dereferenced unchecked: a level shader entry without a '/' wrote"
 ],
 [
-58,
+88,
 "Msg(\"! [DA_PORT] level shader [%s] has no '/' separator - skipped\", n_sh);"
+],
+[
+93,
+"Имя ПЕРЕД созданием, а не после. Создание шейдера уровня умеет уронить игру"
+],
+[
+97,
+"Msg(\"* [DA_PORT] level_Load: шейдер %u/%u [%s] / [%s]\", i, count, n_sh, n_tlist);"
+],
+[
+104,
+"Msg(\"* [DA_PORT] level_Load: следы и детали | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+111,
+"Msg(\"* [DA_PORT] level_Load: геометрия | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+130,
+"Msg(\"* [DA_PORT] level_Load: визуалы | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+137,
+"Msg(\"* [DA_PORT] level_Load: детальные объекты | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+143,
+"Msg(\"* [DA_PORT] level_Load: секторы и порталы | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+153,
+"Msg(\"* [DA_PORT] level_Load: HOM | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+157,
+"Msg(\"* [DA_PORT] level_Load: источники света | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+165,
+"Msg(\"* [DA_PORT] level_Load: готово | ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+170,
+"Освобождение объёмов объёмного тумана. Подробности — у m_fluid_volumes в r2.h."
+],
+[
+204,
+"До всего остального: объёмы тумана висят детьми у корней секторов, и их надо"
+],
+[
+207,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"объёмы тумана\", (u32)da_device_refs());"
+],
+[
+211,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"HOM\", (u32)da_device_refs());"
+],
+[
+215,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"детали\", (u32)da_device_refs());"
+],
+[
+220,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"порталы\", (u32)da_device_refs());"
+],
+[
+226,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"контексты\", (u32)da_device_refs());"
+],
+[
+231,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"свет\", (u32)da_device_refs());"
+],
+[
+240,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"визуалы\", (u32)da_device_refs());"
+],
+[
+246,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"SWI\", (u32)da_device_refs());"
+],
+[
+272,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"буферы VB/IB\", (u32)da_device_refs());"
+],
+[
+282,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"детали и следы\", (u32)da_device_refs());"
+],
+[
+286,
+"Msg(\"* [DA_PORT] выгрузка: после \\\"%s\\\" ссылок на устройство: %u\", \"шейдеры\", (u32)da_device_refs());"
+],
+[
+287,
+"Msg(\"* [DA_PORT] выгрузка завершена, ссылок на устройство: %u\", (u32)da_device_refs());"
+],
+[
+617,
+"Запомнить владение: см. m_fluid_volumes в r2.h."
 ]
 ],
 "xray-16/src/Layers/xrRender_R2/r2_rendertarget.cpp": [
@@ -1416,22 +1702,22 @@
 ],
 [
 473,
-"FSR 3. Same reasoning as FSR 2 for the sizes: maxRenderSize is declared as the full"
+"FSR 3 создаётся под КОНКРЕТНЫЙ размер рендера, как DLSS выше, а не под предел,"
 ],
 [
-744,
+757,
 "temporal AA resolve (R4-only). Skipped under MSAA: common.h then types s_position as"
 ],
 [
-750,
+763,
 "Script blender, unlike the TAA one - it needs no textures beyond two"
 ],
 [
-753,
+766,
 "Object-motion reactivity, see phase_reactive. Two blenders share one pixel"
 ],
 [
-826,
+839,
 "see phase_pp: no depth when targeting the back buffer (sizes may differ)"
 ]
 ],
@@ -1603,10 +1889,46 @@
 "Clear the velocity target ONCE PER FRAME. Pixels the G-buffer never covers — the sky"
 ]
 ],
+"xray-16/src/Layers/xrRender_R2/render_phase_sun.cpp": [
+[
+258,
+"Замер по каскадам солнца, крутилка da_sun_log N (N кадров подряд)."
+],
+[
+428,
+"da_sun_only N — накапливать свет ТОЛЬКО от каскада N (1..3), 0 = как обычно."
+]
+],
 "xray-16/src/xrAICore/Components/problem_solver_inline.h": [
 [
 361,
 "Split the two halves of this apart, because they cost very differently and only one of"
+]
+],
+"xray-16/src/xrAICore/Navigation/level_graph.cpp": [
+[
+46,
+"Менеджер узлов удалялся... нигде. Деструктор закрывал только m_reader, а"
+]
+],
+"xray-16/src/xrAICore/Navigation/PatrolPath/patrol_path_storage.cpp": [
+[
+15,
+"Освобождение реестра. Удалять его через delete_data НЕЛЬЗЯ, хотя именно так и было."
+],
+[
+82,
+"Через destroy_registry(), а не clear(): в реестре лежат УКАЗАТЕЛИ, и clear() про них"
+],
+[
+110,
+"И этот путь надо освободить. insert по существующему ключу не отбрасывает"
+]
+],
+"xray-16/src/xrAICore/Navigation/PatrolPath/patrol_path_storage.h": [
+[
+36,
+"Освободить пути, помня про алиасы: одно значение лежит под несколькими ключами,"
 ]
 ],
 "xray-16/src/xrCDB/ISpatial.cpp": [
@@ -1635,6 +1957,12 @@
 "See FTimer.cpp - GOAP planner accounting for the performance dump."
 ]
 ],
+"xray-16/src/xrCore/log.cpp": [
+[
+33,
+"Ловушка аллокатора обязана молчать, пока работает логгер: она печатает найденное через"
+]
+],
 "xray-16/src/xrCore/string_concatenations.cpp": [
 [
 108,
@@ -1647,12 +1975,34 @@
 "#include \"Debug/StackTrace.h\" // [DA_PORT] ловушка на выделение памяти"
 ],
 [
-202,
+191,
+"Приведённое выше рассуждение для нашей сборки НЕ работает, и замер это показал."
+],
+[
+226,
+"Msg(\"* [DA_PORT] mem_compact: %u -> %u МБ (вернулось %d МБ) за %.1f мс\","
+],
+[
+243,
 "Ловушка на выделение памяти заданного размера — со снимком стека."
 ],
 [
-257,
+262,
+"Пока счётчик больше нуля, ловушка молчит. Взводит его логгер (log.cpp) на время своей"
+],
+[
+300,
+"Снятие стека сериализуется. BuildStackTrace идёт через DbgHelp, а он НЕ"
+],
+[
+327,
 "da_alloc_trap(size); // [DA_PORT]"
+]
+],
+"xray-16/src/xrCore/Containers/FixedMap.h": [
+[
+134,
+"Старый массив узлов освобождался сырым xr_free, без деструкторов. Для"
 ]
 ],
 "xray-16/src/xrCore/Debug/StackTrace.cpp": [
@@ -1687,16 +2037,20 @@
 "TAA projection jitter. Reprojecting the previous frame only removes temporal noise; the"
 ],
 [
-357,
+350,
+"Пиксельный джиттер сбрасывается ЗДЕСЬ ЖЕ. Раньше он только присваивался внутри"
+],
+[
+362,
 "Every temporal upscaler needs the jitter just as much as our own temporal AA does — it"
 ],
 [
-369,
+374,
 "Generated exactly the way FSR 2 specifies, because it has to undo this offset and"
 ],
 [
-406,
-"Only our own temporal AA gets the jitter through the projection matrix. An upscaler"
+411,
+"Джиттер НЕ идёт в матрицу проекции ни в одном режиме — его накладывают сами"
 ]
 ],
 "xray-16/src/xrEngine/CustomHUD.h": [
@@ -1747,55 +2101,59 @@
 "see g_da_taa_unjittered_VP above. The jitter is two entries of the projection matrix, so"
 ],
 [
-327,
+260,
+"Вычитать больше нечего: джиттер не попадает в mProject НИ В ОДНОМ режиме — его"
+],
+[
+323,
 "const u64 frameStartTime = TimerGlobal.GetElapsed_ns(); // [DA_PORT] ns: whole ms cannot express 165 fps"
 ],
 [
-328,
+324,
 "Pace the frame on a clock that CANNOT be paused. TimerGlobal can: while paused it"
 ],
 [
-332,
+328,
 "Own timers for the dump, because the engine's own are peak-hold, not per-frame:"
 ],
 [
-354,
+350,
 "Split for the dump. This sequence turned out to be the frame - some eleven"
 ],
 [
-365,
+361,
 "Sum the entries individually as well as timing the loop around them, because those"
 ],
 [
-411,
+407,
 "The frame has three parts and the statistics only count two of them. ENGINE times"
 ],
 [
-422,
+418,
 "The same figures the statistics overlay shows, written to the log for N frames."
 ],
 [
-432,
+428,
 "Watchdog: silent until a frame actually misbehaves."
 ],
 [
-491,
+487,
 "The budget is computed in NANOSECONDS."
 ],
 [
-504,
+500,
 "Time the sleep, and the whole of this function, because the parts measured above stopped"
 ],
 [
-820,
+816,
 "Диагностика зависания при альт-табе."
 ],
 [
-836,
+832,
 "Msg(\"* [DA_PORT] окно: %s (b_is_Active=%d, always_active=%d)\", activated ? \"фокус получен\" : \"фокус потерян\","
 ],
 [
-852,
+848,
 "При rs_always_active планировщик НЕ останавливаем."
 ]
 ],
@@ -1853,6 +2211,10 @@
 [
 11,
 "See Engine.h for why this exists rather than a MasterGold build. Read once: the command"
+],
+[
+48,
+"Ключ -rgl убран вместе с GL-рендерером. Раньше он выбирал режим, которого"
 ]
 ],
 "xray-16/src/xrEngine/Engine.h": [
@@ -1919,6 +2281,16 @@
 [
 792,
 "Раньше эта ветка молчала, и в логе выглядело так, будто захватов больше,"
+]
+],
+"xray-16/src/xrEngine/XR_IOConsole.cpp": [
+[
+251,
+"Очистить строку ввода после выполнения. Её не очищал никто: команда"
+],
+[
+466,
+"Несколько команд в одной строке через ';'."
 ]
 ],
 "xray-16/src/xrEngine/xr_ioc_cmd.cpp": [
@@ -2068,162 +2440,162 @@
 ],
 [
 1266,
-"How much the upscalers should distrust their history on alpha-tested foliage. Not a switch"
+"Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности."
 ],
 [
-1272,
+1283,
 "Reactivity from screen-space motion, against ghosting behind moving objects. The"
 ],
 [
-1282,
+1293,
 "Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC."
 ],
 [
-1320,
+1331,
 "Which ingredient of the pass to write out instead of the mask, so that \"r__motion_vectors 4\""
 ],
 [
-1327,
+1338,
 "One-shot readback of the pass's inputs and output into the log, with figures rather than a"
 ],
 [
-1331,
+1342,
 "The frame rate the three settings above are stated at."
 ],
 [
-1346,
+1357,
 "Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch"
 ],
 [
-1350,
+1361,
 "Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail"
 ],
 [
-1360,
+1371,
 "Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's"
 ],
 [
-1382,
+1393,
 "---- Detail-bump stability under a temporal upscaler --------------------------------"
 ],
 [
-1406,
+1417,
 "Paints the damping weight instead of the surface: 1 = the weight the normal path applies,"
 ],
 [
-1413,
+1424,
 "Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while"
 ],
 [
-1420,
+1431,
 "---- Glossy surfaces opt out of temporal accumulation -------------------------------"
 ],
 [
-1434,
+1445,
 "0 = vegetation stands still in the shadow map while still swaying on screen. See"
 ],
 [
-1438,
+1449,
 "0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the"
 ],
 [
-1443,
+1454,
 "Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its"
 ],
 [
-1457,
+1468,
 "Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),"
 ],
 [
-1463,
+1474,
 "Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),"
 ],
 [
-1469,
+1480,
 "One control instead of two. The pair that actually drives the upscale — render scale and"
 ],
 [
-1481,
+1492,
 "Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every"
 ],
 [
-1486,
+1497,
 "Show the temporal resolve where it fetches history from - see da_taa.ps."
 ],
 [
-1492,
+1503,
 "How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour"
 ],
 [
-1515,
+1526,
 "Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens"
 ],
 [
-1519,
+1530,
 "Projection jitter, separately switchable. TAA has two halves that fail in different ways —"
 ],
 [
-1568,
+1579,
 "Above 100 the scene is rendered LARGER than the window and downsampled on the way out,"
 ],
 [
-1573,
+1584,
 "What the options menu shows. The three per-vendor variables above stay for the console."
 ],
 [
-1599,
+1610,
 "Detail-bump damping, see the declarations. Sensitivity and strength in one number:"
 ],
 [
-1613,
+1624,
 "CMD3(CCC_DLSS, \"r__dlss\", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]"
 ],
 [
-1614,
+1625,
 "CMD4(CCC_Integer, \"r__dlss_reactive\", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу"
 ],
 [
-1615,
+1626,
 "CMD4(CCC_Integer, \"r__dlss_selftest\", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог"
 ],
 [
-1617,
+1628,
 "CMD4(CCC_Integer, \"r__d3d_debug\", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply"
 ],
 [
-1618,
+1629,
 "CMD4(CCC_Integer, \"r__fsr3_debug\", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch"
 ],
 [
-1619,
+1630,
 "CMD4(CCC_Integer, \"r__fsr3\", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer restart"
 ],
 [
-1620,
+1631,
 "CMD4(CCC_Integer, \"r__upscale_sharpness\", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS"
 ],
 [
-1621,
+1632,
 "CMD4(CCC_Integer, \"r__taa\", &ps_r__taa, 0, 1); // [DA_PORT]"
 ],
 [
-1623,
+1634,
 "CMD4(CCC_Integer, \"r__taa_sky\", &ps_r__taa_sky, 0, 100); // [DA_PORT]"
 ],
 [
-1624,
+1635,
 "CMD4(CCC_Integer, \"r__taa_sharp\", &ps_r__taa_sharp, 0, 100); // [DA_PORT]"
 ],
 [
-1625,
+1636,
 "CMD4(CCC_Integer, \"r__taa_mipbias\", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]"
 ],
 [
-1626,
+1637,
 "CMD4(CCC_Integer, \"r__taa_jitter\", &ps_r__taa_jitter, 0, 1); // [DA_PORT]"
 ],
 [
-1631,
+1642,
 "CMD3(CCC_Token, \"rs_fps_limit\", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number"
 ]
 ],
@@ -2742,134 +3114,150 @@
 ],
 [
 343,
+"Целая крутилка, которая НЕ сохраняется в user.ltx: живёт ровно один запуск."
+],
+[
+359,
+"Снимок посреди игры: замер для ПОКАДРОВЫХ утечек, которые протокол загрузок не видит."
+],
+[
+367,
 "Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число"
 ],
 [
-702,
+726,
 "Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side"
 ],
 [
-805,
+829,
 "Walk the live in-game HUD window tree and report what is actually on screen: every widget's"
 ],
 [
-826,
+850,
 "Msg(\"~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f\", pad, name ? name : \"<noname>\","
 ],
 [
-838,
+862,
 "Msg(\"~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d\", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,"
 ],
 [
-845,
+869,
 "Msg(\"! [DA_PORT] no in-game HUD right now - run this while in the game world\");"
 ],
 [
-849,
+873,
 "Msg(\"~ [DA_PORT] --- HUD tree ---\");"
 ],
 [
-851,
+875,
 "Msg(\"~ [DA_PORT] --- end of HUD tree ---\");"
 ],
 [
-855,
+879,
 "Report what every belt item actually gives the actor."
 ],
 [
-874,
+898,
 "Msg(\"! [DA_PORT] no level loaded - run this in the game world\");"
 ],
 [
-881,
+905,
 "Msg(\"! [DA_PORT] no actor - run this in the game world\");"
 ],
 [
-885,
+909,
 "Msg(\"~ [DA_PORT] --- belt contents (%u item(s)) ---\", (u32)actor->inventory().m_belt.size());"
 ],
 [
-893,
+917,
 "Msg(\"~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing\", sect);"
 ],
 [
-897,
+921,
 "Msg(\"~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f\", sect,"
 ],
 [
-903,
+927,
 "Msg(\"~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)\","
 ],
 [
-908,
+932,
 "Msg(\"~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f\","
 ],
 [
-911,
+935,
 "Msg(\"~ [DA_PORT] --- end of belt ---\");"
 ],
 [
-2447,
+2471,
 "CMD1(CCC_DaMemDump, \"da_mem_dump\");   // [DA_PORT] таблица памяти по загрузкам"
 ],
 [
-2448,
+2472,
 "CMD1(CCC_DaMemReset, \"da_mem_reset\"); // [DA_PORT] забыть накопленное"
 ],
 [
-2449,
+2473,
 "CMD1(CCC_DaMemTest, \"da_mem_test\");   // [DA_PORT] авто-прогон: N загрузок подряд"
 ],
 [
-2451,
+2474,
+"CMD1(CCC_DaMemSnap, \"da_mem_snap\");   // [DA_PORT] снимок посреди игры: покадровые утечки"
+],
+[
+2476,
+"Размытие при прицеливании и перезарядке. По умолчанию выключено: эффект"
+],
+[
+2483,
 "extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок"
 ],
 [
-2453,
+2485,
 "extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного"
 ],
 [
-2455,
+2487,
 "extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем"
 ],
 [
-2457,
+2495,
 "Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного"
 ],
 [
-2505,
+2545,
 "Dead Air compatibility aliases"
 ],
 [
-2511,
+2551,
 "\"hud_draw_map\" used to be mapped onto the shared HUD_DRAW bit - toggling it off"
 ],
 [
-2521,
+2561,
 "psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise"
 ],
 [
-2528,
+2568,
 "nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)"
 ],
 [
-2540,
+2580,
 "CMD4(CCC_Float, \"scope_fov\", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat"
 ],
 [
-2542,
+2582,
 "Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left"
 ],
 [
-2681,
+2721,
 "Developer commands: registered only when the game was started with \"-dev\"."
 ],
 [
-2700,
+2740,
 "Msg(\"~ [DA_PORT] developer mode: cheat and script commands registered\");"
 ],
 [
-2880,
+2920,
 "Registered outside the DEBUG block on purpose: we need it in the Release build we ship"
 ]
 ],
@@ -3031,6 +3419,24 @@
 [
 252,
 "Dead Air detailed volumetric idle-light params"
+]
+],
+"xray-16/src/xrGame/da_memory_probe.cpp": [
+[
+111,
+"Короткая сводка по каждой загрузке — отдельно от Run и с куда большим запасом."
+],
+[
+180,
+"Ловушка аллокатора обязана молчать на время обхода, иначе игра падает в HeapLock."
+],
+[
+201,
+"Обходим ТОЛЬКО СВОИ кучи, а не все кучи процесса."
+],
+[
+309,
+"По умолчанию ВЫКЛЮЧЕНО. Было включено на время охоты за утечкой, и это оказалось"
 ]
 ],
 "xray-16/src/xrGame/da_memory_probe.h": [
@@ -3551,35 +3957,39 @@
 "multiplier domain (CoC lineage): identity magnification, not fov degrees"
 ],
 [
-448,
+265,
+"Размытие (глубина резкости) при прицеливании и перезарядке — ВЫКЛЮЧЕНО по умолчанию."
+],
+[
+457,
 "Запоминаем конфигурационные статусы: биты поломок 28/29/30 глушат крепление в"
 ],
 [
-586,
+595,
 "pick the malfunction mask back up from the server object, which is what carried it"
 ],
 [
-651,
+660,
 "P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon"
 ],
 [
-681,
+690,
 "must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would"
 ],
 [
-933,
+942,
 "Поломка КРЕПЛЕНИЯ аддона (биты маски 28 — прицел, 29 — глушитель, 30 — подствольник)."
 ],
 [
-1250,
+1259,
 "Dead Air belt-only reload for the actor: backpack ammo can't be chambered,"
 ],
 [
-1300,
+1309,
 "шанс осечки = базовый (из патрона) + вклад активных битов поломок (m_weapon_condition_type)."
 ],
 [
-1510,
+1519,
 "multiplier domain: back to identity magnification (was g_fov degrees)"
 ]
 ],
@@ -4187,63 +4597,67 @@
 ],
 "xray-16/src/xrScriptEngine/script_engine.cpp": [
 [
-357,
+143,
+"Прежний буфер обязан освободиться здесь. Освобождал его только деструктор"
+],
+[
+368,
 "permanent load trace: which scripts actually load and in what order (cheap -"
 ],
 [
-679,
+690,
 "\"-da_lua_trace\" launch flag: whole-mod engine->script dispatch tracing"
 ],
 [
-691,
+702,
 "this pcall error handler runs BEFORE the stack unwinds - the only moment the"
 ],
 [
-807,
+818,
 "Msg(\"* [DA_PORT] ScriptEngine::init: before reinit\"); FlushLog();"
 ],
 [
-809,
+820,
 "Msg(\"* [DA_PORT] ScriptEngine::init: after reinit, before luabind::open\"); FlushLog();"
 ],
 [
-811,
+822,
 "Msg(\"* [DA_PORT] ScriptEngine::init: after luabind::open\"); FlushLog();"
 ],
 [
-827,
+838,
 "Msg(\"* [DA_PORT] ScriptEngine::init: before setup_callbacks\"); FlushLog();"
 ],
 [
-829,
+840,
 "Msg(\"* [DA_PORT] ScriptEngine::init: after setup_callbacks, before exporter\"); FlushLog();"
 ],
 [
-832,
+843,
 "Msg(\"* [DA_PORT] ScriptEngine::init: after exporter\"); FlushLog();"
 ],
 [
-850,
+861,
 "Msg(\"* [DA_PORT] ScriptEngine::init: before open_lib base\"); FlushLog();"
 ],
 [
-867,
+878,
 "Msg(\"* [DA_PORT] ScriptEngine::init: after open_lib, before randomize\"); FlushLog();"
 ],
 [
-869,
+880,
 "Dead Air compat: register globals that DA scripts expect early"
 ],
 [
-928,
+939,
 "Msg(\"* [DA_PORT] ScriptEngine::init: before process_file_if_exists(_G)\"); FlushLog();"
 ],
 [
-930,
+941,
 "Msg(\"* [DA_PORT] ScriptEngine::init: after process_file_if_exists(_G)\"); FlushLog();"
 ],
 [
-935,
+946,
 "Msg(\"* [DA_PORT] ScriptEngine::init: DONE\"); FlushLog();"
 ]
 ],
@@ -4377,6 +4791,12 @@
 [
 198,
 "Some Dead Air-defined windows (e.g. the debug menu from ui_debug_main.script) are"
+]
+],
+"xray-16/src/xr_3da/entry_point.cpp": [
+[
+24,
+"Рендерер ровно один — R4. GL убран из сборки целиком: он не компилировался и при"
 ]
 ]
 }
