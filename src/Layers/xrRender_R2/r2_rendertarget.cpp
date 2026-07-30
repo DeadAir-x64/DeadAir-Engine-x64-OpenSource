@@ -470,11 +470,24 @@ CRenderTarget::CRenderTarget()
             g_da_dlss.create(dl);
         }
 
-        // [DA_PORT] FSR 3. Same reasoning as FSR 2 for the sizes: maxRenderSize is declared as the full
-        // output, so r__render_scale can move without recreating the context.
+        // [DA_PORT] FSR 3 создаётся под КОНКРЕТНЫЙ размер рендера, как DLSS выше, а не под предел,
+        // как FSR 2.
+        //
+        // Так пришлось из-за общих ресурсов, которых у FSR 2 нет: da_fsr3::create зовёт
+        // create_shared(render_w, render_h) и делает три текстуры (dilatedDepth,
+        // dilatedMotionVectors, reconstructedPrevNearestDepth) ровно этого размера. А вызов потом
+        // объявляет renderSize = Device.dwRenderWidth/Height, то есть УМЕНЬШЕННЫЙ масштабом. Пока
+        // здесь стояло Device.dwWidth, ресурсы получались 1920x1080 против объявленных 1478x830 —
+        // библиотека сверяет их с renderSize, не сходится, и ffxFsr3UpscalerContextDispatch падает
+        // исключением. Проявлялось только при масштабе рендера меньше 100%: на 100% размеры
+        // случайно совпадали, поэтому дефект и жил незамеченным.
+        //
+        // Пересоздания это не стоит: смена r__render_scale и так перестраивает цели сцены, а вместе
+        // с ними проходит и этот код.
         if (::ps_r__fsr3)
         {
-            da_fsr3_create(Device.dwWidth, Device.dwHeight, Device.dwWidth, Device.dwHeight, HW.pDevice);
+            da_fsr3_create(Device.dwRenderWidth, Device.dwRenderHeight, Device.dwWidth, Device.dwHeight,
+                HW.pDevice);
         }
 #endif
 
