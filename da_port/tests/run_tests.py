@@ -10,6 +10,7 @@
   hygiene   — байтовая гигиена наших loose-файлов (удвоенный CR, BOM, кодировка);
   globals   — глобалы, которые читаются, но нигде не присваиваются (класс бага `warn`);
   engine    — вызовы level.* и game.* против биндингов порта;
+  actor_calls — методы db.actor: нет биндинга или за ним заглушка;
   options   — ключи opt_* без единого читателя;
   gamedata  — da_gamedata в репозитории против развёрнутого в игре;
   unit      — поведение конкретных функций на моках движка.
@@ -168,6 +169,81 @@ def check_engine_calls():
 
 
 # ---------------------------------------------------------------------------
+# Проверка: методы актёра и заглушки
+# ---------------------------------------------------------------------------
+def check_actor_calls():
+    """`db.actor:X()` должен быть зарегистрирован в порте — и не быть заглушкой.
+
+    Заведена по факту: перк «Твёрдая рука» звал `db.actor:set_actor_recoil_coeff(0.4)`, биндинг
+    существовал, но внутри стояла заглушка с сообщением «Called missing function». Перк выглядел
+    рабочим на всём пути — выбор в меню, информпорция, читатель в скрипте, — и не делал ничего.
+    Проверка level.* этого не видела: она смотрит другое пространство имён.
+
+    Заглушки опаснее отсутствующих биндингов. Отсутствующий вызов роняет скрипт с ошибкой в лог,
+    и это заметно; заглушка молча возвращает управление, и механика просто не работает — а по
+    журналу игры не отличить от «так задумано».
+
+    Ищем два разных дефекта:
+      • имя, которого нет ни в одном .def   — вызов упадёт;
+      • имя, за которым стоит DA_PORT_STUB  — вызов пройдёт и ничего не сделает.
+    """
+    game_dir = os.path.join(REPO, 'src', 'xrGame')
+    if not os.path.isdir(game_dir):
+        report('actor_calls', True, 'пропущено: нет исходников порта')
+        return True
+
+    bound = set()
+    stub_cpp = set()
+    for dirpath, _, filenames in os.walk(game_dir):
+        for fn in filenames:
+            if not fn.endswith(('.cpp', '.h')):
+                continue
+            text = open(os.path.join(dirpath, fn), encoding='utf-8', errors='replace').read()
+            bound.update(re.findall(r'\.def\("([a-zA-Z_0-9]+)"', text))
+            bound.update(re.findall(r'\.property\("([a-zA-Z_0-9]+)"', text))
+            # Функция считается заглушкой, если печатает DA_PORT_STUB. Имя C++ берём по сигнатуре
+            # выше по тексту: заглушки живут в одном файле с биндингами и всегда однострочные.
+            for m in re.finditer(r'(\w+)::(\w+)\([^)]*\)\s*\{[^}]*DA_PORT_STUB[^}]*\}', text, re.S):
+                stub_cpp.add(m.group(2))
+
+    # Имя Lua у заглушки: ищем .def("lua_name", &Class::CppName) для найденных C++-имён.
+    stub_lua = set()
+    for dirpath, _, filenames in os.walk(game_dir):
+        for fn in filenames:
+            if not fn.endswith('.cpp'):
+                continue
+            text = open(os.path.join(dirpath, fn), encoding='utf-8', errors='replace').read()
+            for lua_name, cpp_name in re.findall(r'\.def\("([a-zA-Z_0-9]+)",\s*&\w+::(\w+)\)', text):
+                if cpp_name in stub_cpp:
+                    stub_lua.add(lua_name)
+
+    used = {}
+    src_dir = DUMP_SCRIPTS if os.path.isdir(DUMP_SCRIPTS) else LOOSE_SCRIPTS
+    for fn in sorted(os.listdir(src_dir)):
+        if not fn.endswith('.script'):
+            continue
+        text = open(os.path.join(src_dir, fn), encoding='utf-8', errors='replace').read()
+        text = re.sub(r'--[^\n]*', '', text)
+        for name in re.findall(r'\bdb\.actor:([a-zA-Z_][a-zA-Z_0-9]*)\s*\(', text):
+            used.setdefault(name, set()).add(fn)
+
+    known_missing = load_baseline('known_missing_actor_calls.txt')
+    problems = []
+    for name, files in sorted(used.items()):
+        where = ', '.join(sorted(files)[:2])
+        if name in stub_lua:
+            problems.append('db.actor:%s — ЗАГЛУШКА в порте  <- %s' % (name, where))
+        elif name not in bound and name not in known_missing:
+            problems.append('db.actor:%s — нет биндинга  <- %s' % (name, where))
+
+    for p in problems:
+        print('         %s' % p)
+    report('actor_calls', not problems, 'вызовов db.actor: %d, заглушек в порте: %d'
+           % (len(used), len(stub_lua)))
+    return not problems
+
+
+# ---------------------------------------------------------------------------
 # Проверка: настройки без читателя
 # ---------------------------------------------------------------------------
 def check_options():
@@ -289,6 +365,7 @@ def main():
 
     check_hygiene()
     check_engine_calls()
+    check_actor_calls()
     check_options()
     check_gamedata()
 
