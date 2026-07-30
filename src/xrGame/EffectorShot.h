@@ -83,7 +83,19 @@ public:
     virtual ~CCameraShotEffector();
 
     virtual bool ProcessCam(SCamEffectorInfo& info);
-    virtual void SetActor(CActor* pActor) { m_pActor = pActor; };
+    // [DA_PORT] Множитель отдачи обновляется и здесь, не только в ProcessCam.
+    //
+    // SetActor зовётся перед КАЖДЫМ выстрелом (CActor::on_weapon_shot_start), а ProcessCam — раз в
+    // кадр. У автора значение бралось только в ProcessCam, и первый выстрел после создания эффектора
+    // уходил со старым множителем: эффектор рождается на первом же выстреле, а до кадра дело ещё не
+    // дошло. Разница на один выстрел за сессию, но чинится одной строкой и делает поведение
+    // независимым от того, что случилось раньше — кадр или спуск курка.
+    virtual void SetActor(CActor* pActor)
+    {
+        m_pActor = pActor;
+        if (m_pActor)
+            m_recoil_coeff = m_pActor->GetCamRecoilCoeff();
+    };
     virtual CCameraShotEffector* cast_effector_shot() { return this; }
     u16 m_WeaponID;
 };
