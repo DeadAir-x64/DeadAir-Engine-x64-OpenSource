@@ -1263,11 +1263,22 @@ ENGINE_API int ps_r__d3d_debug = 0;
 // at 1 as well, the fault is in creation or in the resources FSR 3 holds; if they survive, it is
 // the dispatch that disturbs the pipeline.
 ENGINE_API int ps_r__fsr3_debug = 0;
-// [DA_PORT] How much the upscalers should distrust their history on alpha-tested foliage. Not a switch
-// but a weight: 0 accumulates normally (shimmer on thin branches), 1 ignores history entirely (no
-// shimmer, but the sway loses its smoothness because nothing is left to accumulate). The useful value
-// is somewhere between and is a matter of taste, hence a slider rather than a constant.
-ENGINE_API float ps_r__reactive_foliage = 0.5f;
+// [DA_PORT] Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности.
+// Не выключатель, а вес: 0 — накопление как обычно, 1 — история игнорируется полностью.
+//
+// ⚠️ Прежнее значение 0.5 (а в конфигах вообще стояла 1.0) оказалось СЛИШКОМ БОЛЬШИМ и давало
+// заметную дрожь травы, кустов и листьев на FSR 2 и FSR 3. Механизм: alpha-test шейдеры
+// (deffer_base_aref_bump/flat.ps) пишут это значение реактивности КАЖДОМУ своему пикселю, а не
+// только там, где история действительно ненадёжна. При высокой реактивности апскейлер собирает
+// такой пиксель из одного джиттернутого кадра, и подпиксельный сдвиг проступает наружу как дрожь —
+// тем заметнее, чем ниже частота кадров, потому что глаз усредняет меньше состояний.
+//
+// Почему у DLSS этого не было: он вообще НЕ получает маску (см. ps_r__dlss_reactive и
+// p.reactive в r4_rendertarget_phase_dlss.cpp). Именно это сравнение и указало на причину.
+//
+// 0.05 — значение, выбранное по картинке: дрожи уже нет, а немного реактивности остаётся против
+// смаза за качающимися ветками. Совсем ноль ставить не стоит, маска добавлялась не просто так.
+ENGINE_API float ps_r__reactive_foliage = 0.05f;
 
 // [DA_PORT] Reactivity from screen-space motion, against ghosting behind moving objects. The
 // scale is in reactive units per NDC unit of travel: at 8 a pixel crossing a hundredth of the
