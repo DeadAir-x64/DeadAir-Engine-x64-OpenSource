@@ -232,6 +232,8 @@ public:
     }
     adopt_compiler& _pass(LPCSTR vs, LPCSTR ps)
     {
+        // [DA_PORT] Разметка прохода: именно здесь компилируются программы, и именно здесь отказ не
+        // оставляет ни стека, ни сообщения. Печатаем ДО, иначе в интересующем случае не напечатаем.
         TryEndPass();
         C->r_Pass(vs, ps, true);
         return *this;
@@ -573,6 +575,9 @@ ShaderElement* CBlender_Compile::_lua_Compile(LPCSTR namesp, LPCSTR name)
 {
     using namespace luabind;
 
+    // [DA_PORT] Пошаговая разметка компиляции элемента. Отказ на этом пути не оставляет ни стека, ни
+    // сообщения (см. перехват ниже), поэтому единственный способ узнать место — отмечать шаги.
+
     ShaderElement E;
     SH = &E;
     RS.Invalidate();
@@ -585,7 +590,35 @@ ShaderElement* CBlender_Compile::_lua_Compile(LPCSTR namesp, LPCSTR name)
     const functor<void> element = (object)shader[name];
     bool bFirstPass = false;
     adopt_compiler ac = adopt_compiler(this, bFirstPass);
-    element(ac, t_0, t_1, t_d);
+
+    // [DA_PORT] Ошибка в скрипте шейдера больше не убивает игру молча.
+    //
+    // Скрипты исполняются через luabind, а он сообщает об ошибке C++-исключением. Здесь его не ловил
+    // никто, и непойманное исключение — это terminate: процесс исчезает БЕЗ стека, без сообщения и
+    // без единой строки в логе. Ровно так выглядел отказ, из-за которого не грузился уровень со
+    // «студнем»: последняя строка лога — имя шейдера, дальше тишина.
+    //
+    // Такой отказ обязан быть громким и переживаемым: шейдер одной аномалии не стоит целого уровня.
+    // Ловим, называем шейдер и элемент и продолжаем тем, что успело записаться, — материал будет
+    // выглядеть неверно, зато уровень загрузится и дефект станет видно, а не смертелен.
+    //
+    // ⚠️ Правка нужна ИМЕННО ЗДЕСЬ: у DX11 свой экземпляр этого файла, а Layers/xrRender/
+    // ResourceManager_Scripting.cpp в сборку R4 не входит вовсе.
+    try
+    {
+        element(ac, t_0, t_1, t_d);
+    }
+    // luabind::error наследует std::exception, поэтому отдельная ветка для него не нужна — и её
+    // тут не написать: имя error в этом окружении не разрешается в тип.
+    catch (const std::exception& e)
+    {
+        Msg("! [DA_PORT] шейдер [%s], элемент [%s]: ОШИБКА В СКРИПТЕ: %s", namesp, name, e.what());
+    }
+    catch (...)
+    {
+        Msg("! [DA_PORT] шейдер [%s], элемент [%s]: неизвестное исключение", namesp, name);
+    }
+
     r_End();
     ShaderElement* _r = RImplementation.Resources->_CreateElement(std::move(E));
     return _r;

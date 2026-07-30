@@ -147,12 +147,18 @@ void CBlender_Compile::r_Pass(LPCSTR _vs, LPCSTR _gs, LPCSTR _ps, bool bFog, BOO
     PassSET_LightFog(FALSE, bFog);
 
     // Create shaders
+    // [DA_PORT] Отметки по программам: отказ в сборке шейдера не оставляет ни стека, ни сообщения,
+    // поэтому единственный способ понять, какая из трёх программ его вызывает, — печатать до каждой.
+    Msg("*       [DA_PORT] сборка ps[%s]", _ps);
     SPS* ps = RImplementation.Resources->_CreatePS(_ps);
     u32 flags = 0;
     if (ps->constants.dx9compatibility)
         flags |= D3DCOMPILE_ENABLE_BACKWARDS_COMPATIBILITY;
+    Msg("*       [DA_PORT] сборка vs[%s]", _vs);
     SVS* vs = RImplementation.Resources->_CreateVS(_vs, flags);
+    Msg("*       [DA_PORT] сборка gs[%s]", _gs ? _gs : "null");
     SGS* gs = RImplementation.Resources->_CreateGS(_gs);
+    Msg("*       [DA_PORT] программы собраны");
     dest.ps = ps;
     dest.vs = vs;
     dest.gs = gs;

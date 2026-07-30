@@ -351,6 +351,23 @@ private:
     void LoadSWIs(CStreamReader* fs);
 #if RENDER != R_R2
     void Load3DFluid();
+
+    // [DA_PORT] Объёмы объёмного тумана течь не должны, а текли — по одному набору на каждую
+    // загрузку уровня. Load3DFluid() создаёт их через xr_new и вешает детьми к корневому визуалу
+    // сектора, но в Visuals (единственный список, который выгрузка обходит) они не попадают. А у
+    // корня сектора стоит bDontDelete = TRUE — его дети пришли по ID и принадлежат Visuals, — так
+    // что ни ~FHierrarhyVisual, ни Release() их не касаются. Владельца у объёмов не оставалось
+    // вовсе: замер показал ~740 неосвобождённых объектов D3D за цикл смены уровня.
+    //
+    // Держим их отдельно, вместе с родителем: при выгрузке объём надо сперва отцепить от children,
+    // иначе порядок разрушения перестаёт быть безразличным.
+    struct fluid_volume_owner
+    {
+        dxRender_Visual* parent;
+        dxRender_Visual* volume;
+    };
+    xr_vector<fluid_volume_owner> m_fluid_volumes;
+    void Unload3DFluid();
 #endif
 
 public:

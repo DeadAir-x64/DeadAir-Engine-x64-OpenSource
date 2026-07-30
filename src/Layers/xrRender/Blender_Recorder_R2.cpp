@@ -30,6 +30,10 @@ void CBlender_Compile::r_Pass(LPCSTR _vs, LPCSTR _ps, bool bFog, BOOL bZtest, BO
     if (GLAD_GL_ARB_separate_shader_objects || !dest.pp->pp)
 #endif
     {
+        // [DA_PORT] Разметка по программам. Именно ЭТА перегрузка r_Pass используется рендером DX11
+        // (в сборку R4 входят и Blender_Recorder_R2.cpp, и Blender_Recorder_R3.cpp; скрипты шейдеров
+        // зовут вариант без геометрической программы, то есть этот). Отказ на сборке программы не
+        // оставляет ни стека, ни сообщения, поэтому печатаем ДО каждого шага.
         dest.ps = RImplementation.Resources->_CreatePS(_ps);
         ctable.merge(&dest.ps->constants);
         u32 flags = 0;

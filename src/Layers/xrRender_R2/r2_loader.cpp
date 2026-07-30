@@ -18,6 +18,26 @@ extern ENGINE_API void da_upscaler_reset_history(pcstr why);
 
 namespace xray::render::RENDER_NAMESPACE
 {
+// [DA_PORT] Счётчик ссылок на устройство D3D — без слоя отладки DirectX.
+//
+// Каждый объект D3D держит ссылку на устройство, поэтому счётчик — это косвенная перепись живых
+// объектов. Замер показал 198 ссылок после одной загрузки уровня и 5806 после семи: около девятисот
+// объектов теряется на каждый переход, и держат они память драйвера, а не наши кучи (оттого обход
+// куч и показывал «живые стоят», пока закоммиченная память росла на 800 МБ за переход).
+//
+// Слой отладки (ID3D11Debug) перечислил бы их поимённо, но требует пакета Graphics Tools, которого
+// может не быть. Здесь достаточно печатать счётчик ПОСЛЕ КАЖДОГО ШАГА выгрузки: шаг, после которого
+// он не падает, и есть владелец. Чтение счётчика — это AddRef с немедленным Release.
+static ULONG da_device_refs()
+{
+    if (!HW.pDevice)
+        return 0;
+    HW.pDevice->AddRef();
+    return HW.pDevice->Release();
+}
+
+
+
 void CRender::level_Load(IReader* fs)
 {
     ZoneScoped;
@@ -25,6 +45,15 @@ void CRender::level_Load(IReader* fs)
     // [DA_PORT] История временных фильтров относится к прошлому уровню и переносить её некуда:
     // прошлый кадр показывает другое место, а векторы движения этого не описывают.
     ::da_upscaler_reset_history("level load");
+
+    // [DA_PORT] Отметки стадий загрузки уровня рендером.
+    //
+    // Поставлены потому, что падение на переходе не оставляло ни стека, ни следа: последней строкой
+    // в логе была отметка сброса истории выше, то есть САМОЕ НАЧАЛО level_Load, а дальше тишина.
+    // Штатные «phase time» печатаются по концу фазы, поэтому по ним видно лишь, что упало где-то
+    // внутри — но не где. Отметки дешёвые (строка в лог на стадию) и остаются в сборке: следующий
+    // такой отказ назовёт стадию сам, без ещё одного круга сборка-запуск-повтор.
+    Msg("* [DA_PORT] level_Load: начало | ссылок на устройство: %u", (u32)da_device_refs());
 
     R_ASSERT(g_pGameLevel);
     R_ASSERT(!b_loaded);
@@ -35,6 +64,7 @@ void CRender::level_Load(IReader* fs)
     IReader* chunk;
 
     // Shaders
+    Msg("* [DA_PORT] level_Load: шейдеры уровня | ссылок на устройство: %u", (u32)da_device_refs());
     g_pGamePersistent->LoadTitle("st_loading_shaders");
     {
         ZoneScopedN("Load shaders");
@@ -60,18 +90,25 @@ void CRender::level_Load(IReader* fs)
             }
             *delim = 0;
             xr_strcpy(n_tlist, delim + 1);
+            // [DA_PORT] Имя ПЕРЕД созданием, а не после. Создание шейдера уровня умеет уронить игру
+            // насмерть — без стека и без единого сообщения, — и тогда единственная зацепка это
+            // последняя напечатанная строка. Печатать после было бы бесполезно ровно в том случае,
+            // ради которого всё и заведено.
+            Msg("* [DA_PORT] level_Load: шейдер %u/%u [%s] / [%s]", i, count, n_sh, n_tlist);
             Shaders[i] = Resources->Create(n_sh, n_tlist);
         }
         chunk->close();
     }
 
     // Components
+    Msg("* [DA_PORT] level_Load: следы и детали | ссылок на устройство: %u", (u32)da_device_refs());
     Wallmarks = xr_new<CWallmarksEngine>();
     Details = xr_new<CDetailManager>();
 
     if (!GEnv.isDedicatedServer)
     {
         // VB,IB,SWI
+        Msg("* [DA_PORT] level_Load: геометрия | ссылок на устройство: %u", (u32)da_device_refs());
         g_pGamePersistent->LoadTitle("st_loading_geometry");
         {
             CStreamReader* geom = FS.rs_open("$level$", "level.geom");
@@ -90,17 +127,20 @@ void CRender::level_Load(IReader* fs)
         }
 
         // Visuals
+        Msg("* [DA_PORT] level_Load: визуалы | ссылок на устройство: %u", (u32)da_device_refs());
         g_pGamePersistent->LoadTitle("st_loading_spatial_db");
         chunk = fs->open_chunk(fsL_VISUALS);
         LoadVisuals(chunk);
         chunk->close();
 
         // Details
+        Msg("* [DA_PORT] level_Load: детальные объекты | ссылок на устройство: %u", (u32)da_device_refs());
         g_pGamePersistent->LoadTitle("st_loading_details");
         Details->Load();
     }
 
     // Sectors
+    Msg("* [DA_PORT] level_Load: секторы и порталы | ссылок на устройство: %u", (u32)da_device_refs());
     g_pGamePersistent->LoadTitle("st_loading_sectors_portals");
     LoadSectors(fs);
 
@@ -110,9 +150,11 @@ void CRender::level_Load(IReader* fs)
 #endif
 
     // HOM
+    Msg("* [DA_PORT] level_Load: HOM | ссылок на устройство: %u", (u32)da_device_refs());
     HOM.Load();
 
     // Lights
+    Msg("* [DA_PORT] level_Load: источники света | ссылок на устройство: %u", (u32)da_device_refs());
     g_pGamePersistent->LoadTitle("st_loading_lights");
     LoadLights(fs);
 
@@ -120,7 +162,34 @@ void CRender::level_Load(IReader* fs)
     g_pGamePersistent->LoadEnd();
 
     // signal loaded
+    Msg("* [DA_PORT] level_Load: готово | ссылок на устройство: %u", (u32)da_device_refs());
     b_loaded = TRUE;
+}
+
+
+// [DA_PORT] Освобождение объёмов объёмного тумана. Подробности — у m_fluid_volumes в r2.h.
+void CRender::Unload3DFluid()
+{
+#if defined(USE_DX11)
+    for (auto& it : m_fluid_volumes)
+    {
+        // Сперва отцепить от родителя. Корень сектора живёт с bDontDelete = TRUE и детей не трогает,
+        // но полагаться на это значит завязываться на порядок разрушения; отцепив, мы делаем правку
+        // верной независимо от того, кто кого удалит первым.
+        if (it.parent && it.parent->getType() == MT_HIERRARHY)
+        {
+            auto& ch = ((FHierrarhyVisual*)it.parent)->children;
+            ch.erase(std::remove(ch.begin(), ch.end(), it.volume), ch.end());
+        }
+        if (it.volume)
+        {
+            it.volume->Release();
+            dxRender_Visual* v = it.volume;
+            xr_delete(v);
+        }
+    }
+#endif
+    m_fluid_volumes.clear();
 }
 
 void CRender::level_Unload()
@@ -132,24 +201,34 @@ void CRender::level_Unload()
     if (!b_loaded)
         return;
 
+    // [DA_PORT] До всего остального: объёмы тумана висят детьми у корней секторов, и их надо
+    // снять раньше, чем начнут удаляться сами визуалы.
+    Unload3DFluid();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "объёмы тумана", (u32)da_device_refs());
+
     // HOM
     HOM.Unload();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "HOM", (u32)da_device_refs());
 
     //*** Details
     Details->Unload();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "детали", (u32)da_device_refs());
 
     //*** Sectors
     // 1.
     xr_delete(rmPortals);
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "порталы", (u32)da_device_refs());
     last_sector_id = IRender_Sector::INVALID_SECTOR_ID;
     Device.vCameraPositionSaved.set(0, 0, 0);
 
     // 2.
     cleanup_contexts();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "контексты", (u32)da_device_refs());
 
     //*** Lights
     // Glows.Unload			();
     Lights.Unload();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "свет", (u32)da_device_refs());
 
     //*** Visuals
     for (dxRender_Visual* visual : Visuals)
@@ -158,11 +237,13 @@ void CRender::level_Unload()
         xr_delete(visual);
     }
     Visuals.clear();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "визуалы", (u32)da_device_refs());
 
     //*** SWI
     for (auto& swi : SWIs)
         xr_free(swi.sw);
     SWIs.clear();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "SWI", (u32)da_device_refs());
 
     //*** VB/IB
     for (auto& indexBuffer : nVB)
@@ -188,6 +269,7 @@ void CRender::level_Unload()
         vertexBuffer.Release();
     }
     xIB.clear();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "буферы VB/IB", (u32)da_device_refs());
 
     nDC.clear();
     xDC.clear();
@@ -197,9 +279,12 @@ void CRender::level_Unload()
     //*** Components
     xr_delete(Details);
     xr_delete(Wallmarks);
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "детали и следы", (u32)da_device_refs());
 
     //*** Shaders
     Shaders.clear();
+    Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "шейдеры", (u32)da_device_refs());
+    Msg("* [DA_PORT] выгрузка завершена, ссылок на устройство: %u", (u32)da_device_refs());
     b_loaded = FALSE;
     if (ps_r__clear_models_on_unload)
     {
@@ -529,6 +614,8 @@ void CRender::Load3DFluid()
                 VERIFY(pRoot->getType() == MT_HIERRARHY);
 
                 ((FHierrarhyVisual*)pRoot)->children.push_back(pVolume);
+                // [DA_PORT] Запомнить владение: см. m_fluid_volumes в r2.h.
+                m_fluid_volumes.push_back({ pRoot, pVolume });
             }
         }
 

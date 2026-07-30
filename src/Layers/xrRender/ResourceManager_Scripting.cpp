@@ -437,7 +437,40 @@ ShaderElement* CBlender_Compile::_lua_Compile(LPCSTR namesp, LPCSTR name)
     const object shader = RImplementation.Resources->ScriptEngine.name_space(namesp);
     const functor<void> element = (object)shader[name];
     adopt_compiler ac = adopt_compiler(this);
-    element(ac, t_0, t_1, t_d);
+
+    // [DA_PORT] Ошибка в скрипте шейдера больше не убивает игру молча.
+    //
+    // Скрипты исполняются через luabind, а он сообщает об ошибке C++-исключением. Здесь его не ловил
+    // никто, и непойманное исключение — это terminate: процесс исчезает БЕЗ стека, без сообщения и
+    // без строки в логе. Именно так выглядел отказ, из-за которого не грузился уровень со «студнем»:
+    // последняя строка лога — имя шейдера, дальше тишина, и ни одной зацепки.
+    //
+    // Такой отказ обязан быть громким и переживаемым: шейдер одной аномалии не стоит целого уровня.
+    // Ловим, называем шейдер и элемент, и продолжаем тем, что успело записаться, — картинка на этом
+    // материале будет неверной, зато уровень загрузится и дефект станет видно, а не смертелен.
+    try
+    {
+        element(ac, t_0, t_1, t_d);
+    }
+    catch (const luabind::error& e)
+    {
+        Msg("! [DA_PORT] шейдер [%s], элемент [%s]: ОШИБКА В СКРИПТЕ", namesp, name);
+        if (lua_State* L = e.state())
+        {
+            if (lua_isstring(L, -1))
+                Msg("! [DA_PORT]   %s", lua_tostring(L, -1));
+            lua_settop(L, 0);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        Msg("! [DA_PORT] шейдер [%s], элемент [%s]: исключение: %s", namesp, name, e.what());
+    }
+    catch (...)
+    {
+        Msg("! [DA_PORT] шейдер [%s], элемент [%s]: неизвестное исключение", namesp, name);
+    }
+
     r_End();
     ShaderElement* _r = RImplementation.Resources->_CreateElement(std::move(E));
     return _r;
