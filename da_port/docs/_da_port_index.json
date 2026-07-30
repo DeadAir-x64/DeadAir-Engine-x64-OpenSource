@@ -493,67 +493,75 @@
 "Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:"
 ],
 [
-674,
+664,
+"Размер теневой карты - единственное в наборе, что не применяется до перезапуска"
+],
+[
+673,
+"Msg(\"~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры\","
+],
+[
+686,
 "Note the first entry, and that it is 0 rather than a count: 0 means \"no budget at all\","
 ],
 [
-692,
+704,
 "r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно."
 ],
 [
-865,
+877,
 "Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -"
 ],
 [
-899,
+911,
 "Applies one of the grading profiles. Values mirror the .ltx profiles shipped in"
 ],
 [
-1190,
+1202,
 "Geometry cut-off, ported from the author's build. Defaults match his: both levels on"
 ],
 [
-1192,
+1204,
 "Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are"
 ],
 [
-1197,
+1209,
 "Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против"
 ],
 [
-1203,
+1215,
 "GPU time per render phase, N frames into the log. See da_gpu_timer.h."
 ],
 [
-1215,
+1227,
 "CMD3(CCC_PerfPreset, \"r__perf_preset\", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]"
 ],
 [
-1217,
+1229,
 "CMD3(CCC_Token, \"r__light_shadow_budget\", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]"
 ],
 [
-1285,
+1297,
 "The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the"
 ],
 [
-1349,
+1361,
 "Un-commented: this drives r_dtex_range, the distance over which the detail texture"
 ],
 [
-1410,
+1422,
 "CMD3(CCC_MSAA, \"r3_msaa\", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list"
 ],
 [
-1441,
+1453,
 "Dead Air compatibility stub commands"
 ],
 [
-1467,
+1479,
 "CMD4(CCC_Float, \"r2_vibrance_val\",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate"
 ],
 [
-1468,
+1480,
 "CMD3(CCC_GradingPreset, \"r__grading_preset\", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]"
 ]
 ],

@@ -362,7 +362,7 @@
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_perf_preset</text>
 		</cap_perf_preset>
 		<list_perf_preset x="360" y="18" width="150" height="21" list_length="4">
-			<options_item entry="r__perf_preset" group="mm_opt_video" depend="runtime"/>
+			<options_item entry="r__perf_preset" group="mm_opt_video" depend="vid"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
 				<d r="125" g="125" b="125"/>
@@ -446,14 +446,14 @@
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_detail_radius</text>
 		</cap_detail_radius>
 		<track_detail_radius x="360" y="314" width="135" height="21" step="10" is_integer="1">
-			<options_item entry="r__detail_radius" group="mm_opt_video" depend="restart"/>
+			<options_item entry="r__detail_radius" group="mm_opt_video" depend="vid"/>
 		</track_detail_radius>
 
 		<cap_detail_density x="215" y="348" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_detail_density</text>
 		</cap_detail_density>
 		<track_detail_density x="360" y="346" width="135" height="21" step="0.1" invert="1">
-			<options_item entry="r__detail_density" group="mm_opt_video" depend="restart"/>
+			<options_item entry="r__detail_density" group="mm_opt_video" depend="vid"/>
 		</track_detail_density>
 
 		<cap_grp_impact_low x="215" y="386" width="330" height="22">
@@ -471,7 +471,7 @@
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_detail_height</text>
 		</cap_detail_height>
 		<track_detail_height x="360" y="450" width="135" height="21" step="0.1">
-			<options_item entry="r__detail_height" group="mm_opt_video"/>
+			<options_item entry="r__detail_height" group="mm_opt_video" depend="vid"/>
 		</track_detail_height>
 
     		<cap_sun_far_val x="500" y="116" width="60" height="21">

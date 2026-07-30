@@ -660,6 +660,18 @@ public:
 
         xr_sprintf(cmd, "r__light_shadow_budget %s", p.shadow_lights);   Console->Execute(cmd);
         xr_sprintf(cmd, "r2_sun_far %s", p.sun_far);                     Console->Execute(cmd);
+
+        // [DA_PORT] Размер теневой карты - единственное в наборе, что не применяется до перезапуска
+        // ИГРЫ, и не по недосмотру: он попадает в шейдеры как дефайн (r4_shaders.cpp, c_smap), то
+        // есть меняет их сборку. Сброс устройства пересоздаёт цели рендера, но шейдеры берутся из
+        // кэша - получились бы цели одного размера и шейдеры под другой, а это тихое расхождение,
+        // которое проявится кривыми тенями, а не сообщением.
+        //
+        // Поэтому строка остаётся, но о ней говорится вслух: остальное из набора применится сразу,
+        // это - со следующего запуска.
+        if (ps_r2_smapsize != (u32)atoi(p.smap))
+            Msg("~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры",
+                p.smap);
         xr_sprintf(cmd, "r2_smap_size %s", p.smap);                      Console->Execute(cmd);
         xr_sprintf(cmd, "r__optimize_static_geom %s", p.opt_static);     Console->Execute(cmd);
         xr_sprintf(cmd, "r__optimize_dynamic_geom %s", p.opt_dyn);       Console->Execute(cmd);
