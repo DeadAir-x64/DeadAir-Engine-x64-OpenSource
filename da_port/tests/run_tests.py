@@ -208,6 +208,62 @@ def check_options():
     return not dead
 
 
+# ---------------------------------------------------------------------------
+# Проверка: разметка интерфейса для НЕширокоформатных экранов
+# ---------------------------------------------------------------------------
+def check_ui_xml():
+    """У каждого `*_16.xml` обязан быть близнец без суффикса, и они обязаны совпадать.
+
+    Движок выбирает файл по отношению сторон (`UICore::get_xml_name`) и запасного варианта не
+    имеет: на 4:3 и 5:4 он возьмёт файл без `_16`, каким бы тот ни был. Dead Air поставляет только
+    широкоформатную разметку настроек, поэтому там подставлялась стоковая разметка Call of
+    Chernobyl — ни одного нужного узла, настройки открывались пустыми, а `combo_msaa:SetCurrentID(0)`
+    ронял игру на пустом списке. Разрешение 4:3 есть в списке режимов любого монитора, так что это
+    не про редкое железо: достаточно понизить разрешение ради кадров.
+
+    Заодно сверяется копия в репозитории (`da_gamedata`) с той, что лежит в игре. Расхождение уже
+    было: игровая ушла вперёд на 543 строки, и релиз, собранный из репозитория, увёз бы старое меню.
+    """
+    game_ui = os.path.join(GAME, 'gamedata', 'configs', 'ui')
+    repo_ui = os.path.join(REPO, 'da_gamedata', 'configs', 'ui')
+    if not os.path.isdir(game_ui):
+        report('ui_xml', True, 'пропущено: нет configs/ui')
+        return True
+
+    def content(path):
+        """Содержимое без оглядки на переводы строк.
+
+        Сравнивать сырые байты здесь нельзя: в .gitattributes стоит `* text=auto`, поэтому копия в
+        репозитории после выгрузки на Windows окажется с CRLF, а копия в игре так и останется с LF.
+        Побайтовая сверка провалилась бы на свежем клоне, ничего не сообщив о настоящем расхождении.
+        """
+        return open(path, 'rb').read().replace(b'\r\n', b'\n')
+
+    problems = []
+    pairs = 0
+    for name in sorted(os.listdir(game_ui)):
+        if not name.endswith('_16.xml'):
+            continue
+        pairs += 1
+        twin = name[:-len('_16.xml')] + '.xml'
+        wide = os.path.join(game_ui, name)
+        narrow = os.path.join(game_ui, twin)
+        if not os.path.exists(narrow):
+            problems.append('%s есть, а %s нет — на 4:3 движок возьмёт чужую разметку' % (name, twin))
+            continue
+        if content(wide) != content(narrow):
+            problems.append('%s и %s разошлись — правку надо вносить в оба' % (name, twin))
+        for fn in (name, twin):
+            in_repo = os.path.join(repo_ui, fn)
+            if os.path.exists(in_repo) and content(in_repo) != content(os.path.join(game_ui, fn)):
+                problems.append('%s в da_gamedata не совпадает с игровым' % fn)
+
+    for p in problems:
+        print('         %s' % p)
+    report('ui_xml', not problems, 'пар: %d' % pairs)
+    return not problems
+
+
 def load_baseline(name):
     path = os.path.join(TESTS, 'lint', name)
     if not os.path.exists(path):
@@ -234,6 +290,7 @@ def main():
     check_hygiene()
     check_engine_calls()
     check_options()
+    check_ui_xml()
 
     if not ensure_luajit():
         print('  ПРОВАЛ luajit                       не собран, проверки на Lua пропущены')

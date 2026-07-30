@@ -206,13 +206,38 @@ LPCSTR CUIComboBox::GetTextOf(int index)
     return m_list_box.GetText(index);
 }
 
+// [DA_PORT] Пустой список больше не роняет игру.
+//
+// Выбор по индексу здесь ничем не проверялся: SetSelectedIDX на пустом списке (или с индексом вне
+// диапазона) не выбирает ничего, GetSelectedItem возвращает пустоту, и следующая же строка её
+// разыменовывает. Падение без единого сообщения, потому что это обращение по пустому указателю, а
+// не ассерт.
+//
+// Дотянуться до этого просто. Скрипты Dead Air зовут SetCurrentID у списков напрямую
+// (ui_mm_opt_video.script -> combo_msaa:SetCurrentID(0)), а список может оказаться пустым, если его
+// узла нет в загруженной разметке - ровно то, что происходит на НЕширокоформатном экране, где
+// движок берёт ui_mm_opt.xml вместо нашего ui_mm_opt_16.xml. Сюда же ведёт SetItemToken: при
+// незнакомом значении GetIdxByTAG отдаёт -1, и это тот же путь.
+//
+// Молча ничего не делать тоже нельзя - тогда «настройка не применилась» останется без объяснения,
+// а причина у неё всегда одна и та же (разметка), и назвать её надо сразу.
 void CUIComboBox::SetItemIDX(int idx)
 {
     m_list_box.SetSelectedIDX(idx);
     CUIListBoxItem* itm = m_list_box.GetSelectedItem();
+    if (!itm)
+    {
+        Msg("! [DA_PORT] список [%s]: нельзя выбрать пункт %d, в списке %u пунктов "
+            "(узел разметки не загружен?)",
+            WindowName().c_str(), idx, m_list_box.GetSize());
+        return;
+    }
     m_itoken_id = (int)(__int64)itm->GetData();
 
-    m_text.SetText(m_list_box.GetSelectedText());
+    // Текст выбранного пункта берётся из того же выбора, но своей проверки тут не миновать:
+    // GetSelectedText возвращает пустой указатель тем же способом, а SetText его не ждёт.
+    cpcstr selected_text = m_list_box.GetSelectedText();
+    m_text.SetText(selected_text ? selected_text : "");
 
     OnChangedOptValue();
 }
