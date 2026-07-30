@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1155 правк(и) в 236 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1158 правк(и) в 236 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -943,7 +943,7 @@
 
 ## Игровая логика
 
-*72 файл(ов), 346 правк(и)*
+*72 файл(ов), 349 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -1136,6 +1136,9 @@
 - **:1058** — Equipped gear counts at 30% of its weight, as in Dead Air.
 - **:1266** — Dead Air: an outfit with backpack_avaliable=false (scientific suit) forbids a backpack.
 - **:1289** — Dead Air backpacks are artefact-class (belt=true from af_base) but must NEVER live on the
+- **:1531** — Сообщение осталось только на ОТКАЗ вернуть слот — молчание вместо шума.
+- **:1546** — Msg("~ [DA_PORT] слот %d не вернулся после блокировки: предмет %s, слот %s", PrevActiveSlot,
+- **:1567** — Убранное сообщение: см. TryActivatePrevSlot. Само по себе убирание оружия под
 
 ### `xrGame/InventoryOwner.cpp`
 

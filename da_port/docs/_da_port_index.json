@@ -3823,6 +3823,18 @@
 [
 1289,
 "Dead Air backpacks are artefact-class (belt=true from af_base) but must NEVER live on the"
+],
+[
+1531,
+"Сообщение осталось только на ОТКАЗ вернуть слот — молчание вместо шума."
+],
+[
+1546,
+"Msg(\"~ [DA_PORT] слот %d не вернулся после блокировки: предмет %s, слот %s\", PrevActiveSlot,"
+],
+[
+1567,
+"Убранное сообщение: см. TryActivatePrevSlot. Само по себе убирание оружия под"
 ]
 ],
 "xray-16/src/xrGame/InventoryOwner.cpp": [

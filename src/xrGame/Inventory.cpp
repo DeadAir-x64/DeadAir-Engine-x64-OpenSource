@@ -1525,11 +1525,28 @@ void CInventory::TryActivatePrevSlot()
         PIItem prev_active_item = ItemFromSlot(PrevActiveSlot);
         if (prev_active_item && !IsSlotBlocked(prev_active_item) && m_slots[PrevActiveSlot].CanBeActivated())
         {
-#ifndef MASTER_GOLD
-            Msg("Set slots blocked: activating prev slot [%d], Frame[%d]", PrevActiveSlot, Device.dwFrame);
-#endif // #ifndef MASTER_GOLD
             Activate(PrevActiveSlot);
             SetPrevActiveSlot(NO_ACTIVE_SLOT);
+        }
+        // [DA_PORT] Сообщение осталось только на ОТКАЗ вернуть слот — молчание вместо шума.
+        //
+        // Здесь оружие убирается на время броска гранаты и возвращается после. Обе стороны раньше
+        // печатались всегда: полсотни строк за сессию о том, что штатное действие произошло штатно.
+        // Полезен же обратный случай — когда вернуть не удалось: тогда игрок остаётся с пустыми
+        // руками и никакой строки об этом не было.
+        //
+        // Печатаем один раз на слот: попытка возврата идёт каждый кадр, пока блокировка снята, и без
+        // этого условия отказ залил бы лог быстрее, чем прежний шум.
+        else
+        {
+            static u16 reported_slot = NO_ACTIVE_SLOT;
+            if (reported_slot != PrevActiveSlot)
+            {
+                reported_slot = PrevActiveSlot;
+                Msg("~ [DA_PORT] слот %d не вернулся после блокировки: предмет %s, слот %s", PrevActiveSlot,
+                    prev_active_item ? "на месте" : "ПРОПАЛ",
+                    (prev_active_item && IsSlotBlocked(prev_active_item)) ? "заблокирован" : "не активируется");
+            }
         }
     }
 }
@@ -1547,9 +1564,8 @@ void CInventory::TryDeactivateActiveSlot()
 
     if (active_item && (IsSlotBlocked(active_item) || !m_slots[ActiveSlot].CanBeActivated()))
     {
-#ifndef MASTER_GOLD
-        Msg("Set slots blocked: activating slot [-1], Frame[%d]", Device.dwFrame);
-#endif // #ifndef MASTER_GOLD
+        // [DA_PORT] Убранное сообщение: см. TryActivatePrevSlot. Само по себе убирание оружия под
+        // бросок гранаты — штатное действие, о котором незачем рассказывать полсотни раз за сессию.
         ItemFromSlot(ActiveSlot)->DiscardState();
         Activate(NO_ACTIVE_SLOT);
         SetPrevActiveSlot(ActiveSlot);
