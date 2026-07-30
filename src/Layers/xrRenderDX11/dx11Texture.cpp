@@ -132,7 +132,36 @@ ID3DBaseTexture* CRender::texture_load(LPCSTR fRName, u32& ret_msize)
 
             if (!exist)
             {
-                Msg("! Can't find texture '%s'", fname);
+                // [DA_PORT] Об одной и той же пропаже сообщаем ОДИН раз за сеанс.
+                //
+                // Текстуры грузятся по требованию и не по одному разу: пятьдесят строк в логе — это
+                // девять кадров одной анимированной последовательности (water\water_pool1_000…008),
+                // которых в данных мода нет, помноженные на заходы на уровень. Повторы не добавляют
+                // ничего: имя то же, причина та же, а настоящие пропажи тонут среди них.
+                //
+                // Сообщение остаётся ошибкой по существу: текстуры действительно нет, и на экране
+                // будет заглушка. Меняется только количество.
+                // Список короткий по природе - это разные ОТСУТСТВУЮЩИЕ имена, их единицы, - поэтому
+                // обычный вектор с перебором, а не хеш-таблица: меньше кода и никаких требований к
+                // хешированию shared_str.
+                static Lock reported_lock;
+                static xr_vector<shared_str> reported;
+
+                bool first_time = false;
+                {
+                    reported_lock.Enter();
+                    const shared_str name(fname);
+                    if (std::find(reported.begin(), reported.end(), name) == reported.end())
+                    {
+                        reported.push_back(name);
+                        first_time = true;
+                    }
+                    reported_lock.Leave();
+                }
+
+                if (first_time)
+                    Msg("! Can't find texture '%s'", fname);
+
                 if (!FS.exist(fn, "$game_textures$", "ed\\ed_not_existing_texture", ".dds"))
                     return nullptr;
             }

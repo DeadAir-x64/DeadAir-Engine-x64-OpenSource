@@ -185,6 +185,14 @@
 [
 106,
 "shadow_world пропускаем молча: этот рендер его не реализует ПО ЗАМЫСЛУ —"
+],
+[
+126,
+"Это не ошибка, и знак «!» здесь вводил в заблуждение."
+],
+[
+136,
+"Msg(\"~ [DA_PORT] шейдер '%s': описание версии %u при текущей %u - читается как есть\","
 ]
 ],
 "xray-16/src/Layers/xrRender/ResourceManager_Scripting.cpp": [
@@ -849,6 +857,12 @@
 [
 559,
 "И собственное представление — см. пояснение в начале функции. Обнуляем в любом"
+]
+],
+"xray-16/src/Layers/xrRenderDX11/dx11Texture.cpp": [
+[
+135,
+"Об одной и той же пропаже сообщаем ОДИН раз за сеанс."
 ]
 ],
 "xray-16/src/Layers/xrRenderPC_R4/da_dlss.cpp": [
@@ -3919,6 +3933,16 @@
 [
 444,
 "Msg(\"! [DA_PORT] attachable_hud_item::anim_play: no motion for alias [%s] in model [%s], skipping\","
+]
+],
+"xray-16/src/xrGame/RegistryFuncs.cpp": [
+[
+15,
+"Отсутствие ключа — норма, а не ошибка, и печаталась она четыре раза за запуск."
+],
+[
+27,
+"Msg(\"~ [DA_PORT] розничный STALKER не установлен (%s) - профиль сетевой игры не читается, \""
 ]
 ],
 "xray-16/src/xrGame/ScriptXMLInit.cpp": [

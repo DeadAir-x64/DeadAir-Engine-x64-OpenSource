@@ -123,9 +123,18 @@ void CResourceManager::OnDeviceCreate(IReader* F)
             if (IBlender* B = IBlender::Create(desc.CLS))
             {
 #ifndef MASTER_GOLD
+                // [DA_PORT] Это не ошибка, и знак «!» здесь вводил в заблуждение.
+                //
+                // Описание блендера в shader.xr сохранено более старой версией движка, чем нынешняя.
+                // Загрузка это УЧИТЫВАЕТ: строкой ниже версия передаётся в B->Load, и блендер читает
+                // ровно тот формат, в котором записан. То есть сообщение говорит «данные старее
+                // кода», а не «что-то сломалось», и для мода 2018 года это норма по определению.
+                //
+                // Девять таких строк подряд в начале лога выглядят как девять поломок рендера.
                 if (B->getDescription().version != desc.version)
                 {
-                    Msg("! Version conflict in shader '%s'", desc.cName);
+                    Msg("~ [DA_PORT] шейдер '%s': описание версии %u при текущей %u - читается как есть",
+                        desc.cName, desc.version, B->getDescription().version);
                 }
 #endif
                 chunk->seek(0);
