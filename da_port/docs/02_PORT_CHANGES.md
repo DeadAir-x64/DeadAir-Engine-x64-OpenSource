@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1095 правк(и) в 230 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1098 правк(и) в 230 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -680,7 +680,7 @@
 
 ## Движок и устройство
 
-*20 файл(ов), 153 правк(и)*
+*20 файл(ов), 156 правк(и)*
 
 
 ### `xrEngine/CameraManager.cpp`
@@ -741,8 +741,11 @@
 ### `xrEngine/Device_mode.cpp`
 
 - **:6** — extern ENGINE_API int ps_r__render_scale; // [DA_PORT] defined in xr_ioc_cmd.cpp
-- **:243** — Derive the internal scene resolution from "r__render_scale" (a percentage of the output).
-- **:264** — Msg("* [DA_PORT] render scale %d%%: scene renders at %ux%u, presented at %ux%u", scale, dwRenderWidth,
+- **:150** — Порядок здесь был перевёрнут, и из-за этого монопольный полный экран включался
+- **:192** — Принимаем то, что монитор реально показал. Драйвер вправе дать не тот режим, о
+- **:201** — Msg("~ [DA_PORT] полный экран: просили %ux%u, монитор показывает %dx%d - берём второе",
+- **:295** — Derive the internal scene resolution from "r__render_scale" (a percentage of the output).
+- **:316** — Msg("* [DA_PORT] render scale %d%%: scene renders at %ux%u, presented at %ux%u", scale, dwRenderWidth,
 
 ### `xrEngine/Engine.cpp`
 

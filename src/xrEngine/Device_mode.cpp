@@ -147,15 +147,67 @@ void CRenderDevice::UpdateWindowProps()
     }
     else if (b_is_Ready)
     {
+        // [DA_PORT] Порядок здесь был перевёрнут, и из-за этого монопольный полный экран включался
+        // «наполовину»: картинка занимала часть экрана, а лечилось это переоткрытием окна.
+        //
+        // Режим сначала включали, и только ПОТОМ говорили, какой он должен быть. А
+        // SDL_SetWindowDisplayMode, по своему описанию, задаёт режим, «который будет использован,
+        // когда окно станет полноэкранным», то есть влияет на СЛЕДУЮЩИЙ переход, а не на текущий.
+        // Переход при этом брал режим, оставшийся от прошлого раза. Отсюда и лечение переоткрытием:
+        // второй переход как раз применял то, что задали при первом.
+        //
+        // Хуже того, само включение могло не произойти: SDL_SetWindowFullscreen выходит сразу, если
+        // флаг полноэкранности уже такой, как просят. Значит из «полного экрана в окне» в монопольный
+        // окно не переходило вовсе, а из монопольного в монопольный с ДРУГИМ разрешением - тем более.
+        //
+        // Теперь: сперва режим, потом переход, и если окно уже в каком-то полноэкранном состоянии -
+        // сначала выйти из него, чтобы переход состоялся по-настоящему.
         SDL_SetWindowResizable(m_sdlWnd, SDL_FALSE);
-        SDL_SetWindowFullscreen(m_sdlWnd, SDL_WINDOW_FULLSCREEN);
 
-        SDL_DisplayMode mode;
-        SDL_GetWindowDisplayMode(m_sdlWnd, &mode);
-        mode.w = psDeviceMode.Width;
-        mode.h = psDeviceMode.Height;
-        mode.refresh_rate = psDeviceMode.RefreshRate;
-        SDL_SetWindowDisplayMode(m_sdlWnd, &mode);
+        SDL_DisplayMode want;
+        SDL_GetWindowDisplayMode(m_sdlWnd, &want);
+        want.w = psDeviceMode.Width;
+        want.h = psDeviceMode.Height;
+        want.refresh_rate = psDeviceMode.RefreshRate;
+        SDL_SetWindowDisplayMode(m_sdlWnd, &want);
+
+        // Выходим из полноэкранного только если нужно: лишний выход-вход - это лишняя смена режима
+        // монитора, то есть чёрный экран на секунду. Не нужно, когда мы уже монопольные и монитор уже
+        // показывает ровно то, что просят.
+        const Uint32 flags = SDL_GetWindowFlags(m_sdlWnd);
+        const bool exclusive_now = (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN;
+
+        SDL_DisplayMode shown;
+        const bool mode_matches = exclusive_now && SDL_GetCurrentDisplayMode(psDeviceMode.Monitor, &shown) == 0 &&
+            shown.w == want.w && shown.h == want.h &&
+            (want.refresh_rate == 0 || shown.refresh_rate == want.refresh_rate);
+
+        if (!mode_matches)
+        {
+            if (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) // ловит оба вида полноэкранности
+                SDL_SetWindowFullscreen(m_sdlWnd, SDL_DISABLE);
+            SDL_SetWindowFullscreen(m_sdlWnd, SDL_WINDOW_FULLSCREEN);
+        }
+
+        // [DA_PORT] Принимаем то, что монитор реально показал. Драйвер вправе дать не тот режим, о
+        // котором просили, а дальше по psDeviceMode создаётся цепочка буферов (CHW::Reset берёт
+        // Device.dwWidth) - и если они разойдутся, кадр будет растянут или уложен в угол. Пусть
+        // лучше настройки покажут правду, чем картинка будет неправильной.
+        SDL_DisplayMode actual;
+        if (SDL_GetCurrentDisplayMode(psDeviceMode.Monitor, &actual) == 0)
+        {
+            if (u32(actual.w) != psDeviceMode.Width || u32(actual.h) != psDeviceMode.Height)
+            {
+                Msg("~ [DA_PORT] полный экран: просили %ux%u, монитор показывает %dx%d - берём второе",
+                    psDeviceMode.Width, psDeviceMode.Height, actual.w, actual.h);
+                psDeviceMode.Width = actual.w;
+                psDeviceMode.Height = actual.h;
+                psDeviceMode.RefreshRate = actual.refresh_rate;
+                dwWidth = psDeviceMode.Width;
+                dwHeight = psDeviceMode.Height;
+                UpdateRenderResolution();
+            }
+        }
     }
 
     SDL_PumpEvents();
