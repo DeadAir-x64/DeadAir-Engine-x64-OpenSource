@@ -505,6 +505,73 @@ void CHW::DestroyDevice()
     _RELEASE(pDevice3);
 #endif
     _SHOW_REF("refCount:pDevice:", pDevice);
+
+    // [DA_PORT] Поимённый список живых объектов D3D при выходе.
+    //
+    // Строка выше печатает ЧИСЛО неосвобождённых ссылок, и оно оказалось говорящим: 198 после одной
+    // загрузки уровня и 5806 после семи, то есть около девятисот объектов теряется на каждый переход.
+    // Держат они память драйвера, а не наши кучи, поэтому ни обход куч, ни HeapCompact их не видят —
+    // мы честно мерили «живые аллокации» и не находили ничего, пока закоммиченная память росла на
+    // 800 МБ за переход.
+    //
+    // Само число не говорит, ЧТО именно течёт, а перебирать подозреваемых по коду дорого. DirectX
+    // умеет перечислить живые объекты сам, с типами и счётчиками ссылок, — это и есть кратчайший путь
+    // к имени. Требует слоя отладки (r__d3d_debug 1) и потому ничего не стоит в обычной игре.
+    if (ps_r__d3d_debug)
+    {
+        ID3D11Debug* debug = nullptr;
+        if (SUCCEEDED(pDevice->QueryInterface(__uuidof(ID3D11Debug), (void**)&debug)) && debug)
+        {
+            Msg("* [DA_PORT] живые объекты D3D на выходе:");
+
+            // [DA_PORT] Снять потолок очереди ДО переписи. По умолчанию слой отладки хранит 1024
+            // сообщения, и первая перепись пришла ровно на 1024 строки — то есть была обрезана, а
+            // счётчик ссылок при этом показывал пятнадцать тысяч. Обрезанная перепись хуже, чем
+            // никакой: по ней легко посчитать доли типов и принять верхушку за целое.
+            {
+                ID3D11InfoQueue* iq_limit = nullptr;
+                if (SUCCEEDED(pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&iq_limit)) && iq_limit)
+                {
+                    iq_limit->ClearStoredMessages();
+                    iq_limit->SetMessageCountLimit(0); // 0 = без ограничения
+                    iq_limit->Release();
+                }
+            }
+
+            // Только D3D11_RLDO_DETAIL: IGNORE_INTERNAL объявлен не во всех заголовках MinGW.
+            debug->ReportLiveDeviceObjects(D3D11_RLDO_DETAIL);
+            debug->Release();
+
+            // [DA_PORT] Перепись уходит в очередь сообщений слоя отладки, а не в наш лог. Сливаем её
+            // здесь же, БЕЗ обычного потолка в 200 строк: тот поставлен против ежекадрового спама, а
+            // это единственная за сеанс перепись, и обрезать её нельзя — интересен как раз хвост.
+            {
+                ID3D11InfoQueue* iq = nullptr;
+                if (SUCCEEDED(pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&iq)) && iq)
+                {
+                    const UINT64 count = iq->GetNumStoredMessages();
+                    Msg("* [DA_PORT] строк переписи: %u", (u32)count);
+                    for (UINT64 i = 0; i < count; ++i)
+                    {
+                        SIZE_T len = 0;
+                        if (FAILED(iq->GetMessage(i, nullptr, &len)) || !len)
+                            continue;
+                        auto* msg = static_cast<D3D11_MESSAGE*>(xr_malloc(len));
+                        if (SUCCEEDED(iq->GetMessage(i, msg, &len)) && msg->pDescription)
+                            Msg("~ [D3D11-LIVE] %s", msg->pDescription);
+                        xr_free(msg);
+                    }
+                    iq->ClearStoredMessages();
+                    iq->Release();
+                }
+                else
+                    Msg("! [DA_PORT] очередь сообщений недоступна, перепись ушла в отладочный вывод");
+            }
+        }
+        else
+            Msg("! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен");
+    }
+
     _RELEASE(pDevice);
     DestroyD3D();
 }
