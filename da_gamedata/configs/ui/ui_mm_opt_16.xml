@@ -1,13 +1,9 @@
 ﻿<w>
-	<!-- [DA_PORT] Эта разметка живёт в ДВУХ одинаковых копиях, и это не дубликат по недосмотру.
-	     ui_mm_opt_16.xml — берётся на широкоформатном экране;
-	     ui_mm_opt.xml    — на всех остальных (4:3, 5:4). Выбор делает UICore::get_xml_name по
-	                        отношению сторон, запасного варианта у него нет.
-	     Dead Air поставляет ТОЛЬКО широкоформатную, поэтому на 4:3 движок брал стоковую разметку
-	     Call of Chernobyl: ни одного нужного узла, настройки открывались пустыми, а вызов
-	     combo_msaa:SetCurrentID(0) из ui_mm_opt_main.script ронял игру на пустом списке.
-	     Разрешение 4:3 лежит в списке режимов любого монитора, так что дело не в редком железе.
-	     ⚠️ Правку вносить в ОБА файла. Их совпадение проверяет тест ui_xml (da_port/tests). -->
+	<!-- [DA_PORT] Настоящая разметка настроек Dead Air лежит ТОЛЬКО здесь, в файле _16.
+	     Файл без суффикса, который движок брал бы на экране 4:3 или 5:4, остался от основы Call of
+	     Chernobyl: там нет ни одной строки мода. Поэтому порт берёт широкоформатную разметку и на
+	     узком экране - см. UICore::get_xml_name и команду ui_widescreen_layout.
+	     Держать вторую копию под именем без суффикса не нужно: одинаковые файлы разъезжаются молча. -->
 	<background x="0" y="0" width="1024" height="768" stretch="1">
 			<texture x="0" y="0" width="1920" height="1080">ui\ui_static_mm_back_00</texture>
 	</background>
@@ -309,12 +305,22 @@
 		</cap_fov_value>
 		<!--
 		-->
-		<cap_fullscreen x="215" y="152" width="90" height="21">
-			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_fullscreen</text>
-		</cap_fullscreen>
-		<check_fullscreen x="360" y="150" width="30" height="21">
-            <options_item entry="rs_fullscreen" group="mm_opt_video" depend="vid"/>
-		</check_fullscreen>
+		<!-- [DA_PORT] Три режима окна вместо выключателя «полный экран».
+		     Выключатель отвечал на вопрос «монопольный полный экран или нет», а второй ответ означал
+		     окно без рамки — то есть выбор между тремя разными вещами прятался за двумя состояниями.
+		     Теперь список: в окне / полноэкранный в окне / полноэкранный. Список берётся из самой
+		     команды vid_window_mode, поэтому подписи и порядок правятся в одном месте, в движке. -->
+		<cap_window_mode x="215" y="152" width="90" height="21">
+			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_window_mode</text>
+		</cap_window_mode>
+		<list_window_mode x="360" y="150" width="150" height="21" list_length="3">
+			<options_item entry="vid_window_mode" group="mm_opt_video" depend="vid"/>
+			<text_color>
+				<e r="220" g="220" b="220"/>
+				<d r="125" g="125" b="125"/>
+			</text_color>
+			<list_font_s r="240" g="240" b="240"/>
+		</list_window_mode>
 		
 		
 		<btn_advanced x="245" y="616" width="96" height="24">

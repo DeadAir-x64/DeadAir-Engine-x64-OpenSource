@@ -105,6 +105,31 @@
 	<string id="ui_mm_upscaler_xess">
 		<text>XeSS</text>
 	</string>
+	<string id="ui_mm_upscaler_dlss">
+		<text>DLSS</text>
+	</string>
+	<string id="ui_mm_dlss_off">
+		<text>Off</text>
+	</string>
+	<string id="ui_mm_dlss_ultra_quality">
+		<text>Ultra quality</text>
+	</string>
+	<string id="ui_mm_dlss_quality">
+		<text>Quality</text>
+	</string>
+	<string id="ui_mm_dlss_balanced">
+		<text>Balanced</text>
+	</string>
+	<string id="ui_mm_dlss_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_dlss_ultra_performance">
+		<text>Ultra performance</text>
+	</string>
+	<!-- [DA_PORT] Multisampling, offered only when no temporal filter is running -->
+	<string id="ui_mm_msaa">
+		<text>Anti-aliasing (MSAA)</text>
+	</string>
 	<string id="ui_mm_upscaler_quality">
 		<text>Quality</text>
 	</string>
@@ -125,5 +150,172 @@
 	</string>
 	<string id="ui_mm_upscaler_fsr3">
 		<text>FSR 3.0</text>
+	</string>
+	<string id="ui_mm_shadow_lights">
+		<text>Light shadows</text>
+	</string>
+	<string id="st_opt_shadow_lights_unlimited">
+		<text>Unlimited</text>
+	</string>
+	<string id="st_opt_shadow_lights_off">
+		<text>Minimum</text>
+	</string>
+	<string id="st_opt_shadow_lights_low">
+		<text>Low</text>
+	</string>
+	<string id="st_opt_shadow_lights_medium">
+		<text>Medium</text>
+	</string>
+	<string id="st_opt_shadow_lights_high">
+		<text>High</text>
+	</string>
+	<string id="ui_mm_performance">
+		<text>Performance</text>
+	</string>
+	<string id="ui_mm_sun_far">
+		<text>Sun shadow distance</text>
+	</string>
+	<string id="ui_mm_opt_static">
+		<text>Static geometry cut-off</text>
+	</string>
+	<string id="ui_mm_opt_dynamic">
+		<text>Dynamic geometry cut-off</text>
+	</string>
+	<string id="st_optimize_off">
+		<text>Off</text>
+	</string>
+	<string id="st_optimize_low">
+		<text>Low</text>
+	</string>
+	<string id="st_optimize_med">
+		<text>Medium</text>
+	</string>
+	<string id="st_optimize_high">
+		<text>High</text>
+	</string>
+	<string id="ui_mm_filtering">
+		<text>Filtering</text>
+	</string>
+	<string id="ui_mm_vis_dist">
+		<text>View distance</text>
+	</string>
+	<string id="ui_mm_fps_limit">
+		<text>FPS limit</text>
+	</string>
+	<string id="st_opt_fps_unlimited">
+		<text>Unlimited</text>
+	</string>
+	<string id="renderer_r4">
+		<text>DX11 R4</text>
+	</string>
+	<string id="ui_mm_grp_surfaces">
+		<text>Surfaces and materials</text>
+	</string>
+	<string id="ui_mm_grp_sun">
+		<text>Sun</text>
+	</string>
+	<string id="ui_mm_grp_light">
+		<text>Light</text>
+	</string>
+	<string id="ui_mm_grp_water">
+		<text>Water</text>
+	</string>
+	<string id="ui_mm_grp_post">
+		<text>Occlusion and post-processing</text>
+	</string>
+	<string id="ui_mm_grp_fx">
+		<text>Particles and lens</text>
+	</string>
+	<string id="da_sun_shadow">
+		<text>Sun shadow</text>
+	</string>
+	<string id="da_grass_shadow">
+		<text>Grass shadow</text>
+	</string>
+	<string id="da_sun_quality">
+		<text>Sun quality</text>
+	</string>
+	<string id="da_sun_shafts">
+		<text>Sun shafts</text>
+	</string>
+	<string id="da_shadow_quality">
+		<text>Shadow quality</text>
+	</string>
+	<string id="da_soft_water">
+		<text>Soft water</text>
+	</string>
+	<string id="da_wet_surfaces">
+		<text>Surface wetness</text>
+	</string>
+	<string id="da_water_refl">
+		<text>Water reflections</text>
+	</string>
+	<string id="ui_mm_grp_difficulty">
+		<text>Difficulty and world</text>
+	</string>
+	<string id="ui_mm_grp_crosshair">
+		<text>Crosshair</text>
+	</string>
+	<string id="ui_mm_grp_interface">
+		<text>Interface</text>
+	</string>
+	<string id="ui_mm_grp_controls">
+		<text>Controls</text>
+	</string>
+	<string id="ui_mm_grp_save">
+		<text>Saving</text>
+	</string>
+	<string id="ui_mm_grp_sound">
+		<text>Sound</text>
+	</string>
+	<string id="ui_mm_grp_impact_high">
+		<text>Performance impact: high</text>
+	</string>
+	<string id="ui_mm_grp_impact_med">
+		<text>Performance impact: medium</text>
+	</string>
+	<string id="ui_mm_grp_impact_low">
+		<text>Performance impact: low</text>
+	</string>
+	<string id="ui_mm_perf_preset">
+		<text>Overall preset</text>
+	</string>
+	<string id="st_opt_perf_low">
+		<text>Low</text>
+	</string>
+	<string id="st_opt_perf_medium">
+		<text>Medium</text>
+	</string>
+	<string id="st_opt_perf_high">
+		<text>High</text>
+	</string>
+	<string id="st_opt_perf_ultra">
+		<text>Ultra</text>
+	</string>
+	<string id="st_opt_perf_max_fps">
+		<text>Ultra performance</text>
+	</string>
+	<string id="ui_mm_grp_screen">
+		<text>Display</text>
+	</string>
+	<string id="ui_mm_grp_scaling">
+		<text>Scaling</text>
+	</string>
+	<string id="ui_mm_grp_image">
+		<text>Image</text>
+	</string>
+	<!-- [DA_PORT] Window modes. The list comes from the vid_window_mode command, whose token names
+	     are string ids, so the labels live here. -->
+	<string id="ui_mm_window_mode">
+		<text>Window mode</text>
+	</string>
+	<string id="st_opt_windowed">
+		<text>Windowed</text>
+	</string>
+	<string id="st_opt_fullscreen_borderless">
+		<text>Borderless fullscreen</text>
+	</string>
+	<string id="st_opt_fullscreen">
+		<text>Exclusive fullscreen</text>
 	</string>
 </string_table>

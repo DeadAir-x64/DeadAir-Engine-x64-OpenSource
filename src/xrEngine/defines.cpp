@@ -9,7 +9,11 @@ ECORE_API bool bDebug = false;
 DeviceMode psDeviceMode =
 {
     .Monitor      = 0,
-    .WindowStyle  = rsWindowedBorderless,
+    // [DA_PORT] По умолчанию — полный экран в окне, а не окно без рамки. Во-первых, это то, чего
+    // ждёт игрок от первого запуска; во-вторых, режима без рамки больше нет в списке (см.
+    // CCC_VidWindowMode), и значение по умолчанию обязано быть одним из предлагаемых — иначе
+    // список настроек открывается ни на чём.
+    .WindowStyle  = rsFullscreenBorderless,
     .Width        = 0,
     .Height       = 0,
     .RefreshRate  = 0,

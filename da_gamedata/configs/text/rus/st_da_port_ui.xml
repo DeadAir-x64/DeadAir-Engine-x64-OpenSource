@@ -105,6 +105,31 @@
 	<string id="ui_mm_upscaler_xess">
 		<text>XeSS</text>
 	</string>
+	<string id="ui_mm_upscaler_dlss">
+		<text>DLSS</text>
+	</string>
+	<string id="ui_mm_dlss_off">
+		<text>Выкл</text>
+	</string>
+	<string id="ui_mm_dlss_ultra_quality">
+		<text>Ультра-качество</text>
+	</string>
+	<string id="ui_mm_dlss_quality">
+		<text>Качество</text>
+	</string>
+	<string id="ui_mm_dlss_balanced">
+		<text>Сбалансированно</text>
+	</string>
+	<string id="ui_mm_dlss_performance">
+		<text>Производительность</text>
+	</string>
+	<string id="ui_mm_dlss_ultra_performance">
+		<text>Ультра-производительность</text>
+	</string>
+	<!-- [DA_PORT] Multisampling, offered only when no temporal filter is running -->
+	<string id="ui_mm_msaa">
+		<text>Сглаживание MSAA</text>
+	</string>
 	<string id="ui_mm_upscaler_quality">
 		<text>Качество</text>
 	</string>
@@ -125,5 +150,172 @@
 	</string>
 	<string id="ui_mm_upscaler_fsr3">
 		<text>FSR 3.0</text>
+	</string>
+	<string id="ui_mm_shadow_lights">
+		<text>Тени от источников света</text>
+	</string>
+	<string id="st_opt_shadow_lights_unlimited">
+		<text>Без ограничения</text>
+	</string>
+	<string id="st_opt_shadow_lights_off">
+		<text>Минимум</text>
+	</string>
+	<string id="st_opt_shadow_lights_low">
+		<text>Низкие</text>
+	</string>
+	<string id="st_opt_shadow_lights_medium">
+		<text>Средние</text>
+	</string>
+	<string id="st_opt_shadow_lights_high">
+		<text>Высокие</text>
+	</string>
+	<string id="ui_mm_performance">
+		<text>Производительность</text>
+	</string>
+	<string id="ui_mm_sun_far">
+		<text>Дальность теней солнца</text>
+	</string>
+	<string id="ui_mm_opt_static">
+		<text>Отсев статики</text>
+	</string>
+	<string id="ui_mm_opt_dynamic">
+		<text>Отсев динамики</text>
+	</string>
+	<string id="st_optimize_off">
+		<text>Выключен</text>
+	</string>
+	<string id="st_optimize_low">
+		<text>Низкий</text>
+	</string>
+	<string id="st_optimize_med">
+		<text>Средний</text>
+	</string>
+	<string id="st_optimize_high">
+		<text>Высокий</text>
+	</string>
+	<string id="ui_mm_filtering">
+		<text>Фильтрация</text>
+	</string>
+	<string id="ui_mm_vis_dist">
+		<text>Дальность видимости</text>
+	</string>
+	<string id="ui_mm_fps_limit">
+		<text>Ограничение FPS</text>
+	</string>
+	<string id="st_opt_fps_unlimited">
+		<text>Без ограничений</text>
+	</string>
+	<string id="renderer_r4">
+		<text>DX11 R4</text>
+	</string>
+	<string id="ui_mm_grp_surfaces">
+		<text>Рельеф и материалы</text>
+	</string>
+	<string id="ui_mm_grp_sun">
+		<text>Солнце</text>
+	</string>
+	<string id="ui_mm_grp_light">
+		<text>Свет</text>
+	</string>
+	<string id="ui_mm_grp_water">
+		<text>Вода</text>
+	</string>
+	<string id="ui_mm_grp_post">
+		<text>Затенение и постобработка</text>
+	</string>
+	<string id="ui_mm_grp_fx">
+		<text>Частицы и линзы</text>
+	</string>
+	<string id="da_sun_shadow">
+		<text>Тень от солнца</text>
+	</string>
+	<string id="da_grass_shadow">
+		<text>Тень от травы</text>
+	</string>
+	<string id="da_sun_quality">
+		<text>Качество солнца</text>
+	</string>
+	<string id="da_sun_shafts">
+		<text>Солнечные лучи</text>
+	</string>
+	<string id="da_shadow_quality">
+		<text>Качество теней</text>
+	</string>
+	<string id="da_soft_water">
+		<text>Мягкая вода</text>
+	</string>
+	<string id="da_wet_surfaces">
+		<text>Намокание плоскостей</text>
+	</string>
+	<string id="da_water_refl">
+		<text>Отражение на воде</text>
+	</string>
+	<string id="ui_mm_grp_difficulty">
+		<text>Сложность и мир</text>
+	</string>
+	<string id="ui_mm_grp_crosshair">
+		<text>Прицел</text>
+	</string>
+	<string id="ui_mm_grp_interface">
+		<text>Интерфейс</text>
+	</string>
+	<string id="ui_mm_grp_controls">
+		<text>Управление</text>
+	</string>
+	<string id="ui_mm_grp_save">
+		<text>Сохранение</text>
+	</string>
+	<string id="ui_mm_grp_sound">
+		<text>Звук</text>
+	</string>
+	<string id="ui_mm_grp_impact_high">
+		<text>Влияние на производительность: высокое</text>
+	</string>
+	<string id="ui_mm_grp_impact_med">
+		<text>Влияние на производительность: среднее</text>
+	</string>
+	<string id="ui_mm_grp_impact_low">
+		<text>Влияние на производительность: низкое</text>
+	</string>
+	<string id="ui_mm_perf_preset">
+		<text>Общие настройки</text>
+	</string>
+	<string id="st_opt_perf_low">
+		<text>Низкие</text>
+	</string>
+	<string id="st_opt_perf_medium">
+		<text>Средние</text>
+	</string>
+	<string id="st_opt_perf_high">
+		<text>Высокие</text>
+	</string>
+	<string id="st_opt_perf_ultra">
+		<text>Ультра</text>
+	</string>
+	<string id="st_opt_perf_max_fps">
+		<text>Ультра-производительность</text>
+	</string>
+	<string id="ui_mm_grp_screen">
+		<text>Экран</text>
+	</string>
+	<string id="ui_mm_grp_scaling">
+		<text>Масштабирование</text>
+	</string>
+	<string id="ui_mm_grp_image">
+		<text>Изображение</text>
+	</string>
+	<!-- [DA_PORT] Режимы окна. Список строится из команды vid_window_mode, и её имена токенов —
+	     это идентификаторы строк, поэтому названия задаются здесь. -->
+	<string id="ui_mm_window_mode">
+		<text>Режим окна</text>
+	</string>
+	<string id="st_opt_windowed">
+		<text>В окне</text>
+	</string>
+	<string id="st_opt_fullscreen_borderless">
+		<text>Полноэкранный в окне</text>
+	</string>
+	<string id="st_opt_fullscreen">
+		<text>Полноэкранный</text>
 	</string>
 </string_table>

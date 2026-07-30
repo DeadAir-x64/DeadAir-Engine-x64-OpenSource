@@ -920,12 +920,21 @@ using CCC_Refresh60hz = CCC_VidMode::CCC_Refresh60hz;
 //-----------------------------------------------------------------------
 class CCC_VidWindowMode final : public CCC_Token
 {
+    // [DA_PORT] Режима три, а не четыре, и порядок в списке — от оконного к полноэкранному.
+    //
+    // Убран `rsWindowedBorderless` — окно заданного размера без рамки. От обычного окна игрок его
+    // не отличает, а в списке настроек два почти одинаковых пункта заставляют выбирать вслепую.
+    // Остались те три, между которыми есть настоящая разница: окно, полный экран в окне (растянут
+    // на рабочий стол, мгновенный Alt+Tab) и монопольный полный экран (смена режима монитора).
+    //
+    // Значение из enum'а не выброшено — на нём стоит логика окна в Device_mode.cpp, — просто больше
+    // не предлагается. Старое имя по-прежнему принимается, см. Execute: сохранённый в user.ltx
+    // выбор не должен превращаться в «Invalid syntax» после обновления.
     inline static xr_token vid_window_mode_token[] =
     {
         { "st_opt_windowed",                rsWindowed             },
-        { "st_opt_windowed_borderless",     rsWindowedBorderless   },
-        { "st_opt_fullscreen",              rsFullscreen           },
         { "st_opt_fullscreen_borderless",   rsFullscreenBorderless },
+        { "st_opt_fullscreen",              rsFullscreen           },
         { nullptr,                          -1                     },
     };
 
@@ -934,7 +943,16 @@ public:
 
     void Execute(pcstr args) override
     {
-        CCC_Token::Execute(args);
+        // [DA_PORT] Старое имя режима из прежних конфигов приводим к ближайшему из оставшихся.
+        // Молча подменять нельзя — человек должен понимать, почему в меню стоит не то, что он
+        // выбирал когда-то, — поэтому строка в лог.
+        if (args && 0 == xr_strcmp(args, "st_opt_windowed_borderless"))
+        {
+            Msg("~ [DA_PORT] режим окна без рамки больше не предлагается, включён оконный");
+            CCC_Token::Execute("st_opt_windowed");
+        }
+        else
+            CCC_Token::Execute(args);
         m_fullscreen.set(fl_fullscreen, psDeviceMode.WindowStyle == rsFullscreen);
     }
 
@@ -957,7 +975,9 @@ public:
             if (GetValue())
                 psDeviceMode.WindowStyle = rsFullscreen;
             else
-                psDeviceMode.WindowStyle = rsWindowedBorderless;
+                // [DA_PORT] Выключение полного экрана даёт полный экран В ОКНЕ, а не окно без рамки:
+                // из трёх оставшихся режимов это ближайший к «не монопольный», и он же по умолчанию.
+                psDeviceMode.WindowStyle = rsFullscreenBorderless;
         }
     };
 };
