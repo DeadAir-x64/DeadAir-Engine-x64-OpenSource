@@ -825,14 +825,22 @@ IC void CBackend::get_ConstantDirect(const shared_str& n, size_t DataSize, void*
     }
 }
 
+// [DA_PORT] Проверка на пустоту обязательна. ID3DUserDefinedAnnotation — часть рантайма D3D11.1,
+// на Windows 7 он есть только с Platform Update (KB2670838). Без него QueryInterface в
+// CBackend::OnDeviceCreate не срабатывает и оставляет указатель пустым, а дальше первый же
+// PIX_EVENT падал на разыменовании — игра умирала на первом кадре главного меню
+// (CRender::RenderMenu -> PIX_EVENT(render_menu)), причём одинаково на любой машине без 11.1.
+// Это метки для профилировщика: без них рендер работает ровно так же.
 IC void CBackend::gpu_mark_begin(const wchar_t* name)
 {
-    pAnnotation->BeginEvent(name);
+    if (pAnnotation)
+        pAnnotation->BeginEvent(name);
 }
 
 IC void CBackend::gpu_mark_end()
 {
-    pAnnotation->EndEvent();
+    if (pAnnotation)
+        pAnnotation->EndEvent();
 }
 
 IC void CBackend::set_pass_targets(const ref_rt& _1, const ref_rt& _2, const ref_rt& _3, const ref_rt& zb)

@@ -10,6 +10,7 @@ target_sources(xrRenderPC_R4 PRIVATE
     r4_rendertarget_phase_hdao.cpp
     r4_rendertarget_phase_taa.cpp
     da_gpu_timer.cpp
+    da_win7_compat.cpp
     da_fsr2.cpp
     da_fsr2.h
     da_fsr3.cpp

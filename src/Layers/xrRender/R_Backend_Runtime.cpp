@@ -485,7 +485,19 @@ void CBackend::OnDeviceCreate()
     ZoneScoped;
 
 #if defined(USE_DX11)
-    HW.get_context(context_id)->QueryInterface(__uuidof(ID3DUserDefinedAnnotation), reinterpret_cast<void**>(&pAnnotation));
+    // [DA_PORT] Результат обязательно проверять и говорить о нём в лог. Интерфейс появился в
+    // рантайме D3D11.1: на Windows 7 без Platform Update (KB2670838) запрос не удаётся, указатель
+    // остаётся пустым — а раньше это выяснялось только падением на первом PIX_EVENT, без единого
+    // сообщения. Метки нужны лишь профилировщику, поэтому отсутствие интерфейса не ошибка.
+    const HRESULT annotation_hr = HW.get_context(context_id)->QueryInterface(
+        __uuidof(ID3DUserDefinedAnnotation), reinterpret_cast<void**>(&pAnnotation));
+    if (FAILED(annotation_hr) || !pAnnotation)
+    {
+        pAnnotation = nullptr;
+        if (context_id == CHW::IMM_CTX_ID)
+            Msg("* [DA_PORT] отладочные метки GPU недоступны (нет ID3DUserDefinedAnnotation, "
+                "рантайм ниже D3D11.1) - рендер не затронут");
+    }
 #endif
 
     // Debug Draw
