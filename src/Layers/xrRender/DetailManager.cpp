@@ -145,6 +145,9 @@ CDetailManager::~CDetailManager()
 {
     ZoneScoped;
 
+    // [DA_PORT] И здесь тоже: удаление приходит не только через Unload. См. WaitCalcTask.
+    WaitCalcTask();
+
     for (u32 i = 0; i < dm_cache_size; ++i)
         cache_pool[i].~Slot();
     xr_free(cache_pool);
@@ -240,9 +243,31 @@ void CDetailManager::Load()
     swing_desc[1].speed = pSettings->r_float("details", "swing_fast_speed");
 }
 #endif
+// [DA_PORT] Дождаться фоновой задачи расчёта травы. Без этого её нельзя ни выгружать, ни удалять.
+//
+// Задача читает кэш и список объектов этого самого менеджера, а сброс устройства менеджер УДАЛЯЕТ:
+// смена высоты или плотности травы в настройках приводит к `Details->Unload(); xr_delete(Details);`
+// в CRender::reset_begin, и делается это, пока задача считает в рабочем потоке. Дальше обращение по
+// освобождённой памяти - падение в чужом потоке, где по стеку видно только cache_Update и
+// декомпрессию, а причина осталась в главном.
+//
+// Проверка `if (nullptr == RImplementation.Details) return;` в самой задаче от этого НЕ защищает:
+// она стоит на входе, а гонка происходит после него. Такую защиту легко принять за достаточную -
+// поэтому здесь и написано, почему она не достаточна.
+void CDetailManager::WaitCalcTask()
+{
+    if (m_calc_task)
+    {
+        TaskScheduler->Wait(*m_calc_task);
+        m_calc_task = nullptr;
+    }
+}
+
 void CDetailManager::Unload()
 {
     ZoneScoped;
+    WaitCalcTask(); // [DA_PORT] см. WaitCalcTask: ниже освобождается то, что задача читает
+
     if (UseVS())
         hw_Unload();
     else
@@ -417,7 +442,10 @@ void CDetailManager::Render(CBackend& cmd_list)
 
     ZoneScoped;
 
-    TaskScheduler->Wait(*m_calc_task);
+    // [DA_PORT] Проверка на пустоту обязательна: задачу теперь снимают и в WaitCalcTask, поэтому
+    // между сбросом устройства и первым DispatchMTCalc указателя может не быть вовсе.
+    if (m_calc_task)
+        TaskScheduler->Wait(*m_calc_task);
 
     RImplementation.BasicStats.DetailRender.Begin();
     g_pGamePersistent->m_pGShaderConstants->m_blender_mode.w = 1.0f; //--#SM+#-- Флаг начала рендера травы [begin of grass render]

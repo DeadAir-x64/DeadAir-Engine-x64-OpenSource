@@ -231,6 +231,7 @@ public:
     Task* m_calc_task{};
 
     void DispatchMTCalc();
+    void WaitCalcTask(); // [DA_PORT] дождаться расчёта травы перед выгрузкой или удалением
 
     CDetailManager();
     virtual ~CDetailManager();

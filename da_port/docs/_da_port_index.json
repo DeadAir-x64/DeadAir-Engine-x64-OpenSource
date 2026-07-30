@@ -65,7 +65,23 @@
 "motion vectors: no previous sway yet, and an uninitialised flag here would let the very"
 ],
 [
-430,
+148,
+"И здесь тоже: удаление приходит не только через Unload. См. WaitCalcTask."
+],
+[
+246,
+"Дождаться фоновой задачи расчёта травы. Без этого её нельзя ни выгружать, ни удалять."
+],
+[
+269,
+"WaitCalcTask(); // [DA_PORT] см. WaitCalcTask: ниже освобождается то, что задача читает"
+],
+[
+445,
+"Проверка на пустоту обязательна: задачу теперь снимают и в WaitCalcTask, поэтому"
+],
+[
+458,
 "Сильный ветер: смешиваем исходное качание с модовским, доля задаётся r__grass_sway."
 ]
 ],
@@ -73,6 +89,10 @@
 [
 141,
 "The same three phases as of the previous frame, for motion vectors. Grass sway is"
+],
+[
+234,
+"void WaitCalcTask(); // [DA_PORT] дождаться расчёта травы перед выгрузкой или удалением"
 ]
 ],
 "xray-16/src/Layers/xrRender/DetailManager_Decompress.cpp": [
