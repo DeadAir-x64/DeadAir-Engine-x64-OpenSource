@@ -245,7 +245,23 @@ void CConsole::OnFrame()
         if (ImGui::InputText("##input", m_edit_string, std::size(m_edit_string), input_text_flags, callback, this))
         {
             if (m_select_tip < 0 || m_select_tip >= static_cast<int>(m_tips.size()))
+            {
                 ExecuteCommand(m_edit_string);
+
+                // [DA_PORT] Очистить строку ввода после выполнения. Её не очищал никто: команда
+                // оставалась в поле, и каждое следующее нажатие Enter выполняло её ЗАНОВО.
+                //
+                // Само по себе это выглядит мелочью, но обходится дорого. Эхо в лог пишется только
+                // если строка отличается от предыдущей, поэтому повторные запуски НЕ ВИДНЫ: в логе
+                // одна строка «@ команда», а выполнений шестнадцать. На замере памяти это означало
+                // шестнадцать полных прогонов подряд вместо одного, и понять это по логу было нельзя.
+                //
+                // Соседняя ветка (подстановка подсказки) строку переписывает и состояние виджета
+                // обновляет — здесь не делали ни того, ни другого.
+                m_edit_string[0] = 0;
+                if (ImGuiInputTextState* state = ImGui::GetInputTextState(ImGui::GetItemID()))
+                    state->ReloadUserBufAndMoveToEnd();
+            }
             else
             {
                 shared_str const& str = m_tips[m_select_tip].text;
@@ -447,6 +463,75 @@ void CConsole::ExecuteCommand(pcstr cmd_str, bool record_cmd)
             m_last_cmd = edt;
         }
     }
+    // [DA_PORT] Несколько команд в одной строке через ';'.
+    //
+    // До этого консоль читала ввод как «первое слово — команда, ВЕСЬ остаток — её аргументы».
+    // Список через ';' не давал ни ошибки, ни результата: первая команда забирала своё значение из
+    // начала аргумента (atoi просто останавливался на пробеле), а остальные молча пропадали. Тем
+    // обиднее, что выглядело это как успех. На этом был потерян замер памяти: строка вида
+    // «da_mem_probe 1 ; da_alloc_trap_size 15624208 ; da_mem_test 2» включила замер, но ловушку не
+    // взвела, и прогон отработал целиком, не поймав ни одного стека.
+    //
+    // Делим ОСТОРОЖНО, потому что ';' — обычный символ в аргументах. Два условия, и оба обязательны:
+    //   1) команды, которым аргумент нужен дословно, не делим никогда. Это Lua: там ';' разделяет
+    //      операторы, и `run_string a(); b()` — заведомо рабочая строка, которую делить нельзя;
+    //   2) делим, только если КАЖДЫЙ кусок начинается с известной команды. Поэтому строка, где
+    //      после ';' идёт что угодно другое, остаётся целой и ведёт себя ровно как раньше.
+    // Вместе это значит, что разделитель не способен испортить ни один ввод, который работал до
+    // него: чтобы строка поделилась, она должна выглядеть как список команд целиком.
+    if (strchr(edt, ';'))
+    {
+        pstr scan = (pstr)xr_alloca((str_size + 1) * sizeof(char));
+        xr_strcpy(scan, str_size + 1, edt);
+        text_editor::split_cmd(first, last, scan);
+
+        bool splittable = xr_strcmp(first, "run_string") != 0 && xr_strcmp(first, "run_script") != 0;
+
+        // Обход кусков: общий для проверки и для выполнения, чтобы они не разошлись.
+        const auto for_each_segment = [&](auto&& fn) -> bool {
+            pcstr p = edt;
+            while (*p)
+            {
+                pcstr e = strchr(p, ';');
+                const size_t len = e ? size_t(e - p) : xr_strlen(p);
+                if (len)
+                {
+                    pstr seg = (pstr)xr_alloca((len + 1) * sizeof(char));
+                    std::memcpy(seg, p, len);
+                    seg[len] = 0;
+                    text_editor::remove_spaces(seg);
+                    if (seg[0] && !fn((pcstr)seg))
+                        return false;
+                }
+                if (!e)
+                    break;
+                p = e + 1;
+            }
+            return true;
+        };
+
+        if (splittable)
+        {
+            splittable = for_each_segment([&](pcstr seg) {
+                const size_t seg_size = xr_strlen(seg);
+                pstr head = (pstr)xr_alloca((seg_size + 1) * sizeof(char));
+                pstr tail = (pstr)xr_alloca((seg_size + 1) * sizeof(char));
+                text_editor::split_cmd(head, tail, seg);
+                return Commands.find(head) != Commands.end();
+            });
+        }
+
+        if (splittable)
+        {
+            // В историю выше уже легла вся строка целиком, поэтому куски выполняем без записи.
+            for_each_segment([&](pcstr seg) {
+                ExecuteCommand(seg, false);
+                return true;
+            });
+            return;
+        }
+    }
+
     text_editor::split_cmd(first, last, edt);
 
     // search
