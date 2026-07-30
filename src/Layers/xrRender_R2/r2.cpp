@@ -193,9 +193,29 @@ static class cl_taa_jitter : public R_constant_setup
             // FSR 2 expects.
             const float jx = ::g_da_fsr2_jitter_px.x * 2.f / float(Device.dwRenderWidth);
             const float jy = ::g_da_fsr2_jitter_px.y * -2.f / float(Device.dwRenderHeight);
+
+            // [DA_PORT] Вес растительности растёт вместе с длиной кадра.
+            //
+            // Значение подбиралось на высокой частоте кадров, а на 30 трава начинает смазываться:
+            // за кадр колышущийся стебель проходит вдвое больший путь, история промахивается вдвое
+            // сильнее, а недоверие к ней остаётся прежним. Реактивность от движения (da_motion_
+            // reactive рядом) этой болезни не знает, потому что считается ОТ САМОГО СМЕЩЕНИЯ и
+            // потому масштабируется с частотой сама; здесь же вес плоский, и масштабировать его
+            // приходится руками.
+            //
+            // Растим только вниз по частоте: множитель не опускается ниже единицы, поэтому на 60 и
+            // выше остаётся ровно то значение, которым сегодня лечили дрожь травы, - эта правка не
+            // может её вернуть. Потолок в четыре раза: на 15 кадрах и ниже смазывает уже всё, и
+            // добавлять реактивности дальше значит менять смаз на рябь.
+            //
+            // Берём сглаженную длину кадра, а не мгновенную: скачок веса от кадра к кадру сам по
+            // себе выглядел бы мерцанием - ровно тем, от чего вес и заведён.
+            const float dt = Device.fTimeDelta;
+            const float fps_scale = std::clamp(dt * 60.f, 1.f, 4.f);
+
             // z carries the foliage reactive weight - the aref shaders read it from here rather
             // than through a constant of their own, so it costs no extra binding.
-            cmd_list.set_c(C, jx, jy, ::ps_r__reactive_foliage, 0.f);
+            cmd_list.set_c(C, jx, jy, ::ps_r__reactive_foliage * fps_scale, 0.f);
         }
     }
 } binder_taa_jitter;

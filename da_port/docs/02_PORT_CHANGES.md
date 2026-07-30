@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1107 правк(и) в 230 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1108 правк(и) в 230 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*75 файл(ов), 441 правк(и)*
+*75 файл(ов), 442 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_R2.cpp`
@@ -516,33 +516,34 @@
 - **:177** — Any temporal upscaler, not FSR 2 alone - see da_upscaler_active(). While this named
 - **:180** — Сдвиг выдаётся ВСЕГДА, когда джиттер вообще включён — и для апскейлеров, и для
 - **:186** — Converted to clip space HERE, from the pixel offset the upscaler is handed, so
-- **:204** — Detail-bump damping weights, see xr_ioc_cmd.cpp for what they are for. An ordinary pass
-- **:207** — Gloss-driven reactive mask, see xr_ioc_cmd.cpp. x = weight, y = gloss threshold.
-- **:217** — Motion-driven reactivity, see da_motion_reactive in common_functions.h.
-- **:235** — Motion-vector camera matrices WITHOUT any world part, for geometry that is already in world
-- **:256** — Same reasoning: this is the G-buffer's size, used for texel-exact fetches.
-- **:614** — Motion vectors. R4 only — the extra target and the shader option are DX11-side, and R2
-- **:619** — Every consumer of the velocity buffer has to be listed here, FSR 3 included. Missing
-- **:625** — Через da_upscaler_active(), а не перечислением. Перечисление тут и подвело: строка
-- **:636** — Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every
-- **:640** — The debug map and an upscaler must not run together: FSR 2 reads the very buffer the
-- **:646** — if (o.velocity_debug_ids && da_upscaler_active()) // [DA_PORT] любой апскейлер, не FSR 2 один
-- **:647** — Msg("! [DA_PORT] r__motion_vectors 3 with an upscaler enabled: it is being fed shader "
-- **:702** — Resources->RegisterConstantSetup("m_prev_VP", &binder_prev_vp); // [DA_PORT] temporal reprojection
-- **:703** — Resources->RegisterConstantSetup("m_taa_jitter", &binder_taa_jitter); // [DA_PORT] jitter for shaders
-- **:704** — Resources->RegisterConstantSetup("m_VP_nojit_ws", &binder_vp_nojit_ws); // [DA_PORT] world-space geometry
-- **:705** — Resources->RegisterConstantSetup("m_VP_old_ws", &binder_vp_old_ws); // [DA_PORT] world-space geometry
-- **:706** — Resources->RegisterConstantSetup("da_detail_fix", &binder_detail_fix); // [DA_PORT] detail-bump damping
-- **:707** — Resources->RegisterConstantSetup("da_reactive_motion", &binder_reactive_motion); // [DA_PORT]
-- **:708** — Resources->RegisterConstantSetup("da_gloss_reactive", &binder_gloss_reactive); // [DA_PORT] gloss opts out of history
-- **:713** — Msg("* [DA_PORT] create: before CRenderTarget"); FlushLog();
-- **:715** — Msg("* [DA_PORT] create: after CRenderTarget"); FlushLog();
-- **:720** — Msg("* [DA_PORT] create: after Models/PSLibrary/HWOCC"); FlushLog();
-- **:724** — Msg("* [DA_PORT] create: after q_sync_point"); FlushLog();
-- **:728** — Msg("* [DA_PORT] create: before FluidManager.Initialize"); FlushLog();
-- **:732** — Msg("* [DA_PORT] create: after FluidManager"); FlushLog();
-- **:735** — g_da_gpu_timer.create(); // [DA_PORT] per-phase GPU timing, see da_gpu_timer.h
-- **:737** — Msg("* [DA_PORT] create: DONE"); FlushLog();
+- **:197** — Вес растительности растёт вместе с длиной кадра.
+- **:224** — Detail-bump damping weights, see xr_ioc_cmd.cpp for what they are for. An ordinary pass
+- **:227** — Gloss-driven reactive mask, see xr_ioc_cmd.cpp. x = weight, y = gloss threshold.
+- **:237** — Motion-driven reactivity, see da_motion_reactive in common_functions.h.
+- **:255** — Motion-vector camera matrices WITHOUT any world part, for geometry that is already in world
+- **:276** — Same reasoning: this is the G-buffer's size, used for texel-exact fetches.
+- **:634** — Motion vectors. R4 only — the extra target and the shader option are DX11-side, and R2
+- **:639** — Every consumer of the velocity buffer has to be listed here, FSR 3 included. Missing
+- **:645** — Через da_upscaler_active(), а не перечислением. Перечисление тут и подвело: строка
+- **:656** — Mode 3 turns the velocity buffer into a map of WHICH SHADER drew each pixel: every
+- **:660** — The debug map and an upscaler must not run together: FSR 2 reads the very buffer the
+- **:666** — if (o.velocity_debug_ids && da_upscaler_active()) // [DA_PORT] любой апскейлер, не FSR 2 один
+- **:667** — Msg("! [DA_PORT] r__motion_vectors 3 with an upscaler enabled: it is being fed shader "
+- **:722** — Resources->RegisterConstantSetup("m_prev_VP", &binder_prev_vp); // [DA_PORT] temporal reprojection
+- **:723** — Resources->RegisterConstantSetup("m_taa_jitter", &binder_taa_jitter); // [DA_PORT] jitter for shaders
+- **:724** — Resources->RegisterConstantSetup("m_VP_nojit_ws", &binder_vp_nojit_ws); // [DA_PORT] world-space geometry
+- **:725** — Resources->RegisterConstantSetup("m_VP_old_ws", &binder_vp_old_ws); // [DA_PORT] world-space geometry
+- **:726** — Resources->RegisterConstantSetup("da_detail_fix", &binder_detail_fix); // [DA_PORT] detail-bump damping
+- **:727** — Resources->RegisterConstantSetup("da_reactive_motion", &binder_reactive_motion); // [DA_PORT]
+- **:728** — Resources->RegisterConstantSetup("da_gloss_reactive", &binder_gloss_reactive); // [DA_PORT] gloss opts out of history
+- **:733** — Msg("* [DA_PORT] create: before CRenderTarget"); FlushLog();
+- **:735** — Msg("* [DA_PORT] create: after CRenderTarget"); FlushLog();
+- **:740** — Msg("* [DA_PORT] create: after Models/PSLibrary/HWOCC"); FlushLog();
+- **:744** — Msg("* [DA_PORT] create: after q_sync_point"); FlushLog();
+- **:748** — Msg("* [DA_PORT] create: before FluidManager.Initialize"); FlushLog();
+- **:752** — Msg("* [DA_PORT] create: after FluidManager"); FlushLog();
+- **:755** — g_da_gpu_timer.create(); // [DA_PORT] per-phase GPU timing, see da_gpu_timer.h
+- **:757** — Msg("* [DA_PORT] create: DONE"); FlushLog();
 
 ### `Layers/xrRender_R2/r2.h`
 
