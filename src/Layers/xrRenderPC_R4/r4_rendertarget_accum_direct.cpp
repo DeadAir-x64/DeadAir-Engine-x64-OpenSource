@@ -578,8 +578,27 @@ void CRenderTarget::accum_direct_cascade(CBackend& cmd_list, u32 sub_phase, Fmat
             constexpr u32 ver_count = sizeof(accum_direct::corners) / sizeof(Fvector3);
             Fvector4* pv = (Fvector4*)RImplementation.Vertex.Lock(ver_count, g_combine_cuboid.stride(), Offset);
 
+            // [DA_PORT] Проверка флага ВОЗВРАЩЕНА (была закомментирована).
+            //
+            // Здесь строится объём, которым дальний каскад накладывает свет. При z-отсечении он
+            // должен быть объёмом ПРЕДЫДУЩЕГО каскада (тот уже осветил своё, дальний добирает
+            // остальное), без z-отсечения — своим собственным.
+            //
+            // Условие было закомментировано, поэтому объём ВСЕГДА брался от предыдущего каскада, а
+            // настройка глубины и трафарета ниже (строки ~683/720/738) флаг при этом ЧИТАЕТ. При
+            // r2_shadow_cascede_zcul off геометрия строилась как при включённом отсечении, а
+            // трафарет — как при выключенном: две половины одного решения расходились.
+            //
+            // ⚠️ Найдено по ходу поисков мерцания тени, но НЕ было его причиной — та оказалась в
+            // нашей же поправке на джиттер в gbuffer_load_data (см. комментарий там). Правка
+            // оставлена как самостоятельная: несогласованность настоящая, просто с мерцанием не
+            // связана. Заодно замер тогда показал, что каскады исправны: da_sun_log — теневые карты
+            // наполняются стабильно, da_sun_only — каждый каскад по отдельности не мерцает.
+            //
+            // Та же закомментированная строка есть и в GL-ветке (gl_rendertarget_accum_direct.cpp),
+            // но GL из сборки удалён, поэтому там не трогаю.
             Fmatrix inv_XDcombine;
-            if (/*ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) &&*/ sub_phase == SE_SUN_FAR)
+            if (ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) && sub_phase == SE_SUN_FAR)
                 inv_XDcombine.invert(xform_prev);
             else
                 inv_XDcombine.invert(xform);

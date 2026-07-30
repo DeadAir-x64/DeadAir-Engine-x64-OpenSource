@@ -255,6 +255,24 @@ void render_sun::calculate()
         // full-xform
     }
 
+    // [DA_PORT] Замер по каскадам солнца, крутилка da_sun_log N (N кадров подряд).
+    //
+    // Ставится потому, что мерцание целой тени на улице сопротивляется догадкам: за один вечер
+    // отброшены семь версий (отсечение геометрии по размеру, HOM, ранний выход из модели
+    // источников тени, reset_chain от солнечных лучей, потолок теневых ламп, экспозиция,
+    // дальность каскадов). Форма симптома — пятно ЦЕЛИКОМ пропадает при малом сдвиге камеры —
+    // означает бинарное решение, которое перещёлкивается; найти его чтением не удалось, значит
+    // надо смотреть числа. Приём тот же, что в da_probe и r__reactive_selftest.
+    //
+    // Что печатается на каждый каскад: сколько плоскостей получила отсекающая пирамида (пустая =
+    // модель источников тени не построилась), сколько статики и динамики попало в теневую карту
+    // (резкое падение = отсечение), и куда встал сам объём каскада (скачок = объём уехал с
+    // видимой области). Если на кадре пропажи падает счётчик — виновато отсечение; если счётчик
+    // стоит, а прыгает перенос — виноват объём; если не меняется ничто — дело в выборке тени.
+    u32 dbg_planes[R__NUM_SUN_CASCADES]{};
+    u32 dbg_static[R__NUM_SUN_CASCADES]{};
+    u32 dbg_dynamic[R__NUM_SUN_CASCADES]{};
+
     const auto process_cascade = [&, this](const TaskRange<u32>& range)
     {
         for (u32 cascade_ind = range.begin(); cascade_ind != range.end(); ++cascade_ind)
@@ -270,8 +288,26 @@ void render_sun::calculate()
                 dsgraph.o.view_frustum = cull_frustum[cascade_ind];
                 dsgraph.o.view_pos = cull_COP[cascade_ind];
 
+                // Счётчики берутся разницей: их никто не сбрасывает между кадрами, поэтому
+                // абсолютное значение бессмысленно, а разница — ровно вклад этого каскада.
+                u32 s0 = 0, d0 = 0;
+                if (ps_da_sun_log > 0)
+                    dsgraph.get_Counters(s0, d0);
+
                 // Fill the database
                 dsgraph.build_subspace();
+
+                if (ps_da_sun_log > 0)
+                {
+                    u32 s1 = 0, d1 = 0;
+                    dsgraph.get_Counters(s1, d1);
+                    dbg_static[cascade_ind] = s1 - s0;
+                    dbg_dynamic[cascade_ind] = d1 - d0;
+                    // Число плоскостей — по маске: p_count закрыт, а маска это (1<<p_count)-1.
+                    u32 mask = cull_frustum[cascade_ind].getMask(), n = 0;
+                    while (mask) { n += (mask & 1u); mask >>= 1; }
+                    dbg_planes[cascade_ind] = n;
+                }
             }
         }
     };
@@ -283,6 +319,19 @@ void render_sun::calculate()
     else
     {
         process_cascade(TaskRange<u32>(0, R__NUM_SUN_CASCADES));
+    }
+
+    // Печать после параллельной части: из рабочих потоков в лог писать нельзя.
+    if (ps_da_sun_log > 0)
+    {
+        for (u32 i = 0; i < R__NUM_SUN_CASCADES; ++i)
+            Msg("~ [DA_SUN] кадр %u каскад %u | плоскостей %u | статики %u | динамики %u | "
+                "объём (%.1f %.1f %.1f) | reset_chain %d",
+                Device.dwFrame, i, dbg_planes[i], dbg_static[i], dbg_dynamic[i],
+                cull_xform[i]._41, cull_xform[i]._42, cull_xform[i]._43,
+                m_sun_cascades[i].reset_chain ? 1 : 0);
+        if (--ps_da_sun_log == 0)
+            Msg("~ [DA_SUN] ---- готово ----");
     }
 }
 
@@ -375,6 +424,26 @@ void render_sun::accumulate_cascade(u32 cascade_ind)
 
     auto* target  = RImplementation.Target;
     auto& dsgraph = RImplementation.get_context(contexts_ids[cascade_ind]);
+
+    // [DA_PORT] da_sun_only N — накапливать свет ТОЛЬКО от каскада N (1..3), 0 = как обычно.
+    //
+    // Против мерцания целой тени на улице. Замером da_sun_log уже показано, что теневые карты
+    // наполняются стабильно, значит ломается выборка тени при накоплении. Каждый каскад
+    // накапливается отдельным вызовом, поэтому изоляция по одному отвечает сразу на два вопроса:
+    // к какому каскаду привязано мерцание, и не возникает ли оно только когда работают несколько
+    // (то есть в стыке между ними).
+    //
+    // Тени от остальных каскадов при этом просто не рисуются — картинка станет неполной, это
+    // ожидаемо и есть смысл замера, а не побочный дефект.
+    //
+    // Контекст обязательно отдать даже на пропуске: он взят из пула в calculate(), и невозвращённый
+    // контекст роняет следующий кадр.
+    if (ps_da_sun_only && u32(ps_da_sun_only - 1) != cascade_ind)
+    {
+        dsgraph.cmd_list.submit();
+        RImplementation.release_context(dsgraph.context_id);
+        return;
+    }
 
     if ((cascade_ind == SE_SUN_NEAR) && target->use_minmax_sm_this_frame())
     {

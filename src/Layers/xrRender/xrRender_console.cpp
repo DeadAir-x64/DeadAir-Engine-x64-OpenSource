@@ -574,6 +574,14 @@ u32 ps_r_optimize_dynamic = 0;
 int ps_r_high_optimize_sun_shad = 1;
 float ps_r2_sun_shadows_far_casc = 192.f;
 
+// [DA_PORT] Счётчик кадров для da_sun_log (замер по каскадам солнца). 0 = молчит.
+int ps_da_sun_log = 0;
+
+// [DA_PORT] da_sun_only N: накапливать солнечный свет только от каскада N (1..3), 0 = все.
+// Замер под мерцание тени; см. render_sun::accumulate_cascade.
+int ps_da_sun_only = 0;
+
+
 float o_optimize_static_l1_dist = O_S_L1_D_MED;
 float o_optimize_static_l1_size = O_S_L1_S_MED;
 float o_optimize_static_l2_dist = O_S_L2_D_MED;
@@ -1186,6 +1194,10 @@ void xrRender_initconsole()
     {
         extern int ps_da_render_log;
         CMD4(CCC_Integer, "da_render_log", &ps_da_render_log, 0, 2000);
+        // [DA_PORT] Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
+        // мерцания целой тени на улице — см. комментарий в render_phase_sun.cpp::calculate.
+        CMD4(CCC_Integer, "da_sun_log", &ps_da_sun_log, 0, 2000);
+        CMD4(CCC_Integer, "da_sun_only", &ps_da_sun_only, 0, 3);
     }
 #if RENDER == R_R4
     // [DA_PORT] GPU time per render phase, N frames into the log. See da_gpu_timer.h.
