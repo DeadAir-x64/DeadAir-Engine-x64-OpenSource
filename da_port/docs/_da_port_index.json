@@ -4073,6 +4073,16 @@
 "Dead Air compat: DA's rename of CoC's get_force_anti_aim (xr_conditions.burer_anti_aim)."
 ]
 ],
+"xray-16/src/xrGame/script_sound.cpp": [
+[
+30,
+"Это уведомление, а не ошибка, и стек Lua к нему не нужен."
+],
+[
+44,
+"Msg(\"~ [DA_PORT] звук \\\"%s\\\" отпущен скриптом до конца воспроизведения и остановлен\","
+]
+],
 "xray-16/src/xrGame/stalker_movement_manager_obstacles_path.cpp": [
 [
 28,
