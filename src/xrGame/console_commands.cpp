@@ -340,6 +340,30 @@ public:
     virtual void Execute(LPCSTR /*args*/) { DA_MemReset(); }
 };
 
+// [DA_PORT] Целая крутилка, которая НЕ сохраняется в user.ltx: живёт ровно один запуск.
+//
+// Для отладочных ручек сохранение — не удобство, а мина. Ловушка аллокатора, оставленная взведённой,
+// дважды роняла игру: она сохранялась в конфиг, взводилась при следующем запуске и снимала стеки во
+// время загрузки уровня, где память выделяют сразу несколько потоков. Оба раза лог обрывался без
+// стека падения, то есть без намёка на то, что виноват инструмент отладки.
+//
+// Забыть выключить диагностику слишком легко, а цена ошибки достаётся не тому, кто её включил.
+// Поэтому такие ручки обязаны требовать осознанного включения каждый сеанс.
+class CCC_IntegerVolatile : public CCC_Integer
+{
+public:
+    CCC_IntegerVolatile(pcstr N, int* V, int _min, int _max) : CCC_Integer(N, V, _min, _max) {}
+    virtual void Save(IWriter*) override {}
+};
+
+// [DA_PORT] Снимок посреди игры: замер для ПОКАДРОВЫХ утечек, которые протокол загрузок не видит.
+class CCC_DaMemSnap : public IConsole_Command
+{
+public:
+    CCC_DaMemSnap(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/) { DA_MemSnap(); }
+};
+
 // [DA_PORT] Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число
 // раз и печатает вывод. Руками это делается ровно так же, но легко сбиться — а перезапуск игры
 // обнуляет накопленное, потому что таблица живёт в памяти процесса.
@@ -2447,24 +2471,40 @@ void CCC_RegisterCommands()
     CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
     CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
     CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
+    CMD1(CCC_DaMemSnap, "da_mem_snap");   // [DA_PORT] снимок посреди игры: покадровые утечки
+    {
+        // [DA_PORT] Размытие при прицеливании и перезарядке. По умолчанию выключено: эффект
+        // приходит из данных ствола (zoom_dof / reload_dof), нравится далеко не всем, а вернуть
+        // его — одна команда. Конфиги при этом не тронуты.
+        extern int g_weapon_dof;
+        CMD4(CCC_Integer, "g_weapon_dof", &g_weapon_dof, 0, 1);
+    }
     {
         extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
-        CMD4(CCC_Integer, "da_mem_probe", &g_da_mem_probe, 0, 1);
+        CMD4(CCC_IntegerVolatile, "da_mem_probe", &g_da_mem_probe, 0, 1);
         extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
-        CMD4(CCC_Integer, "da_mem_heapwalk", &g_da_mem_heapwalk, 0, 1);
+        CMD4(CCC_IntegerVolatile, "da_mem_heapwalk", &g_da_mem_heapwalk, 0, 1);
         extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
-        CMD4(CCC_Integer, "da_mem_trap_size", &g_da_mem_trap_size, 0, 1024 * 1024);
+        // ⚠️ Потолок у всех трёх «размерных» крутилок ниже — 512 МБ, а не мегабайт, как было
+        // сначала. Мегабайт поставили, когда охотились за блоками по 16 КБ, и он молча закрыл
+        // охоту на КРУПНЫЕ блоки: попытка навести ловушку на утечку в 15 624 208 байт отвечала
+        // «Invalid syntax» и ловушка оставалась невзведённой, а прогон при этом шёл целиком и
+        // выглядел исправным. Диапазон крутилки — это тоже интерфейс, и слишком узкий диапазон
+        // выглядит как поломка инструмента.
+        CMD4(CCC_IntegerVolatile, "da_mem_trap_size", &g_da_mem_trap_size, 0, 512 * 1024 * 1024);
         // [DA_PORT] Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного
         // размера. Ради неё всё и затевалось — оба известных пула пакетов оказались пусты, и кто
         // держит блоки, статикой не находится.
         extern int g_da_alloc_trap_size;
         extern int g_da_alloc_trap_left;
-        CMD4(CCC_Integer, "da_alloc_trap_size", &g_da_alloc_trap_size, 0, 1024 * 1024);
-        CMD4(CCC_Integer, "da_alloc_trap_count", &g_da_alloc_trap_left, 0, 64);
+        CMD4(CCC_IntegerVolatile, "da_alloc_trap_size", &g_da_alloc_trap_size, 0, 512 * 1024 * 1024);
+        CMD4(CCC_IntegerVolatile, "da_alloc_trap_count", &g_da_alloc_trap_left, 0, 64);
         extern int g_da_alloc_trap_slack; // допуск: блок в куче больше запрошенного на заголовок
-        CMD4(CCC_Integer, "da_alloc_trap_slack", &g_da_alloc_trap_slack, 0, 4096);
+        // Допуск тоже расширен: узкое окно нужно для точного размера, широкое — когда размер
+        // известен только вилкой («блок где-то между 8 и 16 МБ»), и это рабочий приём.
+        CMD4(CCC_IntegerVolatile, "da_alloc_trap_slack", &g_da_alloc_trap_slack, 0, 16 * 1024 * 1024);
         extern int g_da_alloc_trap_every; // прореживание: брать каждое N-е совпадение
-        CMD4(CCC_Integer, "da_alloc_trap_every", &g_da_alloc_trap_every, 1, 100000);
+        CMD4(CCC_IntegerVolatile, "da_alloc_trap_every", &g_da_alloc_trap_every, 1, 100000);
     }
 
     // game

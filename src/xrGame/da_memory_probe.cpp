@@ -16,6 +16,7 @@
 #include "Common/object_broker.h"
 #include <algorithm>
 #include <windows.h>
+#include <malloc.h> // _get_heap_handle: куча CRT, единственная, где живут наши аллокации
 
 // Крутилки объявлены здесь, а определены ниже: обход куч лежит в безымянном пространстве имён выше
 // по файлу и обращается к ним.
@@ -38,6 +39,9 @@ constexpr size_t SIZE_BUCKETS = 65537;
 // и это было ошибкой: мелочь объяснила лишь несколько мегабайт из ста восьмидесяти, а весь вес
 // оказался в блоках, которых она не видела.
 constexpr size_t BIG_BUCKETS = 24;
+// Сколько РАЗЛИЧНЫХ точных размеров крупных блоков помещается в снимок. Замер на Кордоне даёт около
+// пятисот блоков свыше 64 КБ, различных размеров среди них меньше; с запасом хватает.
+constexpr size_t BIG_EXACT_MAX = 4096;
 
 struct Mark
 {
@@ -53,6 +57,11 @@ struct Run
 {
     shared_str what;
     xr_vector<Mark> marks;
+    // Номер кадра на момент снимка. Для покадровой утечки это ЕДИНСТВЕННАЯ верная ось: при
+    // rs_always_active игра без фокуса продолжает рисовать, и за одну и ту же минуту может пройти
+    // и три тысячи кадров, и сорок. Утечка на кадр, поделённая на часы, выглядит то смертельной,
+    // то отсутствующей — ровно на этом и обманулись, пока считали по времени.
+    u32 frame = 0;
     // Полный снимок по подсистемам, снятый в конце прогона.
     size_t committed_kb = 0;
     size_t textures_kb = 0;
@@ -71,6 +80,11 @@ struct Run
     xr_vector<u32> size_hist;
     xr_vector<u32> big_hist;  // штук
     xr_vector<size_t> big_kb; // и сколько килобайт в каждом ведре
+    // Крупные блоки ТОЧНЫМ размером, а не ведром. Вёдра по степеням двойки сказали «течёт один блок
+    // 8-16 МБ на перезагрузку» — этого мало: чтобы навести на него ловушку аллокатора и получить
+    // стек, нужен ровный размер. Пар немного (несколько сотен различных размеров), поэтому храним
+    // списком, а не гистограммой на четыре миллиона ведёр.
+    xr_vector<std::pair<u32, u32>> big_exact; // размер -> сколько таких блоков
     // По кучам: у процесса их несколько, и каждую заводит своя библиотека. Если растущие блоки
     // сидят в отдельной куче, подсистема названа без всякой возни со стеками вызовов.
     xr_vector<size_t> heap_kb_by_heap;
@@ -93,6 +107,25 @@ struct Run
 
 xr_vector<Run> g_runs;
 bool g_run_open = false;
+
+// [DA_PORT] Короткая сводка по каждой загрузке — отдельно от Run и с куда большим запасом.
+//
+// Зачем отдельно: Run весит четверть мегабайта (гистограмма на 65537 ведёр), поэтому их держим восемь.
+// Для поиска утечки на СМЕНЕ УРОВНЯ этого мало: в моде 34 локации, и чтобы увидеть, растёт ли
+// стоимость одного и того же места при повторных заходах, нужен десяток-другой переходов в один
+// сеанс. Здесь на запись уходят несколько чисел, так что их можно хранить много.
+constexpr size_t MAX_SUMMARY = 64;
+
+struct Summary
+{
+    shared_str what;
+    u32 frame = 0;
+    size_t committed_kb = 0;
+    size_t heap_kb = 0;
+    size_t heap_blocks = 0;
+};
+
+xr_vector<Summary> g_summary;
 
 size_t committed_kb() { return Memory.mem_usage() / 1024; }
 
@@ -141,8 +174,18 @@ u8 g_samples[SAMPLES][SAMPLE_BYTES];
 size_t g_samples_taken = 0;
 
 void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u32>& big,
-    xr_vector<size_t>& big_kb, xr_vector<size_t>& per_heap_kb, xr_vector<u32>& per_heap_susp)
+    xr_vector<size_t>& big_kb, xr_vector<size_t>& per_heap_kb, xr_vector<u32>& per_heap_susp,
+    xr_vector<std::pair<u32, u32>>& big_exact)
 {
+    // [DA_PORT] Ловушка аллокатора обязана молчать на время обхода, иначе игра падает в HeapLock.
+    // Как это выглядело: ловушка стояла на 128 байт (буферы графа сцены), da_mem_test при старте
+    // прогона сам перевзводит её (см. ниже g_da_alloc_trap_left = 6), и она срабатывала ИЗ РАБОЧИХ
+    // ПОТОКОВ рендера. Снятие стека само зовёт DbgHelp и выделяет память — а мы в этот момент
+    // держим кучу залоченной из главного потока. Отсюда падение в walk_heaps.
+    // Гасим по значению, а не по счётчику: счётчик прогон перевзведёт заново.
+    const int trap_size_saved = g_da_alloc_trap_size;
+    g_da_alloc_trap_size = 0;
+
     g_samples_taken = 0;
     blocks = 0;
     bytes = 0;
@@ -151,10 +194,36 @@ void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u
     big_kb.assign(BIG_BUCKETS, 0);
     per_heap_kb.clear();
     per_heap_susp.clear();
+    // Ёмкость берётся ДО блокировки кучи и внутри обхода уже не растёт — см. пояснение на вставке.
+    big_exact.clear();
+    big_exact.reserve(BIG_EXACT_MAX);
 
-    HANDLE heaps[64];
-    const DWORD count = GetProcessHeaps(64, heaps);
-    for (DWORD i = 0; i < count && i < 64; ++i)
+    // [DA_PORT] Обходим ТОЛЬКО СВОИ кучи, а не все кучи процесса.
+    //
+    // Прежняя версия брала список через GetProcessHeaps и лочила каждую. Это роняло игру: часть куч
+    // процесса заводят и рушат чужие библиотеки — драйвер видеокарты и NGX, — и между получением
+    // списка и HeapLock хендл успевал протухнуть. Падение приходило внутри RtlLockHeap, то есть уже
+    // за пределами нашего кода, и выглядело как порча кучи, хотя это была гонка. Окно широкое:
+    // обход многогигабайтной кучи занимает секунды, и всё это время список считается актуальным.
+    //
+    // Чужие кучи нам не нужны ни для чего. При USE_PURE_ALLOC (наша конфигурация, см.
+    // MEMORY_ALLOCATOR=standard) весь xrMemory сводится к malloc/free, то есть к куче CRT; плюс
+    // куча процесса по умолчанию, откуда идут прямые HeapAlloc. Всё, что мы способны утечь, лежит
+    // здесь, и обе найденные утечки нашлись ровно в этих числах.
+    //
+    // Разбивка по чужим кучам, которую мы теряем, ни разу никого не назвала — виновника оба раза
+    // назвала гистограмма по размеру блока. Так что размен односторонний: уходит только риск.
+    HANDLE heaps[4];
+    DWORD count = 0;
+    if (const HANDLE crt = (HANDLE)_get_heap_handle())
+        heaps[count++] = crt;
+    if (const HANDLE def = GetProcessHeap())
+    {
+        if (count == 0 || def != heaps[0])
+            heaps[count++] = def;
+    }
+
+    for (DWORD i = 0; i < count; ++i)
     {
         per_heap_kb.push_back(0);
         per_heap_susp.push_back(0);
@@ -189,11 +258,31 @@ void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u
                     const size_t b = big_bucket(entry.cbData);
                     ++big[b];
                     big_kb[b] += entry.cbData / 1024;
+
+                    // И тот же блок — точным размером.
+                    //
+                    // ⚠️ Здесь нельзя ВЫДЕЛЯТЬ память: куча залочена нами, и HeapWalk требует, чтобы
+                    // во время обхода её не меняли — своя же аллокация способна сбить перебор.
+                    // Поэтому ёмкость выбрана заранее (см. reserve выше), а рост списка ограничен
+                    // ею же; линейный поиск по той же причине, карта звала бы аллокатор.
+                    const u32 sz = (u32)entry.cbData;
+                    bool found = false;
+                    for (auto& it : big_exact)
+                        if (it.first == sz)
+                        {
+                            ++it.second;
+                            found = true;
+                            break;
+                        }
+                    if (!found && big_exact.size() < big_exact.capacity())
+                        big_exact.push_back({ sz, 1 });
                 }
             }
         }
         HeapUnlock(heaps[i]);
     }
+
+    g_da_alloc_trap_size = trap_size_saved;
 }
 
 // Ширина строки В СИМВОЛАХ, а не в байтах: подписи фаз русские, в UTF-8 это два байта на букву,
@@ -214,13 +303,28 @@ void pad_to(string512& dst, size_t width)
 }
 } // namespace
 
-// Выключатель: da_mem_probe 0 гасит автоматические отметки и печать в конце загрузки.
+// Выключатель: da_mem_probe 1 включает автоматические отметки и печать в конце загрузки.
 // Ручной da_mem_dump работает всегда — он печатает то, что успели накопить.
-int g_da_mem_probe = 1;
+//
+// [DA_PORT] По умолчанию ВЫКЛЮЧЕНО. Было включено на время охоты за утечкой, и это оказалось
+// миной: зонд сам запускался на КАЖДОЙ загрузке уровня и ронял игру в обходе куч (см. ниже).
+// Инструмент отладки не должен работать у игрока — включать руками, когда что-то ищем.
+int g_da_mem_probe = 0;
 
-// Обход куч: даёт ЖИВЫЕ аллокации вместо закоммиченной памяти, но останавливает потоки на время
-// обхода. Для охоты за утечкой включён, в обычной игре имеет смысл гасить.
-int g_da_mem_heapwalk = 1;
+// Обход куч: даёт ЖИВЫЕ аллокации вместо закоммиченной памяти — только он отличает утечку от
+// удержания памяти аллокатором.
+//
+// ⚠️ ИСТОРИЯ, чтобы не вернуться к прежнему устройству: до 30.07 обход брал список через
+// GetProcessHeaps и лочил ВСЕ кучи процесса — и ронял игру через раз, падением внутри RtlLockHeap
+// (наблюдалось четырежды). Причиной считали неустранимую гонку и записали «закрыть нечем: SEH в
+// MinGW недоступен». Вывод был неверен: гонку не надо было закрывать, в неё не надо было входить.
+// Чужие кучи заводят драйвер и NGX, они же их и рушат, а нам они не нужны — наши аллокации лежат
+// в куче CRT. Обход сузили до своих куч (см. walk_heaps), и причина падения исчезла вместе с
+// перебором. Урок: «неустранимо» стоит перечитывать как «не тот вопрос».
+//
+// По умолчанию всё равно выключен, но уже по другой причине: обход держит кучу залоченной, а на
+// многогигабайтной куче это заметная пауза. Это цена замера, а не риск вылета.
+int g_da_mem_heapwalk = 0;
 
 // Размер блока, по которому идёт охота. Замер назвал 16413 байт: их прибавляется ровно 2547 штук на
 // каждую перезагрузку. Ни файла, ни структуры такого размера не нашлось, поэтому смотрим внутрь —
@@ -237,6 +341,7 @@ bool g_finish_pending = false; // итог прогона ещё не снят
 void DA_MemReset()
 {
     g_runs.clear();
+    g_summary.clear();
     g_run_open = false;
     Msg("~ [DA_MEM] накопленное сброшено");
 }
@@ -262,14 +367,12 @@ void DA_MemRunBegin(const char* what)
     DA_MemMark("начало");
 }
 
-void DA_MemMark(const char* label)
+namespace
 {
-    if (!g_da_mem_probe)
-        return;
-    if (!g_run_open || g_runs.empty())
-        return;
-
-    Run& run = g_runs.back();
+// Отметка без оглядки на выключатель: прогон уже существует, значит замер идёт. Выключатель
+// проверяют ВХОДЫ (автоматические хуки загрузки), а не сама запись.
+void push_mark(Run& run, const char* label)
+{
     if (run.marks.size() >= MAX_MARKS)
         return;
 
@@ -279,6 +382,17 @@ void DA_MemMark(const char* label)
     m.committed_kb = now;
     m.delta_kb = run.marks.empty() ? 0 : (long long)now - (long long)run.marks.back().committed_kb;
     run.marks.push_back(m);
+}
+} // namespace
+
+void DA_MemMark(const char* label)
+{
+    if (!g_da_mem_probe)
+        return;
+    if (!g_run_open || g_runs.empty())
+        return;
+
+    push_mark(g_runs.back(), label);
 }
 
 void DA_MemRunEnd()
@@ -313,12 +427,13 @@ void DA_MemRunEnd()
 namespace
 {
 // Итог прогона: снимается после того, как объекты заспавнились и прогрев закончился.
-void finish_run(Run& run)
+// Подпись отметки задаётся снаружи: тот же код снимает и итог загрузки, и снимок по команде
+// (da_mem_snap), а «после прогрева» в снимке посреди игры читалось бы как ложь.
+void finish_run(Run& run, const char* mark_label = "после прогрева")
 {
-    g_run_open = true; // чтобы прошла отметка
-    DA_MemMark("после прогрева");
-    g_run_open = false;
+    push_mark(run, mark_label);
 
+    run.frame = Device.dwFrame;
     run.committed_kb = committed_kb();
     run.textures_kb = textures_kb();
     run.lua_kb = lua_kb();
@@ -336,7 +451,7 @@ void finish_run(Run& run)
     {
         size_t blocks = 0, bytes = 0;
         walk_heaps(blocks, bytes, run.size_hist, run.big_hist, run.big_kb, run.heap_kb_by_heap,
-            run.heap_susp_by_heap);
+            run.heap_susp_by_heap, run.big_exact);
         run.heap_blocks = blocks;
         run.heap_kb = bytes / 1024;
     }
@@ -398,6 +513,19 @@ void finish_run(Run& run)
         run.ps_active = g_pGamePersistent->ps_active.size();
         run.ps_destroy = g_pGamePersistent->ps_destroy.size();
         run.ps_needtoplay = g_pGamePersistent->ps_needtoplay.size();
+    }
+
+    // Короткая сводка живёт дольше подробных прогонов — см. MAX_SUMMARY.
+    {
+        if (g_summary.size() >= MAX_SUMMARY)
+            g_summary.erase(g_summary.begin());
+        Summary s;
+        s.what = run.what;
+        s.frame = run.frame;
+        s.committed_kb = run.committed_kb;
+        s.heap_kb = run.heap_kb;
+        s.heap_blocks = run.heap_blocks;
+        g_summary.push_back(s);
     }
 
     Msg("~ [DA_MEM] прогон %u (%s) завершён: %u МБ", (u32)g_runs.size(), run.what.c_str(),
@@ -499,6 +627,51 @@ void DA_MemTick()
     Console->Execute("load_last_save");
 }
 
+// Снимок по команде — замер для ОБЫЧНОЙ ИГРЫ, без перезагрузок.
+//
+// Зачем отдельно от da_mem_test: тот меряет только путь загрузки, а обе найденные утечки жили в
+// разных местах. Первая (пакеты) действительно копилась и на перезагрузках, но вторая — узлы
+// xr_fixed_map в графе сцены — текла ПОКАДРОВО, во время игры, и на протоколе «загрузить сейв
+// трижды» была почти не видна: за три загрузки набегает несколько тысяч кадров, а за четверть часа
+// игры — сотни тысяч. Проверять покадровую утечку тестом загрузок бессмысленно.
+//
+// Как пользоваться: `da_mem_probe 1`, `da_mem_heapwalk 1`, затем `da_mem_snap` — играть 5-10 минут —
+// `da_mem_snap` — ещё столько же — `da_mem_snap`. Дальше решает НЕ разница закоммиченного, а таблицы
+// живых блоков и «какие блоки прибавились»: они называют размер структуры-виновника.
+//
+// ⚠️ Обход куч гоночный и роняет игру через раз (см. g_da_mem_heapwalk). Снимайте снимок в
+// спокойном месте, не в бою, и не чаще, чем нужно.
+void DA_MemSnap()
+{
+    if (!g_pGameLevel)
+    {
+        Msg("~ [DA_MEM] снимок снимается в игре: уровень не загружен");
+        return;
+    }
+
+    if (g_run_open)
+    {
+        Msg("~ [DA_MEM] идёт загрузка, снимок отложите до её конца");
+        return;
+    }
+
+    if (g_runs.size() >= MAX_RUNS)
+        g_runs.erase(g_runs.begin());
+
+    g_runs.push_back(Run());
+    Run& run = g_runs.back();
+
+    string128 what;
+    xr_sprintf(what, "игра, кадр %u", Device.dwFrame);
+    run.what = what;
+
+    // Объекты здесь считаются сразу, в отличие от загрузки: мир уже живой, ждать спавна не нужно.
+    run.objects = Level().Objects.o_count();
+    run.objects_pending = false;
+
+    finish_run(run, "снимок");
+}
+
 void DA_MemDump()
 {
     if (g_runs.empty())
@@ -510,14 +683,26 @@ void DA_MemDump()
     Msg("~ ================= [DA_MEM] память по загрузкам =================");
 
     // --- итог по прогонам: та самая форма кривой ---
-    Msg("~ [DA_MEM] прогон | уровень              | всего МБ | прирост к прошлому");
+    Msg("~ [DA_MEM] замер | что                  | всего МБ | прирост | кадров с прошлого | МБ/1000 кадров");
     for (size_t i = 0; i < g_runs.size(); ++i)
     {
         const Run& r = g_runs[i];
         const long long d = (i == 0) ? 0
                                      : (long long)r.committed_kb - (long long)g_runs[i - 1].committed_kb;
-        Msg("~ [DA_MEM]   %-4u | %-20s | %8u | %s%lld МБ", (u32)(i + 1), r.what.c_str(),
-            (u32)(r.committed_kb / 1024), sign(d), d / 1024);
+        // Прирост, приведённый к кадрам. Покадровую утечку видно ТОЛЬКО так: в мегабайтах за замер
+        // она смешана с тем, сколько кадров успело пройти, а это зависит от частоты кадров и от
+        // того, сидел ли игрок в альт-табе. Полка в этой колонке = утечка на кадр.
+        const long long frames = (i == 0 || r.frame <= g_runs[i - 1].frame)
+            ? 0
+            : (long long)r.frame - (long long)g_runs[i - 1].frame;
+        string32 per_kf;
+        if (frames > 0)
+            xr_sprintf(per_kf, "%s%lld", sign(d * 1000 / frames), d * 1000 / frames / 1024);
+        else
+            xr_sprintf(per_kf, "%s", "-");
+
+        Msg("~ [DA_MEM]   %-4u | %-20s | %8u | %s%lld МБ | %17lld | %s", (u32)(i + 1), r.what.c_str(),
+            (u32)(r.committed_kb / 1024), sign(d), d / 1024, frames, per_kf);
     }
 
     if (g_runs.size() >= 3)
@@ -551,12 +736,81 @@ void DA_MemDump()
                 "подлиннее (da_mem_test 8): плато уйдёт в ноль, утечка встанет на полке");
         else
             Msg("~ [DA_MEM] ВЫВОД: шаг НЕ убывает — это утечка. Ищите в таблицах ниже то, что растёт "
-                "монотонно от прогона к прогону");
+                "монотонно от замера к замеру");
     }
     else
     {
-        Msg("~ [DA_MEM] для вывода нужно ТРИ загрузки одного и того же сохранения подряд, не выходя "
-            "из игры. Сделано: %u", (u32)g_runs.size());
+        Msg("~ [DA_MEM] для вывода нужно ТРИ замера подряд, не выходя из игры: либо три загрузки "
+            "одного сохранения (da_mem_test 3), либо три снимка da_mem_snap с игрой между ними. "
+            "Сделано: %u", (u32)g_runs.size());
+    }
+
+    // --- по уровням: одно и то же место при ПОВТОРНЫХ посещениях ---
+    //
+    // Для переходов между уровнями таблица выше бесполезна: «прирост к прошлому» сравнивает соседние
+    // прогоны, а у разных уровней разное население и геометрия, и любая разница объясняется этим, а
+    // не утечкой. Единственный осмысленный вопрос — сколько стоит ОДИН И ТОТ ЖЕ уровень при первом и
+    // при повторном заходе, поэтому прогоны группируются по имени.
+    //
+    // Протокол: A -> B -> A -> B -> A. Если живые мегабайты уровня A растут от захода к заходу,
+    // выгрузка не отдаёт, и это утечка на пути СМЕНЫ уровня — том самом, который перезагрузка
+    // сохранения не задействует вовсе (при ней уровень остаётся в памяти).
+    // Считается по КОРОТКОЙ сводке, а не по прогонам: подробных прогонов восемь, а переходов между
+    // локациями за сеанс нужно куда больше (см. MAX_SUMMARY).
+    {
+        xr_vector<shared_str> levels;
+        for (const Summary& s : g_summary)
+        {
+            bool known = false;
+            for (const shared_str& l : levels)
+                if (l == s.what)
+                {
+                    known = true;
+                    break;
+                }
+            if (!known)
+                levels.push_back(s.what);
+        }
+
+        bool repeated = false;
+        for (const shared_str& lv : levels)
+        {
+            size_t visits = 0;
+            for (const Summary& s : g_summary)
+                if (s.what == lv)
+                    ++visits;
+            if (visits < 2)
+                continue;
+
+            if (!repeated)
+            {
+                Msg("~ [DA_MEM] --- повторные заходы на ОДИН уровень: живых МБ / блоков / закоммичено ---");
+                repeated = true;
+            }
+
+            string512 line;
+            xr_sprintf(line, "~ [DA_MEM]   %s", lv.c_str());
+            pad_to(line, 30);
+            for (const Summary& s : g_summary)
+            {
+                if (s.what != lv)
+                    continue;
+                string64 cell;
+                xr_sprintf(cell, " %5u/%7u/%5u", (u32)(s.heap_kb / 1024), (u32)s.heap_blocks,
+                    (u32)(s.committed_kb / 1024));
+                xr_strcat(line, cell);
+            }
+            Msg("%s", line);
+        }
+
+        if (repeated)
+            Msg("~ [DA_MEM] Растут ЖИВЫЕ мегабайты одного и того же уровня от захода к заходу — это "
+                "утечка на пути СМЕНЫ уровня. Стоят — путь чист, а рост закоммиченного объясняется "
+                "удержанием памяти аллокатором.");
+        else if (levels.size() > 1)
+            Msg("~ [DA_MEM] Уровни все РАЗНЫЕ, сравнивать их между собой нельзя: у них разное "
+                "население и геометрия. Для поиска утечки на переходах пройдите A -> B -> A -> B -> A, "
+                "тогда появится сводка по повторным заходам.");
     }
 
     // --- сколько памяти было НА ВХОДЕ в каждую загрузку ---
@@ -629,13 +883,27 @@ void DA_MemDump()
     // --- подсистемы: что уже отсеяно замером, а что нет ---
     Msg("~ [DA_MEM] --- подсистемы в конце каждого прогона ---");
     Msg("~ [DA_MEM] --- ЖИВЫЕ аллокации (обход куч процесса) ---");
-    Msg("~ [DA_MEM] прогон | живых МБ | блоков | закоммичено МБ | разница");
+    Msg("~ [DA_MEM] замер | живых МБ | блоков | закоммичено МБ | разница | блоков/1000 кадров");
     for (size_t i = 0; i < g_runs.size(); ++i)
     {
         const Run& r = g_runs[i];
-        Msg("~ [DA_MEM]   %-4u | %8u | %6u | %14u | %u", (u32)(i + 1), (u32)(r.heap_kb / 1024),
+        // Живые блоки на тысячу кадров — самая прямая мера покадровой утечки: она не зависит ни от
+        // частоты кадров, ни от того, сколько аллокатор придержал. Именно эта величина отличила
+        // утечку узлов графа сцены от обычного удержания памяти.
+        const long long frames = (i == 0 || r.frame <= g_runs[i - 1].frame)
+            ? 0
+            : (long long)r.frame - (long long)g_runs[i - 1].frame;
+        const long long db = (i == 0) ? 0
+            : (long long)r.heap_blocks - (long long)g_runs[i - 1].heap_blocks;
+        string32 per_kf;
+        if (frames > 0 && r.heap_blocks)
+            xr_sprintf(per_kf, "%s%lld", sign(db * 1000 / frames), db * 1000 / frames);
+        else
+            xr_sprintf(per_kf, "%s", "-");
+
+        Msg("~ [DA_MEM]   %-4u | %8u | %6u | %14u | %7u | %s", (u32)(i + 1), (u32)(r.heap_kb / 1024),
             (u32)r.heap_blocks, (u32)(r.committed_kb / 1024),
-            (u32)((r.committed_kb - r.heap_kb) / 1024));
+            (u32)((r.committed_kb - r.heap_kb) / 1024), per_kf);
     }
     // Какие размеры блоков прибавляются от первого прогона к последнему: подпись утечки.
     const Run& first_run = g_runs.front();
@@ -689,6 +957,58 @@ void DA_MemDump()
             Msg("%s", line);
         }
         Msg("~ [DA_MEM] (в каждой клетке: штук блоков / их суммарные МБ)");
+    }
+
+    // Крупные блоки ТОЧНЫМ размером: что именно прибавилось. Ведро «8-16 МБ» говорит, что течёт один
+    // блок на перезагрузку, но навести ловушку аллокатора можно только на ровный размер — вот он.
+    if (!first_run.big_exact.empty() && !last_run.big_exact.empty())
+    {
+        xr_vector<std::pair<u32, long long>> growth;
+        for (const auto& last : last_run.big_exact)
+        {
+            long long before = 0;
+            for (const auto& first : first_run.big_exact)
+                if (first.first == last.first)
+                {
+                    before = first.second;
+                    break;
+                }
+            const long long d = (long long)last.second - before;
+            if (d > 0)
+                growth.push_back({ last.first, d });
+        }
+        std::sort(growth.begin(), growth.end(),
+            [](const auto& a, const auto& b) { return a.second * (long long)a.first > b.second * (long long)b.first; });
+
+        if (!growth.empty())
+        {
+            Msg("~ [DA_MEM] --- крупные блоки, ТОЧНЫЙ размер: что прибавилось с первого замера ---");
+            Msg("~ [DA_MEM] размер, байт | прибавилось штук | это МБ | стало штук | для ловушки");
+            const size_t shown = growth.size() < 12 ? growth.size() : 12;
+            for (size_t k = 0; k < shown; ++k)
+            {
+                u32 now = 0;
+                for (const auto& it : last_run.big_exact)
+                    if (it.first == growth[k].first)
+                    {
+                        now = it.second;
+                        break;
+                    }
+                Msg("~ [DA_MEM]   %10u | %16lld | %6lld | %10u | da_alloc_trap_size %u",
+                    growth[k].first, growth[k].second,
+                    growth[k].second * (long long)growth[k].first / 1024 / 1024, now, growth[k].first);
+            }
+            // Подсказка печатается по одной команде на строку НАМЕРЕННО: консоль разбирает ввод как
+            // «первое слово — команда, остаток — аргументы», разделителя ';' у неё нет. Список через
+            // запятую уже был понят как одна команда: da_alloc_trap_size молча остался нулём, а
+            // прогон прошёл без единого стека.
+            Msg("~ [DA_MEM] Дальше — по ОДНОЙ команде на строку (';' консоль не понимает):");
+            Msg("~ [DA_MEM]   da_alloc_trap_slack 64");
+            Msg("~ [DA_MEM]   da_alloc_trap_size %u", growth[0].first);
+            Msg("~ [DA_MEM]   da_mem_test 2");
+            Msg("~ [DA_MEM] В логе появится [DA_TRAP] со стеком в момент выделения. Потом вернуть "
+                "da_alloc_trap_size 0 — крутилка сохраняется в user.ltx.");
+        }
     }
 
     // По кучам: где именно сидят растущие блоки.

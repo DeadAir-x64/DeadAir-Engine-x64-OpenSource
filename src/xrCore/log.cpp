@@ -30,8 +30,25 @@ void FlushLog()
         LogWriter->flush();
 }
 
+// [DA_PORT] Ловушка аллокатора обязана молчать, пока работает логгер: она печатает найденное через
+// Msg, и если наведена на размер, который выделяет сам логгер (буфер LogFile — это 32 байта на
+// строку, то есть круглые 512 000 при 16 000 строк), то получается вход в Msg из Msg посреди
+// перекладывания вектора. Игра падала, а лог обрывался на середине стека. Счётчик, а не флаг:
+// Log() вызывает AddOne() в цикле по строкам, вложенность обязана считаться.
+extern thread_local int g_da_trap_suspend;
+
+namespace
+{
+struct trap_silence
+{
+    trap_silence() { ++g_da_trap_suspend; }
+    ~trap_silence() { --g_da_trap_suspend; }
+};
+} // namespace
+
 void AddOne(pcstr split)
 {
+    const trap_silence no_trap;
     ScopeLock scope{ &logCS };
 
     OutputDebugString(split);
