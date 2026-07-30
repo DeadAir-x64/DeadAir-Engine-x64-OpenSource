@@ -17,6 +17,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# [DA_PORT] curl и tar берутся ПО ПОЛНОМУ ПУТИ из System32, а не по имени.
+#
+# По имени они разрешаются через PATH, а там у многих стоит MSYS2, Git Bash или Cygwin со своими
+# curl и tar. Юниксовый tar считает "D:\..." сетевым адресом и отвечает "Cannot connect to D:" —
+# ошибка выглядит как проблема с диском, а не с тем, что вызвали не ту программу. Поймано на
+# собственной машине при первом же прогоне сборки релиза.
+
+$SysTar  = Join-Path $env:SystemRoot 'System32\tar.exe'
+$SysCurl = Join-Path $env:SystemRoot 'System32\curl.exe'
+
+
 function Say([string]$t, [string]$c = 'Gray') { Write-Host $t -ForegroundColor $c }
 
 $binDir = Join-Path $Source 'bin'
@@ -35,17 +46,35 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 $zip = Join-Path $OutDir "DeadAir-x64-bin-$Version.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue
 
-Say "  Пакую $binDir -> $(Split-Path -Leaf $zip)"
+# [DA_PORT] В архив идёт НЕ ТОЛЬКО bin.
+#
+# Половина правок порта живёт в свободных файлах gamedata: шейдеры r3, разметка настроек, строки
+# локализации, скрипты вкладок. Они меняются теми же коммитами, что и движок, и обязаны обновляться
+# вместе с ним. Разъедься они — и получится сборка, где движок ждёт одного, а данные говорят другое:
+# ровно тот класс расхождений, который мы весь день ловили внутри самого проекта.
+$dataDir = Join-Path $Source 'gamedata'
+if (-not (Test-Path $dataDir))
+{
+    Say "  В $Source нет каталога gamedata." Red
+    exit 1
+}
 
-# Compress-Archive кладёт сам каталог, если указать его без маски - ровно то, что нужно:
-# в корне архива окажется bin.
-Compress-Archive -Path $binDir -DestinationPath $zip -CompressionLevel Optimal
+Say "  Пакую bin + gamedata -> $(Split-Path -Leaf $zip)"
+
+# Compress-Archive кладёт сами каталоги, если указать их без маски - ровно то, что нужно:
+# в корне архива окажутся bin и gamedata.
+Compress-Archive -Path $binDir, $dataDir -DestinationPath $zip -CompressionLevel Optimal
 
 # Проверка собранного архива тем же способом, каким его будет проверять обновлятор.
-$check = & tar.exe -tf $zip 2>$null | Where-Object { $_ -match 'bin/xrEngine\.exe$' }
-if (-not $check)
+$listing = & $SysTar -tf $zip 2>$null
+if (-not ($listing | Where-Object { $_ -match 'bin/xrEngine\.exe$' }))
 {
     Say '  В собранном архиве нет bin/xrEngine.exe - обновлятор такой не примет.' Red
+    exit 1
+}
+if (-not ($listing | Where-Object { $_ -match '^gamedata/' }))
+{
+    Say '  В собранном архиве нет gamedata - обновлятор такой не примет.' Red
     exit 1
 }
 

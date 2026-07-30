@@ -3,8 +3,9 @@
 # Запускается через "Обновить Dead Air.cmd" рядом. Ничего не требует от игрока: curl и tar входят
 # в состав Windows 10 и 11, git и прочие инструменты не нужны.
 #
-# ЧТО ОБНОВЛЯЕТСЯ: только каталог bin, то есть движок. Сохранения, настройки (appdata), данные мода
-# (gamedata, database) и сезоны не трогаются вовсе — обновление не может испортить прохождение.
+# ЧТО ОБНОВЛЯЕТСЯ: каталоги bin и gamedata, то есть движок и свободные файлы порта (шейдеры,
+# разметка, строки, скрипты вкладок). Сохранения и настройки (appdata), архивы мода (database) и
+# сезоны не трогаются вовсе — обновление не может испортить прохождение.
 #
 # ЧТО НУЖНО СО СТОРОНЫ РЕПОЗИТОРИЯ:
 #   1. Репозиторий должен быть ПУБЛИЧНЫМ — скрипт ходит без пароля и токена, как и должен ходить
@@ -31,6 +32,17 @@ $Owner = 'DanesCrai1'
 $Repo  = 'DeadAir-Engine-x64-OpenSource'
 $AssetPrefix = 'DeadAir-x64-bin'
 
+
+# [DA_PORT] curl и tar берутся ПО ПОЛНОМУ ПУТИ из System32, а не по имени.
+#
+# По имени они разрешаются через PATH, а там у многих стоит MSYS2, Git Bash или Cygwin со своими
+# curl и tar. Юниксовый tar считает "D:\..." сетевым адресом и отвечает "Cannot connect to D:" —
+# ошибка выглядит как проблема с диском, а не с тем, что вызвали не ту программу. Поймано на
+# собственной машине при первом же прогоне сборки релиза.
+
+$SysTar  = Join-Path $env:SystemRoot 'System32\tar.exe'
+$SysCurl = Join-Path $env:SystemRoot 'System32\curl.exe'
+
 $Root      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinDir    = Join-Path $Root 'bin'
 $VersionFile = Join-Path $BinDir 'da_version.txt'
@@ -45,7 +57,7 @@ Say ''
 # --- система должна уметь то, на что скрипт опирается ------------------------------------------
 # Проверяем ДО всего остального: незачем спрашивать GitHub о версии, если распаковать её будет
 # нечем. И сообщение получается о причине, а не о следствии.
-$needed = @('curl.exe', 'tar.exe') | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }
+$needed = @($SysCurl, $SysTar) | Where-Object { -not (Test-Path $_) } | ForEach-Object { Split-Path -Leaf $_ }
 if ($needed -or $PSVersionTable.PSVersion.Major -lt 3)
 {
     Say '  Этому обновлению нужна Windows 10 (сборка 1803) или новее.' Yellow
@@ -114,19 +126,24 @@ $archive = Join-Path $tmp $asset.name
 try
 {
     # curl, а не Invoke-WebRequest: он показывает ход загрузки и не держит весь файл в памяти.
-    & curl.exe -L --fail --progress-bar -o "$archive" $asset.browser_download_url
+    & $SysCurl -L --fail --progress-bar -o "$archive" $asset.browser_download_url
     if ($LASTEXITCODE -ne 0) { throw "curl вернул код $LASTEXITCODE" }
 
     Say '  Распаковываю...'
-    & tar.exe -xf "$archive" -C "$tmp"
+    & $SysTar -xf "$archive" -C "$tmp"
     if ($LASTEXITCODE -ne 0) { throw "tar вернул код $LASTEXITCODE" }
 
     # Проверка ДО подмены: в архиве должно оказаться то, что мы ждём. Пустой или чужой архив
     # обязан остановить обновление здесь, а не после того, как старый bin уже переименован.
-    $newBin = Join-Path $tmp 'bin'
+    $newBin  = Join-Path $tmp 'bin'
+    $newData = Join-Path $tmp 'gamedata'
     if (-not (Test-Path (Join-Path $newBin 'xrEngine.exe')))
     {
         throw 'в архиве нет bin\xrEngine.exe - похоже, файл собран не так, как ожидает этот скрипт'
+    }
+    if (-not (Test-Path $newData))
+    {
+        throw 'в архиве нет gamedata - обновление движка без его файлов данных ставить нельзя'
     }
 
     # --- подмена с сохранением предыдущей сборки ----------------------------------------------
@@ -141,6 +158,19 @@ try
     # обновляется движок, а не всё подряд.
     Get-ChildItem $backup -File | Where-Object { -not (Test-Path (Join-Path $BinDir $_.Name)) } |
         ForEach-Object { Copy-Item $_.FullName (Join-Path $BinDir $_.Name) }
+
+    # [DA_PORT] gamedata заменяется ЦЕЛИКОМ, и переноса недостающих файлов тут намеренно нет.
+    #
+    # Свободные файлы перекрывают архивные, поэтому лишний оставшийся файл — не безобидный мусор, а
+    # действующая подмена. Сегодня, например, из порта убрали ui_mm_opt.xml: доживи он на машине
+    # тестера, он продолжил бы перекрывать разметку настроек, и разбираться пришлось бы по симптомам.
+    # Прежний каталог сохраняется рядом, так что свои правки при желании достаются из него.
+    $dataDir = Join-Path $Root 'gamedata'
+    if (Test-Path $dataDir)
+    {
+        Move-Item -Path $dataDir -Destination (Join-Path $Root "gamedata_backup_$stamp") -Force
+    }
+    Move-Item -Path $newData -Destination $dataDir -Force
 
     Set-Content -Path $VersionFile -Value $latest -Encoding ASCII
 
