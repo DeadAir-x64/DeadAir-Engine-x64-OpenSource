@@ -261,6 +261,32 @@ void CDetailManager::WaitCalcTask()
         TaskScheduler->Wait(*m_calc_task);
         m_calc_task = nullptr;
     }
+
+    // [DA_PORT] Ожидания по указателю на задачу ОКАЗАЛОСЬ МАЛО - падение повторилось с тем же
+    // стеком уже после него. Поэтому ждём по признаку, который ставит и снимает сама задача:
+    // он не зависит ни от того, жив ли объект задачи, ни от того, сколько их успели поставить в
+    // очередь. Указатель хранит только ПОСЛЕДНЮЮ задачу, а за кадр без отрисовки травы их может
+    // накопиться несколько - ожидание последней тогда ничего не говорит о предыдущих.
+    //
+    // Задача короткая (обход кэша), поэтому уступаем время, а не крутимся вхолостую. Потолок
+    // ожидания есть, и его достижение - это сообщение, а не молчание: если признак не снялся за
+    // секунду, значит дело не в гонке, и запись об этом важнее, чем зависший наглухо кадр.
+    if (m_calc_active.load(std::memory_order_acquire))
+    {
+        const u64 started = CPU::QPC();
+        u32 spins = 0;
+        while (m_calc_active.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+            ++spins;
+            if (float(double(CPU::QPC() - started) / double(CPU::qpc_freq)) > 1.f)
+            {
+                Msg("! [DA_PORT] расчёт травы не завершился за секунду, продолжаю без него");
+                break;
+            }
+        }
+        Msg("~ [DA_PORT] ожидание расчёта травы: %u уступок времени", spins);
+    }
 }
 
 void CDetailManager::Unload()
@@ -492,8 +518,17 @@ void CDetailManager::Render(CBackend& cmd_list)
 
 void CDetailManager::DispatchMTCalc()
 {
+    m_calc_active.store(true, std::memory_order_release);
     m_calc_task = &TaskScheduler->AddTask([this]
     {
+        // [DA_PORT] Признак снимается на ЛЮБОМ выходе, включая ранние: иначе ожидание в
+        // WaitCalcTask ждало бы задачу, которая ничего не делает и уже завершилась.
+        struct done
+        {
+            std::atomic<bool>& flag;
+            ~done() { flag.store(false, std::memory_order_release); }
+        } mark{ m_calc_active };
+
 #ifndef _EDITOR
         if (nullptr == RImplementation.Details)
             return; // possibly deleted

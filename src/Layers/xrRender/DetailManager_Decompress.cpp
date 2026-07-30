@@ -172,7 +172,24 @@ void CDetailManager::cache_Decompress(Slot* S)
             u32 index = selected[0];
 #endif
 
-            CDetail* Dobj = objects[DS.r_id(index)];
+            // [DA_PORT] Номер модели приходит из данных уровня и до сих пор не проверялся ничем.
+            //
+            // Проверка стоит здесь потому, что именно в этой строке ломается игра при сбросе
+            // устройства из настроек: стек падения приходит из рабочего потока и упирается в эту
+            // функцию, а по стеку не видно, ЧТО оказалось не тем - объект вне списка, пустой
+            // указатель или испорченный сам слот. Теперь это будет написано словами и один раз, а
+            // кадр продолжит считаться без этой травинки.
+            const u32 obj_id = DS.r_id(index);
+            if (obj_id >= objects.size() || nullptr == objects[obj_id])
+            {
+                static std::atomic<bool> reported{ false };
+                if (!reported.exchange(true))
+                    Msg("! [DA_PORT] трава: модель %u при списке из %u, слот (%d %d) - пропускаю",
+                        obj_id, (u32)objects.size(), D.sx, D.sz);
+                continue;
+            }
+
+            CDetail* Dobj = objects[obj_id];
             SlotItem* ItemP = poolSI.create();
             SlotItem& Item = *ItemP;
 
