@@ -147,6 +147,28 @@ struct render_sun : public i_render_phase
     bool last_cascade_chain_mode{ false };
 
     u32 contexts_ids[R__NUM_SUN_CASCADES];
+
+    // [DA_PORT] Кэш теневых карт солнца. Разбор — в render_phase_sun.cpp, у da_smap_should_render.
+    //
+    // Дальние каскады покрывают огромную площадь и перерисовываются каждый кадр целиком, хотя их
+    // содержимое от кадра к кадру почти не меняется: статика неподвижна, солнце ползёт медленно, а
+    // сам ящик каскада при ходьбе смещается на доли своего размера.
+    struct smap_cache
+    {
+        Fmatrix xform;          // матрица, с которой снята лежащая в слоте карта
+        Fvector cam_pos;        // где стояла камера в тот момент
+        Fvector sun_dir;        // куда светило солнце
+        u32 time_ms{ 0 };       // время последней отрисовки, миллисекунды
+        bool valid{ false };    // есть ли в слоте что-то пригодное
+    };
+    smap_cache m_smap_cache[R__NUM_SUN_CASCADES];
+
+    // Перерисовывать ли каскад в этом кадре. Решается в calculate(), читается в render():
+    // пропуск отрисовки обязан совпадать с тем, что матрицу тоже не трогали.
+    bool m_smap_render[R__NUM_SUN_CASCADES]{};
+
+    // Годна ли лежащая в слоте карта этого каскада. Разбор условий — у реализации.
+    bool da_smap_should_render(u32 cascade_ind, const Fmatrix& fresh_xform) const;
 };
 
 struct render_sun_old : public i_render_phase
@@ -453,6 +475,10 @@ public:
 
     HRESULT shader_compile(pcstr name, IReader* fs,
         pcstr pFunctionName, pcstr pTarget, u32 Flags, void*& result) override;
+
+    // [DA_PORT] Параллельный прогрев кэша шейдеров, см. пояснение у реализации в r4_shaders.cpp.
+    void da_shader_warmup(bool serial = false);
+    void da_shader_manifest_save(); // [DA_PORT] снять манифест прогрева, см. r4_shaders.cpp
 
     // Information
     void DumpStatistics(class IGameFont& font, class IPerformanceAlert* alert) override;

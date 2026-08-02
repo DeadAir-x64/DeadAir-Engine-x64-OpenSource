@@ -228,8 +228,29 @@ void CRenderTarget::accum_direct(CBackend& cmd_list, u32 sub_phase)
         }
 
         // Make jitter texture
+        // [DA_PORT] Разрешение РЕНДЕРА, а не окна. Дальше по файлу и в phase_combine_volumetric — то же
+        // самое, там ссылка сюда.
+        //
+        // Шумовая текстура 64x64 замощается по экрану так, чтобы на пиксель приходился ровно один
+        // тексель: UV идут от 0 до ширина/64. Пока размеры совпадали, `dwWidth` это и давал. Но
+        // накопитель света создаётся размером `dwRenderWidth x dwRenderHeight` (r2_rendertarget.cpp:298),
+        // и при масштабе рендера 70% шум замощался в 1.43 текселя на пиксель — сетка перестаёт совпадать
+        // с пикселями, дизеринг теней и лучей идёт неровными полосами и, главное, ползёт от кадра к
+        // кадру вместе с джиттером камеры. Апскейлеру это приходит как настоящее движение яркости, и он
+        // его честно накапливает: тень мигает, а солнечные лучи наезжают на кромку куста.
+        //
+        // Для ламп (`u_compute_texgen_jitter`, r2_rendertarget.cpp:127) это у нас уже исправлено — солнце
+        // просто осталось в стороне, отсюда и то, что дефект чисто солнечный.
+        //
+        // ⚠️ Соседние `_w`/`_h` для координат четырёхугольника трогать НЕЛЬЗЯ: они переводятся в
+        // клип-пространство через `screen_res`, а тот намеренно равен размеру ОКНА
+        // (Blender_Recorder_StandartBinding.cpp:479). Там `dwWidth` — правильный ответ.
+        //
+        // Так же чинила команда IX-Ray: у них эти места считаются от `RCache.get_width()`, то есть от
+        // `HalfTargetWidth` = ширина swapchain * RenderScale (имя историческое, на деле разрешение
+        // рендера). Место в `accum_direct_cascade` они при этом пропустили, у нас исправлены все.
         Fvector2 j0, j1;
-        float scale_X = float(Device.dwWidth) / float(TEX_jitter);
+        float scale_X = float(Device.dwRenderWidth) / float(TEX_jitter);
         // float	scale_Y				= float(Device.dwHeight)/ float(TEX_jitter);
         float offset = (.5f / float(TEX_jitter));
         j0.set(offset, offset);
@@ -554,7 +575,7 @@ void CRenderTarget::accum_direct_cascade(CBackend& cmd_list, u32 sub_phase, Fmat
 
         // Make jitter texture
         Fvector2 j0, j1;
-        float scale_X = float(Device.dwWidth) / float(TEX_jitter);
+        float scale_X = float(Device.dwRenderWidth) / float(TEX_jitter); // [DA_PORT] см. accum_direct
         // float	scale_Y				= float(Device.dwHeight)/ float(TEX_jitter);
         float offset = (.5f / float(TEX_jitter));
         j0.set(offset, offset);
@@ -578,27 +599,27 @@ void CRenderTarget::accum_direct_cascade(CBackend& cmd_list, u32 sub_phase, Fmat
             constexpr u32 ver_count = sizeof(accum_direct::corners) / sizeof(Fvector3);
             Fvector4* pv = (Fvector4*)RImplementation.Vertex.Lock(ver_count, g_combine_cuboid.stride(), Offset);
 
-            // [DA_PORT] Проверка флага ВОЗВРАЩЕНА (была закомментирована).
+            // ⛔ [DA_PORT] ПРАВКА ОТКАЧЕНА — она давала видимый дефект. Возвращено поведение
+            // апстрима: у дальнего каскада объём ВСЕГДА берётся от предыдущего.
             //
-            // Здесь строится объём, которым дальний каскад накладывает свет. При z-отсечении он
-            // должен быть объёмом ПРЕДЫДУЩЕГО каскада (тот уже осветил своё, дальний добирает
-            // остальное), без z-отсечения — своим собственным.
+            // Что здесь было. Заметив, что проверка флага закомментирована, а глубина и трафарет
+            // ниже (~700, 739, 757) его ЧИТАЮТ, я счёл это несогласованностью и проверку вернул.
+            // Рассуждение выглядело безупречно, но было неверным: при `r2_shadow_cascede_zcul off`
+            // объём стал браться свой, а не от предыдущего каскада, и дальний каскад начал
+            // накладывать свет по проекции СОБСТВЕННОГО ящика. Ящик ориентирован по солнцу, и при
+            // низком солнце его проекция режет экран ровной диагональю — на скриншоте у тестера
+            // видно клин с вершиной точно на солнце.
             //
-            // Условие было закомментировано, поэтому объём ВСЕГДА брался от предыдущего каскада, а
-            // настройка глубины и трафарета ниже (строки ~683/720/738) флаг при этом ЧИТАЕТ. При
-            // r2_shadow_cascede_zcul off геометрия строилась как при включённом отсечении, а
-            // трафарет — как при выключенном: две половины одного решения расходились.
+            // ⚠️ Почему это не поймали раньше: у нас в user.ltx `zcul on`, и правка была ничем -
+            // условие уходило в ту же ветку, что и раньше. В пакете тестера стоит `off`, и там она
+            // сработала. Настройка, которая у разработчика и у игрока разная, прячет дефект
+            // целиком.
             //
-            // ⚠️ Найдено по ходу поисков мерцания тени, но НЕ было его причиной — та оказалась в
-            // нашей же поправке на джиттер в gbuffer_load_data (см. комментарий там). Правка
-            // оставлена как самостоятельная: несогласованность настоящая, просто с мерцанием не
-            // связана. Заодно замер тогда показал, что каскады исправны: da_sun_log — теневые карты
-            // наполняются стабильно, da_sun_only — каждый каскад по отдельности не мерцает.
-            //
-            // Та же закомментированная строка есть и в GL-ветке (gl_rendertarget_accum_direct.cpp),
-            // но GL из сборки удалён, поэтому там не трогаю.
+            // ⚠️ Урок: «в коде несогласованность» — это ГИПОТЕЗА, а не находка, пока не проверена
+            // в игре В ОБОИХ состояниях флага. Правка была помечена как безопасная и оставлена без
+            // проверки, потому что искали тогда другое.
             Fmatrix inv_XDcombine;
-            if (ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) && sub_phase == SE_SUN_FAR)
+            if (/*ps_r2_ls_flags_ext.is(R2FLAGEXT_SUN_ZCULLING) &&*/ sub_phase == SE_SUN_FAR)
                 inv_XDcombine.invert(xform_prev);
             else
                 inv_XDcombine.invert(xform);
@@ -1020,7 +1041,7 @@ void CRenderTarget::accum_direct_f(CBackend& cmd_list, u32 sub_phase)
 
         // Make jitter texture
         Fvector2 j0, j1;
-        float scale_X = float(Device.dwWidth) / float(TEX_jitter);
+        float scale_X = float(Device.dwRenderWidth) / float(TEX_jitter); // [DA_PORT] см. accum_direct
         // float	scale_Y				= float(Device.dwHeight)/ float(TEX_jitter);
         float offset = (.5f / float(TEX_jitter));
         j0.set(offset, offset);
@@ -1131,7 +1152,7 @@ void CRenderTarget::accum_direct_lum(CBackend& cmd_list)
 
     // Make jitter texture
     Fvector2 j0, j1;
-    float scale_X = float(Device.dwWidth) / float(TEX_jitter);
+    float scale_X = float(Device.dwRenderWidth) / float(TEX_jitter); // [DA_PORT] см. accum_direct
     //		float	scale_Y				= float(Device.dwHeight)/ float(TEX_jitter);
     float offset = (.5f / float(TEX_jitter));
     j0.set(offset, offset);

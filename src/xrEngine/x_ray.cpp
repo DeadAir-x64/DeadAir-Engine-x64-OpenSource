@@ -281,10 +281,18 @@ CApplication::CApplication(pcstr commandLine, GameModule* game, const std::array
 
     Console->OnDeviceInitialize();
 
+    // [DA_PORT] Перечисление устройств должно закончиться ДО user.ltx, а не после.
+    //
+    // user.ltx выполняет `snd_device <имя>`, а команда ищет имя в списке устройств. Список собирает
+    // фоновая задача, и ждали её строкой ниже — то есть уже ПОСЛЕ конфига. Успевала задача или нет,
+    // решал случай: не успела — команда молча выходила по `if (!tokens) return`, и выбранное игроком
+    // устройство пропадало без единой строки в логе. Ожидание стоит ноль: задача запущена в самом
+    // начале старта, а между ней и этим местом лежит вся инициализация ядра, консоли и устройства.
+    TaskScheduler->Wait(createSoundDevicesList);
+
     execUserScript();
     InitializeDiscord();
 
-    TaskScheduler->Wait(createSoundDevicesList);
     Engine.Sound.Create();
 
     // ...command line for auto start

@@ -433,9 +433,81 @@ static const da_upscaler_entry da_upscalers[] = {
 // one omission. Anything asking this question should now call this and add its upscaler here once.
 //
 // FSR 1.0 is deliberately absent: it is a spatial filter with no history and no jitter of its own.
+// [DA_PORT] Апскейлер выбран, но НЕ РАБОТАЕТ на этой машине — взводится самим бэкендом после
+// нескольких неудачных диспетчей подряд. См. da_upscaler_report_failure ниже.
+ENGINE_API bool g_da_upscaler_failed = false;
+
 ENGINE_API bool da_upscaler_active()
 {
+    // Отказавший апскейлер обязан выключить ВСЁ, что работает ради него: джиттер, маску
+    // реактивности, защиту векторов. Иначе получается худшее из двух миров — сцена дрожит на
+    // субпиксельный сдвиг, а собрать её обратно некому.
+    if (g_da_upscaler_failed)
+        return false;
+
     return !!ps_r__fsr2 || !!ps_r__fsr3 || !!ps_r__xess || !!ps_r__dlss;
+}
+
+// [DA_PORT] ---- Отказ апскейлера: гасим тихо и говорим громко ------------------------------------
+//
+// Зачем. У тестера на R9 290 (GCN 2013 года) FSR 3 «тряс весь экран». Механизм известен: диспетч не
+// прошёл, отметки кадра нет, постобработка растягивает УМЕНЬШЕННУЮ сцену обычным фильтром — а сцена
+// сдвинута джиттером, и растянутый кадр ездит туда-сюда ровно по нему. Со стороны это выглядит не
+// как «апскейлер не поддерживается», а как «игра сломалась».
+//
+// Что делаем. После трёх неудач подряд перестаём джиттерить: картинка становится просто мягче
+// (ровно как на FSR 1.0), тряска исчезает, а в лог уходит внятное объяснение. Выбор игрока при этом
+// НЕ меняем: подменять настройку за спиной хуже, чем честно сказать, что она не работает.
+//
+// Три, а не одна: единичный провал бывает на пересоздании устройства и сам проходит.
+ENGINE_API void da_upscaler_report_failure(pcstr who, bool failed)
+{
+    static int in_a_row = 0;
+
+    if (!failed)
+    {
+        in_a_row = 0;
+        return;
+    }
+
+
+    if (g_da_upscaler_failed)
+        return; // уже погашен, молчим
+
+    if (++in_a_row < 3)
+        return;
+
+    g_da_upscaler_failed = true;
+    Msg("! [DA_PORT] %s не работает на этой видеокарте: три неудачных кадра подряд.", who);
+    Msg("! [DA_PORT] Субпиксельный сдвиг выключен, иначе картинка тряслась бы: сцена сдвигается, а");
+    Msg("! [DA_PORT] собрать её обратно некому. Сейчас кадр просто растягивается — будет мягче.");
+    Msg("! [DA_PORT] Выберите другой апскейлер в настройках видео: FSR 2.0 работает на любой карте.");
+}
+
+// [DA_PORT] Мгновенный отказ: контекст библиотеки вообще не создался.
+//
+// Ждать три кадра тут незачем — если библиотека не поднялась, она уже не поднимется. Именно так и
+// вышло у тестера на R9 290: "context creation failed (FFX_ERROR_BACKEND_API_ERROR)", после чего
+// весь экран трясло, потому что субпиксельный сдвиг продолжал работать в пустоту.
+ENGINE_API void da_upscaler_mark_failed(pcstr who)
+{
+    if (g_da_upscaler_failed)
+        return;
+
+    g_da_upscaler_failed = true;
+    Msg("! [DA_PORT] %s не запустился на этой видеокарте.", who ? who : "апскейлер");
+    Msg("! [DA_PORT] Субпиксельный сдвиг выключен, иначе картинка тряслась бы: сцена сдвигается, а");
+    Msg("! [DA_PORT] собрать её обратно некому. Кадр просто растягивается - будет мягче, но ровно.");
+    Msg("! [DA_PORT] Выберите другой апскейлер в настройках видео: FSR 2.0 работает на любой карте.");
+}
+
+// Выбор сменили — даём новому бэкенду чистый лист.
+ENGINE_API void da_upscaler_clear_failure()
+{
+    if (g_da_upscaler_failed)
+        Msg("* [DA_PORT] отметка «апскейлер не работает» снята: выбран другой режим");
+    g_da_upscaler_failed = false;
+    da_upscaler_report_failure(nullptr, false);
 }
 
 // [DA_PORT] ---- Сброс истории временных фильтров -------------------------------------------------
@@ -540,6 +612,63 @@ ENGINE_API xr_token qupscaler_token[] = {
     { nullptr, 0 },
 };
 
+// [DA_PORT] ---- Список апскейлеров подрезается под ЖЕЛЕЗО --------------------------------------
+//
+// Меню строит список прямо из этой таблицы токенов, поэтому вычеркнуть строку здесь - значит убрать
+// пункт из меню, без правки разметки и скриптов.
+//
+// Зачем. Пункт, который на этой видеокарте заведомо не заработает, - это гарантированный отчёт «у
+// меня трясёт» от игрока, у которого мы этого не воспроизведём. Так и вышло 01.08: FSR 3 не поднялся
+// на R9 290 (карта 2013 года), а выглядело это как поломка игры. DLSS и XeSS в том же положении:
+// первый требует RTX, второй на D3D11 работает только на Intel Arc - и оба всё это время честно
+// показывались всем.
+//
+// Что НЕ прячем никогда: «Выкл», TAA, FSR 1.0 и FSR 2.0 - они работают на любой карте.
+// [DA_PORT] Взводится только на время подмены апскейлера ВНУТРИ создания устройства — см. пояснение
+// у сброса в конце da_apply_upscaler.
+static bool s_upscaler_switch_during_create = false;
+
+ENGINE_API void da_upscaler_set_available(u32 mask, pcstr why_hidden)
+{
+    // Токены с этими значениями остаются всегда.
+    constexpr u32 always = (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3);
+    mask |= always;
+
+    xr_token* src = qupscaler_token;
+    xr_token* dst = qupscaler_token;
+    int hidden = 0;
+
+    for (; src->name; ++src)
+    {
+        if (mask & (1u << src->id))
+        {
+            *dst++ = *src;
+            continue;
+        }
+        Msg("* [DA_PORT] апскейлер «%s» скрыт из меню: %s", src->name, why_hidden ? why_hidden : "не поддерживается");
+        ++hidden;
+    }
+    dst->name = nullptr;
+    dst->id = 0;
+
+    if (!hidden)
+        return;
+
+    // Выбранный ранее мог оказаться среди скрытых - например, пакет переехал на другую машину.
+    // Молча оставлять нельзя: движок бы понизил разрешение рендера под апскейлер, которого нет.
+    if (0 == (mask & (1u << ps_r__upscaler)))
+    {
+        Msg("! [DA_PORT] выбранный апскейлер на этой видеокарте недоступен - переключаюсь на FSR 2.0.");
+
+        // Зовёмся из построения целей рендера, то есть В СЕРЕДИНЕ создания устройства. Пометка
+        // запрещает сброс устройства внутри обработчика команды - иначе игра падает ещё до меню.
+        s_upscaler_switch_during_create = true;
+        Console->Execute("r__upscaler ui_mm_upscaler_fsr2");
+        s_upscaler_switch_during_create = false;
+    }
+}
+
+
 // Five steps, shared by all three backends. XeSS has exactly these five; FSR 2 is given a 1.3x step of
 // its own (see da_fsr2::render_size_for); FSR 1.0 is only a scale plus sharpening, so it follows them
 // directly. Same wording everywhere, so the choice means the same thing whichever backend is picked.
@@ -573,6 +702,9 @@ static void da_apply_upscaler()
     ps_r__taa = 0;
     ps_r__upscale_preset = 0;
 
+    // [DA_PORT] Новый выбор — новая попытка: прошлый отказ к нему отношения не имеет.
+    da_upscaler_clear_failure();
+
     switch (ps_r__upscaler)
     {
     case 1: // Our own temporal AA - no upscaling, so the scene renders at full size
@@ -585,21 +717,44 @@ static void da_apply_upscaler()
         ps_r__render_scale = da_upscaler_scale[q];
         ps_r__upscale_sharpness = da_upscaler_sharpen[q];
         break;
+    // [DA_PORT] ⚠️ Резкость задаёт КАЖДАЯ ветка, и это не украшательство.
+    //
+    // Раньше её выставляли только три случая: наша темпоралка (в ноль), FSR 1 (из таблицы) и
+    // «выключено» (в ноль). Четыре реконструирующих апскейлера не трогали её вовсе — то есть
+    // наследовали то, что осталось от прошлого выбора. А «выключено» оставляет ноль, поэтому
+    // достаточно было один раз выключить апскейлер и включить обратно, чтобы кадр навсегда пошёл на
+    // экран без единого прохода резкости.
+    //
+    // Выглядит это как «разрешение будто ниже, чем 1920»: сцена честно реконструируется, но результат
+    // не точат. Причину по картинке не угадать, а в настройках виден ноль, который игрок туда не
+    // ставил. Нашли ровно так — по скриншоту Кладбища техники.
     case 3: // FSR 2 - temporal reconstruction
         ps_r__fsr2 = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
+        // FSR сам гоняет RCAS от этого же ползунка, поэтому берём значение по ступени качества:
+        // чем сильнее масштабирование, тем больше нужно.
+        ps_r__upscale_sharpness = da_upscaler_sharpen[q];
         break;
     case 4: // FSR 3 - temporal reconstruction, community DX11 backend
         ps_r__fsr3 = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
+        ps_r__upscale_sharpness = da_upscaler_sharpen[q];
         break;
     case 5: // XeSS - temporal reconstruction, Intel Arc only on D3D11
         ps_r__xess = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
+        // XeSS и DLSS своей резкости НЕ имеют: у Intel её нет, NVIDIA свою объявила устаревшей и в
+        // DLSS 4 игнорирует. Точит их наш проход в постобработке (r2_rendertarget_phase_PP.cpp), и
+        // без внятного значения они смотрятся мягче FSR при равной реконструкции.
+        //
+        // 35 - выбрано по картинке в игре. Пробовали 50, оказалось избыточно: реконструкция у обоих
+        // и так держит детали, и лишняя резкость лезет ореолом по кромкам.
+        ps_r__upscale_sharpness = 35;
         break;
     case 6: // DLSS - temporal reconstruction, RTX only
         ps_r__dlss = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
+        ps_r__upscale_sharpness = 35;
         break;
     default:
         ps_r__render_scale = 100;
@@ -631,7 +786,18 @@ static void da_apply_upscaler()
         Console->Execute("r3_msaa st_opt_off");
 
     Device.UpdateRenderResolution();
-    if (Device.b_is_Ready)
+
+    // ⚠️ [DA_PORT] `b_is_Ready` НЕ означает «создание устройства закончено».
+    //
+    // Оно выставляется сразу после Render->Create (Device_create.cpp), а цели рендера строятся
+    // ПОСЛЕ, в OnDeviceCreate. Мы же вызываемся как раз оттуда - через da_upscaler_set_available,
+    // когда сохранённый апскейлер на этой видеокарте недоступен. Сброс на полпути сборки уронил
+    // игру у тестера на R9 290: `CRenderDevice::Reset` читал по нулевому адресу, C0000005, ещё до
+    // главного меню (лог openxray_alex_001). Условие на b_is_Ready там стояло и не помогло.
+    //
+    // Пересобирать на этом этапе и незачем: остаток создания и так возьмёт уже исправленные
+    // значения.
+    if (Device.b_is_Ready && !s_upscaler_switch_during_create)
         Device.Reset();
 
     Msg("* [DA_PORT] upscaler %d, quality step %d: scene renders at %d%% of the output", ps_r__upscaler,
@@ -1171,7 +1337,45 @@ public:
         GetToken();
         if (!tokens)
             return;
-        inherited::Execute(args);
+
+        // [DA_PORT] Устройства с таким именем больше нет — не ругаемся «Invalid syntax» в пустоту, а
+        // возвращаемся к системному. Строка в user.ltx переживает и смену наушников, и переезд на
+        // другую машину, и тогда единственная понятная реакция — играть туда, куда играет система.
+        pcstr name = args;
+        const xr_token* found = tokens;
+        while (found->name && xr_stricmp(found->name, name) != 0)
+            ++found;
+
+        // Старые конфиги хранят имя целиком — со служебным префиксом бэкенда и со скобкой адаптера
+        // («OpenAL Soft on Наушники (JBL TUNE770NC)»), а список теперь показывает только имя. Это
+        // ровно то же устройство, и терять выбор игрока из-за нашей же косметики нельзя: сравниваем
+        // ещё раз, приведя обе стороны к тому виду, в каком имя стоит в меню.
+        if (!found->name)
+        {
+            string512 wanted;
+            snd_device_display_name(wanted, sizeof(wanted), args);
+
+            for (const xr_token* tok = tokens; tok->name; ++tok)
+            {
+                string512 candidate;
+                snd_device_display_name(candidate, sizeof(candidate), tok->name);
+                if (0 == xr_stricmp(candidate, wanted))
+                {
+                    found = tok;
+                    name = tok->name;
+                    break;
+                }
+            }
+        }
+
+        if (!found->name)
+        {
+            Msg("~ SOUND: устройство [%s] не найдено — звук идёт в системное по умолчанию", args);
+            snd_device_id = snd_device_auto;
+            return;
+        }
+
+        inherited::Execute(name);
     }
 
     void GetStatus(TStatus& S) override
@@ -1313,6 +1517,32 @@ ENGINE_API int ps_r__dlss_reactive = 1;
 
 // [DA_PORT] Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
 // Читает буфер обратно, поэтому останавливает конвейер — только на один кадр и только по команде.
+// [DA_PORT] Показать ВХОД апскейлера вместо его результата.
+//
+// Апскейлер продолжает работать (джиттер, векторы, накопление — всё на месте), но на экран идёт не его
+// выход, а та самая картинка в разрешении рендера, которую ему скармливают, растянутая обычным
+// фильтром. Ровно один вопрос: дефект уже во входе или его делает реконструкция.
+//
+// Сравнение «выключил апскейлер — стало чисто» на этот вопрос НЕ отвечает: вместе с апскейлером
+// выключается и подпиксельный сдвиг, то есть меняются сразу две вещи. Здесь меняется одна.
+ENGINE_API int ps_r__upscale_show_input = 0;
+
+// [DA_PORT] Разовый снимок среза G-буфера по строке через прицел (см. CRenderTarget::
+// da_dump_gbuffer_row). Наводим на дефект, выполняем — в логе встают рядом глубина, цвет, вектор и
+// маска реактивности ОДНОГО и того же пикселя. Средние по кадру такое не ловят: дефект живёт в
+// десятке пикселей, а среднее по миллиону их не видит.
+ENGINE_API int ps_r__gbuffer_probe = 0;
+
+// [DA_PORT] Покадровая запись накопленного света в пикселе под перекрестьем, N кадров подряд.
+// Против дефектов, которые мерцают сами по себе: срез отвечает «что в этом кадре», а здесь нужна
+// последовательность, чтобы увидеть размах и период.
+ENGINE_API int ps_r__light_watch = 0;
+
+// [DA_PORT] Замер кэша теневых карт. Значение = число кадров: первая половина меряет ВРЕМЯ КАДРА без
+// единого чтения буфера, вторая читает весь экран и ищет дрожание теней. Разделено потому, что
+// полноэкранное чтение само стоит кадров и испортило бы измерение времени.
+ENGINE_API int ps_r__shadow_test = 0;
+
 ENGINE_API int ps_r__dlss_selftest = 0;
 // [DA_PORT] FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
 // their contexts independently at renderer start, and having both live means comparing them
@@ -1375,6 +1605,82 @@ ENGINE_API float ps_r__reactive_motion = 0.f;
 // all - so the extra strength was only ever buying shimmer on glossy surfaces, which is what too
 // little accumulation looks like on a narrow specular highlight.
 ENGINE_API float ps_r__reactive_object = 700.f;
+
+// [DA_PORT] Метка самосветящейся геометрии - лампочка, экран телевизора, светящаяся палочка в руке.
+//
+// Свечение рисуется ОТДЕЛЬНЫМ проходом после G-буфера, и цель у него одна - накопитель освещения.
+// Ни вектора движения, ни реактивность эти пиксели не пишут: там остаётся то, что записала
+// непрозрачная геометрия под ними, то есть чаще всего фон. Апскейлер честно тянет для яркого пятна
+// историю по чужому вектору - отсюда пила по кромке свечения и мерцание ламп в помещениях.
+//
+// Это ровно тот случай, для которого маска реактивности и заведена: и FSR, и DLSS требуют помечать
+// в ней всё, что композируется поверх кадра. Ноль выключает проход целиком - тогда поведение
+// становится прежним, и это единственный честный способ сравнить в игре.
+//
+// ⚠️ ПО УМОЛЧАНИЮ НОЛЬ - проверено в игре 01.08. Настоящей причиной пилы по кромке свечения оказался
+// не пропуск в маске, а джиттер: проход свечения рисовался вершинным шейдером КАРТЫ ТЕНЕЙ, в котором
+// сдвига нет (см. da_emissive_model.vs). После починки сдвига метка не даёт видимой разницы ни на
+// палочке, ни на лампах, а стоит прохода и запрета копить историю. Оставлена как ручка: механизм
+// верный по документации FSR/DLSS и может пригодиться на другом дефекте.
+ENGINE_API float ps_r__reactive_emissive = 0.f;
+// [DA_PORT] Насколько маска реактивности гасит накопление в НАШЕЙ темпоралке (r__taa).
+//
+// Сама маска пишется из G-буфера: листве - r__reactive_foliage (0.05), движущимся пикселям -
+// da_motion_reactive. FSR 2 читает её и потому не рябит на листве; наша TAA до 01.08 не читала
+// вовсе - отсюда «на FSR 2 чисто, на TAA листва дрожит» при одинаковых настройках.
+//
+// Усиление отдельной ручкой, потому что 0.05 подбиралось под формулу FSR, а у нас другая: там это
+// доля недоверия, здесь - множитель к коэффициенту накопления 0.93. При усилении 8 листва теряет
+// примерно 40% накопления, что и требуется. Ноль возвращает прежнее поведение точь-в-точь.
+ENGINE_API float ps_r__taa_reactive = 8.f;
+
+// [DA_PORT] То же для прозрачной геометрии - стекло, вода, частицы. По умолчанию НОЛЬ, и это не
+// осторожность ради осторожности: свечение занимает в кадре считанные пиксели, а прозрачного бывает
+// пол-экрана. Метка означает "не копить историю", и на большой поверхности воды это меняет картинку
+// заметно - лечить надо то, что действительно мерцает, а не всё сразу.
+ENGINE_API float ps_r__reactive_transparent = 0.f;
+
+// [DA_PORT] Не загружать константный буфер, если его содержимое не отличается от уже загруженного.
+//
+// Движок помечает буфер изменённым на ЛЮБУЮ запись (в Access стоит авторское "TODO: проверять, меняет
+// ли set что-нибудь"), поэтому каждый кадр заново отображается и копируется даже то, что не менялось.
+// Сравнение дешевле отображения, буферы небольшие.
+//
+// Пропуск безопасен ровно потому, что экземпляр буфера СВОЙ у каждого контекста: dx11r_constants.cpp
+// создаёт их циклом по R__NUM_CONTEXTS и раскладывает в m_CBTable[id]. Один экземпляр - один контекст,
+// значит наша теневая копия действительно описывает то, что в нём лежит.
+//
+// Ручка оставлена, чтобы можно было замерить А/Б, а не поверить на слово: выигрыш не измерен.
+ENGINE_API int ps_r__cb_skip_redundant = 1;
+
+// [DA_PORT] Куда целится срез G-буфера (da_dump_gbuffer_row, r__reactive_selftest).
+//
+// 0 — самый яркий пиксель кадра: так проба делалась под кромку свечения, там яркое пятно и было
+// предметом разбора. 1 — перекрестье, то есть то, на что смотрит игрок. Для растительности нужен
+// именно второй: самый яркий пиксель в лесу — это небо, а не куст.
+ENGINE_API int ps_r__probe_center = 0;
+
+// [DA_PORT] Знак векторов движения, отдаваемых XeSS. См. da_xess_mv.s.
+//
+// 0 — как в буфере (прежнее поведение), 1 — перевернуть обе оси, 2 — только X, 3 — только Y.
+//
+// ✅ ПРОВЕРЕНО В ИГРЕ на Intel Arc B580: верное значение — 1. При 2 и 3 (одна ось) размазывает,
+// при 1 картинка чистая. Ручка оставлена только для отладки, менять её незачем.
+//
+// Почему именно так: у FSR и DLSS буфер читается как (x*-W/2, y*+H/2), тогда как честный перевод
+// NDC->пиксели требует (x*+W/2, y*-H/2). Значит в буфере лежит NDC с обратным знаком по ОБЕИМ осям,
+// а XeSS с флагом USE_NDC_VELOCITY ждёт прямой — и параметра масштаба, которым это можно было бы
+// поправить на месте, у него нет вовсе. Отсюда отдельный проход, см. da_xess_mv.s.
+ENGINE_API int ps_r__xess_mv_sign = 1;
+
+// [DA_PORT] Сколько объектов лежит в очередях, которые рисуются ПОСЛЕ G-буфера, и сколько света в
+// кадре - СТРОКА НА КАДР, заданное число кадров подряд.
+//
+// Отвечает на два разных вопроса. Первый: "в какой очереди наш предмет" - хватает одного кадра.
+// Второй: "что именно мигает" - а вот тут один снимок бесполезен, мигание живёт в разнице МЕЖДУ
+// кадрами. Пропал объект из очереди свечения - виновата отрисовка; скачет число видимых источников -
+// виноват отбор света; не меняется ничего - значит мигает то, что внутри прохода.
+ENGINE_API int ps_r__emissive_probe = 0;
 
 // The band, in pixels, that the mark is widened by. This is what addresses the ghost rather than the
 // figure: the trail sits on the ground the figure has just uncovered, and those pixels are static -
@@ -1535,6 +1841,360 @@ ENGINE_API float ps_r__grass_sway = 0.f;
 // на глаз, и чище в движении.
 ENGINE_API float ps_r__grass_sway_speed = 1.f;
 
+// [DA_PORT] ---- Лужи в дождь ------------------------------------------------------------------
+// Шейдерам нужны два числа: СКОЛЬКО льёт прямо сейчас и НАСКОЛЬКО земля успела намокнуть. Первое —
+// rain_density текущей погоды, оно уже есть в движке и правит частицами дождя. Второе движок не
+// считал никогда, а без него луж не бывает: они не появляются в тот же кадр, когда пошёл дождь, и
+// не исчезают, когда он кончился. Накопитель ниже и есть вся разница между «мокрым выключателем» и
+// погодой — вода набирается за минуты и высыхает дольше, чем набралась.
+//
+// Обе величины уезжают в шейдеры одной константой rain_params (см. Blender_Recorder_StandartBinding).
+ENGINE_API int ps_r__puddles = 1;
+
+// Во сколько раз быстрее набирается влага, чем высыхает. Время набора при сплошном дожде —
+// r__puddles_buildup секунд; высыхание идёт в r__puddles_dry раз дольше.
+ENGINE_API float ps_r__puddles_buildup = 90.f;
+ENGINE_API float ps_r__puddles_dry = 4.f;
+
+// Доля поверхности, которую занимают лужи при полной влажности: 0 — только блеск мокрого асфальта,
+// 1 — сплошная вода. Уходит в шейдер тем же вектором, чтобы подбирать вид без пересборки шейдеров.
+ENGINE_API float ps_r__puddles_size = 0.80f;
+
+// Принудительная сырость для проверки: 0 — как в погоде, больше нуля — считать, что льёт именно так,
+// и влага уже набралась. Иначе подбор вида упирается в ожидание дождя, а он в Зоне не по расписанию.
+ENGINE_API float ps_r__puddles_force = 0.f;
+
+// [DA_PORT] Вид воды — отдельной константой, чтобы правился В ИГРЕ, а не пересборкой шейдера.
+// Первые две пробы ушли в молоко именно на этом: каждое число стоило правки, компиляции, снятия
+// кэша шейдеров и перезапуска, а решается всё равно на глаз.
+//
+// gloss — насколько лужа зеркальна. Главная ручка: солнце в мокром асфальте бликует очень сильно, и
+// значения выше 0.4 в этом движке дают выбеленное пятно вместо воды.
+ENGINE_API float ps_r__puddles_gloss = 1.00f;
+
+// Во сколько раз лужа темнее сухой земли. ⚠️ Единица (то есть «не темнее») — НЕ забытая заглушка, а
+// утверждённый в игре вид: вода читается чистым глянцем, без потемнения. Все значения ниже подобраны
+// на экране и приняты; менять их «по смыслу» не надо, вид складывается из всех четырёх сразу.
+ENGINE_API float ps_r__puddles_dark = 1.00f;	// утверждено в игре: вода читается глянцем, без потемнения
+
+// Глянец просто мокрой земли, без лужи. Держать заметно ниже gloss, иначе блестит вообще всё.
+ENGINE_API float ps_r__puddles_damp = 0.10f;
+
+// Множитель ряби от капель.
+ENGINE_API float ps_r__puddles_ripple = 1.f;
+
+// [DA_PORT] --- Сезон -------------------------------------------------------------------------------
+//
+// Лето — это архив `xtra_green.xdb0` с зелёными текстурами; осень — та же игра без него. Раньше сезон
+// переключался перекладыванием 204 МБ между каталогами при закрытой игре; теперь архив всегда на месте,
+// а подключать его или нет решает признак в файле `database\da_season.txt` (см. `CLocatorAPI::
+// ProcessArchive`). Зима не участвует: у неё четыре архива и два гигабайта, это отдельная работа.
+//
+// ⚠️ Применяется со следующего запуска, и иначе быть не может: архивы монтируются на старте движка, а
+// уровень держит ссылки на уже загруженные текстуры. Поэтому подпись в меню обязана про это говорить —
+// молчаливая настройка «которая не работает» хуже её отсутствия.
+ENGINE_API u32 ps_da_season = 0;
+
+ENGINE_API xr_token qda_season_token[] = {
+    { "ui_mm_season_autumn", 0 },
+    { "ui_mm_season_summer", 1 },
+    { nullptr, 0 },
+};
+
+// [DA_PORT] ⚠️ Хранилище у сезона РОВНО ОДНО — файл-признак. В user.ltx команда не пишется намеренно.
+//
+// Пока писалась, хранилищ было два, и они разъезжались. Порядок на старте такой: файловая система
+// монтирует архивы по признаку, и лишь ПОТОМ исполняется user.ltx — а он выполняет `da_season` и
+// переписывает признак своим значением. То есть игра шла с одним сезоном, а признак уже говорил про
+// другой, и настоящее переключение случалось только со следующего запуска. Наблюдалось живьём: в
+// user.ltx лежало лето (список в меню сохранил позицию сам), признак был осенним — и запуск молча
+// перевёл игру на лето.
+//
+// Теперь user.ltx о сезоне не знает вовсе, а значение для меню и консоли поднимается из признака при
+// регистрации команды — см. da_season_read_marker ниже.
+class CCC_DaSeason : public CCC_Token
+{
+public:
+    CCC_DaSeason(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Save(IWriter*) override {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+
+        // Пишем признак рядом с архивами — там его и читает файловая система на следующем старте.
+        string_path marker;
+        FS.update_path(marker, "$arch_dir$", "da_season.txt");
+
+        if (FILE* f = fopen(marker, "wb"))
+        {
+            const pcstr value = (1 == ps_da_season) ? "summer" : "autumn";
+            fwrite(value, 1, xr_strlen(value), f);
+            fclose(f);
+            Msg("* [DA_PORT] сезон: %s (применится после перезапуска игры)", value);
+        }
+        else
+            Msg("! [DA_PORT] сезон: не удалось записать %s", marker);
+    }
+};
+
+// [DA_PORT] Поднять текущий сезон из того же признака, по которому файловая система уже смонтировала
+// (или не смонтировала) летний архив. Вызывается при регистрации команды, то есть ДО user.ltx.
+//
+// Признака может не быть — например, у того, кто переключал сезон старым способом, перекладыванием
+// архива. Тогда правду говорит наличие самого архива: лежит `xtra_green.xdb0` — значит игра уже
+// запустилась летней (см. da_seasonal_archive_enabled: без признака архив подключается).
+static void da_season_read_marker()
+{
+    string_path marker;
+    FS.update_path(marker, "$arch_dir$", "da_season.txt");
+
+    if (FILE* f = fopen(marker, "rb"))
+    {
+        char buf[32] = {};
+        const size_t got = fread(buf, 1, sizeof(buf) - 1, f);
+        fclose(f);
+        buf[got] = 0;
+        ps_da_season = (nullptr != strstr(buf, "summer")) ? 1 : 0;
+        // Сезон невидим, пока не посмотришь на деревья, а вопрос «почему у меня зелень» задают по
+        // логу. Одна строка на запуск — и состояние больше не приходится угадывать.
+        Msg("* [DA_PORT] сезон: %s", (1 == ps_da_season) ? "лето" : "осень");
+        return;
+    }
+
+    // Проверяем именно файлом на диске: сам архив в виртуальной файловой системе не числится — он ею и
+    // является, поэтому FS.exist по нему ничего не знает.
+    string_path summer_archive;
+    FS.update_path(summer_archive, "$arch_dir$", "xtra_green.xdb0");
+
+    if (FILE* archive = fopen(summer_archive, "rb"))
+    {
+        fclose(archive);
+        ps_da_season = 1;
+        Msg("* [DA_PORT] сезон: лето (признака нет, летний архив на месте)");
+        return;
+    }
+
+    ps_da_season = 0;
+    Msg("* [DA_PORT] сезон: осень (признака нет, летнего архива тоже)");
+}
+
+// [DA_PORT] Яркость луча фонарей. Множитель к цвету лампы, а не к дальности: цвет фонарей задаёт
+// xr_actor.script (налобному — каждый тик), поэтому любое значение, выставленное в движке напрямую,
+// затирается через кадр. Множитель переживает это, потому что применяется уже ПОСЛЕ скрипта.
+// Раздельно у налобного и ручного: у них разные дальность и конус, и одинаковый множитель даёт
+// разный результат на экране.
+ENGINE_API float ps_r__torch_bright = 3.0f;      // налобный (torch2: дальность 12, конус 95)
+ENGINE_API float ps_r__torch_bright_item = 3.0f; // ручной фонарик (дальность 60, конус 50)
+
+// [DA_PORT] ---- Дождь -------------------------------------------------------------------------
+// Все размеры капель были зашиты числами в двух файлах сразу (Rain.cpp и dxRainRender.cpp), причём
+// половина — закомментированными дублями. Значения родом из 2007 года и рассчитаны на 800×600: капля
+// длиной ПЯТЬ МЕТРОВ и шириной ТРИДЦАТЬ САНТИМЕТРОВ. На современном разрешении это не капли, а
+// полосы поперёк экрана.
+//
+// Правильная длина считается из выдержки: капля летит 40–80 м/с, кадр 1/60 с, значит след 0.7–1.3 м.
+// Ширина у настоящей капли миллиметры; для видимости оставлен запас, но не в сто раз.
+ENGINE_API float ps_r__rain_len = 2.0f;
+ENGINE_API float ps_r__rain_width = 0.08f;
+
+// Яркость капель множителем к rain_color погоды. Нужна потому, что в конфигах ливня цвет капли —
+// (0.34, 0.31, 0.26), тёмно-серо-бурый: при исходной ширине в 30 см такую каплю было видно просто за
+// счёт размера, а тонкую — уже нет, особенно на фоне тёмного грозового неба. Настоящий дождь ловит
+// свет неба и читается СВЕТЛЕЕ фона, а не темнее.
+ENGINE_API float ps_r__rain_bright = 2.2f;
+
+// Яркость ВСПЛЕСКОВ на земле — отдельно от капель. В основе они делили один цвет, и поднятая яркость
+// капли превращала всплески в белую крупу на тёмной земле: «будто град падает». Летящая капля должна
+// читаться светлее фона, лежащий на земле всплеск — нет, он в тени и мокрый.
+ENGINE_API float ps_r__rain_splash_bright = 0.9f;
+
+
+
+// Сколько капель в воздухе вокруг игрока и в каком радиусе. Капли тоньше — значит их нужно больше,
+// иначе дождь редеет. ⚠️ Число капель стоит ДОРОГО: на каждое рождение делается луч в геометрию,
+// чтобы найти, где капля разобьётся. При 6000 это около трёхсот лучей на кадр.
+ENGINE_API int ps_r__rain_drops = 6000;
+ENGINE_API float ps_r__rain_radius = 14.0f;
+
+// Всплески на земле. В основе стоял отказ на КАЖДЫЙ ВТОРОЙ удар (`if (0 != Random.randI(2)) return`)
+// — то есть половина капель падала беззвучно и бесследно. Теперь это доля, и по умолчанию всплеск
+// даёт каждая капля: именно всплески, а не сами капли, показывают, что дождь идёт по земле.
+ENGINE_API float ps_r__rain_splash = 1.0f;
+ENGINE_API float ps_r__rain_splash_time = 0.30f;
+
+// [DA_PORT] ---- «Стоим ли мы в луже» для остальной игры -------------------------------------------
+//
+// Накопленную влажность считает биндер рендера (там она и нужна каждый кадр), а сюда только
+// складывает: игровому коду негде взять её самому, а звук шагов по воде — это уже игровой код.
+ENGINE_API float g_da_rain_wetness = 0.f;
+
+// Тот же шум, что в da_puddles.h, слово в слово. Иначе звук и картинка разойдутся: игрок будет
+// слышать плеск, стоя на сухом, и молчание — стоя в воде. Совпадать обязаны и константы, и порядок
+// действий.
+static float da_hash21(float px, float py)
+{
+    px = px * 127.1f;
+    py = py * 311.7f;
+    px -= floorf(px);
+    py -= floorf(py);
+    const float d = px * (px + 34.23f) + py * (py + 34.23f);
+    px += d;
+    py += d;
+    const float r = px * py;
+    return r - floorf(r);
+}
+
+static float da_vnoise(float px, float py)
+{
+    const float ix = floorf(px), iy = floorf(py);
+    float fx = px - ix, fy = py - iy;
+    fx = fx * fx * (3.f - 2.f * fx);
+    fy = fy * fy * (3.f - 2.f * fy);
+    const float a = da_hash21(ix, iy);
+    const float b = da_hash21(ix + 1.f, iy);
+    const float c = da_hash21(ix, iy + 1.f);
+    const float d = da_hash21(ix + 1.f, iy + 1.f);
+    const float top = a + (b - a) * fx;
+    const float bot = c + (d - c) * fx;
+    return top + (bot - top) * fy;
+}
+
+// Есть ли лужа в этой точке мира. Порог взят с запасом относительно шейдерного: у самой кромки
+// картинка показывает лужу в полсилы, а звук — величина «да/нет», и на границе он бы дребезжал.
+ENGINE_API bool da_puddle_at(const Fvector& p)
+{
+    if (!ps_r__puddles || g_da_rain_wetness < 0.15f)
+        return false;
+
+    const float n = da_vnoise(p.x * 0.33f, p.z * 0.33f) * 0.62f + da_vnoise(p.x * 1.10f, p.z * 1.10f) * 0.38f;
+    const float size = (ps_r__puddles_size < 0.f) ? 0.f : (ps_r__puddles_size > 1.f ? 1.f : ps_r__puddles_size);
+    const float thr = (0.86f + (0.30f - 0.86f) * size) + (1.f - g_da_rain_wetness) * 0.15f;
+    return (n - thr) > 0.06f;
+}
+
+// [DA_PORT] ---- Пункты меню «Дождь» ------------------------------------------------------------
+//
+// Дистанция луж. Значение токена — это САМИ МЕТРЫ, а не порядковый номер: так значение из user.ltx
+// читается человеком и не «переезжает», если однажды добавить четвёртую ступень между этими.
+// [DA_PORT] Отражения в лужах: отдельный полноэкранный проход (см. r4_rendertarget_phase_da_puddle_refl).
+// Отдельной ручкой от самих луж потому, что стоит она заметно дороже: это ray-march по глубине, тот
+// же, которым отражает вода.
+ENGINE_API int ps_r__puddles_refl = 1;
+ENGINE_API float ps_r__puddles_refl_power = 2.0f;	// подобрано в игре и утверждено
+
+// Качество луж одной ступенью. Низкое — только влажная земля, без самих луж: это дёшево и всё равно
+// читается как дождь. Среднее — лужи как они есть. Высокое — они же с отражениями, а отражения это
+// отдельный полноэкранный проход с ray-march, то есть заметно дороже остального.
+ENGINE_API u32 ps_r__puddles_quality = 2;
+ENGINE_API xr_token qpuddles_quality_token[] = {
+    { "ui_mm_puddles_q_low", 0 },
+    { "ui_mm_puddles_q_med", 1 },
+    { "ui_mm_puddles_q_high", 2 },
+    { nullptr, 0 },
+};
+
+ENGINE_API void da_apply_puddles_quality()
+{
+    switch (ps_r__puddles_quality)
+    {
+    case 0: // низкое — только влажная земля
+        ps_r__puddles_size = 0.f;
+        ps_r__puddles_refl = 0;
+        break;
+    case 1: // среднее — лужи без отражений
+        ps_r__puddles_size = 0.80f;
+        ps_r__puddles_refl = 0;
+        break;
+    default: // высокое — лужи с отражениями
+        ps_r__puddles_size = 0.80f;
+        ps_r__puddles_refl = 1;
+        break;
+    }
+}
+
+class CCC_PuddlesQuality : public CCC_Token
+{
+public:
+    CCC_PuddlesQuality(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+        da_apply_puddles_quality();
+    }
+};
+
+// Тёмная кайма промокшей земли вокруг воды. У настоящей лужи она есть всегда: грунт у кромки
+// напитан водой и темнее сухого, а к краю сходит на нет. Заодно это лучшее лекарство от «обводки» —
+// светлая линия перехода тонет в тёмной пелене, вместо того чтобы бороться с ней в лоб.
+//
+// _rim — во сколько раз кайма темнее сухой земли (1 = нет каймы), _rim_width — её ширина в долях
+// шума: 0.1 узкая полоска, 0.4 широкий разлив мокроты.
+ENGINE_API float ps_r__puddles_rim = 0.72f;
+ENGINE_API float ps_r__puddles_rim_width = 0.22f;
+
+ENGINE_API u32 ps_r__puddles_dist = 20;
+ENGINE_API xr_token qpuddles_dist_token[] = {
+    { "ui_mm_puddles_dist_low", 14 },
+    { "ui_mm_puddles_dist_med", 20 },
+    { "ui_mm_puddles_dist_high", 30 },
+    { nullptr, 0 },
+};
+
+// Качество дождя — одна ступень вместо шести ручек. Ручки остаются для тонкой настройки, но игроку
+// в меню нужен выбор «дешевле / красивее», а не шесть чисел, из которых дорого ровно одно.
+ENGINE_API u32 ps_r__rain_quality = 1;
+ENGINE_API xr_token qrain_quality_token[] = {
+    { "ui_mm_rain_quality_low", 0 },
+    { "ui_mm_rain_quality_med", 1 },
+    { "ui_mm_rain_quality_high", 2 },
+    { nullptr, 0 },
+};
+
+// Пресеты качества дождя. Дорого только число капель: на каждое рождение делается луч в геометрию,
+// поэтому от ступени к ступени растёт в первую очередь оно, а размеры почти не меняются.
+ENGINE_API void da_apply_rain_quality()
+{
+    switch (ps_r__rain_quality)
+    {
+    case 0: // низкое
+        ps_r__rain_drops = 2500;
+        ps_r__rain_radius = 10.f;
+        ps_r__rain_splash = 0.5f;
+        ps_r__rain_splash_time = 0.25f;
+        break;
+    default: // среднее
+        ps_r__rain_drops = 6000;
+        ps_r__rain_radius = 14.f;
+        ps_r__rain_splash = 1.0f;
+        ps_r__rain_splash_time = 0.30f;
+        break;
+    case 2: // высокое
+        ps_r__rain_drops = 12000;
+        ps_r__rain_radius = 20.f;
+        ps_r__rain_splash = 1.0f;
+        ps_r__rain_splash_time = 0.40f;
+        break;
+    }
+}
+
+class CCC_RainQuality : public CCC_Token
+{
+public:
+    CCC_RainQuality(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+    void Execute(pcstr args) override
+    {
+        CCC_Token::Execute(args);
+        da_apply_rain_quality();
+    }
+};
+
+// Отладочная раскраска: красный — маска луж, зелёный — общая мокрота, синий — «видно небо», плюс
+// клетка по метру из восстановленных мировых координат. Нужна потому, что «воды не видно» — это
+// сразу пять возможных причин, и перебирать их по одной дороже, чем один раз посмотреть на маску.
+ENGINE_API int ps_r__puddles_debug = 0;
+
 // [DA_PORT] 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
 // nearest-depth neighbour, so grass and branches standing in front of a static surface can push their
 // own motion onto it; the surface then has its history fetched as though it had moved with them.
@@ -1620,6 +2280,16 @@ ENGINE_API int ps_r__taa_mipbias = 0;
 // jitter turns aliasing into sub-pixel samples, the resolve averages them — and being able to run the
 // resolve without the jitter is what tells the two apart when something shimmers.
 ENGINE_API int ps_r__taa_jitter = 1;
+
+// [DA_PORT] Временное подавление джиттера на время замеров. ОТДЕЛЬНО от ps_r__taa_jitter, и вот
+// почему: прибор гасил саму настройку, а она СОХРАНЯЕМАЯ. Прогон прерван (закрыл игру, снял отчёт не
+// до конца) - ноль уезжает в user.ltx навсегда. Дальше апскейлер лишается субпиксельного сдвига, то
+// есть реконструировать ему уже не из чего, и он просто растягивает кадр: картинка "пиксельная", а
+// кадров подозрительно много. Причину по виду не угадать - в настройках стоит ноль, которого игрок
+// туда не ставил.
+//
+// ⇒ Правило: диагностика НИКОГДА не пишет в переменную, которая уходит в конфиг.
+ENGINE_API bool g_da_jitter_suppress = false;
 ENGINE_API shared_str current_player_hud_sect{};
 
 extern u32 ps_fps_limit;
@@ -1674,22 +2344,34 @@ void CCC_Register()
     CMD3(CCC_Upscaler, "r__upscaler", &ps_r__upscaler, qupscaler_token);
     CMD3(CCC_Upscaler, "r__upscaler_quality", &ps_r__upscaler_quality, qupscaler_quality_token);
     // 2 = show the velocity buffer, 3 = map which shader drew what, 4 = show the reactive mask
-    CMD4(CCC_Integer, "r__motion_vectors", &ps_r__motion_vectors, 0, 5); // 5 = eye-space depth
+    // [DA_PORT] Диагностика, не настройка: ноль — рабочее состояние (буфер скоростей включает сам
+    // апскейлер), а любое другое значение показывает служебную картинку или подменяет содержимое
+    // буфера. Оставленное в user.ltx, оно тихо портит апскейлер до конца жизни установки.
+    CMD4(CCC_DaDebugInteger, "r__motion_vectors", &ps_r__motion_vectors, 0, 5); // 5 = eye-space depth
     CMD4(CCC_Float, "r__reactive_foliage", &ps_r__reactive_foliage, 0.f, 1.f);
     CMD4(CCC_Float, "r__reactive_motion", &ps_r__reactive_motion, 0.f, 200.f);
     CMD4(CCC_Float, "r__reactive_object", &ps_r__reactive_object, 0.f, 2000.f);
+    CMD4(CCC_Float, "r__reactive_emissive", &ps_r__reactive_emissive, 0.f, 1.f);
+    CMD4(CCC_Float, "r__taa_reactive", &ps_r__taa_reactive, 0.f, 32.f);
+    CMD4(CCC_Float, "r__reactive_transparent", &ps_r__reactive_transparent, 0.f, 1.f);
+    CMD4(CCC_DaDebugInteger, "r__emissive_probe", &ps_r__emissive_probe, 0, 2000);
+    CMD4(CCC_DaDebugInteger, "r__cb_skip_redundant", &ps_r__cb_skip_redundant, 0, 1);
+    CMD4(CCC_DaDebugInteger, "r__probe_center", &ps_r__probe_center, 0, 1);
+    CMD4(CCC_DaDebugInteger, "r__xess_mv_sign", &ps_r__xess_mv_sign, 0, 3);
     CMD4(CCC_Integer, "r__reactive_dilate", &ps_r__reactive_dilate, 0, 16);
     CMD4(CCC_Float, "r__reactive_deadzone", &ps_r__reactive_deadzone, 0.f, 0.02f);
-    CMD4(CCC_Integer, "r__reactive_debug", &ps_r__reactive_debug, 0, 4);
-    CMD4(CCC_Integer, "r__reactive_selftest", &ps_r__reactive_selftest, 0, 1);
+    CMD4(CCC_DaDebugInteger, "r__reactive_debug", &ps_r__reactive_debug, 0, 4);
+    CMD4(CCC_DaDebugInteger, "r__reactive_selftest", &ps_r__reactive_selftest, 0, 1);
     CMD4(CCC_Integer, "r__reactive_ref_fps", &ps_r__reactive_ref_fps, 30, 300);
     CMD4(CCC_Integer, "r__sky_velocity", &ps_r__sky_velocity, 0, 1);
     CMD4(CCC_Integer, "ai_unstick", &ps_ai_unstick, 0, 1);
     {
+        // [DA_PORT] Обе — диагностика (см. CCC_DaDebug в xr_ioc_cmd.h): da_perf_dump печатает в лог
+        // разбор кадра и на больших N успевает написать гигабайты, если про него забыть.
         extern ENGINE_API int ps_da_perf_dump;
-        CMD4(CCC_Integer, "da_perf_dump", &ps_da_perf_dump, 0, 2000);
+        CMD4(CCC_DaDebugInteger, "da_perf_dump", &ps_da_perf_dump, 0, 2000);
         extern ENGINE_API int ps_da_perf_watch;
-        CMD4(CCC_Integer, "da_perf_watch", &ps_da_perf_watch, 0, 500);
+        CMD4(CCC_DaDebugInteger, "da_perf_watch", &ps_da_perf_watch, 0, 500);
     }
     CMD4(CCC_Float, "ai_unstick_range", &ps_ai_unstick_range, 0.5f, 20.f);
     CMD4(CCC_Float, "r__vguard_strength", &ps_r__vguard_strength, 0.f, 1.f);
@@ -1705,24 +2387,79 @@ void CCC_Register()
     CMD4(CCC_Float, "r__detail_albedo_fix", &ps_r__detail_albedo_fix, 0.f, 4096.f);
     // 1/2 paint the damping weight, 3 paints every detail-bump pixel red, 4/5 drop the detail's
     // contribution to the normal / to the gloss outright - see the shader for why 3..5 exist.
-    CMD4(CCC_Integer, "r__detail_debug", &ps_r__detail_debug, 0, 9);
+    CMD4(CCC_DaDebugInteger, "r__detail_debug", &ps_r__detail_debug, 0, 9);
     CMD4(CCC_Float, "r__wind_scale", &ps_r__wind_scale, 0.f, 4.f); // 0 = vegetation frozen
     CMD4(CCC_Integer, "r__wind_shadow", &ps_r__wind_shadow, 0, 1); // 0 = still foliage in shadow map
     // [DA_PORT] Качание травы: 0 = как в исходном движке (по умолчанию), 1 = как в моде.
     CMD4(CCC_Float, "r__grass_sway", &ps_r__grass_sway, 0.f, 1.f);
     CMD4(CCC_Float, "r__grass_sway_speed", &ps_r__grass_sway_speed, 0.f, 2.f);
+
+    // [DA_PORT] Лужи в дождь. Действуют сразу, без перезапуска: все четыре числа читаются на кадр.
+    CMD4(CCC_Integer, "r__puddles", &ps_r__puddles, 0, 1);
+    CMD4(CCC_Float, "r__puddles_buildup", &ps_r__puddles_buildup, 5.f, 600.f);
+    CMD4(CCC_Float, "r__puddles_dry", &ps_r__puddles_dry, 1.f, 20.f);
+    CMD4(CCC_Float, "r__puddles_size", &ps_r__puddles_size, 0.f, 1.f);
+    // [DA_PORT] Принудительная сырость — отладочная: держит мокрый асфальт в ясную погоду, поэтому
+    // в user.ltx ей делать нечего (см. CCC_DaDebug в xr_ioc_cmd.h).
+    CMD4(CCC_DaDebugFloat, "r__puddles_force", &ps_r__puddles_force, 0.f, 1.f);
+    CMD4(CCC_Float, "r__puddles_gloss", &ps_r__puddles_gloss, 0.f, 1.f);
+    CMD4(CCC_Float, "r__puddles_dark", &ps_r__puddles_dark, 0.1f, 1.f);
+    CMD4(CCC_Float, "r__puddles_damp", &ps_r__puddles_damp, 0.f, 1.f);
+    CMD4(CCC_Float, "r__puddles_ripple", &ps_r__puddles_ripple, 0.f, 3.f);
+    CMD4(CCC_DaDebugInteger, "r__puddles_debug", &ps_r__puddles_debug, 0, 3);
+
+    // [DA_PORT] Яркость фонарей. Действуют сразу: цвет ламп пересчитывается каждый кадр.
+    CMD4(CCC_Float, "r__torch_bright", &ps_r__torch_bright, 0.2f, 12.f);
+    CMD4(CCC_Float, "r__torch_bright_item", &ps_r__torch_bright_item, 0.2f, 12.f);
+
+    // [DA_PORT] Сезон: осень / лето. Применяется со следующего запуска игры.
+    // Значение берём из файла-признака (единственное хранилище), а не из user.ltx.
+    da_season_read_marker();
+    CMD3(CCC_DaSeason, "da_season", &ps_da_season, qda_season_token);
+
+    // [DA_PORT] Дождь. Действуют сразу, без перезапуска.
+    CMD4(CCC_Float, "r__rain_len", &ps_r__rain_len, 0.3f, 8.f);
+    CMD4(CCC_Float, "r__rain_width", &ps_r__rain_width, 0.01f, 0.5f);
+    CMD4(CCC_Float, "r__rain_bright", &ps_r__rain_bright, 0.2f, 6.f);
+    CMD4(CCC_Float, "r__rain_splash_bright", &ps_r__rain_splash_bright, 0.1f, 4.f);
+
+    // [DA_PORT] Пункты меню «Дождь»: две ступени вместо восьми чисел.
+    CMD3(CCC_PuddlesQuality, "r__puddles_quality", &ps_r__puddles_quality, qpuddles_quality_token);
+    CMD4(CCC_Float, "r__puddles_rim", &ps_r__puddles_rim, 0.2f, 1.f);
+    CMD4(CCC_Float, "r__puddles_rim_width", &ps_r__puddles_rim_width, 0.02f, 0.5f);
+    CMD3(CCC_Token, "r__puddles_dist", &ps_r__puddles_dist, qpuddles_dist_token);
+    CMD4(CCC_Integer, "r__puddles_refl", &ps_r__puddles_refl, 0, 1);
+    CMD4(CCC_Float, "r__puddles_refl_power", &ps_r__puddles_refl_power, 0.f, 2.f);
+    CMD3(CCC_RainQuality, "r__rain_quality", &ps_r__rain_quality, qrain_quality_token);
+    CMD4(CCC_Integer, "r__rain_drops", &ps_r__rain_drops, 500, 40000);
+    CMD4(CCC_Float, "r__rain_radius", &ps_r__rain_radius, 5.f, 40.f);
+    CMD4(CCC_Float, "r__rain_splash", &ps_r__rain_splash, 0.f, 1.f);
+    CMD4(CCC_Float, "r__rain_splash_time", &ps_r__rain_splash_time, 0.1f, 2.f);
     CMD4(CCC_Integer, "r__foliage_tandc", &ps_r__foliage_tandc, 0, 1);
     CMD3(CCC_XESS, "r__xess", (u32*)&ps_r__xess, qxess_token);
     CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
     CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
-    CMD4(CCC_Integer, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
+    CMD4(CCC_DaDebugInteger, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
+    CMD4(CCC_DaDebugInteger, "r__upscale_show_input", &ps_r__upscale_show_input, 0, 1); // [DA_PORT] вход вместо выхода
+    // [DA_PORT] Срез по строке в лог. Значение — сколько ПОДВИЖНЫХ кадров пропустить: отсчёт идёт
+    // только пока камера действительно движется, стоящая ждёт сколько угодно. Меткость не нужна:
+    // набрал, закрыл консоль, повёл камерой — снимок возьмётся сам.
+    CMD4(CCC_DaDebugInteger, "da_gbuffer_probe", &ps_r__gbuffer_probe, 0, 600);
+    // [DA_PORT] Свет под перекрестьем, N кадров подряд — для мерцания при неподвижной камере.
+    CMD4(CCC_DaDebugInteger, "da_light_watch", &ps_r__light_watch, 0, 600);
+    // [DA_PORT] Полный замер кэша теней: время кадра + дрожание по всему экрану, одной командой.
+    // [DA_PORT] Включаемый: 1 — начать сбор, 0 — закончить и выдать отчёт. Не отсчёт кадров.
+    CMD4(CCC_DaDebugInteger, "da_shadow_test", &ps_r__shadow_test, 0, 1);
     CMD3(CCC_FSR2, "r__fsr2", (u32*)&ps_r__fsr2, qfsr2_token);
-    CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
-    CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
+    // [DA_PORT] restart to apply. 1 — слой проверки DirectX, 2 — он же плюс перепись живых объектов
+    // при выходе (она дважды роняла выход, поэтому вынесена отдельным уровнем, см. dx11HW.cpp).
+    // ⚠️ Слой проверки стоит кадров, а забыть его включённым легко — поэтому он тоже живёт один запуск.
+    CMD4(CCC_DaDebugInteger, "r__d3d_debug", &ps_r__d3d_debug, 0, 2);
+    CMD4(CCC_DaDebugInteger, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
     CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer restart
     CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
     CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
-    CMD4(CCC_Integer, "r__taa_debug", &ps_r__taa_debug, 0, 3);
+    CMD4(CCC_DaDebugInteger, "r__taa_debug", &ps_r__taa_debug, 0, 3);
     CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
     CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]

@@ -139,10 +139,22 @@ u32 get_level_id(CALifeSimulator* self) { return (self->graph().level().level_id
 CSE_ALifeDynamicObject* CALifeSimulator__create(CALifeSimulator* self, ALife::_SPAWN_ID spawn_id)
 {
     const CALifeSpawnRegistry::SPAWN_GRAPH::CVertex* vertex = ai().alife().spawns().spawns().vertex(spawn_id);
-    THROW2(vertex, "Invalid spawn id!");
+    // [DA_PORT] Reachable from any script. THROW2 does fire in Release, but it fires by
+    // throwing, nothing on the MinGW path catches it, and the reason it assembled is never
+    // printed - the player just gets "Unexpected application termination". Report the bad
+    // id and hand nil back to Lua, which then fails at the calling script line.
+    if (!vertex)
+    {
+        Msg("! [DA] alife():create - invalid spawn id [%d]", spawn_id);
+        return nullptr;
+    }
 
     CSE_ALifeDynamicObject* spawn = smart_cast<CSE_ALifeDynamicObject*>(&vertex->data()->object());
-    THROW(spawn);
+    if (!spawn)
+    {
+        Msg("! [DA] alife():create - spawn id [%d] is not a dynamic object", spawn_id);
+        return nullptr;
+    }
 
     CSE_ALifeDynamicObject* object;
     self->create(object, spawn, spawn_id);

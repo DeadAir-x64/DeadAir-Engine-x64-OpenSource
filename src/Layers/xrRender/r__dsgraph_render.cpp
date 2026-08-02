@@ -156,6 +156,11 @@ class hud_transform_helper
     static u32 cullMode;
     static bool isActive;
 
+    // [DA_PORT] HUD-камера для векторов движения: эта и прошлого кадра. Живут в самом объекте, потому
+    // что на них ссылается бэкенд всё время отрисовки HUD. Подробности — у полей в R_Backend_xform.h.
+    Fmatrix m_da_hud_VP;
+    Fmatrix m_da_hud_VP_prev;
+
     CBackend& cmd_list;
 
 public:
@@ -186,6 +191,28 @@ public:
             HUD_VIEWPORT_NEAR, g_pGamePersistent->Environment().CurrentEnv.far_plane);
         cmd_list.set_xform_project(prj_new);
 
+        // [DA_PORT] Вектор движения для всего, что в руках, должен считаться в ТОЙ ЖЕ проекции, в
+        // которой оно нарисовано. Проекция HUD своя (и меняется — отвод оружия у стены её двигает),
+        // поэтому обе камеры собираем здесь: текущую и такую же из прошлого кадра.
+        //
+        // Прошлая берётся из статика, а не пересчитывается: обзор HUD за кадр мог измениться, и
+        // «правильная» матрица прошлого кадра — только та, которой в прошлом кадре и рисовали.
+        // Отрисовка HUD однопоточная (рядом на статиках живут cullMode и isActive), гонки тут нет.
+        static Fmatrix s_hud_VP_prev = Fidentity;
+        static Fmatrix s_hud_VP_curr = Fidentity;
+        static u32 s_hud_VP_frame = u32(-1);
+
+        m_da_hud_VP.mul(prj_new, Device.mView);
+        if (s_hud_VP_frame != Device.dwFrame)
+        {
+            s_hud_VP_prev = s_hud_VP_curr;
+            s_hud_VP_frame = Device.dwFrame;
+        }
+        s_hud_VP_curr = m_da_hud_VP;
+        m_da_hud_VP_prev = s_hud_VP_prev;
+
+        cmd_list.xforms.da_set_VP_overrides(&m_da_hud_VP_prev, &m_da_hud_VP);
+
         RImplementation.rmNear(cmd_list);
 
         // preserve culling mode
@@ -196,6 +223,8 @@ public:
     ~hud_transform_helper()
     {
         RImplementation.rmNormal(cmd_list);
+
+        cmd_list.xforms.da_set_VP_overrides(nullptr, nullptr); // [DA_PORT] сцена снова считает по себе
 
         // Restore projection
         cmd_list.set_xform_project(Pold);

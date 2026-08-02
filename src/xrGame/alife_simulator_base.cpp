@@ -137,7 +137,14 @@ CSE_Abstract* CALifeSimulatorBase::spawn_item(LPCSTR section, const Fvector& pos
     // in this engine build. Reject loudly instead - the log names the section to fix its class.
     if (!dynamic_object)
     {
-        Msg("! [DA_PORT] spawn_item: section '%s' maps to a non-ALife server class - spawn rejected", section);
+        // [DA_PORT] Печатаем и КЛАСС из конфига: без него сообщение называет симптом, но не даёт
+        // ничего для починки. Секция `wpn_rpg7_missile` спавнится по авторскому замыслу в начале
+        // игры, то есть отказ здесь режет штатный контент, и надо знать, какой именно класс у нас
+        // не опознаётся.
+        Msg("! [DA_PORT] spawn_item: секция '%s' (класс '%s') не даёт серверный ALife-объект - спавн "
+            "отклонён",
+            section,
+            pSettings->line_exist(section, "class") ? pSettings->r_string(section, "class") : "нет ключа");
         FlushLog();
         server().FreeID(abstract->ID, 0);
         F_entity_Destroy(abstract);
@@ -274,8 +281,17 @@ void CALifeSimulatorBase::create(CSE_ALifeObject* object)
     if (0xffff != dynamic_object->ID_Parent)
     {
         u16 id = dynamic_object->ID_Parent;
-        CSE_ALifeDynamicObject* parent = objects().object(id);
-        VERIFY(parent);
+        CSE_ALifeDynamicObject* parent = objects().object(id, true);
+        // [DA_PORT] An object spawned into a parent that is not registered used to end the
+        // session here (the registry throws and nobody catches it). Register it standalone
+        // instead of losing the level load over one object.
+        if (!parent)
+        {
+            Msg("! [DA] create: object [%d][%s] has unregistered parent [%d]", dynamic_object->ID,
+                dynamic_object->name_replace(), id);
+            register_object(dynamic_object, true);
+            return;
+        }
         dynamic_object->m_tGraphID = parent->m_tGraphID;
         dynamic_object->o_Position = parent->o_Position;
         dynamic_object->m_tNodeID = parent->m_tNodeID;

@@ -41,8 +41,10 @@ void CSoundRender_CoreA::_initialize()
     }
 
     pDeviceList->SelectBestDevice();
-    R_ASSERT(snd_device_id >= 0 && snd_device_id < pDeviceList->GetNumDevices());
-    const ALDeviceDesc& deviceDesc = pDeviceList->GetDeviceDesc(snd_device_id);
+    // [DA_PORT] Открываем то, что разрешил SelectBestDevice, а не выбор игрока: «авто» индексом не
+    // является. Устаревший индекс из user.ltx там же и отсекается, поэтому здесь это уже инвариант.
+    R_ASSERT(snd_device_active_id < pDeviceList->GetNumDevices());
+    const ALDeviceDesc& deviceDesc = pDeviceList->GetDeviceDesc(snd_device_active_id);
 
     // OpenAL device
     pDevice = alcOpenDevice(deviceDesc.name);

@@ -18,6 +18,7 @@
 // [DA_PORT] TAA: defined in xr_ioc_cmd.cpp / device.cpp — see the jitter block in ApplyDevice below.
 extern ENGINE_API int ps_r__taa;
 extern ENGINE_API int ps_r__taa_jitter;
+extern ENGINE_API bool g_da_jitter_suppress; // [DA_PORT] см. xr_ioc_cmd.cpp
 extern ENGINE_API int ps_r__fsr2;
 // [DA_PORT] "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
 extern ENGINE_API bool da_upscaler_active();
@@ -368,7 +369,7 @@ void CCameraManager::ApplyDevice()
     // frame, leaving it nothing to reconstruct from. Fine detail at a distance could then never resolve
     // however long the camera stood still, which is what "objects in the distance smear" turned out to
     // be. Now behind da_upscaler_active(), so the next upscaler cannot repeat it.
-    if ((ps_r__taa || da_upscaler_active()) && ps_r__taa_jitter && !menu_up && Device.dwRenderWidth &&
+    if ((ps_r__taa || da_upscaler_active()) && ps_r__taa_jitter && !g_da_jitter_suppress && !menu_up && Device.dwRenderWidth &&
         Device.dwRenderHeight)
     {
         // [DA_PORT] Generated exactly the way FSR 2 specifies, because it has to undo this offset and

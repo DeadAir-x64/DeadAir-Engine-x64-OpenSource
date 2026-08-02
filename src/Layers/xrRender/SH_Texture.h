@@ -112,6 +112,10 @@ public:
 
 #if defined(USE_DX11)
     ID3DShaderResourceView* get_SRView() const { return m_pSRView; }
+
+    // [DA_PORT] Releases every shader resource view this texture owns, minding that m_pSRView
+    // is often only an alias of one of the others. Shared by Unload() and surface_set().
+    void release_surface_views();
 #endif
 
 #if defined(USE_DX11)

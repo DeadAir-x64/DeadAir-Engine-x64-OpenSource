@@ -41,6 +41,51 @@ CTexture::~CTexture()
     RImplementation.Resources->_DeleteTexture(this);
 }
 
+// [DA_PORT] Releases every view this texture owns.
+//
+// ⚠️ Releasing blindly is wrong: m_pSRView is NOT always owning. For arrays it aliases srv_all or
+// an element of srv_per_slice (see set_slice_read), for animations an element of m_seqSRView. So
+// work out whether it is owning FIRST, while the others are still readable - once they have been
+// released and nulled, comparing pointers tells us nothing.
+//
+// m_seqSRView itself is not released here: it belongs to the animation path and Unload() frees it
+// alongside seqDATA. This function only needs to see it to recognise an alias.
+void CTexture::release_surface_views()
+{
+    ID3DShaderResourceView* owned_srv = m_pSRView;
+    if (owned_srv)
+    {
+        if (owned_srv == srv_all)
+            owned_srv = nullptr;
+
+        if (owned_srv)
+            for (auto* s : srv_per_slice)
+                if (owned_srv == s)
+                {
+                    owned_srv = nullptr;
+                    break;
+                }
+
+        if (owned_srv)
+            for (auto* s : m_seqSRView)
+                if (owned_srv == s)
+                {
+                    owned_srv = nullptr;
+                    break;
+                }
+    }
+
+    // Null it out either way: once the views are gone the pointer must not be usable, whether we
+    // owned it or merely borrowed it.
+    _RELEASE(owned_srv);
+    m_pSRView = nullptr;
+
+    _RELEASE(srv_all);
+    for (auto& srv : srv_per_slice)
+        _RELEASE(srv);
+    srv_per_slice.clear();
+}
+
 void CTexture::surface_set(ID3DBaseTexture* surf)
 {
 #if 0//def DEBUG
@@ -51,6 +96,12 @@ void CTexture::surface_set(ID3DBaseTexture* surf)
 
     if (surf)
         surf->AddRef();
+
+    // [DA_PORT] Drop the views of the outgoing surface before it goes. Doing this piecemeal further
+    // down leaked in two ways: srv_per_slice was only resized (a shorter new array silently dropped
+    // the tail), and the non-2D branch released m_pSRView even when it was an alias of an srv_all
+    // that stays live - leaving that one dangling.
+    release_surface_views();
     _RELEASE(pSurface);
 
     pSurface = surf;
@@ -116,14 +167,13 @@ void CTexture::surface_set(ID3DBaseTexture* surf)
                 break;
             }
 
-            _RELEASE(srv_all);
+            // [DA_PORT] No _RELEASE here any more - release_surface_views() above already emptied
+            // srv_all and srv_per_slice, and did it without tripping over the aliases.
             CHK_DX(HW.pDevice->CreateShaderResourceView(pSurface, &ViewDesc, &srv_all));
 
             srv_per_slice.resize(desc.ArraySize);
             for (u32 id = 0; id < desc.ArraySize; ++id)
             {
-                _RELEASE(srv_per_slice[id]);
-
                 if (desc.SampleDesc.Count <= 1)
                 {
                     ViewDesc.Texture2DArray.ArraySize = 1;
@@ -140,7 +190,6 @@ void CTexture::surface_set(ID3DBaseTexture* surf)
         }
         else
         {
-            _RELEASE(m_pSRView);
             CHK_DX(HW.pDevice->CreateShaderResourceView(pSurface, NULL, &m_pSRView));
         }
     }
@@ -514,28 +563,9 @@ void CTexture::Unload()
     // неосвобождённых объектов на каждую смену уровня и около 800 МБ памяти драйвера за переход;
     // в наших кучах этого не видно вовсе, оттого обход куч и показывал «живые почти стоят».
     //
-    // ⚠️ Освобождать вслепую нельзя: m_pSRView НЕ ВСЕГДА владеющий. Для массивов он алиас srv_all
-    // или элемента srv_per_slice (см. set_slice_read), для анимаций — элемента m_seqSRView. Поэтому
-    // сначала выясняем, владеющий ли он, и делаем это ДО того, как остальные будут освобождены и
-    // обнулены, — иначе сравнение указателей уже ничего не покажет.
-    ID3DShaderResourceView* owned_srv = m_pSRView;
-    if (owned_srv)
-    {
-        if (owned_srv == srv_all)
-            owned_srv = nullptr;
-        for (auto* s : srv_per_slice)
-            if (owned_srv == s)
-            {
-                owned_srv = nullptr;
-                break;
-            }
-        for (auto* s : m_seqSRView)
-            if (owned_srv == s)
-            {
-                owned_srv = nullptr;
-                break;
-            }
-    }
+    // ⚠️ Освобождать вслепую нельзя: m_pSRView НЕ ВСЕГДА владеющий — разбор в release_surface_views().
+    // Зовём ДО блока анимаций: там m_seqSRView очищается, а нам он нужен целым, чтобы опознать алиас.
+    release_surface_views();
 
     if (!seqDATA.empty())
     {
@@ -550,17 +580,6 @@ void CTexture::Unload()
     }
 
     _RELEASE(pSurface);
-    _RELEASE(srv_all);
-    for (auto& srv : srv_per_slice)
-    {
-        _RELEASE(srv);
-    }
-
-    // [DA_PORT] И собственное представление — см. пояснение в начале функции. Обнуляем в любом
-    // случае: после выгрузки указатель обязан быть недействительным, владели мы им или нет.
-    _RELEASE(owned_srv);
-    m_pSRView = nullptr;
-
 
     xr_delete(pAVI);
     xr_delete(pTheora);

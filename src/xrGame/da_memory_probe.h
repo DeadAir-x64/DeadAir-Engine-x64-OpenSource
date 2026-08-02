@@ -56,3 +56,11 @@ void DA_MemDump();
 
 // Забыть накопленное (консольная команда da_mem_reset).
 void DA_MemReset();
+
+// [DA_PORT] Отложенное выполнение консольной команды после загрузки уровня — см. .cpp.
+// Нужно, чтобы воспроизводить сценарии («загрузил сейв, сбросил устройство») без рук.
+void DA_AfterLoadArm(int frames, pcstr command);
+void DA_AfterLoadTick();
+
+// [DA_PORT] Один раз за сессию выполняет команду из `-da_cmd "<команда>"`. См. run_headless.ps1.
+void DA_StartupCommandTick();

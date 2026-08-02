@@ -26,8 +26,8 @@ void R_xforms::set_W(const Fmatrix& m)
     // [DA_PORT] Rebuilt for THIS object, on the same footing as m_wvp - see the header for why they
     // cannot be constant-setup binders. With m_w_old just defaulted to the current world, both describe
     // an object that has not moved of its own accord; a mover corrects the first one via set_W_old.
-    m_wvp_old.mul(g_da_prev_VP, m_w_old);
-    m_wvp_nojit.mul(g_da_taa_unjittered_VP, m_w);
+    m_wvp_old.mul(m_da_prev_VP ? *m_da_prev_VP : g_da_prev_VP, m_w_old);
+    m_wvp_nojit.mul(m_da_nojit_VP ? *m_da_nojit_VP : g_da_taa_unjittered_VP, m_w);
     if (c_wvp_old)
         cmd_list.set_c(c_wvp_old, m_wvp_old);
     if (c_wvp_nojit)
@@ -48,7 +48,7 @@ void R_xforms::set_W(const Fmatrix& m)
 void R_xforms::set_W_old(const Fmatrix& m)
 {
     m_w_old.set(m);
-    m_wvp_old.mul(g_da_prev_VP, m_w_old);
+    m_wvp_old.mul(m_da_prev_VP ? *m_da_prev_VP : g_da_prev_VP, m_w_old);
     if (c_wvp_old)
         cmd_list.set_c(c_wvp_old, m_wvp_old);
 }

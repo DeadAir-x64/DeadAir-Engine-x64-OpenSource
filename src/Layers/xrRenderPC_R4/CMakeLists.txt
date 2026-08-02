@@ -23,6 +23,7 @@ target_sources(xrRenderPC_R4 PRIVATE
     da_upscaler.h
     r4_rendertarget_phase_fsr2.cpp
     r4_rendertarget_phase_fsr3.cpp
+    r4_rendertarget_phase_da_puddle_refl.cpp
     r4_rendertarget_phase_velocity_guard.cpp
     r4_rendertarget_phase_reactive.cpp
     r4_rendertarget_phase_sky_velocity.cpp

@@ -10,6 +10,8 @@ extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
 extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
 
+extern ENGINE_API void da_upscaler_report_failure(pcstr who, bool failed); // [DA_PORT]
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // [DA_PORT] Set only when the upscaler actually produced a frame. The post-process pass keys off
@@ -100,6 +102,10 @@ bool CRenderTarget::phase_fsr2()
         ok = g_da_fsr2.draw(p);
         if (ok)
             g_da_fsr2_frame = Device.dwFrame;
+
+        // [DA_PORT] Три провала подряд — гасим джиттер и объясняем в логе. Иначе на экран
+        // идёт сдвинутая сцена, растянутая обычным фильтром, и это выглядит как тряска.
+        ::da_upscaler_report_failure("FSR 2.0", !ok);
     }
 
     _RELEASE(colour);

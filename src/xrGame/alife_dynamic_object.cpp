@@ -27,10 +27,28 @@ void CSE_ALifeDynamicObject::on_spawn()
 void CSE_ALifeDynamicObject::on_register()
 {
     CSE_ALifeObject* object = this;
+    // [DA_PORT] Walk up to the outermost container. A save with a dangling ID_Parent used
+    // to end the session here: the registry throws for an unknown id, nothing catches it,
+    // and the player only saw "Unexpected application termination". Ask for the quiet form
+    // of the lookup instead, and stop on both a missing parent and a parent cycle (the
+    // original loop had no cycle guard at all), naming the object at fault.
+    u32 guard = 0;
     while (object->ID_Parent != ALife::_OBJECT_ID(-1))
     {
-        object = ai().alife().objects().object(object->ID_Parent);
-        VERIFY(object);
+        CSE_ALifeObject* const parent = ai().alife().objects().object(object->ID_Parent, true);
+        if (!parent)
+        {
+            Msg("! [DA] object [%d][%s] refers to parent [%d] that is not registered", object->ID,
+                object->name_replace(), object->ID_Parent);
+            break;
+        }
+        object = parent;
+
+        if (++guard > 64)
+        {
+            Msg("! [DA] parent chain of object [%d][%s] is looped, giving up", ID, name_replace());
+            break;
+        }
     }
 
     if (!alife().graph().level().object(object->ID, true))

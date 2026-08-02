@@ -177,7 +177,7 @@ void CCustomDetector::OnAnimationEnd(u32 state)
 
 void CCustomDetector::UpdateXForm() { CInventoryItem::UpdateXForm(); }
 void CCustomDetector::OnActiveItem() { return; }
-void CCustomDetector::OnHiddenItem() {}
+void CCustomDetector::OnHiddenItem() { DaStopHudEffects(); } // [DA_PORT] см. DaStopHudEffects
 CCustomDetector::CCustomDetector()
 {
     m_ui = NULL;
@@ -497,6 +497,22 @@ void CCustomDetector::on_b_hud_detach()
     inherited::on_b_hud_detach();
     xr_delete(m_hud_ui);
     m_hud_ui_checked = false;
+    DaStopHudEffects(); // огонёк зажигалки уходит вместе с моделью в руке
+}
+
+// [DA_PORT] Погасить пламя и подсветку зажигалки НЕМЕДЛЕННО, а не «когда-нибудь на обновлении».
+//
+// Само по себе `UpdateHudParticles` гасит их корректно — но только пока его зовут. Убранный из рук
+// предмет перестаёт обновляться, и партикл остаётся играть с последней матрицей: в HUD-пространстве
+// это выглядит как огонёк, застывший в воздухе посреди уровня. Поэтому гасим по событию — на
+// отсоединении модели от рук и на уборке предмета.
+void CCustomDetector::DaStopHudEffects()
+{
+    if (m_hud_particles && m_hud_particles->IsPlaying())
+        m_hud_particles->Stop();
+
+    if (m_held_light)
+        m_held_light->set_active(false);
 }
 
 void CCustomDetector::render_item_3d_ui()
@@ -607,6 +623,7 @@ void CCustomDetector::OnMoveToRuck(const SInvItemPlace& prev)
     }
     TurnDetectorInternal(false);
     StopCurrentAnimWithoutCallback();
+    DaStopHudEffects(); // [DA_PORT] убрали в рюкзак — огонёк туда не летит
 }
 
 void CCustomDetector::OnMoveToSlot(const SInvItemPlace& prev) { inherited::OnMoveToSlot(prev); }

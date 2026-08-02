@@ -504,6 +504,20 @@ void CHW::DestroyDevice()
     if (profiler_ctx)
         TracyD3D11Destroy(profiler_ctx);
 
+    // [DA_PORT] Отвязать всё от конвейера и слить очередь уничтожения ПЕРЕД тем, как считать живые
+    // объекты. DirectX освобождает лениво: пока привязки висят на контексте, а отложенные удаления
+    // не выполнены, перепись показывает трупы — объекты с нулём внешних ссылок, которых уже никто не
+    // держит. Именно они составляли 849 строк из 1024 в переписи 30.07. Документация к
+    // ReportLiveDeviceObjects требует этой пары вызовов, иначе список читать бессмысленно.
+    if (ps_r__d3d_debug >= 2)
+    {
+        if (auto* imm = d3d_contexts_pool[IMM_CTX_ID])
+        {
+            imm->ClearState();
+            imm->Flush();
+        }
+    }
+
     _RELEASE(pContext1);
     for (int id = 0; id < R__NUM_CONTEXTS; ++id)
     {
@@ -526,57 +540,102 @@ void CHW::DestroyDevice()
     //
     // Само число не говорит, ЧТО именно течёт, а перебирать подозреваемых по коду дорого. DirectX
     // умеет перечислить живые объекты сам, с типами и счётчиками ссылок, — это и есть кратчайший путь
-    // к имени. Требует слоя отладки (r__d3d_debug 1) и потому ничего не стоит в обычной игре.
-    if (ps_r__d3d_debug)
+    // к имени.
+    //
+    // ⚠️ Перепись живёт под ОТДЕЛЬНЫМ уровнем r__d3d_debug 2, а не вместе со слоем проверки. Причина
+    // прямая: она дважды роняла выход из игры (31.07), и хотя причина каждый раз была в ней самой,
+    // цена ошибки здесь — испорченный сеанс отладки. При r__d3d_debug 1 работает только слой
+    // проверки, который за месяц не подвёл ни разу.
+    if (ps_r__d3d_debug >= 2)
     {
         ID3D11Debug* debug = nullptr;
         if (SUCCEEDED(pDevice->QueryInterface(__uuidof(ID3D11Debug), (void**)&debug)) && debug)
         {
             Msg("* [DA_PORT] живые объекты D3D на выходе:");
+            FlushLog();
 
-            // [DA_PORT] Снять потолок очереди ДО переписи. По умолчанию слой отладки хранит 1024
-            // сообщения, и первая перепись пришла ровно на 1024 строки — то есть была обрезана, а
-            // счётчик ссылок при этом показывал пятнадцать тысяч. Обрезанная перепись хуже, чем
-            // никакой: по ней легко посчитать доли типов и принять верхушку за целое.
+            // [DA_PORT] Перепись уходит в очередь сообщений слоя отладки, а не в наш лог, и очередь
+            // эта с потолком. Слить её надо БЕЗ обычного ограничения в 200 строк: то поставлено
+            // против ежекадрового спама, а здесь единственная за сеанс перепись, и интересен как раз
+            // хвост.
+            //
+            // ⚠️ Ноль потолок НЕ снимает, хотя выглядит как «без ограничения»: перепись 30.07 с ним
+            // пришла ровно на 1024 строки (заводское значение), оборвалась на полуслове — итоговой
+            // строки устройства в ней нет, — и число живых объектов, взятое из такого списка, было
+            // потолком очереди, а не измерением.
+            //
+            // ⚠️⚠️ И «без ограничения» через -1 тоже нельзя: 31.07 выход с ним умер молча сразу после
+            // первой строки сводки. Здесь конечный потолок с большим запасом.
+            //
+            // ⚠️⚠️⚠️ И держать ID3D11InfoQueue ПОВЕРХ вызова ReportLiveDeviceObjects тоже нельзя: с
+            // указателем, взятым ДО переписи, GetMessage падает внутри DXGIDebug (чтение по адресу
+            // 0x14). Работает только порядок «перепись → взять очередь → слить → отпустить», каждый
+            // раз заново. Он и восстановлен ниже; ради него дублируется получение интерфейса.
+            constexpr UINT64 QUEUE_LIMIT = 1u << 20;
+
+            // Потолок ставится отдельным коротким обращением — очередь тут не переживает перепись.
             {
                 ID3D11InfoQueue* iq_limit = nullptr;
                 if (SUCCEEDED(pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&iq_limit)) && iq_limit)
                 {
                     iq_limit->ClearStoredMessages();
-                    iq_limit->SetMessageCountLimit(0); // 0 = без ограничения
+                    iq_limit->SetMessageCountLimit(QUEUE_LIMIT);
+                    Msg("* [DA_PORT] перепись: потолок очереди %llu",
+                        (unsigned long long)iq_limit->GetMessageCountLimit());
                     iq_limit->Release();
                 }
+                FlushLog();
             }
+
+            // Перепись + слив её в лог. Интерфейс очереди берётся ПОСЛЕ отчёта и отпускается сразу.
+            const auto report_and_drain = [&](D3D11_RLDO_FLAGS flags, LPCSTR stage) {
+                debug->ReportLiveDeviceObjects(flags);
+
+                ID3D11InfoQueue* iq = nullptr;
+                if (FAILED(pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&iq)) || !iq)
+                {
+                    Msg("! [DA_PORT] перепись(%s): очередь сообщений недоступна, список ушёл в отладочный вывод",
+                        stage);
+                    FlushLog();
+                    return;
+                }
+
+                UINT64 count = iq->GetNumStoredMessages();
+                if (count > QUEUE_LIMIT) // если счётчик соврёт, цикл не должен уйти в бесконечность
+                {
+                    Msg("! [DA_PORT] перепись(%s): очередь вернула %llu сообщений, обрезаю", stage,
+                        (unsigned long long)count);
+                    count = QUEUE_LIMIT;
+                }
+                const UINT64 dropped = iq->GetNumMessagesDiscardedByMessageCountLimit();
+                Msg("* [DA_PORT] перепись(%s): строк %u, выброшено очередью %u", stage, (u32)count, (u32)dropped);
+                FlushLog();
+
+                for (UINT64 i = 0; i < count; ++i)
+                {
+                    SIZE_T len = 0;
+                    if (FAILED(iq->GetMessage(i, nullptr, &len)) || !len)
+                        continue;
+                    auto* msg = static_cast<D3D11_MESSAGE*>(xr_malloc(len));
+                    if (SUCCEEDED(iq->GetMessage(i, msg, &len)) && msg->pDescription)
+                        Msg("~ [D3D11-LIVE] %s", msg->pDescription);
+                    xr_free(msg);
+                }
+                iq->ClearStoredMessages();
+                iq->Release();
+                FlushLog();
+            };
+
+            // Сводка идёт первой: это несколько строк с итогами по типам, и она переживёт даже полный
+            // потолок очереди. Поимённый список после неё — уже подробности.
+            report_and_drain(D3D11_RLDO_SUMMARY, "сводка");
 
             // Только D3D11_RLDO_DETAIL: IGNORE_INTERNAL объявлен не во всех заголовках MinGW.
-            debug->ReportLiveDeviceObjects(D3D11_RLDO_DETAIL);
-            debug->Release();
+            report_and_drain(D3D11_RLDO_DETAIL, "поимённо");
 
-            // [DA_PORT] Перепись уходит в очередь сообщений слоя отладки, а не в наш лог. Сливаем её
-            // здесь же, БЕЗ обычного потолка в 200 строк: тот поставлен против ежекадрового спама, а
-            // это единственная за сеанс перепись, и обрезать её нельзя — интересен как раз хвост.
-            {
-                ID3D11InfoQueue* iq = nullptr;
-                if (SUCCEEDED(pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&iq)) && iq)
-                {
-                    const UINT64 count = iq->GetNumStoredMessages();
-                    Msg("* [DA_PORT] строк переписи: %u", (u32)count);
-                    for (UINT64 i = 0; i < count; ++i)
-                    {
-                        SIZE_T len = 0;
-                        if (FAILED(iq->GetMessage(i, nullptr, &len)) || !len)
-                            continue;
-                        auto* msg = static_cast<D3D11_MESSAGE*>(xr_malloc(len));
-                        if (SUCCEEDED(iq->GetMessage(i, msg, &len)) && msg->pDescription)
-                            Msg("~ [D3D11-LIVE] %s", msg->pDescription);
-                        xr_free(msg);
-                    }
-                    iq->ClearStoredMessages();
-                    iq->Release();
-                }
-                else
-                    Msg("! [DA_PORT] очередь сообщений недоступна, перепись ушла в отладочный вывод");
-            }
+            Msg("* [DA_PORT] перепись окончена");
+            FlushLog();
+            debug->Release();
         }
         else
             Msg("! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен");

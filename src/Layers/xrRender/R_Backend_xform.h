@@ -33,6 +33,23 @@ public:
     R_constant* c_wvp_old;
     R_constant* c_wvp_nojit;
 
+    // [DA_PORT] Оружие и предметы в руках рисуются СВОЕЙ проекцией (узкий HUD-обзор,
+    // `hud_transform_helper`), а обе матрицы движения строились из камеры СЦЕНЫ. Значит для всего, что
+    // в руках, вектор движения считался между двумя разными проекциями — он огромен и не имеет смысла,
+    // и апскейлер тянет историю не оттуда. На тусклом стволе это читается как лёгкая грязь по краю, а
+    // на светящейся палочке — как мерцающая кайма (с неё и началось).
+    //
+    // Пока эти указатели не пусты, обе матрицы строятся из HUD-камеры. Ставит и снимает их
+    // `hud_transform_helper`, ровно на время отрисовки HUD.
+    const Fmatrix* m_da_prev_VP{ nullptr };  // прошлый кадр, той же проекцией
+    const Fmatrix* m_da_nojit_VP{ nullptr }; // этот кадр, той же проекцией
+
+    void da_set_VP_overrides(const Fmatrix* prev_VP, const Fmatrix* nojit_VP)
+    {
+        m_da_prev_VP = prev_VP;
+        m_da_nojit_VP = nojit_VP;
+    }
+
     R_constant* c_w;
     R_constant* c_invw;
     R_constant* c_v;

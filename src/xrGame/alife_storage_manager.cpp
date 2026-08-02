@@ -26,8 +26,42 @@ using namespace ALife;
 extern string_path g_last_saved_game;
 
 CALifeStorageManager::~CALifeStorageManager() {}
+// [DA_PORT] Уборка осиротевших `.tmp` от прерванных сохранений.
+//
+// Сейв пишется во временный файл и подменяет им настоящий (см. save ниже). Если игра упадёт РОВНО
+// во время записи, `.tmp` останется лежать: подменить его уже некому. Сам по себе он безвреден —
+// в списке сохранений не появляется, — но копится молча, а сейвы у нас по полтора мегабайта.
+//
+// Раз за сессию, лениво, перед первым сохранением: отдельного места для инициализации у этого
+// класса нет, а привязываться к запуску движка ради уборки не стоит.
+static void da_sweep_stale_save_temps()
+{
+    static bool done = false;
+    if (done)
+        return;
+    done = true;
+
+    FS_FileSet files;
+    if (!FS.file_list(files, "$game_saves$", FS_ListFiles, "*.tmp"))
+        return;
+
+    u32 removed = 0;
+    for (const auto& entry : files)
+    {
+        string_path full;
+        FS.update_path(full, "$game_saves$", entry.name.c_str());
+        FS.file_delete(full);
+        ++removed;
+    }
+
+    if (removed)
+        Msg("* [DA] убрано незавершённых сохранений: %u", removed);
+}
+
 void CALifeStorageManager::save(LPCSTR save_name_no_check, bool update_name)
 {
+    da_sweep_stale_save_temps();
+
     pcstr gameSaveExtension = SAVE_EXTENSION;
     if (ShadowOfChernobylMode || ClearSkyMode)
         gameSaveExtension = SAVE_EXTENSION_LEGACY;
@@ -81,7 +115,37 @@ void CALifeStorageManager::save(LPCSTR save_name_no_check, bool update_name)
 
     string_path temp;
     FS.update_path(temp, "$game_saves$", m_save_name);
-    IWriter* writer = FS.w_open(temp);
+
+    // [DA_PORT] Пишем во ВРЕМЕННЫЙ файл и подменяем им настоящий, а не пишем поверх сейва игрока.
+    //
+    // Было: FS.w_open прямо по конечному пути. То есть настоящий файл игрока открывался на запись и
+    // затирался, и всё время, пока туда льются мегабайты сжатого сейва, прежнего уже нет. Вылет или
+    // отключение света в этом окне оставляли обрезанный файл и прохождение терялось. Окно не
+    // теоретическое: автосохранение происходит при СМЕНЕ УРОВНЯ, а это ровно то место, где у нас
+    // ловились вылеты.
+    //
+    // Стало: сейв целиком собирается в .tmp, и только когда он дописан, подменяет собой прежний.
+    // Сорвётся запись - потеряем новый сейв, а старый останется цел.
+    //
+    // Почему FS.file_rename, а не MoveFileEx напрямую: CLocatorAPI ведёт СВОЙ каталог файлов, и
+    // w_close регистрирует файл под тем именем, под которым писали. Переименуй мы мимо файловой
+    // системы движка - сейв физически появился бы, а в списке загрузки его бы не было. file_rename
+    // переносит и запись в каталоге, и сам файл.
+    //
+    // ⚠️ Полной атомарности это не даёт: внутри file_rename сначала удаляется старый файл, потом
+    // переименовывается новый. Но там два системных вызова подряд - микросекунды против нескольких
+    // секунд записи. Окно сокращается на три порядка, а не закрывается совсем.
+    string_path save_temp;
+    strconcat(sizeof(save_temp), save_temp, temp, ".tmp");
+
+    IWriter* writer = FS.w_open(save_temp);
+    if (!writer)
+    {
+        Msg("! [DA] сохранение: не удалось создать '%s' - прежний сейв не тронут", save_temp);
+        xr_free(dest_data);
+        return;
+    }
+
     writer->w_u32(u32(-1));
     writer->w_u32(ALIFE_VERSION);
 
@@ -89,6 +153,8 @@ void CALifeStorageManager::save(LPCSTR save_name_no_check, bool update_name)
     writer->w(dest_data, dest_count);
     xr_free(dest_data);
     FS.w_close(writer);
+
+    FS.file_rename(save_temp, temp, true);
 #ifdef DEBUG
     Msg("* Game %s is successfully saved to file '%s' (%d bytes compressed to %d)", m_save_name, temp, source_count,
         dest_count + 4);

@@ -37,8 +37,28 @@ IC void CPathManagerTemplate::reinit(const _Graph* graph)
 TEMPLATE_SPECIALIZATION
 IC void CPathManagerTemplate::build_path(const _vertex_id_type start_vertex_id, const _vertex_id_type dest_vertex_id)
 {
-    VERIFY(m_graph && m_evaluator && m_graph->valid_vertex_id(start_vertex_id) &&
-        m_graph->valid_vertex_id(dest_vertex_id));
+    // [DA_PORT] The VERIFY below is compiled out in Release, and CLevelGraph::vertex() is
+    // plain pointer arithmetic with no bounds check of its own (it cannot afford one - it
+    // runs per node). An out-of-range vertex id therefore used to walk off the node array
+    // instead of failing the request. Report it and take the same route as a failed search;
+    // before_search/after_search are skipped as a pair, so the border stays balanced.
+    if (!m_graph || !m_evaluator || !m_graph->valid_vertex_id(start_vertex_id) ||
+        !m_graph->valid_vertex_id(dest_vertex_id))
+    {
+        static u32 reported = 0;
+        if (reported < 8)
+        {
+            ++reported;
+            Msg("! [DA] build_path: vertex id out of range, start [%u] dest [%u]%s", u32(start_vertex_id),
+                u32(dest_vertex_id), (reported == 8) ? " (further reports suppressed)" : "");
+        }
+
+        m_failed = true;
+        m_current_index = _index_type(-1);
+        m_intermediate_index = _index_type(-1);
+        m_actuality = !failed();
+        return;
+    }
 
     if ((m_failed_start_vertex_id == start_vertex_id) && (m_failed_dest_vertex_id == dest_vertex_id))
     {

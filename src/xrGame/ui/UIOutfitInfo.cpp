@@ -78,7 +78,17 @@ bool CUIOutfitImmunity::InitFromXml(CUIXml& xml_doc, pcstr base_str, pcstr immun
     }
 
     strconcat(buf, base_str, ":", immunity, ":static_value");
-    if (xml_doc.NavigateToNode(buf, 0) && !CallOfPripyatMode)
+
+    // [DA_PORT] Число рядом с полоской показывается ВСЕГДА, если разметка его описала.
+    //
+    // Здесь стояло `&& !CallOfPripyatMode`. Игра по умолчанию идёт в режиме «Зов Припяти»
+    // (`compatibility/game_mode = cop`, x_ray.cpp), поэтому у игрока панель костюма показывала одни
+    // полоски без единой цифры — при том, что мод описал `static_value` с `magnitude="100"` во всех
+    // восемнадцати блоках сразу (`actor_menu_item_16.xml`). Разметка есть, движок её игнорирует.
+    //
+    // Проверка на режим тут и не нужна: если узла в разметке нет, NavigateToNode вернёт ложь и ветка
+    // не выполнится сама. То есть условие ничего не защищало, а только отменяло намерение автора.
+    if (xml_doc.NavigateToNode(buf, 0))
     {
         CUIXmlInit::InitStatic(xml_doc, buf, 0, &m_value);
         m_value.Show(true);
@@ -123,9 +133,15 @@ void CUIOutfitImmunity::SetProgressValue(float cur, float comp, float add /*= 0.
             comp = add;
         m_progress.SetTwoPos(cur, comp);
 
-        const auto sz = xr_sprintf(buf, "%.0f", cur);
+        // [DA_PORT] Со знаком процента: величина показывается в процентах (magnitude = 100 в
+        // разметке мода), а без знака число висело голым и читалось как что угодно.
+        //
+        // ⚠️ Во второй строке был битый формат: `"+ %.0f%"` — одиночный `%` в самом конце. За ним
+        // ничего нет, и что напечатает printf в этом случае, стандартом не определено. Прибавка от
+        // апгрейда показывается редко, поэтому дефект и дожил: правильная запись — `%%`.
+        const auto sz = xr_sprintf(buf, "%.0f%%", cur);
         if (!fis_zero(add))
-            xr_sprintf(buf + sz, sizeof(buf) - sz, "+ %.0f%", add * m_magnitude);
+            xr_sprintf(buf + sz, sizeof(buf) - sz, " + %.0f%%", add * m_magnitude);
     }
     else // SOC
     {

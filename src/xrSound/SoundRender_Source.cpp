@@ -137,17 +137,37 @@ constexpr ov_callbacks g_ov_callbacks =
 
 OggVorbis_File* CSoundRender_Source::open() const
 {
-    const auto file = FS.r_open(pname.c_str());
+    // [DA_PORT] не const: FS.r_close берёт ссылку на изменяемый указатель
+    auto* file = FS.r_open(pname.c_str());
     R_ASSERT3(file && file->length(), "Can't open wave file:", pname.c_str());
 
     const auto ovf = xr_new<OggVorbis_File>();
-    ov_open_callbacks(file, ovf, nullptr, 0, g_ov_callbacks);
+
+    // [DA_PORT] Результат НЕ проверялся вовсе, и структура возвращалась в любом случае. На битом
+    // или недокачанном ogg это давало сразу две беды: файл и сама структура текли, а вызывающему
+    // уходил наполовину заполненный OggVorbis_File, который дальше разбирала libvorbis — то есть
+    // вылет в чужой библиотеке вместо внятного отказа.
+    //
+    // Возвращаем ноль; оба вызывающих (SoundRender_Emitter, ..._StartStop) его теперь проверяют и
+    // просто молчат этим источником.
+    if (ov_open_callbacks(file, ovf, nullptr, 0, g_ov_callbacks) != 0)
+    {
+        Msg("! [DA] звук: не удалось разобрать '%s' - источник отключён", pname.c_str());
+        FS.r_close(file);
+        xr_delete(ovf);
+        return nullptr;
+    }
 
     return ovf;
 }
 
 void CSoundRender_Source::close(OggVorbis_File*& ovf) const
 {
+    // [DA_PORT] Ноль сюда теперь доходит штатно — open() возвращает его на неразбираемом файле,
+    // а i_stop зовёт close() безусловно. ov_clear нулю не рад.
+    if (!ovf)
+        return;
+
     ov_clear(ovf);
     xr_delete(ovf);
 }

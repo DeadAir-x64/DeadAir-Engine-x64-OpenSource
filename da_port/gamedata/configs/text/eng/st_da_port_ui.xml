@@ -169,6 +169,21 @@
 	<string id="st_opt_shadow_lights_high">
 		<text>High</text>
 	</string>
+	<string id="ui_mm_smap_cache">
+		<text>Sun shadow accuracy</text>
+	</string>
+	<string id="st_opt_smap_cache_low">
+		<text>Low</text>
+	</string>
+	<string id="st_opt_smap_cache_medium">
+		<text>Medium</text>
+	</string>
+	<string id="st_opt_smap_cache_high">
+		<text>High</text>
+	</string>
+	<string id="st_opt_smap_cache_ultra">
+		<text>Ultra</text>
+	</string>
 	<string id="ui_mm_performance">
 		<text>Performance</text>
 	</string>
@@ -292,6 +307,10 @@
 	<string id="st_opt_perf_ultra">
 		<text>Ultra</text>
 	</string>
+	<!-- [DA_PORT] Пункт списка наборов: значения не совпадают ни с одним набором. -->
+	<string id="st_opt_perf_custom">
+		<text>Custom</text>
+	</string>
 	<string id="st_opt_perf_max_fps">
 		<text>Ultra performance</text>
 	</string>
@@ -303,5 +322,87 @@
 	</string>
 	<string id="ui_mm_grp_image">
 		<text>Image</text>
+	</string>
+	<!-- [DA_PORT] Window modes. The list comes from the vid_window_mode command, whose token names
+	     are string ids, so the labels live here. -->
+	<string id="ui_mm_window_mode">
+		<text>Window mode</text>
+	</string>
+	<string id="st_opt_windowed">
+		<text>Windowed</text>
+	</string>
+	<string id="st_opt_fullscreen_borderless">
+		<text>Borderless fullscreen</text>
+	</string>
+	<string id="st_opt_fullscreen">
+		<text>Exclusive fullscreen</text>
+	</string>
+	<!-- [DA_PORT] rain and puddles -->
+	<string id="ui_mm_grp_rain">
+		<text>Rain</text>
+	</string>
+	<string id="ui_mm_puddles">
+		<text>Puddles</text>
+	</string>
+	<string id="ui_mm_puddles_dist">
+		<text>Puddle distance</text>
+	</string>
+	<string id="ui_mm_puddles_dist_low">
+		<text>Low</text>
+	</string>
+	<string id="ui_mm_puddles_dist_med">
+		<text>Medium</text>
+	</string>
+	<string id="ui_mm_puddles_dist_high">
+		<text>High</text>
+	</string>
+	<string id="ui_mm_rain_quality">
+		<text>Rain quality</text>
+	</string>
+	<string id="ui_mm_rain_quality_low">
+		<text>Low</text>
+	</string>
+	<string id="ui_mm_rain_quality_med">
+		<text>Medium</text>
+	</string>
+	<string id="ui_mm_rain_quality_high">
+		<text>High</text>
+	</string>
+	<string id="ui_mm_puddles_quality">
+		<text>Puddle quality</text>
+	</string>
+	<string id="ui_mm_puddles_q_low">
+		<text>Low</text>
+	</string>
+	<string id="ui_mm_puddles_q_med">
+		<text>Medium</text>
+	</string>
+	<string id="ui_mm_puddles_q_high">
+		<text>High</text>
+	</string>
+	<string id="ui_mm_grp_world">
+		<text>World</text>
+	</string>
+	<string id="ui_mm_season">
+		<text>Season (restart required)</text>
+	</string>
+	<string id="ui_mm_season_autumn">
+		<text>Autumn</text>
+	</string>
+	<string id="ui_mm_season_summer">
+		<text>Summer</text>
+	</string>
+	<string id="ui_mm_snd_device_auto">
+		<text>System default</text>
+	</string>
+	<string id="ui_mm_af_rad_through">
+		<text>Radiation leaking</text>
+	</string>
+	<string id="ui_da_wpn_breakage">
+		<text>
+Malfunctions: </text>
+	</string>
+	<string id="ui_da_wpn_breakage_none">
+		<text>none</text>
 	</string>
 </string_table>

@@ -52,6 +52,8 @@
 #include "xrPhysics/console_vars.h"
 #include "GametaskManager.h"
 
+#include "da_memory_probe.h" // [DA_PORT] инструменты замера и воспроизведения
+
 #ifdef DEBUG
 #include "PHDebug.h"
 #include "ui/UIDebugFonts.h"
@@ -59,6 +61,59 @@
 #include "LevelGraphDebugRender.hpp"
 #include "CharacterPhysicsSupport.h"
 #endif // DEBUG
+
+// ⚠️ [DA_PORT] Ниже — ВНЕ блока #ifdef DEBUG, и это намеренно: проверять отчёт о вылете
+// надо на той сборке, которая уходит игрокам, а не на отладочной.
+
+// [DA_PORT] Отложенная команда: da_after_load <кадров> <команда с аргументами>.
+//
+// Единственный способ выполнить что-то В ИГРЕ без рук: user.ltx отрабатывает до появления уровня.
+// Нужно для воспроизведения вылетов («загрузил сейв — сбросил устройство») и для проверок из
+// дорожной карты, которые иначе приходится делать вручную по десять раз.
+class CCC_DaAfterLoad : public IConsole_Command
+{
+public:
+    CCC_DaAfterLoad(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+
+    void Execute(LPCSTR args) override
+    {
+        if (!args || !*args)
+        {
+            DA_AfterLoadArm(-1, nullptr);
+            return;
+        }
+        int frames = 0;
+        char cmd[512] = {};
+        // Хвост строки забираем целиком: у команды могут быть свои аргументы с пробелами.
+        if (sscanf(args, "%d %511[^\r\n]", &frames, cmd) != 2)
+        {
+            Msg("! da_after_load <кадров> <команда>   — например: da_after_load 300 vid_restart");
+            return;
+        }
+        DA_AfterLoadArm(frames, cmd);
+    }
+};
+
+// [DA_PORT] Намеренная авария: проверка отчёта о вылете на той же сборке, что у игроков.
+class CCC_DaCrashTest : public IConsole_Command
+{
+public:
+    CCC_DaCrashTest(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+
+    void Execute(LPCSTR /*args*/) override
+    {
+        Msg("~ [DA_PORT] ===== НАМЕРЕННАЯ АВАРИЯ (da_crash_test) =====");
+        Msg("~ [DA_PORT] Это проверка отчёта о вылете, а НЕ дефект. Если такой лог пришёл от");
+        Msg("~ [DA_PORT] игрока - значит команду набрали руками. В расследование не брать.");
+        FlushLog();
+
+        // volatile, иначе компилятор вправе выбросить разыменование нуля как неопределённое
+        // поведение и оставить нас без аварии - проверять было бы нечего.
+        volatile int* p = nullptr;
+        *p = 0;
+    }
+};
+
 
 string_path g_last_saved_game;
 
@@ -171,7 +226,6 @@ const xr_token lua_gc_method_token[] =
 
 CUIOptConCom g_OptConCom;
 
-#include "da_memory_probe.h" // [DA_PORT]
 
 static void full_memory_stats()
 {
@@ -340,21 +394,9 @@ public:
     virtual void Execute(LPCSTR /*args*/) { DA_MemReset(); }
 };
 
-// [DA_PORT] Целая крутилка, которая НЕ сохраняется в user.ltx: живёт ровно один запуск.
-//
-// Для отладочных ручек сохранение — не удобство, а мина. Ловушка аллокатора, оставленная взведённой,
-// дважды роняла игру: она сохранялась в конфиг, взводилась при следующем запуске и снимала стеки во
-// время загрузки уровня, где память выделяют сразу несколько потоков. Оба раза лог обрывался без
-// стека падения, то есть без намёка на то, что виноват инструмент отладки.
-//
-// Забыть выключить диагностику слишком легко, а цена ошибки достаётся не тому, кто её включил.
-// Поэтому такие ручки обязаны требовать осознанного включения каждый сеанс.
-class CCC_IntegerVolatile : public CCC_Integer
-{
-public:
-    CCC_IntegerVolatile(pcstr N, int* V, int _min, int _max) : CCC_Integer(N, V, _min, _max) {}
-    virtual void Save(IWriter*) override {}
-};
+// [DA_PORT] Крутилки, которые НЕ сохраняются в user.ltx и живут ровно один запуск, регистрируются
+// через CCC_DaDebugInteger / CCC_DaDebugFloat (xr_ioc_cmd.h) — там же и рассказано, почему
+// сохранённая диагностика дважды роняла игру и один раз уехала к игрокам.
 
 // [DA_PORT] Снимок посреди игры: замер для ПОКАДРОВЫХ утечек, которые протокол загрузок не видит.
 class CCC_DaMemSnap : public IConsole_Command
@@ -1736,15 +1778,29 @@ public:
     }
 };
 
+// [DA_PORT] Выбранный ИГРОКОМ ход времени. Нужен отдельно от `Device.time_factor()`, потому что
+// последний временно перебивает интерфейс: `UITimeDilator` замедляет игру, пока открыт инвентарь или
+// КПК, а по закрытии возвращал время к жёсткой единице — не к тому, что стояло до открытия. Из-за
+// этого любое значение `time_factor` жило до первого открытия рюкзака и молча пропадало.
+//
+// Здесь хранится «куда вернуться». Читает это `UITimeDilator::stopTimeDilation`.
+float g_da_time_factor_user = 1.0f;
+
 class CCC_TimeFactor : public IConsole_Command
 {
 public:
-    CCC_TimeFactor(LPCSTR N) : IConsole_Command(N) {}
+    CCC_TimeFactor(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = false; }
     virtual void Execute(LPCSTR args)
     {
         float time_factor = (float)atof(args);
         clamp(time_factor, EPS, 1000.f);
+        g_da_time_factor_user = time_factor;
         Device.time_factor(time_factor);
+    }
+    // [DA_PORT] Сохраняется в user.ltx: иначе значение пришлось бы задавать заново каждый запуск.
+    void Save(IWriter* F) override
+    {
+        F->w_printf("%s %3.5f\r\n", cName, g_da_time_factor_user);
     }
     void GetStatus(TStatus& S) override { xr_sprintf(S, sizeof(S), "%f", Device.time_factor()); }
     virtual void Info(TInfo& I) { xr_strcpy(I, "[0.001 - 1000.0]"); }
@@ -2480,10 +2536,19 @@ void CCC_RegisterCommands()
         CMD4(CCC_Integer, "g_weapon_dof", &g_weapon_dof, 0, 1);
     }
     {
+        // [DA_PORT] Разбор КАЖДОГО радиационного хита по актёру: сколько пришло, сколько сняли
+        // рюкзак/костюм/шлем, сколько артефакты, сколько дошло. Отвечает на вопрос «костюм не
+        // работает или просто слаб» цифрами, а не рассуждением: защита ВЫЧИТАЕТСЯ, поэтому
+        // источник сильнее суммы защит проходит насквозь и это штатно.
+        //
+        // Штатная отладочная печать в HitOutfitEffect для этого не годится: она под `bDebug`, а он
+        // в релизе `#define bDebug 0`, то есть мёртв.
+        extern int g_da_rad_log;
+        CMD4(CCC_DaDebugInteger, "da_rad_log", &g_da_rad_log, 0, 1);
         extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
-        CMD4(CCC_IntegerVolatile, "da_mem_probe", &g_da_mem_probe, 0, 1);
+        CMD4(CCC_DaDebugInteger, "da_mem_probe", &g_da_mem_probe, 0, 1);
         extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
-        CMD4(CCC_IntegerVolatile, "da_mem_heapwalk", &g_da_mem_heapwalk, 0, 1);
+        CMD4(CCC_DaDebugInteger, "da_mem_heapwalk", &g_da_mem_heapwalk, 0, 1);
         extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
         // ⚠️ Потолок у всех трёх «размерных» крутилок ниже — 512 МБ, а не мегабайт, как было
         // сначала. Мегабайт поставили, когда охотились за блоками по 16 КБ, и он молча закрыл
@@ -2491,20 +2556,20 @@ void CCC_RegisterCommands()
         // «Invalid syntax» и ловушка оставалась невзведённой, а прогон при этом шёл целиком и
         // выглядел исправным. Диапазон крутилки — это тоже интерфейс, и слишком узкий диапазон
         // выглядит как поломка инструмента.
-        CMD4(CCC_IntegerVolatile, "da_mem_trap_size", &g_da_mem_trap_size, 0, 512 * 1024 * 1024);
+        CMD4(CCC_DaDebugInteger, "da_mem_trap_size", &g_da_mem_trap_size, 0, 512 * 1024 * 1024);
         // [DA_PORT] Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного
         // размера. Ради неё всё и затевалось — оба известных пула пакетов оказались пусты, и кто
         // держит блоки, статикой не находится.
         extern int g_da_alloc_trap_size;
         extern int g_da_alloc_trap_left;
-        CMD4(CCC_IntegerVolatile, "da_alloc_trap_size", &g_da_alloc_trap_size, 0, 512 * 1024 * 1024);
-        CMD4(CCC_IntegerVolatile, "da_alloc_trap_count", &g_da_alloc_trap_left, 0, 64);
+        CMD4(CCC_DaDebugInteger, "da_alloc_trap_size", &g_da_alloc_trap_size, 0, 512 * 1024 * 1024);
+        CMD4(CCC_DaDebugInteger, "da_alloc_trap_count", &g_da_alloc_trap_left, 0, 64);
         extern int g_da_alloc_trap_slack; // допуск: блок в куче больше запрошенного на заголовок
         // Допуск тоже расширен: узкое окно нужно для точного размера, широкое — когда размер
         // известен только вилкой («блок где-то между 8 и 16 МБ»), и это рабочий приём.
-        CMD4(CCC_IntegerVolatile, "da_alloc_trap_slack", &g_da_alloc_trap_slack, 0, 16 * 1024 * 1024);
+        CMD4(CCC_DaDebugInteger, "da_alloc_trap_slack", &g_da_alloc_trap_slack, 0, 16 * 1024 * 1024);
         extern int g_da_alloc_trap_every; // прореживание: брать каждое N-е совпадение
-        CMD4(CCC_IntegerVolatile, "da_alloc_trap_every", &g_da_alloc_trap_every, 1, 100000);
+        CMD4(CCC_DaDebugInteger, "da_alloc_trap_every", &g_da_alloc_trap_every, 1, 100000);
     }
 
     // game
@@ -2735,10 +2800,14 @@ void CCC_RegisterCommands()
         CMD1(CCC_SpawnToInventory, "g_spawn_to_inventory");
         CMD1(CCC_Script, "run_script");
         CMD1(CCC_ScriptCommand, "run_string");
-        CMD1(CCC_TimeFactor, "time_factor");
         CMD3(CCC_Mask, "ai_ignore_actor", &psAI_Flags, aiIgnoreActor);
         Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
     }
+
+    // [DA_PORT] Ход времени доступен в обычной игре, а не только в режиме разработчика: это не читерская
+    // команда вроде бессмертия или спавна, а настройка темпа — ей пользуются и при обычной игре, и при
+    // проверке всего, что завязано на сутки (погода, торговцы, выбросы). Значение сохраняется в user.ltx.
+    CMD1(CCC_TimeFactor, "time_factor");
 
     CMD3(CCC_Mask, "g_autopickup", &psActorFlags, AF_AUTOPICKUP);
     CMD3(CCC_Mask, "g_dynamic_music", &psActorFlags, AF_DYNAMIC_MUSIC);
@@ -2941,6 +3010,18 @@ void CCC_RegisterCommands()
 #endif // MASTER_GOLD
 
     CMD1(CCC_GSCheckForUpdates, "check_for_updates");
+
+    // [DA_PORT] Намеренная авария для проверки отчёта о вылете.
+    //
+    // Штатная "crash" есть только в отладочной сборке, а проверять надо ИМЕННО ту, что уходит
+    // игрокам: карту модулей, стек, запись лога. Иначе связка «движок пишет - инструмент читает»
+    // остаётся непроверенной до первого настоящего вылета, а он одноразовый.
+    //
+    // Имя нарочно длинное и с "test": случайно не наберут. В лог перед падением идёт заметная
+    // строка - по ней такой отчёт сразу отличается от настоящего и не уходит в расследование.
+    CMD1(CCC_DaCrashTest, "da_crash_test");
+    CMD1(CCC_DaAfterLoad, "da_after_load");
+
 #ifdef DEBUG
     CMD1(CCC_Crash, "crash");
     CMD1(CCC_DumpObjects, "dump_all_objects");

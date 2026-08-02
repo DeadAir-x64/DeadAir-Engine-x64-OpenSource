@@ -33,6 +33,20 @@ if (LTO_IS_SUPPORTED AND XR_ENABLE_LTO)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASEMASTERGOLD ON)
 endif()
 
+# [DA_PORT] Карта линковки для КАЖДОЙ библиотеки. Без неё отчёт о вылете от игрока нечитаем.
+#
+# Релиз собирается с межмодульной оптимизацией, и она стирает привязку адреса к исходнику: addr2line
+# отвечает "<artificial>" на любой адрес, а поиск по ближайшему символу выдаёт заведомо чужое имя -
+# на краш в интерфейсе он назвал деструктор состояния псевдособаки. Проверено на трёх логах тестера
+# 01.08: расшифровать не удалось НИ ОДНОГО кадра стека.
+#
+# Карта линковщика от оптимизации не страдает: это таблица "адрес -> символ", составленная после
+# всех слияний. Стоит она секунду на линковку и мегабайт на диске, лежит рядом со сборкой и в пакет
+# игроку не попадает. С ней стек из чужого лога разбирается за минуту.
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_link_options($<$<CONFIG:Release,ReleaseMasterGold>:-Wl,-Map=$<TARGET_PROPERTY:NAME>.map>)
+endif()
+
 # Main compiler settings
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     include(XRay.Compiler.MSVC)

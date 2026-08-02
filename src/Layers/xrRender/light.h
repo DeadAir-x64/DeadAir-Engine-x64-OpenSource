@@ -21,6 +21,7 @@ public:
         u32 bShadow : 1;
         u32 bVolumetric : 1;
         u32 bHudMode : 1;
+        u32 bNeverDemote : 1; // [DA_PORT] см. IRender_Light::set_never_demote
 
     } flags;
     Fvector position;
@@ -72,6 +73,10 @@ public:
         u32 query_order; // order of occlusion query
         bool visible; // visible/invisible
         bool pending; // test is still pending
+        // [DA_PORT] Сколько проверок подряд сказали «не видно». Гасим лампу только после нескольких:
+        // один отрицательный ответ по нескольким пикселям — это не «скрылась», а дрожание порога.
+        // См. light_vis.cpp.
+        u8 miss_streak;
         u16 smap_ID;
     } vis;
 
@@ -148,6 +153,7 @@ public:
     void set_texture(LPCSTR name) override;
 
     void set_hud_mode(bool b) override { flags.bHudMode = b; }
+    void set_never_demote(bool b) override { flags.bNeverDemote = b; }
     [[nodiscard]]
     bool get_hud_mode() override { return flags.bHudMode; }
 

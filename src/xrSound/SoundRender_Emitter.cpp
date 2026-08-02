@@ -147,6 +147,15 @@ void CSoundRender_Emitter::fill_data(void* dest, u32 offset, u32 size)
 {
     if (!ovf)
         ovf = source()->open();
+
+    // [DA_PORT] open() теперь честно возвращает ноль на неразбираемом файле (см. там же). Молчание
+    // вместо мусора: без этого ноль ушёл бы в decompress и разобрался бы уже внутри libvorbis.
+    if (!ovf)
+    {
+        ZeroMemory(dest, size);
+        return;
+    }
+
     source()->decompress(dest, offset, size, ovf);
 }
 

@@ -206,6 +206,10 @@ protected:
     // [DA_PORT] HUD flame particle (device_lighter hud_particles_enabled=true -> "gas_light_glow" attached to
     // HUD-model bone "light_bone_2"). Rides on the first-person model while the lighter is held/drawn.
     CParticlesObject* m_hud_particles{ nullptr };
+    // [DA_PORT] Гасит пламя и подсветку зажигалки по событию, а не по обновлению — убранный предмет
+    // обновляться перестаёт, и партикл застывает в воздухе. Подробности у определения.
+    void DaStopHudEffects();
+
     bool m_hud_particles_enabled{ false };
     shared_str m_hud_particles_name;
     shared_str m_hud_particles_bone;

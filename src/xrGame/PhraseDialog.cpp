@@ -7,6 +7,7 @@
 #include "xrScriptEngine/script_engine.hpp"
 #include "script_game_object.h"
 #include "Actor.h"
+#include "da_script_functor.h"
 
 SPhraseDialogData::SPhraseDialogData()
 {
@@ -225,8 +226,10 @@ void CPhraseDialog::load_shared(LPCSTR)
         LPCSTR func = pXML->Read(dialog_node, "init_func", 0, "");
 
         luabind::functor<void> lua_function;
-        [[maybe_unused]] bool functor_exists = GEnv.ScriptEngine->functor(func, lua_function);
-        THROW3(functor_exists, "Cannot find precondition", func);
+        // [DA_PORT] A dialog with neither a phrase list nor a working init_func stays
+        // empty; report it and leave rather than taking the game down.
+        if (!da_functor(func, lua_function, "dialog init_func", item_data.id.c_str()))
+            return;
         lua_function(this);
         return;
     }

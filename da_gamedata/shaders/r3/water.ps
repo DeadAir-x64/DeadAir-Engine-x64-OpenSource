@@ -55,6 +55,30 @@ float3	water_intensity;
 #define WATER_SUN_POWER		280.0
 #define WATER_SUN_STRENGTH	2.6
 
+// [DA_PORT] ---- Стоячая вода: студень и ряска -----------------------------------------------------
+// Отдельный профиль для effects\waterstuden и effects\waterryaska. Обе поверхности — застоявшаяся
+// вода: болотная жижа Свалки и Тёмной долины, залитые низы Агропрома и его подземки, ряска на
+// Генераторах, студень на Юпитере. Ей не идёт тот же фильтр, что проточной: в стоячей воде взвесь,
+// поэтому цвет уходит в жёлто-зелёный, а глубина набирается быстрее — дно пропадает через полметра,
+// а не через три.
+//
+// Профиль включает дефайн DA_WATER_GREEN, его ставит water_green.ps. Проточная вода (effects\water)
+// идёт мимо и остаётся ровно такой, какой была.
+#ifdef DA_WATER_GREEN
+#undef  WATER_TINT_SHALLOW
+#define WATER_TINT_SHALLOW	float3(0.13, 0.20, 0.08)	// у берега: жижа, зелень с жёлтым
+#undef  WATER_TINT_DEEP
+#define WATER_TINT_DEEP		float3(0.040, 0.100, 0.030)	// глубина: тёмно-зелёная, синевы нет вовсе
+#undef  WATER_TINT_FALLOFF
+#define WATER_TINT_FALLOFF	0.55						// взвесь: глубинный цвет забирает почти сразу
+#undef  WATER_FOAM_COLOR
+#define WATER_FOAM_COLOR	float3(0.50, 0.54, 0.40)	// кайма у берега не белая, а зеленоватая
+#undef  WATER_FOAM_STRENGTH
+#define WATER_FOAM_STRENGTH	0.55
+#undef  WATER_SUN_STRENGTH
+#define WATER_SUN_STRENGTH	1.6							// зеркалит слабее проточной
+#endif
+
 float3 calc_moon_road(float3 color, float3 vreflect, float2 tc, float depth, float Nz)
 {
 	float cut = 4;

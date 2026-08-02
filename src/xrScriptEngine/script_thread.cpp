@@ -45,8 +45,25 @@ CScriptThread::CScriptThread(CScriptEngine* scriptEngine, LPCSTR caNamespaceName
         else
         {
             m_script_name = "console command";
-            xr_sprintf(S, "function %s()\n%s\nend\n", main_function, caNamespaceName);
-            int l_iErrorCode = luaL_loadbuffer(engineLua, S, xr_strlen(S), "@console_command");
+
+            // [DA_PORT] Текст команды заворачивается в функцию, и раньше результат складывался в
+            // string256 — буфер на 256 байт. С учётом обёртки на сам код оставалось около двухсот
+            // символов, а всё длиннее МОЛЧА обрезалось.
+            //
+            // Как это выглядело: консоль честно печатала команду целиком, а Lua получал обрубок и
+            // отвечал `SCRIPT RUNTIME ERROR` без единого слова о причине — потому что синтаксически
+            // это уже другой текст, оборванный на середине строки. Найдено на команде выдачи
+            // предметов длиной под тысячу символов.
+            //
+            // Собираем в xr_string: длина команды ничем не ограничена, лишних копий одна.
+            xr_string wrapped = "function ";
+            wrapped += main_function;
+            wrapped += "()\n";
+            wrapped += caNamespaceName;
+            wrapped += "\nend\n";
+
+            int l_iErrorCode =
+                luaL_loadbuffer(engineLua, wrapped.c_str(), wrapped.size(), "@console_command");
             if (!l_iErrorCode)
             {
                 l_iErrorCode = lua_pcall(engineLua, 0, 0, 0);

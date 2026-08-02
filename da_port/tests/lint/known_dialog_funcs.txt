@@ -1,0 +1,65 @@
+-- Функции, названные в диалогах, которых нет в скриптах.
+-- Найдены проверкой dialog_funcs; лежат здесь, чтобы набор оставался зелёным, но находки
+-- не терялись. Каждая строка сопровождается разбором: почему не чинится молча.
+--
+-- ПОЧЕМУ ЭТО ВАЖНО. Движок искал такую функцию под THROW3. XRAY_EXCEPTIONS задан СБОРКОЙ
+-- (-DXRAY_EXCEPTIONS=1, в обеих конфигурациях), а не исходниками, поэтому THROW в релизе
+-- не исчезает — он БРОСАЕТ исключение. На пути MinGW ловить его некому: WinMain там без
+-- try (ветка с __try только для MSVC). Исключение доходит до std::terminate, срабатывает
+-- xr_terminate и показывает общее «Unexpected application termination». Текст, который
+-- THROW3 собрал — имя недостающей функции, — при этом не печатает никто: он лежит в
+-- брошенном буфере. Игрок терял сессию и не узнавал причину.
+-- Теперь движок такие места переживает и НАЗЫВАЕТ (src/xrGame/da_script_functor.h), но сама
+-- ссылка от этого не чинится: предусловие с несуществующей функцией навсегда закрывает фразу,
+-- а init_func оставляет диалог пустым.
+--
+-- ВСЕ перечисленные ниже сегодня НЕДОСТИЖИМЫ: ни один из содержащих их диалогов не выдан
+-- никакому персонажу (нет ни одного <actor_dialog> и ни одной строки `id =` в конфигах
+-- поведения). Это остатки сюжета «Зова Припяти»: мод убрал его на уровне скриптов, оставив
+-- разметку. Мина не активная — но именно поэтому её и нельзя потерять из виду.
+
+-- --------------------------------------------------------------------------------------
+-- 1. Проводник к компаньону: init_func удалён вместе с механикой
+-- --------------------------------------------------------------------------------------
+dialogs_axr_companion.dm_init_actor_become_guide_to_companion
+    -- dialogs.xml:608, диалог dm_actor_become_guide_to_companion_dialog.
+    -- Весь список фраз этого диалога строится скриптом, а функции в
+    -- dialogs_axr_companion.script нет (рядом живы dm_init_is_actor_companion и
+    -- dm_init_companion_patrol — механику убрали, точку входа забыли).
+    -- Диалог упомянут ровно один раз вне своего определения — в списке `disable`
+    -- в configs/scripts/beh_companion.ltx, то есть его как раз отбирают у компаньонов,
+    -- и ни в одном `id =` он не выдаётся. Вызова не происходит.
+    -- Показательно: сам мод в этом же файле умеет защищаться — alun_utils.findfunction
+    -- с печатью "No such function exists". Скрипты берегутся, движок не берёгся.
+
+-- --------------------------------------------------------------------------------------
+-- 2. Сюжет «Зова Припяти»: модуль dialogs_pripyat ПУСТОЙ
+-- --------------------------------------------------------------------------------------
+-- dialogs_pripyat.script — 2 байта, единственный пустой файл из 378. Все двадцать ссылок
+-- ниже ведут в него. Диалоги остались в dialogs_pripyat.xml и dialogs_jupiter.xml, но ни
+-- один из них не выдан персонажу: у pri_b305_strelok в character_desc_pripyat.xml стоит
+-- только actor_break_dialog.
+
+dialogs_pripyat.jup_b43_actor_do_not_has_10000_money  -- dialogs_jupiter.xml:2692
+dialogs_pripyat.jup_b43_actor_has_10000_money         -- dialogs_jupiter.xml:2696, 2704
+dialogs_pripyat.pay_cost_to_guide_to_zaton            -- dialogs_jupiter.xml:2710
+dialogs_pripyat.transfer_artifact_af_baloon           -- dialogs_jupiter.xml:2796
+
+dialogs_pripyat.pri_a17_sokolov_is_not_at_base        -- dialogs_pripyat.xml:1302
+dialogs_pripyat.pri_a22_army_signaller_supply         -- dialogs_pripyat.xml:993, 999, 1396
+dialogs_pripyat.pri_a22_give_actor_outfit             -- dialogs_pripyat.xml:1410
+dialogs_pripyat.pri_a25_medic_give_kit                -- dialogs_pripyat.xml:623
+dialogs_pripyat.pri_b301_zulus_reward                 -- dialogs_pripyat.xml:505
+dialogs_pripyat.pri_b35_give_actor_reward             -- dialogs_pripyat.xml:1553 и ещё 5
+dialogs_pripyat.pri_b35_transfer_svd                  -- dialogs_pripyat.xml:42
+
+-- Записки Стрелка: одна ветка целиком, семь предусловий и одно действие.
+dialogs_pripyat.pri_b305_actor_has_strelok_notes      -- dialogs_pripyat.xml:179
+dialogs_pripyat.pri_b305_actor_has_strelok_note_all   -- dialogs_pripyat.xml:197
+dialogs_pripyat.pri_b305_actor_has_strelok_note_1     -- dialogs_pripyat.xml:207
+dialogs_pripyat.pri_b305_actor_has_strelok_note_2     -- dialogs_pripyat.xml:228
+dialogs_pripyat.pri_b305_actor_has_strelok_note_3     -- dialogs_pripyat.xml:233
+dialogs_pripyat.pri_b305_actor_has_strelok_note_12    -- dialogs_pripyat.xml:202
+dialogs_pripyat.pri_b305_actor_has_strelok_note_13    -- dialogs_pripyat.xml:246
+dialogs_pripyat.pri_b305_actor_has_strelok_note_23    -- dialogs_pripyat.xml:251
+dialogs_pripyat.pri_b305_sell_strelok_notes           -- dialogs_pripyat.xml:212 и ещё 6

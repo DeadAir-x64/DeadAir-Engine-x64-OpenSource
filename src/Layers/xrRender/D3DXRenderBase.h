@@ -73,15 +73,37 @@ public:
 #if RENDER != R_R1
     ICF u32 alloc_context(bool alloc_cmd_list = true)
     {
-        if (contexts_used.all())
+        // [DA_PORT] Свободный контекст ищем ТОЛЬКО среди параллельных. Взято у Dead-Air-Refined,
+        // они нашли это раньше нас.
+        //
+        // Было: `if (contexts_used.all())` — проверка по ВСЕМ битам, включая бит непосредственного
+        // контекста, потому что он лежит в том же массиве последним слотом
+        // (`IMM_CTX_ID = R__NUM_PARALLEL_CONTEXTS`). Если этот бит в момент вызова не выставлен, а
+        // все параллельные контексты уже заняты, проверка пропускает, цикл поиска добегает до конца
+        // не найдя свободного, и `id` остаётся равным `R__NUM_PARALLEL_CONTEXTS` — то есть номеру
+        // НЕПОСРЕДСТВЕННОГО контекста. Дальше он честно выдаётся рабочему потоку, а `reset()` перед
+        // выдачей обнуляет граф основного контекста прямо посреди кадра.
+        //
+        // Занять все параллельные — обычное дело: солнце берёт три (по каскаду), дождь один, и оба
+        // переспрашивают их каждый кадр из CRender::Calculate(); следом за контекстами приходят
+        // батчи теневых ламп.
+        //
+        // Проявлялось как одиночные испорченные кадры: пятнадцать выбросов на три тысячи кадров,
+        // свет в пикселе уходил и впятеро вверх, и втрое вниз, а следующий кадр возвращался к
+        // прежнему значению. Глазом — мерцание тени на кусте при полностью неподвижной камере.
+        // Отсюда же и то, что дефект не ловился ни одной настройкой рендера: он не в рендере,
+        // а в раздаче контекстов.
+        // Поиск оставлен обычным циклом: у конкурента здесь std::countr_zero, но <bit> в этой
+        // единице трансляции недоступен, а перебор четырёх битов ничего не стоит.
+        constexpr auto parallel_mask = (1ul << R__NUM_PARALLEL_CONTEXTS) - 1;
+        const auto available = ~contexts_used.to_ulong() & parallel_mask;
+        if (!available)
             return R_dsgraph_structure::INVALID_CONTEXT_ID;
-        const auto raw = ~contexts_used.to_ulong();
-        int id = 0;
-        for (; id < R__NUM_PARALLEL_CONTEXTS; ++id) // TODO: ffs intrinsic
-        {
-            if (raw & (1u << id))
-                break;
-        }
+
+        u32 id = 0;
+        while (!(available & (1ul << id)))
+            ++id;
+
         contexts_used.set(id, true);
         contexts_pool[id].reset();
         contexts_pool[id].context_id = id;
@@ -103,6 +125,15 @@ public:
 
     ICF void release_context(u32 id)
     {
+        // [DA_PORT] Отказ настоящий, а не только под VERIFY.
+        //
+        // Ниже стоит `VERIFY(id != IMM_CTX_ID)`, но в релизной сборке VERIFY разворачивается в
+        // пустоту, и освобождение непосредственного контекста проходило молча — снимая его бит.
+        // А снятый бит и есть то условие, при котором выдача выше отдавала рабочему потоку
+        // непосредственный контекст. То есть одна поломка кормила другую.
+        if (id >= R__NUM_PARALLEL_CONTEXTS)
+            return;
+
         VERIFY(id != R_dsgraph_structure::IMM_CTX_ID); // never release immediate context
         VERIFY(id < R__NUM_PARALLEL_CONTEXTS);
         VERIFY(contexts_used.test(id));

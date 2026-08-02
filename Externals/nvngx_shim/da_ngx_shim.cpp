@@ -198,11 +198,18 @@ int da_ngx_create(void* d3d11_context, unsigned render_w, unsigned render_h, uns
     create.Feature.InTargetHeight = display_h;
     create.Feature.InPerfQualityValue = quality_for(quality);
 
-    // IsHDR: сцена приходит в HDR до тонемапа - тот же буфер, что отдаётся FSR 2 и XeSS.
+    // [DA_PORT] ⚠️ IsHDR СНЯТ: кадр к моменту апскейла уже тонемаплен.
+    //
+    // Прежняя строка тут утверждала «сцена приходит в HDR до тонемапа» — это было верно, пока диспетч
+    // стоял в другом месте кадра. Сейчас он внутри phase_combine, ПОСЛЕ того как combine_1 свёл сцену
+    // в отображаемый диапазон (`tonemap(o.low, o.high, ...)`). Библиотеке говорили «линейный HDR», а
+    // давали 0..1 — и вся её работа с яркостью шла в чужой шкале. Видно это на самом ярком предмете
+    // кадра: светящаяся палочка на тёмном фоне шла ступенчатой кромкой при любом качестве. Ошибка была
+    // одинаковой у FSR 2, XeSS и DLSS, поэтому и симптом был одинаковый на всех трёх.
+    //
     // MVLowRes: вектора лежат в разрешении рендера, а не экрана.
     // DepthInverted НЕ ставим: проекция X-Ray обычная, как и для FSR 2.
-    create.InFeatureCreateFlags =
-        NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
+    create.InFeatureCreateFlags = NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
 
     NVSDK_NGX_Result r = NGX_D3D11_CREATE_DLSS_EXT(static_cast<ID3D11DeviceContext*>(d3d11_context),
                                                    &g_feature, g_caps, &create);

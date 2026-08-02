@@ -4,6 +4,10 @@
 #include "IGame_Persistent.h"
 #include "Environment.h"
 
+// [DA_PORT] Ручки дождя, см. xr_ioc_cmd.cpp
+extern ENGINE_API float ps_r__rain_splash;
+extern ENGINE_API float ps_r__rain_splash_time;
+
 #ifdef _EDITOR
 #include "ui_toolscustom.h"
 #else
@@ -27,7 +31,9 @@ static const float drop_max_wind_vel = 20.0f;
 static const float drop_speed_min = 40.f;
 static const float drop_speed_max = 80.f;
 
-const int max_particles = 1000;
+// [DA_PORT] Пул всплесков. Был 1000 при отказе на каждый второй удар; теперь всплеск даёт каждая
+// капля, и при плотном дожде тысячи не хватает — новые всплески просто не рождались.
+const int max_particles = 4000;
 //const int particles_cache = 400;
 const float particles_time = .3f;
 
@@ -191,7 +197,10 @@ void CEffect_Rain::Render()
 // startup _new_ particle system
 void CEffect_Rain::Hit(Fvector& pos)
 {
-    if (0 != ::Random.randI(2))
+    // [DA_PORT] Было `if (0 != ::Random.randI(2)) return;` — половина капель падала бесследно, без
+    // всякой причины и без возможности это изменить. Теперь доля задаётся ручкой r__rain_splash.
+    // Именно всплески, а не сами капли, показывают, что дождь идёт ПО ЗЕМЛЕ.
+    if (::Random.randF() > ps_r__rain_splash)
         return;
     Particle* P = p_allocate();
     if (0 == P)
@@ -199,7 +208,7 @@ void CEffect_Rain::Hit(Fvector& pos)
 
     const Fsphere& bv_sphere = m_pRender->GetDropBounds();
 
-    P->time = particles_time;
+    P->time = ps_r__rain_splash_time;
     P->mXForm.rotateY(::Random.randF(PI_MUL_2));
     P->mXForm.translate_over(pos);
     P->mXForm.transform_tiny(P->bounds.P, bv_sphere.P);

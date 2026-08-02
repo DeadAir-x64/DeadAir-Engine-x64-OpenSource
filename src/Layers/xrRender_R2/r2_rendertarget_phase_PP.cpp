@@ -5,6 +5,7 @@
 extern ENGINE_API int ps_r__upscale_sharpness;
 extern ENGINE_API float ps_gamma, ps_brightness, ps_contrast;
 extern ENGINE_API int ps_r__motion_vectors;
+extern ENGINE_API int ps_r__upscale_show_input; // [DA_PORT] показать вход апскейлера вместо выхода
 extern ENGINE_API int ps_r__dlss; // [DA_PORT] эти двое резкости не имеют своей
 extern ENGINE_API int ps_r__xess;
 extern ENGINE_API int ps_r__fsr2;
@@ -214,7 +215,12 @@ void CRenderTarget::phase_pp()
     // instead of stretching the low-resolution scene itself.
 #if RENDER == R_R4
     extern u32 g_da_fsr2_frame;
-    const float fsr2_active = (g_da_fsr2_frame == Device.dwFrame) ? 1.f : 0.f;
+    // [DA_PORT] `r__upscale_show_input 1` — на экран идёт ВХОД апскейлера, а не его выход. Сам он при
+    // этом работает как обычно: джиттер, векторы, накопление на месте, просто результат не берут.
+    // Отвечает на единственный вопрос — дефект уже во входе или его делает реконструкция. См.
+    // xr_ioc_cmd.cpp, там же почему «выключить апскейлер» на этот вопрос не отвечает.
+    const float fsr2_active =
+        (!ps_r__upscale_show_input && g_da_fsr2_frame == Device.dwFrame) ? 1.f : 0.f;
 #else
     const float fsr2_active = 0.f;
 #endif

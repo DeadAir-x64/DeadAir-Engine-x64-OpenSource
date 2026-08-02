@@ -26,8 +26,24 @@
 // an extern inside namespace xray::render::render_r4 would be looking for a symbol in that namespace.
 extern ENGINE_API Fmatrix g_da_taa_unjittered_VP;
 
+// [DA_PORT] Разовый дамп очередей, рисуемых после G-буфера, см. r__emissive_probe.
+extern ENGINE_API int ps_r__emissive_probe;
+
 namespace xray::render::RENDER_NAMESPACE
 {
+// [DA_PORT] Лампы, у которых бюджет теней снял флаг bShadow на этот кадр. Флаг - постоянное свойство
+// источника (его ставит уровень), поэтому он возвращается сразу после прохода света. Одалживаем на
+// время кадра, а не отбираем насовсем.
+static xr_vector<light*> s_demoted;
+
+static void da_restore_demoted_lights()
+{
+    for (light* L : s_demoted)
+        L->flags.bShadow = true;
+    s_demoted.clear();
+}
+
+
 void CRender::RenderMenu()
 {
 #if defined(USE_DX11)
@@ -260,25 +276,107 @@ void CRender::Render()
         // you are standing under while dropping the ones across the map.
         if (ps_r__light_shadow_budget > 0 && LP.v_shadowed.size() > size_t(ps_r__light_shadow_budget))
         {
-            const size_t budget = size_t(ps_r__light_shadow_budget);
             const Fvector eye = Device.vCameraPosition;
 
-            std::partial_sort(LP.v_shadowed.begin(), LP.v_shadowed.begin() + budget, LP.v_shadowed.end(),
-                [&eye](const light* a, const light* b)
-                {
-                    return a->range / (a->position.distance_to(eye) + EPS) >
-                        b->range / (b->position.distance_to(eye) + EPS);
-                });
+            // [DA_PORT] Привилегированные источники (сейчас это фонарь в руках игрока, см.
+            // IRender_Light::set_never_demote) выносятся в начало и бюджет НЕ расходуют - им
+            // выделяется место сверх него. При значении по умолчанию слот всего один, и без этого
+            // он доставался ближайшей лампе на стене, а свет из рук игрока шёл сквозь стены.
+            //
+            // stable_partition, а не сортировка: порядок остальных обязан сохраниться, иначе
+            // гистерезис ниже сравнивал бы каждый кадр с другим набором.
+            const auto first_ordinary = std::stable_partition(LP.v_shadowed.begin(), LP.v_shadowed.end(),
+                [](const light* L) { return !!L->flags.bNeverDemote; });
+            const size_t privileged = size_t(first_ordinary - LP.v_shadowed.begin());
+            const size_t budget = privileged + size_t(ps_r__light_shadow_budget);
 
-            for (size_t i = budget; i < LP.v_shadowed.size(); ++i)
+            // [DA_PORT] Бюджет забивается БЛИЖАЙШИМИ источниками, и меряется расстояние не до самой
+            // лампы, а до края её освещённой области: `дистанция - радиус`. Лампа, внутри которой
+            // стоит игрок, даёт отрицательное значение и попадает в отбор первой; дальше идут те, чей
+            // свет ближе всего к камере. Прежняя оценка «видимый размер» (радиус / дистанция) в
+            // помещении вела себя хуже: далёкий большой фонарь на улице обгонял лампу в двух метрах
+            // над головой, потому что радиус у него больше.
+            //
+            // + Гистерезис, без которого любой отбор мигает. На базе ламп заметно больше бюджета, и
+            // соседние по оценке стоят вплотную: камера смещается на сантиметр - две лампы меняются
+            // местами. А разница между «с тенью» и «без тени» на глаз огромная: без теневой карты свет
+            // проходит СКВОЗЬ стену и освещает соседний коридор. Со стороны - лампа, мигающая без
+            // остановки; ровно это и было видно на базе.
+            //
+            // Поблажка односторонняя и в тех же единицах, что и оценка: действующей теневой лампе
+            // прощается полтора метра (или 15% её радиуса, смотря что больше). Чтобы отобрать у неё
+            // место, новая должна подойти заметно ближе, а не на волос.
+            //
+            // Держится на указателях - они сравниваются, но никогда не разыменовываются, поэтому
+            // исчезнувший между кадрами источник безопасен.
+            static xr_vector<const light*> s_prev_shadowed;
+
+            const auto kept_last_frame = [](const light* L)
+            {
+                return std::find(s_prev_shadowed.begin(), s_prev_shadowed.end(), L) != s_prev_shadowed.end();
+            };
+            const auto score = [&](const light* L) // меньше - важнее
+            {
+                const float base = L->position.distance_to(eye) - L->range;
+                return kept_last_frame(L) ? base - _max(1.5f, L->range * 0.15f) : base;
+            };
+
+            // Сортируется только ОБЫЧНАЯ часть: привилегированные уже стоят в начале и остаются
+            // там. Проверка на размер обязательна - привилегированных могло оказаться столько,
+            // что вытеснять уже нечего, и тогда `begin() + budget` ушёл бы за конец.
+            const bool over_budget = LP.v_shadowed.size() > budget;
+            if (over_budget)
+            {
+                std::partial_sort(first_ordinary, LP.v_shadowed.begin() + budget, LP.v_shadowed.end(),
+                    [&score](const light* a, const light* b) { return score(a) < score(b); });
+            }
+
+            for (size_t i = over_budget ? budget : LP.v_shadowed.size(); i < LP.v_shadowed.size(); ++i)
             {
                 light* L = LP.v_shadowed[i];
-                if (L->flags.type == IRender_Light::POINT || L->flags.type == IRender_Light::OMNIPART)
+
+                // ⚠️ [DA_PORT] Флаг ОБЯЗАН сняться. Прежний комментарий здесь утверждал обратное -
+                // «accum_point/accum_spot не читают flags.bShadow» - и это была неправда:
+                // `accum_spot` его читает и по нему уходит в теневую ветку. А там берутся координаты
+                // слота в атласе теней (`X.S.size/posX/posY/view/project`), которые считает
+                // `compute_xf_spot` - и только для тех ламп, что В СПИСКЕ ОСТАЛИСЬ. У выброшенной
+                // там лежит мусор от прошлого раза, выборка из атласа уходит в никуда, и свет
+                // гасится почти везде. Граница получается ровной - это край конуса лампы; в игре
+                // выглядело так, будто мир поделили надвое.
+                //
+                // Флаг возвращается в конце кадра (см. da_restore_demoted_lights ниже): он часть
+                // постоянного состояния источника, а не наше свойство.
+                L->flags.bShadow = false;
+                s_demoted.push_back(L);
+
+                // ⚠️ ВСЕ выброшенные идут в v_spot, включая секторы точечной лампы (OMNIPART).
+                //
+                // Точечная лампа с тенями разбирается движком на ШЕСТЬ 90-градусных секторов
+                // (`light::Export`), поэтому в списке лежат OMNIPART, а не POINT. Соблазн отправить
+                // их в v_point велик - по имени похоже, - но это ошибка, и она стоила второго
+                // захода на «мир поделили надвое»:
+                //
+                //   • `accum_spot` ЗНАЕТ про OMNIPART - там стоит явная ветка, берущая точечный
+                //     шейдер, но всю остальную обвязку сектора;
+                //   • `accum_point` про него не знает и трактует объём-клин как замкнутую сферу.
+                //     Разметка трафаретом («обратный приём Кармака») на незамкнутом объёме врёт, и
+                //     свет ложится клином во весь экран - ровная диагональная граница;
+                //   • для v_spot движок сам зовёт `compute_xf_spot` перед отрисовкой (см.
+                //     r2_R_lights.cpp), а для v_point не зовёт. Без него у лампы остаются ЧУЖИЕ
+                //     матрицы проекции с прошлого кадра - вторая причина той же полосы.
+                //
+                // Настоящих POINT в v_shadowed не бывает вовсе: теневые точечные уже разобраны на
+                // секторы, а нетеневые сюда не попадают. Ветка на POINT оставлена лишь на случай,
+                // если движок когда-нибудь начнёт класть их сюда напрямую.
+                if (L->flags.type == IRender_Light::POINT)
                     LP.v_point.push_back(L);
                 else
                     LP.v_spot.push_back(L);
             }
-            LP.v_shadowed.resize(budget);
+            if (over_budget)
+                LP.v_shadowed.resize(budget);
+
+            s_prev_shadowed.assign(LP.v_shadowed.begin(), LP.v_shadowed.end());
         }
 
         // stats
@@ -420,19 +518,57 @@ void CRender::Render()
         dsgraph.cmd_list.set_xform_project(Device.mProject);
         dsgraph.cmd_list.set_xform_view(Device.mView);
         // Stencil - write 0x1 at pixel pos -
+        //
+        // [DA_PORT] К общему биту 0x01 добавляется свой, 0x02, когда включена метка свечения. Иначе
+        // отличить эти пиксели потом нечем: 0x01 стоит у ВСЕЙ непрозрачной геометрии кадра.
+        // Бит гасится сразу же, в phase_reactive_emissive: свет и отражения сравнивают трафарет с
+        // 0x01, в том числе на равенство, и оставленная отметка сломала бы их на этих пикселях.
+        // Маска записи 0x7f под MSAA не мешает - 0x02 в неё входит, старший бит там за кромками.
+#if RENDER == R_R4
+        const u32 emissive_ref = Target->da_emissive_mark_ready() ? 0x03 : 0x01;
+#else
+        const u32 emissive_ref = 0x01;
+#endif
         if (!o.msaa)
         {
-            dsgraph.cmd_list.set_Stencil(TRUE, D3DCMP_ALWAYS, 0x01, 0xff, 0xff,
+            dsgraph.cmd_list.set_Stencil(TRUE, D3DCMP_ALWAYS, emissive_ref, 0xff, 0xff,
                 D3DSTENCILOP_KEEP, D3DSTENCILOP_REPLACE, D3DSTENCILOP_KEEP);
         }
         else
         {
-            dsgraph.cmd_list.set_Stencil(TRUE, D3DCMP_ALWAYS, 0x01, 0xff, 0x7f,
+            dsgraph.cmd_list.set_Stencil(TRUE, D3DCMP_ALWAYS, emissive_ref, 0xff, 0x7f,
                 D3DSTENCILOP_KEEP, D3DSTENCILOP_REPLACE, D3DSTENCILOP_KEEP);
         }
         dsgraph.cmd_list.set_CullMode(CULL_CCW);
         dsgraph.cmd_list.set_ColorWriteEnable();
+
+        // [DA_PORT] Разовый дамп: в какой очереди лежит то, что мерцает. Всё перечисленное рисуется
+        // ПОСЛЕ G-буфера и потому не пишет ни векторов движения, ни реактивности - но лечится это в
+        // разных местах кадра, и гадать, в какую именно очередь попал предмет, дороже, чем спросить.
+        // Считать надо здесь: render_emissive и render_sorted очищают свои очереди по ходу отрисовки.
+        // Считается КАДРАМИ, а не одним снимком: мигание - это разница МЕЖДУ кадрами, и один снимок
+        // про него не скажет ничего. Строка на кадр, `r__emissive_probe 120` - две секунды.
+        if (::ps_r__emissive_probe > 0)
+        {
+            if (::ps_r__emissive_probe == 1)
+                Msg("~ [DA_EMIS] ---- конец ----");
+
+            Msg("~ [DA_EMIS] кадр %6u | свечение: мир %u, руки %u | прозрачное: мир %u, руки %u | "
+                "искажение %u | света: всего %u, видимо %u, с тенью %u, без тени %u",
+                Device.dwFrame, dsgraph.mapEmissive.size(), dsgraph.mapHUDEmissive.size(),
+                dsgraph.mapSorted.size(), dsgraph.mapHUDSorted.size(), dsgraph.mapDistort.size(),
+                Stats.l_total, Stats.l_visible, Stats.l_shadowed, Stats.l_unshadowed);
+
+            --::ps_r__emissive_probe;
+        }
+
         dsgraph.render_emissive();
+
+#if RENDER == R_R4
+        // [DA_PORT] Пока трафарет ещё помнит, где легло свечение: дальше идёт свет, а он переписывает
+        // трафарет маркерами источников. Позже этой отметки уже не существует.
+        Target->phase_reactive_emissive();
+#endif
     }
 
     // Lighting, non dependant on OCCQ
@@ -448,6 +584,9 @@ void CRender::Render()
         PIX_EVENT(DEFER_LIGHT_OCCQ);
         render_lights(LP_pending);
     }
+
+    // [DA_PORT] Свет отрисован - возвращаем флаг тем, у кого его занял бюджет теней.
+    da_restore_demoted_lights();
 
     // Postprocess
     {

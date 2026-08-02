@@ -1,3 +1,6 @@
+-- [DA_PORT] Ряска: стоячая вода. Пиксельный шейдер water_green вместо water_soft — тот же наш
+-- водный шейдер, но с зелёным профилем (см. блок DA_WATER_GREEN в water.ps). Проточная вода
+-- (effects_water.s) осталась на water_soft.
 local tex_base                = "water\\water_water"
 local tex_nmap                = "water\\water_normal"
 local tex_dist                = "water\\water_dudv"
@@ -9,7 +12,7 @@ local tex_env1                = "$user$sky1"         -- "sky\\sky_8_cube"
 local tex_leaves              = "water\\water_foam"
 
 function normal                (shader, t_base, t_second, t_detail)
-	shader	:begin		("water_soft","water_soft")
+	shader	:begin		("water_soft","water_green")
     		:sorting	(2, false)
 			:blend		(true,blend.srcalpha,blend.invsrcalpha)
 			:zb			(true,false)

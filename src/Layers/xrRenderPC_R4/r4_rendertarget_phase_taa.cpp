@@ -1,5 +1,8 @@
 #include "stdafx.h"
 
+// [DA_PORT] Определена в движке (xr_ioc_cmd.cpp), объявляется ВНЕ пространства имён.
+extern ENGINE_API float ps_r__taa_reactive;
+
 // DA: temporal anti-aliasing resolve. Blends the previous frame (rt_TAA_history) into the current one
 // and keeps the result as the next frame's history. Enabled by the "r__taa" console setting; with it
 // off the pass returns immediately and the frame is exactly what it was before TAA existed.
@@ -94,8 +97,10 @@ void CRenderTarget::phase_taa()
     // y carries the debug switch: with it on the pass draws what it is working from instead of the
     // resolved frame. z is how much history the sky is allowed to keep, which is how the sky trail gets
     // attributed to this pass or ruled out of it. See da_taa.ps.
+    // w - усиление маски реактивности: на что умножается пометка из G-буфера, прежде чем срезать
+    // накопление. Раньше здесь стоял ноль-заглушка, и маску пасс не читал вовсе - см. da_taa.ps.
     RCache.set_c("taa_params", float(ps_r__taa_sharp) / 100.f, float(ps_r__taa_debug),
-        float(ps_r__taa_sky) / 100.f, 0.f);
+        float(ps_r__taa_sky) / 100.f, ps_r__taa_reactive);
     RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 
     // Put the resolved image back where the rest of the frame expects it, and keep the un-sharpened

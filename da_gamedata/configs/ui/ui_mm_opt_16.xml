@@ -407,14 +407,26 @@
 			<list_font_s r="240" g="240" b="240"/>
 		</list_shadow_map>
 
-		<cap_grp_impact_med x="215" y="186" width="330" height="22">
+		<cap_smap_cache x="215" y="180" width="145" height="21">
+			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_smap_cache</text>
+		</cap_smap_cache>
+		<list_smap_cache x="360" y="178" width="150" height="21" list_length="4">
+			<options_item entry="da_smap_cache" group="mm_opt_video" depend="runtime"/>
+			<text_color>
+				<e r="220" g="220" b="220"/>
+				<d r="125" g="125" b="125"/>
+			</text_color>
+			<list_font_s r="240" g="240" b="240"/>
+		</list_smap_cache>
+
+		<cap_grp_impact_med x="215" y="218" width="330" height="22">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_impact_med</text>
 		</cap_grp_impact_med>
 
-		<cap_opt_static x="215" y="220" width="145" height="21">
+		<cap_opt_static x="215" y="252" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_opt_static</text>
 		</cap_opt_static>
-		<list_opt_static x="360" y="218" width="150" height="21" list_length="4">
+		<list_opt_static x="360" y="250" width="150" height="21" list_length="4">
 			<options_item entry="r__optimize_static_geom" group="mm_opt_video"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
@@ -423,10 +435,10 @@
 			<list_font_s r="240" g="240" b="240"/>
 		</list_opt_static>
 
-		<cap_opt_dynamic x="215" y="252" width="145" height="21">
+		<cap_opt_dynamic x="215" y="284" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_opt_dynamic</text>
 		</cap_opt_dynamic>
-		<list_opt_dynamic x="360" y="250" width="150" height="21" list_length="4">
+		<list_opt_dynamic x="360" y="282" width="150" height="21" list_length="4">
 			<options_item entry="r__optimize_dynamic_geom" group="mm_opt_video"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
@@ -435,61 +447,61 @@
 			<list_font_s r="240" g="240" b="240"/>
 		</list_opt_dynamic>
 
-		<cap_vis_dist x="215" y="284" width="145" height="21">
+		<cap_vis_dist x="215" y="316" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_vis_dist</text>
 		</cap_vis_dist>
-		<track_vis_dist x="360" y="282" width="135" height="21" step="0.1">
+		<track_vis_dist x="360" y="314" width="135" height="21" step="0.1">
 			<options_item entry="rs_vis_distance" group="mm_opt_video"/>
 		</track_vis_dist>
 
-		<cap_detail_radius x="215" y="316" width="145" height="21">
+		<cap_detail_radius x="215" y="348" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_detail_radius</text>
 		</cap_detail_radius>
-		<track_detail_radius x="360" y="314" width="135" height="21" step="10" is_integer="1">
+		<track_detail_radius x="360" y="346" width="135" height="21" step="10" is_integer="1">
 			<options_item entry="r__detail_radius" group="mm_opt_video" depend="vid"/>
 		</track_detail_radius>
 
-		<cap_detail_density x="215" y="348" width="145" height="21">
+		<cap_detail_density x="215" y="380" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_detail_density</text>
 		</cap_detail_density>
-		<track_detail_density x="360" y="346" width="135" height="21" step="0.1" invert="1">
+		<track_detail_density x="360" y="378" width="135" height="21" step="0.1" invert="1">
 			<options_item entry="r__detail_density" group="mm_opt_video" depend="vid"/>
 		</track_detail_density>
 
-		<cap_grp_impact_low x="215" y="386" width="330" height="22">
+		<cap_grp_impact_low x="215" y="418" width="330" height="22">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_impact_low</text>
 		</cap_grp_impact_low>
 
-		<cap_geometry_lod x="215" y="420" width="145" height="21">
+		<cap_geometry_lod x="215" y="452" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_geometry_lod</text>
 		</cap_geometry_lod>
-		<track_geometry_lod x="360" y="418" width="135" height="21" step="0.1">
+		<track_geometry_lod x="360" y="450" width="135" height="21" step="0.1">
 			<options_item entry="r__geometry_lod" group="mm_opt_video"/>
 		</track_geometry_lod>
 
-		<cap_detail_height x="215" y="452" width="145" height="21">
+		<cap_detail_height x="215" y="484" width="145" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_detail_height</text>
 		</cap_detail_height>
-		<track_detail_height x="360" y="450" width="135" height="21" step="0.1">
+		<track_detail_height x="360" y="482" width="135" height="21" step="0.1">
 			<options_item entry="r__detail_height" group="mm_opt_video" depend="vid"/>
 		</track_detail_height>
 
     		<cap_sun_far_val x="500" y="116" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_sun_far_val>
-		<cap_vis_dist_val x="500" y="284" width="60" height="21">
+		<cap_vis_dist_val x="500" y="316" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_vis_dist_val>
-		<cap_detail_radius_val x="500" y="316" width="60" height="21">
+		<cap_detail_radius_val x="500" y="348" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_detail_radius_val>
-		<cap_detail_density_val x="500" y="348" width="60" height="21">
+		<cap_detail_density_val x="500" y="380" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_detail_density_val>
-		<cap_geometry_lod_val x="500" y="420" width="60" height="21">
+		<cap_geometry_lod_val x="500" y="452" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_geometry_lod_val>
-		<cap_detail_height_val x="500" y="452" width="60" height="21">
+		<cap_detail_height_val x="500" y="484" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_detail_height_val>
 </tab_performance>
@@ -520,6 +532,10 @@
 		<cap_grp_fx x="8" y="4" width="290" height="20" complex_mode="1">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_fx</text>
 		</cap_grp_fx>
+		<!-- [DA_PORT] �����: ����, �� ��������� � �������� ������ ����� -->
+		<cap_grp_rain x="8" y="4" width="290" height="20" complex_mode="1">
+			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_rain</text>
+		</cap_grp_rain>
 		<cap_r2_gloss_factor_val x="246" y="2" width="52" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_r2_gloss_factor_val>
@@ -651,6 +667,66 @@
             <options_item entry="r2_ls_bloom_kernel_scale" group="mm_opt_video_adv"/>
         </track_bloom>
 		
+		<!-- [DA_PORT] ����� -->
+		<cap_puddles x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_puddles</text>
+        </cap_puddles>
+        <check_puddles x="115" y="0" width="30" height="21">
+            <options_item entry="r__puddles" group="mm_opt_video_adv"/>
+        </check_puddles>
+
+		<cap_puddles_quality x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_puddles_quality</text>
+        </cap_puddles_quality>
+        <list_puddles_quality x="124" y="0" width="115" height="21" list_length="3">
+            <options_item entry="r__puddles_quality" group="mm_opt_video_adv"/>
+            <list_font r="170" g="170" b="170" font="letterica16"/>
+            <text_color>
+                <e r="170" g="170" b="170"/>
+                <d r="70" g="70" b="70"/>
+            </text_color>
+        </list_puddles_quality>
+
+		<cap_puddles_dist x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_puddles_dist</text>
+        </cap_puddles_dist>
+        <list_puddles_dist x="124" y="0" width="115" height="21" list_length="3">
+            <options_item entry="r__puddles_dist" group="mm_opt_video_adv"/>
+            <list_font r="170" g="170" b="170" font="letterica16"/>
+            <text_color>
+                <e r="170" g="170" b="170"/>
+                <d r="70" g="70" b="70"/>
+            </text_color>
+        </list_puddles_dist>
+
+		<cap_rain_quality x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_rain_quality</text>
+        </cap_rain_quality>
+        <list_rain_quality x="124" y="0" width="115" height="21" list_length="3">
+            <options_item entry="r__rain_quality" group="mm_opt_video_adv"/>
+            <list_font r="170" g="170" b="170" font="letterica16"/>
+            <text_color>
+                <e r="170" g="170" b="170"/>
+                <d r="70" g="70" b="70"/>
+            </text_color>
+        </list_rain_quality>
+
+		<!-- [DA_PORT] Season: autumn / summer. Applied on next launch - archives are mounted at startup. -->
+		<cap_grp_world x="8" y="4" width="290" height="20" complex_mode="1">
+			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_world</text>
+		</cap_grp_world>
+		<cap_season x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_season</text>
+        </cap_season>
+        <list_season x="124" y="0" width="115" height="21" list_length="2">
+            <options_item entry="da_season" group="mm_opt_video_adv"/>
+            <list_font r="170" g="170" b="170" font="letterica16"/>
+            <text_color>
+                <e r="170" g="170" b="170"/>
+                <d r="70" g="70" b="70"/>
+            </text_color>
+        </list_season>
+
 		<cap_lenswater x="25" y="2" width="90" height="21" complex_mode="1" >
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_lenswater</text>
         </cap_lenswater>
@@ -800,8 +876,8 @@
         <cap_snd_device x="240" y="121" width="90" height="24">
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_snd_device</text>
         </cap_snd_device>
-        <list_snd_device x="348" y="117" width="100" height="20" always_show_scroll="0">
-            <options_item entry="snd_device" group="mm_opt_sound" depend="snd"/>
+        <list_snd_device x="340" y="117" width="170" height="20" list_length="5" always_show_scroll="0">
+            <options_item entry="snd_device" group="mm_opt_sound" depend="restart"/>
             <list_font r="170" g="170" b="170" font="letterica16"/>
 		    <text_color>
 	            <e r="170" g="170" b="170"/>

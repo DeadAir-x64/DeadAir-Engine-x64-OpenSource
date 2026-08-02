@@ -36,6 +36,11 @@ function opt_performance:InitControls(x, y, xml, handler)
 	xml:InitStatic("tab_performance:cap_shadow_map", self)
 	handler.combo_shadow_map_perf = xml:InitComboBox("tab_performance:list_shadow_map", self)
 
+	-- [DA_PORT] Кэш теневых карт солнца. Строку мало объявить в ui_mm_opt_16.xml: вкладку собирает
+	-- ЭТОТ скрипт, поимённо, и всё неупомянутое просто не создаётся - молча, без сообщения в логе.
+	xml:InitStatic("tab_performance:cap_smap_cache", self)
+	handler.combo_smap_cache = xml:InitComboBox("tab_performance:list_smap_cache", self)
+
 	xml:InitStatic("tab_performance:cap_grp_impact_med", self)
 	xml:InitStatic("tab_performance:cap_opt_static", self)
 	handler.combo_opt_static = xml:InitComboBox("tab_performance:list_opt_static", self)

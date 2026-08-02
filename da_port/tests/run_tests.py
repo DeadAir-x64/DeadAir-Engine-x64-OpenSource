@@ -286,6 +286,84 @@ def check_options():
 
 
 # ---------------------------------------------------------------------------
+# Проверка: диалоги ссылаются на существующие функции
+# ---------------------------------------------------------------------------
+def check_dialog_functions():
+    """Каждая функция, названная в диалоге, обязана существовать в скриптах.
+
+    Движок искал такую функцию под THROW3. XRAY_EXCEPTIONS задан сборкой (-DXRAY_EXCEPTIONS=1),
+    а не исходниками, поэтому THROW в релизе не исчезает — он БРОСАЕТ исключение, а на пути
+    MinGW его никто не ловит (WinMain там без try). Дальше std::terminate и общее окно
+    «Unexpected application termination»; имя недостающей функции THROW3 собрал в буфер,
+    который никто не печатает. Движок теперь такие места переживает и называет
+    (см. da_script_functor.h), но сама ссылка от этого не чинится: предусловие с
+    несуществующей функцией навсегда закрывает фразу.
+
+    Найденные при написании проверки 20 ссылок перечислены в known_dialog_funcs.txt: все они
+    ведут в dialogs_pripyat, а этот файл в моде ПУСТОЙ (2 байта из 378 скриптов — единственный).
+    """
+    gameplay_dirs = [d for d in (
+        os.path.join(GAME, 'gamedata', 'configs', 'gameplay'),
+        os.path.join(os.path.dirname(REPO), 'extracted', 'configs', 'gameplay'),
+    ) if os.path.isdir(d)]
+    if not gameplay_dirs:
+        report('dialog_funcs', True, 'пропущено: нет configs/gameplay')
+        return True
+
+    def read(path):
+        for enc in ('utf-8', 'cp1251'):
+            try:
+                return open(path, encoding=enc).read()
+            except UnicodeDecodeError:
+                continue
+        return open(path, encoding='cp1251', errors='replace').read()
+
+    # что вообще определено в скриптах
+    defined, modules = set(), set()
+    for src_dir in (DUMP_SCRIPTS, LOOSE_SCRIPTS):
+        if not os.path.isdir(src_dir):
+            continue
+        for fn in os.listdir(src_dir):
+            if not fn.endswith('.script'):
+                continue
+            mod = fn[:-len('.script')]
+            modules.add(mod)
+            text = read(os.path.join(src_dir, fn))
+            for m in re.finditer(r'^\s*function\s+([A-Za-z_][\w.:]*)', text, re.M):
+                name = m.group(1).replace(':', '.')
+                defined.add(name if '.' in name else '%s.%s' % (mod, name))
+            # присваивание функции в поле таблицы: foo.bar = function(...)
+            for m in re.finditer(r'^\s*([A-Za-z_][\w.]*)\s*=\s*function\s*\(', text, re.M):
+                name = m.group(1)
+                defined.add(name if '.' in name else '%s.%s' % (mod, name))
+
+    # на что ссылаются диалоги; loose-файл перекрывает архивный
+    refs = {}
+    for gp in reversed(gameplay_dirs):
+        for fn in sorted(os.listdir(gp)):
+            if not fn.endswith('.xml'):
+                continue
+            text = read(os.path.join(gp, fn))
+            for tag in ('precondition', 'action', 'script_text', 'init_func'):
+                for m in re.finditer(r'<%s[^>]*>([^<]+)</%s>' % (tag, tag), text):
+                    name = m.group(1).strip()
+                    # ссылка на функцию всегда вида модуль.функция
+                    if '.' not in name or ' ' in name:
+                        continue
+                    line = text[:m.start()].count('\n') + 1
+                    refs.setdefault(name, set()).add('%s:%d' % (fn, line))
+
+    known = load_baseline('known_dialog_funcs.txt')
+    missing = sorted(n for n in refs if n not in defined and n not in known)
+    for name in missing:
+        where = sorted(refs[name])
+        print('         %s — функции нет (%s%s)' % (
+            name, ', '.join(where[:2]), ' …' if len(where) > 2 else ''))
+    report('dialog_funcs', not missing, 'ссылок: %d' % len(refs))
+    return not missing
+
+
+# ---------------------------------------------------------------------------
 # Проверка: разметка интерфейса для НЕширокоформатных экранов
 # ---------------------------------------------------------------------------
 def check_gamedata():
@@ -353,6 +431,30 @@ def load_baseline(name):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Проверки на Python: инструменты порта
+# ---------------------------------------------------------------------------
+def check_python_units():
+    """Тесты инструментов (unit/test_*.py) — расшифровка стека и прочая оснастка.
+
+    Отдельно от Lua-тестов: тем нужен собранный интерпретатор, а этим — только Python и файлы
+    сборки. Падение одного не должно прятать результат другого, поэтому каждый файл считается
+    своей строкой отчёта.
+    """
+    unit_dir = os.path.join(TESTS, 'unit')
+    for fn in sorted(os.listdir(unit_dir)):
+        if not (fn.startswith('test_') and fn.endswith('.py')):
+            continue
+        proc = subprocess.run([sys.executable, os.path.join(unit_dir, fn)],
+                              capture_output=True, text=True, errors='replace')
+        ok = proc.returncode == 0
+        note = ''
+        if not ok:
+            tail = [l for l in (proc.stdout + proc.stderr).splitlines() if l.strip()]
+            note = tail[-1][:70] if tail else 'без вывода'
+        report(fn[:-3], ok, note)
+
+
 def main():
     print('Тесты Lua-скриптов Dead Air')
     print('  игра:    %s' % GAME)
@@ -367,7 +469,9 @@ def main():
     check_engine_calls()
     check_actor_calls()
     check_options()
+    check_dialog_functions()
     check_gamedata()
+    check_python_units()
 
     if not ensure_luajit():
         print('  ПРОВАЛ luajit                       не собран, проверки на Lua пропущены')

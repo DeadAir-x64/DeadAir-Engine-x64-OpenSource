@@ -32,3 +32,6 @@ scratchpad/
 # Собранная прослойка da_ngx.dll лежит в Externals/nvngx_shim и коммитится: она наша.
 Externals/nvngx/
 Externals/xess/
+
+# [DA_PORT] Символы для расшифровки стеков крашей — 2.5 ГБ выгрузок, восстанавливаются сборкой
+da_port/symbols/

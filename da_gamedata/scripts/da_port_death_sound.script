@@ -1,0 +1,21 @@
+-- [DA_PORT] Убитый NPC договаривал фразу, начатую скриптом.
+--
+-- Свои звуки движок на смерти глушит сам (CAI_Stalker::Die), но фразы из xr_sound живут отдельно:
+-- это самостоятельные sound_object'ы, до которых движковой маске не дотянуться. Остановить их
+-- может только xr_sound.stop_sounds_by_id, и мод его зовёт — но в motivator_binder:net_destroy,
+-- то есть когда труп уходит из мира, спустя минуты. До тех пор начатая реплика доигрывает.
+--
+-- Здесь тот же вызов делается в момент смерти. Реплики, начатые ПОСЛЕ (например, паника
+-- свидетелей), играются на своих объектах и этой правкой не затрагиваются.
+
+local function stop_talking(victim)
+	if not (victim) then
+		return
+	end
+	xr_sound.stop_sounds_by_id(victim:id())
+end
+
+function on_game_start()
+	RegisterScriptCallback("npc_on_death_callback", stop_talking)
+	RegisterScriptCallback("monster_on_death_callback", stop_talking)
+end

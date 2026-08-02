@@ -4,14 +4,74 @@
 #include "Navigation/level_graph.h"
 #include "Navigation/PatrolPath/patrol_path_storage.h"
 #include "Navigation/graph_engine.h"
+#include "xrCore/Threading/TaskManager.hpp"
+
+#include <thread>
 
 AISpaceBase::AISpaceBase() { GEnv.AISpace = this; }
 AISpaceBase::~AISpaceBase()
 {
     xr_delete(m_patrol_path_storage);
-    xr_delete(m_graph_engine);
+    DestroyGraphEngines();
     VERIFY(!m_game_graph);
     GEnv.AISpace = nullptr;
+}
+
+// [DA_PORT] See the header for why these exist. Slot 0 is the engine everything used before and
+// stays reachable through m_graph_engine; the rest are filled in lazily by graph_engine().
+void AISpaceBase::CreateGraphEngines(u32 maxVertexCount)
+{
+    DestroyGraphEngines();
+
+    const size_t workerCount =
+        TaskScheduler ? TaskScheduler->GetWorkersCount() : std::thread::hardware_concurrency();
+
+    m_graph_engine_vertex_count = maxVertexCount;
+    m_worker_graph_engines.resize(_max<size_t>(workerCount, 1));
+    m_graph_engine = xr_new<CGraphEngine>(maxVertexCount);
+    m_worker_graph_engines.front() = m_graph_engine;
+}
+
+void AISpaceBase::DestroyGraphEngines()
+{
+    for (CGraphEngine*& engine : m_worker_graph_engines)
+        xr_delete(engine);
+
+    m_worker_graph_engines.clear();
+    m_graph_engine = nullptr;
+    m_graph_engine_vertex_count = 0;
+}
+
+CGraphEngine& AISpaceBase::graph_engine() const
+{
+    VERIFY(m_graph_engine);
+
+    if (!TaskScheduler || m_worker_graph_engines.empty())
+        return *m_graph_engine;
+
+    const size_t worker = TaskScheduler->GetCurrentWorkerID();
+    if (worker >= m_worker_graph_engines.size())
+        return *m_graph_engine;
+
+    CGraphEngine*& engine = m_worker_graph_engines[worker];
+    if (!engine)
+    {
+        // Only this worker ever writes this slot, and the vector is never resized after
+        // CreateGraphEngines, so there is nothing here for another thread to race against.
+        engine = xr_new<CGraphEngine>(m_graph_engine_vertex_count);
+
+        // Считаем сами: сколько таких экземпляров живёт и на какой граф они рассчитаны. Иначе цена
+        // правки остаётся прикидкой - а их создаётся столько, сколько РАЗНЫХ воркеров хоть раз
+        // искали путь, и это оказалось всё их число, а не один-два.
+        u32 live = 0;
+        for (const CGraphEngine* e : m_worker_graph_engines)
+            if (e)
+                ++live;
+
+        Msg("* [DA] graph engine for worker %u: живых экземпляров %u, вершин в графе %u", u32(worker),
+            live, m_graph_engine_vertex_count);
+    }
+    return *engine;
 }
 
 void AISpaceBase::Load(const char* levelName)
@@ -26,7 +86,7 @@ void AISpaceBase::Load(const char* levelName)
     R_ASSERT2(crossHeader.level_guid() == levelHeader.guid(), "cross_table doesn't correspond to the AI-map");
     R_ASSERT2(crossHeader.game_guid() == gameHeader.guid(), "graph doesn't correspond to the cross table");
     u32 vertexCount = _max(gameHeader.vertex_count(), levelHeader.vertex_count());
-    m_graph_engine = xr_new<CGraphEngine>(vertexCount);
+    CreateGraphEngines(vertexCount);
     R_ASSERT2(currentLevel.guid() == levelHeader.guid(), "graph doesn't correspond to the AI-map");
     if (!xr_strcmp(currentLevel.name(), levelName))
         Validate(currentLevel.id());
@@ -37,10 +97,10 @@ void AISpaceBase::Unload(bool reload)
 {
     if (GEnv.isDedicatedServer)
         return;
-    xr_delete(m_graph_engine);
+    DestroyGraphEngines();
     xr_delete(m_level_graph);
     if (!reload && m_game_graph)
-        m_graph_engine = xr_new<CGraphEngine>(game_graph().header().vertex_count());
+        CreateGraphEngines(game_graph().header().vertex_count());
 }
 
 void AISpaceBase::Initialize()
@@ -48,7 +108,7 @@ void AISpaceBase::Initialize()
     if (GEnv.isDedicatedServer)
         return;
     VERIFY(!m_graph_engine);
-    m_graph_engine = xr_new<CGraphEngine>(1024);
+    CreateGraphEngines(1024);
     VERIFY(!m_patrol_path_storage);
     m_patrol_path_storage = xr_new<CPatrolPathStorage>();
 }
@@ -111,14 +171,13 @@ void AISpaceBase::SetGameGraph(CGameGraph* gameGraph)
     {
         VERIFY(!m_game_graph);
         m_game_graph = gameGraph;
-        xr_delete(m_graph_engine);
-        m_graph_engine = xr_new<CGraphEngine>(game_graph().header().vertex_count());
+        CreateGraphEngines(game_graph().header().vertex_count());
     }
     else
     {
         VERIFY(m_game_graph);
         m_game_graph = nullptr;
-        xr_delete(m_graph_engine);
+        DestroyGraphEngines();
     }
 }
 

@@ -2,6 +2,7 @@
 #include "r2.h"
 #include "Layers/xrRender/ShaderResourceTraits.h"
 #include "xrCore/FileCRC32.h"
+#include "xrCore/Threading/ParallelFor.hpp" // [DA_PORT] прогрев кэша шейдеров, см. da_shader_warmup
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -98,6 +99,50 @@ static HRESULT create_shader(DWORD const* buffer, size_t const buffer_size, LPCS
                             "Fix: output the velocity the way gamedata\shaders\r3\deffer_model_bump.vs "
                             "and pack_gbuffer do.", file_name);
                     }
+                }
+            }
+        }
+
+        // [DA_PORT] Второй молчаливый отказ той же природы: ВЕРШИННЫЙ шейдер без джиттера.
+        //
+        // Апскейлер собирает кадр из подпиксельных сдвигов: каждый кадр сцена рисуется чуть смещённой,
+        // и из этих смещений набирается разрешение. Шейдер, который смещение не применяет, каждый кадр
+        // кладёт свою геометрию в одну и ту же точку — накапливать ему нечего, и его край остаётся
+        // ступенчатым при любом качестве апскейлера. На тусклом предмете это незаметно, на ярком (и на
+        // чёрном фоне) читается как пила по кромке.
+        //
+        // Проверка не по имени файла: любой шейдер, который переводит геометрию в клип-пространство,
+        // объявляет `m_WVP`. Полноэкранные и постпроцессные — нет, поэтому ложных срабатываний тут не
+        // будет. Отсутствие `m_taa_jitter` у такого шейдера означает ровно одно.
+        //
+        // Ловушка, из-за которой эта проверка и понадобилась: соседняя, про векторы движения, смотрит
+        // на ЦЕЛИ вывода и потому слепа к проходу свечения — он пишет одну цель, как постобработка.
+        if constexpr (std::is_same_v<T, SVS>)
+        {
+            if (RImplementation.o.velocity)
+            {
+                // Кому джиттер не нужен по существу, а не по недосмотру: тени рисуются проекцией
+                // ИСТОЧНИКА СВЕТА (подпиксельный сдвиг экрана там бессмыслен), световые объёмы и
+                // маски накопления не попадают на экран сами по себе, заглушки не рисуют ничего.
+                // Без этого списка сообщение кричит на два десятка невиновных и его перестают читать.
+                const bool exempt = file_name &&
+                    (strstr(file_name, "shadow_") || strstr(file_name, "accum_") ||
+                     strstr(file_name, "lplanes") || strstr(file_name, "stub_") ||
+                     strstr(file_name, "dumb"));
+
+                // `m_WVP` — самый частый способ, но не единственный: часть шейдеров переводит
+                // геометрию через `m_W` + `m_VP` по отдельности. Спрашиваем про все три, иначе
+                // проверка молча пропустит именно те, что собраны иначе.
+                const bool has_wvp = !!result->constants.get("m_WVP") ||
+                    !!result->constants.get("m_VP") || !!result->constants.get("m_W");
+                const bool has_jitter = !!result->constants.get("m_taa_jitter");
+
+                if (!exempt && has_wvp && !has_jitter)
+                {
+                    Msg("! [DA_PORT] шейдер [%s] рисует геометрию, но не применяет джиттер "
+                        "(m_taa_jitter). Под апскейлером его край останется ступенчатым: сдвига нет — "
+                        "накапливать нечего. Как надо: gamedata\\shaders\\r3\\deffer_model_flat.vs, "
+                        "строка `O.hpos.xy += m_taa_jitter.xy * O.hpos.w`.", file_name);
                 }
             }
         }
@@ -277,6 +322,105 @@ public:
     D3D_SHADER_MACRO* data() { return m_options; }
 };
 
+// [DA_PORT] Режим прогрева: компилировать в кэш, не создавая объект на устройстве.
+//
+// Своя переменная на поток, а не общий флаг: прогрев идёт в несколько потоков, и обычная ленивая
+// компиляция в это же время не должна перепутать режим.
+thread_local bool da_shader_cache_only = false;
+
+// Сколько записей прогрев взял готовыми. Без этого счётчика «обработано 194 за 0.35 с» выглядит как
+// скорость компиляции, хотя это скорость проверки наличия файла — разница в шестьдесят раз.
+std::atomic<u32> da_shader_warm_hits{0};
+
+// [DA_PORT] Путь исходника текущей компиляции. Ставится в ShaderResourceTraits::CreateShader.
+//
+// Почему так, а не параметром: shader_compile — переопределение виртуального метода с фиксированной
+// сигнатурой, общей для всех рендеров. Менять её ради записи манифеста дороже.
+//
+// ⚠️ Обычная переменная, НЕ thread_local. Первая версия была `thread_local`, а объявление в месте
+// использования — `extern thread_local` ВНУТРИ функции. Так объявлять нельзя; компилятор это принял
+// молча, обращение пошло мимо настоящей переменной, и запись 260 байт легла в чужую память —
+// движок падал на старте прыжком по мусорному адресу, без единого внятного сообщения.
+//
+// Переменная потока тут и не нужна: манифест пишется только обычным ленивым путём, из главного
+// потока. Прогрев его не трогает — он и так знает, что компилирует.
+string_path da_shader_src_path{};
+
+// [DA_PORT] Подменённый список дефайнов БЛЕНДЕРА на время воспроизведения манифеста.
+//
+// Переменная потока — прогрев идёт в несколько потоков, и общий m_ShaderOptions они бы делили.
+// Объявление и определение здесь, в области пространства имён: объявлять thread_local внутри
+// функции нельзя, на этом уже наступили (движок падал прыжком по мусорному адресу).
+thread_local const xr_vector<D3D_SHADER_MACRO>* da_shader_options_override = nullptr;
+
+namespace
+{
+// [DA_PORT] Манифест прогрева: что и с какими макросами компилировать.
+//
+// Записывается ТОЛЬКО то, что движок реально попросил, и в том виде, в каком оно ушло в компилятор.
+// Ни имя каталога кэша, ни имя исходника не позволяют восстановить набор дефайнов: скиннинг
+// приходит суффиксом `_0.._4` из CResourceManager::_CreateVS, дефайны блендера — из общего списка
+// m_ShaderOptions, который выставляется прямо перед вызовом и очищается после. Любая попытка
+// вывести их обратно из имени означает повторение логики движка в двух разных соглашениях сразу —
+// и молчаливое отравление кэша, как только эта логика где-то поменяется.
+//
+// Запись же по построению верна: мы не выводим ничего, мы повторяем.
+struct warm_entry
+{
+    xr_string src;    // путь исходника
+    xr_string name;   // имя шейдера, каким его просил движок (с суффиксом скиннинга и т.п.)
+    xr_string entry;  // точка входа
+    xr_string target; // профиль (vs_5_0, ps_5_0, ...)
+    xr_string macros; // ТОЛЬКО дефайны блендера: "ИМЯ=ЗНАЧЕНИЕ;..."
+    u32 flags{};
+};
+
+std::mutex g_warm_lock;
+xr_vector<warm_entry> g_warm_list;
+xr_unordered_map<xr_string, bool> g_warm_seen;
+
+void da_warm_record(pcstr src, pcstr name, pcstr entry, pcstr target, u32 flags,
+    const xr_vector<D3D_SHADER_MACRO>& blender_macros)
+{
+    if (!src || !src[0] || !name || !name[0])
+        return;
+
+    // Записываем ТОЛЬКО дефайны блендера (скиннинг, детали, полусфера, тесселяция). Настроечные не
+    // пишем сознательно: они выводятся из настроек при воспроизведении, и без этого манифест был бы
+    // привязан к настройкам того, кто его снял, — то есть бесполезен ровно для того игрока, ради
+    // которого прогрев и делается.
+    xr_string m;
+    for (const auto& macro : blender_macros)
+    {
+        if (!macro.Name)
+            continue;
+        m += macro.Name;
+        m += "=";
+        m += macro.Definition ? macro.Definition : "";
+        m += ";";
+    }
+
+    xr_string key(name);
+    key += "|";
+    key += target;
+    key += "|";
+    key += m;
+
+    std::lock_guard<std::mutex> lock(g_warm_lock);
+    if (!g_warm_seen.emplace(key, true).second)
+        return;
+
+    warm_entry e;
+    e.src = src;
+    e.name = name;
+    e.entry = entry;
+    e.target = target;
+    e.macros = std::move(m);
+    e.flags = flags;
+    g_warm_list.emplace_back(std::move(e));
+}
+} // namespace
+
 HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     pcstr pTarget, u32 Flags, void*& result)
 {
@@ -303,7 +447,10 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     };
 
     // External defines
-    options.add(m_ShaderOptions);
+    // [DA_PORT] При воспроизведении манифеста берём записанные дефайны блендера, иначе текущие.
+    // Настроечные дефайны ниже выводятся из НЫНЕШНИХ настроек в обоих случаях — потому манифест и
+    // переносим между машинами.
+    options.add(da_shader_options_override ? *da_shader_options_override : m_ShaderOptions);
 
     // Shadow map size
     {
@@ -632,13 +779,14 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     string_path filename;
     strconcat(sizeof(filename), filename, renderer, name, ".", extension);
 
+    // [DA_PORT] Путь записи внутри кэша — один и тот же и для личного кэша игрока, и для
+    // поставляемого с игрой. Отличается только корень.
+    string_path cache_rel;
+    strconcat(sizeof(cache_rel), cache_rel, "shaders_cache_oxr" DELIMITER, filename, DELIMITER, sh_name.c_str());
+    strconcat(sizeof(filename), filename, filename, DELIMITER, sh_name.c_str());
+
     string_path file_name;
-    {
-        string_path file;
-        strconcat(sizeof(file), file, "shaders_cache_oxr" DELIMITER, filename, DELIMITER, sh_name.c_str());
-        strconcat(sizeof(filename), filename, filename, DELIMITER, sh_name.c_str());
-        FS.update_path(file_name, "$app_data_root$", file);
-    }
+    FS.update_path(file_name, "$app_data_root$", cache_rel);
 
     string_path shadersFolder;
     FS.update_path(shadersFolder, "$game_shaders$", RImplementation.getShaderPath());
@@ -647,31 +795,80 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     getFileCrc32(fs, shadersFolder, fileCrc);
     fs->seek(0);
 
-    if (FS.exist(file_name))
+    // [DA_PORT] Достать шейдер из готовой записи кэша. Вынесено в лямбду, потому что мест теперь два.
+    const auto try_cached = [&](pcstr path) -> bool
     {
-        IReader* file = FS.r_open(file_name);
+        if (!FS.exist(path))
+            return false;
+
+        bool ok = false;
+        IReader* file = FS.r_open(path);
         if (file->length() > 4)
         {
             const bool dx9compatibility = file->r_u32();
 
-            u32 savedFileCrc = file->r_u32();
+            const u32 savedFileCrc = file->r_u32();
             if (savedFileCrc == fileCrc)
             {
-                u32 savedBytecodeCrc = file->r_u32();
-                u32 bytecodeCrc = crc32(file->pointer(), file->elapsed());
+                const u32 savedBytecodeCrc = file->r_u32();
+                const u32 bytecodeCrc = crc32(file->pointer(), file->elapsed());
                 if (bytecodeCrc == savedBytecodeCrc)
                 {
 #ifdef DEBUG
-                    Log("* Loading shader:", file_name);
+                    Log("* Loading shader:", path);
 #endif
-                    _result =
-                        create_shader(pTarget, (DWORD*)file->pointer(), file->elapsed(),
-                            filename, result, o.disasm, dx9compatibility);
+                    _result = create_shader(pTarget, (DWORD*)file->pointer(), file->elapsed(), filename, result,
+                        o.disasm, dx9compatibility);
+                    ok = SUCCEEDED(_result);
                 }
             }
         }
         file->close();
+        return ok;
+    };
+
+    // [DA_PORT] Сначала личный кэш игрока, потом поставляемый с игрой.
+    //
+    // Зачем поставляемый. Компиляция идёт лениво, по первому обращению материала, со скоростью около
+    // десяти шейдеров в секунду в один поток (замерено). Полный набор мода — 908 штук, то есть
+    // примерно полторы минуты, размазанные по первому запуску и первым выходам на новые локации
+    // кусками по несколько секунд. Байткод DXBC от видеокарты не зависит — драйвер переводит его в
+    // свои команды сам, — поэтому готовый кэш одинаков у всех и его можно просто положить в пакет.
+    //
+    // Личный кэш проверяется первым: если игрок менял настройки или мы выпустили патч по шейдерам,
+    // у него уже лежит своя, более свежая запись.
+    //
+    // Поставляемый кэш только ЧИТАЕТСЯ. Дописывать в gamedata нельзя: он может лежать в архиве, быть
+    // только для чтения, да и смешивать своё с чужим в одной папке — потом не разберёшь, чьё
+    // устарело. Промах здесь просто ведёт к обычной компиляции с записью в личный кэш.
+    //
+    // Совпадение по контрольным суммам обязательно и здесь: набор дефайнов зашит в имя записи, а
+    // исходник с include-ами проверяется по CRC. Чужой или устаревший кэш будет молча отвергнут.
+    // [DA_PORT] В режиме прогрева объект шейдера не нужен — достаточно, чтобы запись легла в кэш.
+    // Поэтому проверяем только НАЛИЧИЕ годной записи, не создавая ничего на устройстве.
+    if (da_shader_cache_only)
+    {
+        string_path packed_name;
+        FS.update_path(packed_name, "$game_data$", cache_rel);
+        if (FS.exist(file_name) || FS.exist(packed_name))
+        {
+            ++da_shader_warm_hits;
+            return S_OK;
+        }
     }
+    else if (!try_cached(file_name))
+    {
+        string_path packed_name;
+        FS.update_path(packed_name, "$game_data$", cache_rel);
+        try_cached(packed_name);
+    }
+
+    // [DA_PORT] Запись в манифест — здесь, а не в ветке компиляции: нам нужен ПОЛНЫЙ перечень того,
+    // что игре понадобилось, включая взятое из кэша готовым. Иначе манифест, снятый на прогретом
+    // кэше, окажется пустым и прогрев у игрока не сделает ничего.
+    if (!da_shader_cache_only)
+        da_warm_record(da_shader_src_path, name, pFunctionName, pTarget, Flags,
+            da_shader_options_override ? *da_shader_options_override : m_ShaderOptions);
 
     if (FAILED(_result))
     {
@@ -686,7 +883,11 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
             cpcstr str = static_cast<cpcstr>(pErrorBuf->GetBufferPointer());
             if (strstr(str, "error X3523")) // is there a better way?
             {
-                pErrorBuf = nullptr;
+                // [DA_PORT] Было `pErrorBuf = nullptr` — указатель просто терялся, а сам буфер
+                // оставался жив. Плюс вторая компиляция ниже пишет в pShaderBuf поверх первого,
+                // теряя и его.
+                _RELEASE(pShaderBuf);
+                _RELEASE(pErrorBuf);
                 Flags |= D3DCOMPILE_ENABLE_BACKWARDS_COMPATIBILITY;
                 _result = HW.D3DCompile(fs->pointer(), fs->length(), "", options.data(),
                     &Includer, pFunctionName, pTarget, Flags, 0, &pShaderBuf, &pErrorBuf);
@@ -696,6 +897,15 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
         if (SUCCEEDED(_result))
         {
             const bool dx9compatibility = Flags & D3DCOMPILE_ENABLE_BACKWARDS_COMPATIBILITY;
+
+            // [DA_PORT] Запись кэша — под общим замком, потому что прогрев компилирует в несколько
+            // потоков. Сама компиляция параллелится свободно (D3DCompile потокобезопасен), а вот
+            // w_open/w_close правят ОБЩИЙ реестр файлов CLocatorAPI, и он к параллельной записи не
+            // готов. Замок стоит только здесь: запись — доли процента времени против компиляции,
+            // поэтому выигрыш от параллельности он не съедает.
+            static std::mutex s_cache_write;
+            std::lock_guard<std::mutex> cache_write_guard(s_cache_write);
+
             IWriter* file = FS.w_open(file_name);
 
             file->w_u32(dx9compatibility);
@@ -709,8 +919,11 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
 #ifdef DEBUG
             Log("- Compile shader:", file_name);
 #endif
-            _result = create_shader(pTarget, (DWORD*)pShaderBuf->GetBufferPointer(), pShaderBuf->GetBufferSize(),
-                filename, result, o.disasm, dx9compatibility);
+            // [DA_PORT] В прогреве останавливаемся здесь: запись в кэш легла, а объект на устройстве
+            // создаст обычный ленивый путь, когда шейдер реально понадобится.
+            if (!da_shader_cache_only)
+                _result = create_shader(pTarget, (DWORD*)pShaderBuf->GetBufferPointer(),
+                    pShaderBuf->GetBufferSize(), filename, result, o.disasm, dx9compatibility);
         }
         else
         {
@@ -720,8 +933,243 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
             else
                 Msg("Can't compile shader hr=0x%08x", _result);
         }
+
+        // [DA_PORT] Оба блоба D3D не освобождались ВООБЩЕ — ни при удаче, ни при ошибке. Течёт по
+        // разу на каждый компилируемый шейдер, то есть на холодном кэше — на все несколько сотен
+        // сразу. Правка того же класса, что и представления текстур: ресурс COM, счётчик ссылок,
+        // и в наших кучах этого не видно.
+        _RELEASE(pShaderBuf);
+        _RELEASE(pErrorBuf);
     }
 
     return _result;
+}
+
+// [DA_PORT] Параллельный прогрев кэша шейдеров.
+//
+// Зачем, если кэш и так поставляется с игрой. Поставляемый кэш подходит только пока набор дефайнов
+// совпадает с тем, при котором мы его собрали, а набор зависит от настроек графики: качество
+// солнца, вид затенения, лучи, отражения воды, MSAA, размер теневой карты. Игрок сдвинул один
+// ползунок — и промахивается ВЕСЬ кэш разом, все 908 записей. Тогда ленивая компиляция по одному в
+// главном потоке даёт около полутора минут, размазанных по игре кусками (замерено: ~10 шейдеров в
+// секунду). Прогрев в несколько потоков собирает то же самое за десяток секунд и один раз.
+//
+// Откуда берётся список. Из структуры поставляемого кэша: каталоги в нём названы `<имя>.<тип>` и
+// перечисляют ровно те шейдеры, которые мод действительно просит. Отдельный файл-манифест не нужен,
+// и он не может разойтись с содержимым — список и есть содержимое.
+//
+// Что делает: только заполняет кэш. Объекты на устройстве создаст обычный ленивый путь, когда
+// шейдер понадобится, — и найдёт готовую запись.
+// [DA_PORT] Сохранить манифест прогрева. Кладётся рядом с личным кэшем; в релизный пакет кладём его
+// же, снятый на наших настройках, — тогда у игрока прогрев есть с первого запуска.
+void CRender::da_shader_manifest_save()
+{
+    std::lock_guard<std::mutex> lock(g_warm_lock);
+    if (g_warm_list.empty())
+    {
+        Msg("! [DA] манифест шейдеров пуст - записывать нечего");
+        return;
+    }
+
+    string_path path;
+    FS.update_path(path, "$app_data_root$", "shaders_cache_oxr" DELIMITER "warmup.list");
+
+    // [DA_PORT] Сливаем с тем, что уже лежит, а не затираем.
+    //
+    // Манифест копится за сессию, а одна сессия видит один-два уровня. Полное покрытие набирается
+    // только обходом карты, то есть несколькими запусками — и без слияния каждый следующий стирал бы
+    // предыдущий. Ключ тот же, что при записи: имя + профиль + дефайны блендера.
+    u32 merged = 0;
+    if (FS.exist(path))
+    {
+        IReader* old = FS.r_open(path);
+        if (old)
+        {
+            string4096 line;
+            while (!old->eof())
+            {
+                old->r_string(line, sizeof(line));
+                xr_string s(line);
+
+                xr_string f[6];
+                size_t p0 = 0;
+                bool ok = true;
+                for (int i = 0; i < 5; ++i)
+                {
+                    const size_t p1 = s.find('|', p0);
+                    if (p1 == xr_string::npos) { ok = false; break; }
+                    f[i] = s.substr(p0, p1 - p0);
+                    p0 = p1 + 1;
+                }
+                if (!ok)
+                    continue;
+                f[5] = s.substr(p0);
+
+                xr_string key = f[1] + "|" + f[3] + "|" + f[5];
+                if (!g_warm_seen.emplace(key, true).second)
+                    continue;
+
+                warm_entry e;
+                e.src = f[0];
+                e.name = f[1];
+                e.entry = f[2];
+                e.target = f[3];
+                e.flags = u32(atoi(f[4].c_str()));
+                e.macros = f[5];
+                g_warm_list.emplace_back(std::move(e));
+                ++merged;
+            }
+            FS.r_close(old);
+        }
+    }
+
+    IWriter* w = FS.w_open(path);
+    if (!w)
+    {
+        Msg("! [DA] манифест шейдеров: не удалось создать %s", path);
+        return;
+    }
+
+    for (const auto& e : g_warm_list)
+    {
+        string4096 line;
+        xr_sprintf(line, sizeof(line), "%s|%s|%s|%s|%u|%s\r\n", e.src.c_str(), e.name.c_str(), e.entry.c_str(),
+            e.target.c_str(), e.flags, e.macros.c_str());
+        w->w(line, xr_strlen(line));
+    }
+    FS.w_close(w);
+
+    Msg("* [DA] манифест шейдеров сохранён: %u записей (из них %u подхвачено из прежнего) -> %s",
+        u32(g_warm_list.size()), merged, path);
+}
+
+void CRender::da_shader_warmup(bool serial)
+{
+    // Манифест: сначала личный (он свежее), потом поставляемый с игрой.
+    string_path path;
+    FS.update_path(path, "$app_data_root$", "shaders_cache_oxr" DELIMITER "warmup.list");
+    if (!FS.exist(path))
+        FS.update_path(path, "$game_data$", "shaders_cache_oxr" DELIMITER "warmup.list");
+
+    IReader* manifest = FS.exist(path) ? FS.r_open(path) : nullptr;
+    if (!manifest)
+    {
+        Msg("* [DA] прогрев шейдеров: манифеста нет (%s), пропускаю", path);
+        return;
+    }
+
+    struct job
+    {
+        xr_string src, name, entry, target;
+        xr_vector<xr_string> macro_storage; // строки должны пережить вызов компилятора
+        u32 flags{};
+    };
+    xr_vector<job> jobs;
+
+    string4096 line;
+    while (!manifest->eof())
+    {
+        manifest->r_string(line, sizeof(line));
+        xr_string str(line);
+        if (str.size() < 8)
+            continue;
+
+        // src|name|entry|target|flags|macros
+        xr_string f[6];
+        size_t p0 = 0;
+        bool ok = true;
+        for (int i = 0; i < 5; ++i)
+        {
+            const size_t p1 = str.find('|', p0);
+            if (p1 == xr_string::npos) { ok = false; break; }
+            f[i] = str.substr(p0, p1 - p0);
+            p0 = p1 + 1;
+        }
+        if (!ok)
+            continue;
+        f[5] = str.substr(p0);
+
+        job j;
+        j.src = f[0];
+        j.name = f[1];
+        j.entry = f[2];
+        j.target = f[3];
+        j.flags = u32(atoi(f[4].c_str()));
+
+        size_t q0 = 0;
+        while (q0 < f[5].size())
+        {
+            const size_t semi = f[5].find(';', q0);
+            if (semi == xr_string::npos)
+                break;
+            const xr_string pair = f[5].substr(q0, semi - q0);
+            q0 = semi + 1;
+            const size_t eq = pair.find('=');
+            if (eq == xr_string::npos)
+                continue;
+            j.macro_storage.push_back(pair.substr(0, eq));
+            j.macro_storage.push_back(pair.substr(eq + 1));
+        }
+
+        jobs.push_back(std::move(j));
+    }
+    FS.r_close(manifest);
+
+    if (jobs.empty())
+    {
+        Msg("* [DA] прогрев шейдеров: манифест пуст");
+        return;
+    }
+
+    CTimer timer;
+    timer.Start();
+    da_shader_warm_hits = 0;
+    std::atomic<u32> done{0}, failed{0};
+
+    // [DA_PORT] Вся работа — через обычную shader_compile в режиме «только в кэш». Своей записи
+    // файла здесь намеренно НЕТ: путь внутри кэша, контрольные суммы и формат должны считаться в
+    // одном месте, иначе прогрев и ленивый путь однажды разойдутся, и разойдутся молча.
+    const auto body = [&](const TaskRange<size_t>& range)
+    {
+        for (size_t i = range.begin(); i != range.end(); ++i)
+        {
+            job& j = jobs[i];
+
+            IReader* src = FS.r_open(j.src.c_str());
+            if (!src)
+            {
+                ++failed;
+                continue;
+            }
+
+            xr_vector<D3D_SHADER_MACRO> macros;
+            for (size_t k = 0; k + 1 < j.macro_storage.size(); k += 2)
+                macros.push_back({j.macro_storage[k].c_str(), j.macro_storage[k + 1].c_str()});
+
+            da_shader_options_override = &macros;
+            da_shader_cache_only = true;
+
+            void* dummy = nullptr;
+            if (SUCCEEDED(shader_compile(j.name.c_str(), src, j.entry.c_str(), j.target.c_str(), j.flags, dummy)))
+                ++done;
+            else
+                ++failed;
+
+            da_shader_cache_only = false;
+            da_shader_options_override = nullptr;
+
+            FS.r_close(src);
+        }
+    };
+
+    if (serial)
+        body(TaskRange<size_t>(0, jobs.size()));
+    else
+        xr_parallel_for(TaskRange<size_t>(0, jobs.size()), body);
+
+    const u32 hits = da_shader_warm_hits.load();
+    Msg("* [DA] прогрев шейдеров%s: записей %u, скомпилировано %u, взято готовыми %u, не вышло %u за %.2f с",
+        serial ? " (один поток)" : "", u32(jobs.size()), done.load() > hits ? done.load() - hits : 0u, hits,
+        failed.load(), timer.GetElapsed_sec());
 }
 } // namespace xray::render::RENDER_NAMESPACE

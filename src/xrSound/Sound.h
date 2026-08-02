@@ -50,7 +50,35 @@ XRSOUND_API extern float psSoundTimeFactor; //--#SM+#--
 XRSOUND_API extern Flags32 psSoundFlags;
 XRSOUND_API extern int psSoundTargets;
 XRSOUND_API extern int psSoundCacheSizeMB;
+// [DA_PORT] Два разных числа, и путать их нельзя.
+//
+// `snd_device_id` — ВЫБОР игрока, ровно то, что лежит в user.ltx. Значение `snd_device_auto` (по
+// умолчанию) означает «то устройство, которое выбрано в Windows», и это не индекс, а намерение:
+// оно переживает смену наушников, переезд на другую машину и переустановку драйверов.
+//
+// `snd_device_active_id` — индекс устройства, которое в итоге открыли. Его вычисляет
+// `ALDeviceList::SelectBestDevice` на каждом запуске.
+//
+// Раньше переменная была одна: движок разрешал «авто» в конкретный индекс, записывал его В ТУ ЖЕ
+// переменную, а консоль честно сохраняла результат в user.ltx именем устройства. Дальше это имя жило
+// вечно. Живой случай: в user.ltx осело `snd_device OpenAL Soft on Realtek Digital Output` — звук
+// уходил в цифровой выход материнской платы, к которому ничего не подключено, и игра была немой.
+// Никакой ошибки при этом не печаталось: устройство существовало, движок его послушно открывал.
 XRSOUND_API extern u32 snd_device_id;
+XRSOUND_API extern u32 snd_device_active_id;
+
+constexpr u32 snd_device_auto = u32(-1);
+constexpr pcstr snd_device_auto_token = "ui_mm_snd_device_auto";
+
+// [DA_PORT] OpenAL Soft приписывает это к имени КАЖДОГО устройства: «OpenAL Soft on Наушники (JBL
+// TUNE770NC)». Игроку эта часть не говорит ничего — она одинакова у всех строк списка, а в узкой
+// строке меню съедает место ровно там, где начинается собственно имя. Показываем и сохраняем без
+// неё; драйверу же имя уходит целиком, в том виде, в каком его выдало перечисление.
+constexpr pcstr snd_device_backend_prefix = "OpenAL Soft on ";
+
+// [DA_PORT] Имя устройства для показа и для user.ltx: без служебного префикса и без хвостовой скобки
+// с адаптером. Одно правило на движок и на звук, чтобы старые конфиги узнавались после смены вида.
+XRSOUND_API void snd_device_display_name(pstr dst, size_t size, pcstr src);
 
 XRSOUND_API extern ISoundScene* DefaultSoundScene;
 

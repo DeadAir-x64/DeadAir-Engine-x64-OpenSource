@@ -219,6 +219,25 @@ LogCallback SetLogCB(const LogCallback& cb)
 
 pcstr log_name() { return (log_file_name); }
 
+// [DA_PORT] Оставляем последние N логов, остальные удаляем.
+//
+// Порог щедрый намеренно: лог весит сотни килобайт, а потерять нужный - дорого. Сорок запусков это
+// примерно неделя активной игры, и столько же сессий, которые можно поднять задним числом.
+static void da_prune_old_logs(pcstr base, int newest)
+{
+    constexpr int keep = 40;
+    if (newest <= keep)
+        return;
+
+    string_path victim;
+    for (int i = 1; i <= newest - keep; ++i)
+    {
+        xr_sprintf(victim, sizeof(victim), "%s_%03d.log", base, i);
+        if (FS.exist(victim))
+            FS.file_delete(victim);
+    }
+}
+
 void CreateLog(bool nl)
 {
     ZoneScoped;
@@ -248,12 +267,33 @@ void CreateLog(bool nl)
     if (no_log)
         return;
 
+    // [DA_PORT] ---- Свой лог на КАЖДЫЙ запуск: ..._001.log, _002.log и так далее ----------------
+    //
+    // Раньше лог был один: при следующем запуске он перезаписывался, а предыдущий уезжал в .bkp -
+    // то есть в запасе держалась ровно ОДНА прошлая сессия. Этого мало. Тестер вылетает, доигрывает,
+    // запускает снова - и отчёт уже затёрт; у нас так дважды терялись замеры, а из трёх присланных
+    // логов часть пришлось собирать по кускам.
+    //
+    // Номер ищется перебором от единицы: каталог логов перечислять через виртуальную файловую
+    // систему неудобно, а полсотни проверок существования файла на старте не стоят ничего.
+    // Старые чистятся сами - иначе за месяц игры каталог зарастёт.
     if (!unique_logs)
     {
-        // Alun: Backup existing log
-        const xr_string backup_logFName = EFS.ChangeFileExt(log_file_name, ".bkp");
-        FS.file_rename(log_file_name, backup_logFName.c_str(), true);
-        //-Alun
+        string_path base;
+        xr_strcpy(base, sizeof(base), log_file_name);
+        if (pstr dot = strrchr(base, '.'))
+            *dot = 0;
+
+        string_path numbered;
+        int index = 1;
+        for (; index < 10000; ++index)
+        {
+            xr_sprintf(numbered, sizeof(numbered), "%s_%03d.log", base, index);
+            if (!FS.exist(numbered))
+                break;
+        }
+        xr_strcpy(log_file_name, sizeof(log_file_name), numbered);
+        da_prune_old_logs(base, index);
     }
 
     if (const auto w = FS.w_open(log_file_name))

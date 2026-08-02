@@ -44,6 +44,11 @@ private:
     void* m_pBufferData;
     bool m_bChanged;
 
+    // [DA_PORT] Byte-for-byte copy of what was last handed to the GPU, so Flush can tell a real
+    // change from a rewrite of identical values. See r__cb_skip_redundant.
+    void* m_pCommittedData{ nullptr };
+    bool m_bHasCommittedData{ false };
+
     static const u32 lineSize = sizeof(Fvector4);
 
     //	Never try to copy objects of this class due to the pointer and autoptr members

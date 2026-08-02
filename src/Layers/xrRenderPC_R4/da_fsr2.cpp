@@ -40,9 +40,18 @@ bool da_fsr2::create(const init_params& p)
     desc.maxRenderSize = { p.render_width, p.render_height };
     desc.displaySize = { p.display_width, p.display_height };
 
-    // HIGH_DYNAMIC_RANGE: the scene reaching the upscaler has not been tonemapped yet, so values go
-    // above 1. INVERTED_DEPTH is deliberately NOT set — X-Ray's projection is the conventional way up.
-    desc.flags = FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE;
+    // [DA_PORT] ⚠️ HIGH_DYNAMIC_RANGE снят: кадр к этому месту УЖЕ тонемаплен.
+    //
+    // Флаг ставился, когда апскейлер работал в другом месте кадра, и пережил переезд. Сейчас диспетч
+    // стоит внутри phase_combine, после того как combine_1 (`tonemap(o.low, o.high, ...)`) свёл сцену
+    // в отображаемый диапазон и обе половины сложились в rt_Color. То есть библиотеке говорили «это
+    // линейный HDR», а давали картинку 0..1: её внутренняя работа с яркостью — веса, кламп соседства —
+    // считалась в чужой шкале. Заметно это ровно там, где яркость экстремальная: светящаяся палочка на
+    // тёмном фоне шла ступенчатой кромкой при ЛЮБОМ качестве и на всех трёх апскейлерах сразу, потому
+    // что ошибка у всех трёх была одна и та же.
+    //
+    // INVERTED_DEPTH по-прежнему НЕ ставим — проекция X-Ray обычная.
+    desc.flags = 0;
     // The library validates its own inputs far better than we can guess at them - resource sizes,
     // jitter against the phase count, depth convention - and says so through fpMessage. Worth turning
     // on in Release for a session whenever the upscaled picture looks wrong.

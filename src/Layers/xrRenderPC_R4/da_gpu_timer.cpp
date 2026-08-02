@@ -10,6 +10,14 @@ namespace xray::render::RENDER_NAMESPACE
 // namespace. Defining it at global scope links against nothing - the same trap the TAA work hit.
 int ps_da_gpu_log = 0;
 
+// [DA_PORT] Копилка для замера кэша теневых карт (da_shadow_test).
+//
+// Время фазы солнца надо мерить ОТДЕЛЬНО от кадра: после наших оптимизаций кадр идёт за 2.4 мс, и
+// доля теневых карт в нём тонет в шуме — по общему времени разницу между включённым и выключенным
+// кэшем просто не увидеть. Здесь копится ровно z_sun_smap, а отчёт делит на число кадров.
+double g_da_smap_gpu_ms = 0.0;
+u32 g_da_smap_gpu_frames = 0;
+
 da_gpu_timer g_da_gpu_timer;
 
 static const char* zone_names[da_gpu_timer::z_count] = { "sun_smap", "sun_apply", "selfillum", "gbuffer", "lights", "combine" };
@@ -138,6 +146,12 @@ void da_gpu_timer::collect(frame_queries& f)
 
         const double ms = 1000.0 * double(t1 - t0) / double(dj.Frequency);
         total += ms;
+
+        if (z == z_sun_smap)
+        {
+            g_da_smap_gpu_ms += ms;
+            ++g_da_smap_gpu_frames;
+        }
 
         string64 part;
         xr_sprintf(part, " %s %5.2f |", zone_names[z], ms);

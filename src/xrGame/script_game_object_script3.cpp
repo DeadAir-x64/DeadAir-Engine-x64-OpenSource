@@ -270,6 +270,13 @@ luabind::class_<CScriptGameObject>& script_register_game_object2(luabind::class_
         .def("set_radiation_detector", &CScriptGameObject::SetRadiationDetector) // Dead Air compat
         .def("get_radiation_detector", &CScriptGameObject::GetRadiationDetector) // Dead Air compat
         .def("enable_torch2", &CScriptGameObject::EnableTorch2) // Dead Air compat
+        // [DA_PORT] Состояние луча из движка. У мода на этот счёт есть свой флаг
+        // (`itms_manager.Torch2`), и он расходится с движком при каждой загрузке и каждый раз, когда
+        // луч гасит не клавиша, а скрипт разряда батареи. Расхождение стоит нажатия: скрипт шлёт
+        // абсолютное значение, которое уже стоит, и щелчок пропадает впустую. Читать состояние
+        // отсюда — значит не хранить вторую правду.
+        .def("torch2_enabled", +[](CScriptGameObject* o) -> bool
+            { CTorch* t = smart_cast<CTorch*>(&o->object()); return t && t->torch2_active(); })
         // [DA_PORT] flashlight/glowstick/lighter light tuning — REAL impl. Dead Air's xr_actor.script
         // reconfigures the single hidden device_torch (CTorch) per equipped light item via these.
         .def("torch_set_range",     +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->TorchSetRange(v); })
@@ -287,13 +294,18 @@ luabind::class_<CScriptGameObject>& script_register_game_object2(luabind::class_
         // [DA_PORT] "Установить" placement preview: start the ghost-follows-crosshair mode for an item.
         .def("start_item_placement", +[](CScriptGameObject* o, LPCSTR section, u16 item_id)
             { if (CActor* a = smart_cast<CActor*>(&o->object())) a->StartItemPlacement(section, item_id); })
-        .def("torch2_set_color_r",  +[](CScriptGameObject*, float) {})
-        .def("torch2_set_color_g",  +[](CScriptGameObject*, float) {})
-        .def("torch2_set_color_b",  +[](CScriptGameObject*, float) {})
-        .def("torch2_set_offset_x", +[](CScriptGameObject*, float) {})
-        .def("torch2_set_offset_y", +[](CScriptGameObject*, float) {})
-        .def("torch2_set_range",    +[](CScriptGameObject*, float) {})
-        .def("torch2_set_radius",   +[](CScriptGameObject*, float) {})
+        // [DA_PORT] Налобный фонарь. Были заглушками - и налобный свет не работал вовсе: щелчок
+        // играет скрипт, лампу включает Switch2, а её дальность и цвет приходят ИМЕННО отсюда, из
+        // xr_actor.script (UpdateTorch, каждый тик). Пока сеттеры молчали, в лампе оставались
+        // дальность 0 и чёрный цвет из ветки "предмета со светом нет" - той самой, куда налобный
+        // фонарь и попадает, потому что itms_manager никогда не выставляет TorchType 2.
+        .def("torch2_set_color_r",  +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->Torch2SetColorR(v); })
+        .def("torch2_set_color_g",  +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->Torch2SetColorG(v); })
+        .def("torch2_set_color_b",  +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->Torch2SetColorB(v); })
+        .def("torch2_set_offset_x", +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->Torch2SetOffsetX(v); })
+        .def("torch2_set_offset_y", +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->Torch2SetOffsetY(v); })
+        .def("torch2_set_range",    +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->Torch2SetRange(v); })
+        .def("torch2_set_radius",   +[](CScriptGameObject* o, float v)  { if (CTorch* t = smart_cast<CTorch*>(&o->object())) t->Torch2SetRadius(v); })
         // Dead Air compat: DA's 3D item UI (device screens rendered onto the item). OpenXRay has
         // no such subsystem; get_3d_ui's only DA call site is commented out (a void return reads
         // as nil in Lua), reset_3d_ui is only hit from the debug menu's config-reload button.

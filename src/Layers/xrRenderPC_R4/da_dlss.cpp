@@ -2,6 +2,8 @@
 
 #include "da_dlss.h"
 
+extern ENGINE_API void da_upscaler_mark_failed(pcstr who); // [DA_PORT]
+
 namespace xray::render::RENDER_NAMESPACE
 {
 da_dlss g_da_dlss;
@@ -110,9 +112,28 @@ bool load_shim()
 }
 } // namespace
 
-bool da_dlss::supported()
+// [DA_PORT] ⚠️ БЕЗ УСТРОЙСТВА ЭТОТ ОТВЕТ ВСЕГДА «НЕТ».
+//
+// `da_ngx_available` первым делом смотрит на `g_inited`, а инициализация NGX происходит в
+// `da_ngx_init(device)` — то есть только когда DLSS уже выбран и создаётся. Спросить доступность
+// «до» и получить осмысленный ответ нельзя.
+//
+// Поймано сразу: первая же версия отбора пунктов меню спрятала DLSS на RTX-карте, где он прекрасно
+// работает. Поэтому проба обязана инициализировать NGX сама — отсюда параметр `device`.
+//
+// Инициализация идемпотентна (`if (g_inited) return 1`), поэтому оставляем её поднятой: если DLSS
+// потом выберут, `create` просто продолжит с готового состояния.
+bool da_dlss::supported(ID3D11Device* device)
 {
-    return load_shim() && g_shim.available && g_shim.available() != 0;
+    if (!load_shim())
+        return false;
+    if (!g_shim.available || !g_shim.init)
+        return false;
+
+    if (device && !g_shim.init(device, g_shim.dir))
+        return false; // прослойка уже объяснила причину в лог
+
+    return g_shim.available() != 0;
 }
 
 void da_dlss::render_size_for(u32 quality, u32 display_w, u32 display_h, u32& out_w, u32& out_h)
@@ -209,6 +230,10 @@ bool da_dlss::create(const init_params& p)
         // выглядит ровно как работающий DLSS. Один раз мы на это уже попались и час считали прирост
         // от растяжения приростом от DLSS.
         Msg("! [DLSS] feature creation FAILED - DLSS is NOT running.");
+
+        // [DA_PORT] Тот же случай, что у FSR 3 на R9 290: без реконструкции джиттер трясёт экран.
+
+        ::da_upscaler_mark_failed("DLSS");
         Msg("!   Сцена продолжает рисоваться в %ux%u и растягивается до %ux%u обычным фильтром.", rw,
             rh, p.display_width, p.display_height);
         Msg("!   Кадры при этом вырастут, но это выигрыш от пониженного разрешения, а не от DLSS.");

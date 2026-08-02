@@ -3,6 +3,12 @@
 #include "xrEngine/Environment.h"
 #include "Layers/xrRender/dxEnvironmentRender.h"
 
+// [DA_PORT] Разовый срез G-буфера (xr_ioc_cmd.cpp). Объявляем ВНЕ пространства имён: extern внутри
+// xray::render искал бы символ в нём же — та самая грабля, что уже описана у соседних глобалов.
+extern ENGINE_API int ps_r__gbuffer_probe;
+extern ENGINE_API int ps_r__light_watch; // [DA_PORT] сколько кадров подряд писать свет под перекрестьем
+extern ENGINE_API int ps_r__shadow_test;  // [DA_PORT] замер кэша теневых карт, см. da_shadow_test_frame
+
 #define STENCIL_CULL 0
 
 namespace xray::render::RENDER_NAMESPACE
@@ -16,6 +22,7 @@ void CRenderTarget::phase_combine()
 {
     ZoneScoped;
     PIX_EVENT(phase_combine);
+
 
     //	TODO: DX11: Remove half pixel offset
     bool _menu_pp = g_pGamePersistent ? g_pGamePersistent->OnRenderPPUI_query() : false;
@@ -269,16 +276,37 @@ void CRenderTarget::phase_combine()
         }
     }
 
+    // [DA_PORT] Отражения в лужах — здесь и только здесь: копия кадра уже снята (её и отражаем), а
+    // вода ещё не нарисована (иначе лужи отражали бы воду, поверх которой вода же и ляжет).
+    phase_da_puddle_refl();
+
     // Forward rendering
     {
         PIX_EVENT(Forward_rendering);
         u_setrt(RCache, rt_Generic_0_r, nullptr, nullptr, rt_MSAADepth); // LDR RT
         RCache.set_CullMode(CULL_CCW);
-        RCache.set_Stencil(FALSE);
+
+        // [DA_PORT] Пока прямой проход рисует, пусть он оставляет о себе след в трафарете: бит 0x02
+        // поверх того, что уже стоит. Маска записи 0x02 - общий бит 0x01 не трогается вовсе, поэтому
+        // для всего остального кадра ничего не меняется. Гасится этот бит там же, где читается, в
+        // phase_reactive_transparent, одним и тем же draw. См. da_reactive_emissive.ps.
+        if (da_transparent_mark_ready())
+        {
+            RCache.set_Stencil(TRUE, D3DCMP_ALWAYS, 0x03, 0xff, 0x02,
+                D3DSTENCILOP_KEEP, D3DSTENCILOP_REPLACE, D3DSTENCILOP_KEEP);
+        }
+        else
+            RCache.set_Stencil(FALSE);
+
         RCache.set_ColorWriteEnable();
         //	TODO: DX11: CHeck this!
         // g_pGamePersistent->Environment().RenderClouds	();
         RImplementation.render_forward();
+
+        // [DA_PORT] До интерфейса: он рисуется следом и тоже оставил бы след в трафарете, а метить
+        // реактивным интерфейс незачем. Проход сам возвращает цель и гасит трафарет.
+        phase_reactive_transparent();
+
         if (g_pGamePersistent)
             g_pGamePersistent->OnRenderPPUI_main(); // PP-UI
     }
@@ -492,6 +520,108 @@ void CRenderTarget::phase_combine()
         // wobble tracked the applied jitter exactly (r__fsr2_jitter_scale 0 froze it, 10 made it violent)
         // while every jitter sign, every motion-vector sign and the vectors themselves changed nothing —
         // all of them only ever affected an output nobody displayed.
+        // [DA_PORT] Снимок среза — ровно здесь, перед апскейлером: кадр уже собран (в rt_Color лежит
+        // то, что ему отдадут), а цели G-буфера ещё целы. Раньше снимок стоял в начале phase_combine,
+        // и светящийся слой в него не попадал вовсе — его рисует прямой проход НИЖЕ по кадру.
+        // [DA_PORT] Значение — ЗАДЕРЖКА В КАДРАХ, а не просто «включить». 1 (как было) снимает срез
+        // на ближайшем кадре, 120 — через две секунды.
+        //
+        // Зачем: половина того, что мы тут ищем, видна только В ДВИЖЕНИИ - векторы скорости у
+        // неподвижной камеры нулевые по определению, и срез, снятый стоя, о них не говорит ничего.
+        // Набрать команду и одновременно вести мышью нельзя, поэтому задержка.
+        // [DA_PORT] Движение камеры за кадр — считаем ВСЕГДА, читает проба. См. пояснение там же.
+        {
+            extern float g_da_probe_cam_moved;
+            extern float g_da_probe_cam_turned;
+            static Fvector s_prev_pos = Device.vCameraPosition;
+            static Fvector s_prev_dir = Device.vCameraDirection;
+
+            g_da_probe_cam_moved = Device.vCameraPosition.distance_to(s_prev_pos);
+
+            // Угол — через ДЛИНУ ХОРДЫ между направлениями, а не через acos(dotproduct).
+            //
+            // acos у почти сонаправленных векторов теряет точность катастрофически: dot приходит как
+            // 1-1e-7, и acos выдаёт ~0.026 град ИЗ ВОЗДУХА. Порог срабатывания оказался ниже этого
+            // шума, проба снялась у стоящей камеры и написала «ДВИЖЕТСЯ» — то есть прибор соврал
+            // ровно в том, ради чего его и добавляли.
+            //
+            // Для единичных векторов хорда = 2*sin(угол/2), при малых углах это и есть сам угол в
+            // радианах, и считается она вычитанием — без потери значащих цифр.
+            const float chord = Device.vCameraDirection.distance_to(s_prev_dir);
+            g_da_probe_cam_turned = rad2deg(2.f * asinf(chord > 2.f ? 1.f : chord * 0.5f));
+
+            s_prev_pos = Device.vCameraPosition;
+            s_prev_dir = Device.vCameraDirection;
+        }
+
+        // [DA_PORT] Отсчёт идёт ТОЛЬКО по кадрам, в которых камера действительно движется.
+        //
+        // Задержка в кадрах не сработала дважды подряд: попасть мышью в двухсекундное окно, закрыв
+        // перед этим консоль, у человека не выходит, и оба раза срез снимался у стоящей камеры. А у
+        // стоящей камеры нули в векторах — правильный ответ, и замер не говорит ничего.
+        //
+        // Теперь порядок действий не требует меткости: набрал `da_gbuffer_probe 30`, закрыл консоль
+        // и повёл камерой когда угодно — снимок возьмётся с 30-го подвижного кадра. Стоишь — проба
+        // просто ждёт.
+        // [DA_PORT] Наблюдение за светом — здесь же и по той же причине: накопитель ещё не разобран
+        // комбайном. В отличие от среза, пишет КАЖДЫЙ кадр, пока не кончится счётчик.
+        if (::ps_r__light_watch)
+        {
+            --::ps_r__light_watch;
+            da_light_watch();
+        }
+
+        // [DA_PORT] Замер кэша теней. Первая половина отведённых кадров идёт БЕЗ чтений буфера —
+        // это чистое время кадра; вторая половина читает экран и ищет дрожание теней. Смешивать
+        // нельзя: чтение буфера само стоит кадров и испортило бы измерение времени.
+        // [DA_PORT] Замер кэша теней — ВКЛЮЧАЕМЫЙ: `da_shadow_test 1` пошёл, `0` закончил и выдал
+        // отчёт. Раньше это был обратный отсчёт кадров, и для замера стоя годилось; для игры не
+        // годится — за минуту ходьбы нужны и время, и артефакты об одном и том же отрезке.
+        {
+            static bool s_running = false;
+            if (::ps_r__shadow_test && !s_running)
+            {
+                s_running = true;
+                da_shadow_test_start();
+            }
+            else if (!::ps_r__shadow_test && s_running)
+            {
+                s_running = false;
+                da_shadow_test_report();
+            }
+
+            if (s_running)
+            {
+                da_shadow_test_frame(0);
+
+                // [DA_PORT] Автостоп через 60 секунд: прогоны обязаны быть одной длины.
+                //
+                // Вручную получилось от 3 до 51 тысячи кадров, и средние по таким разным выборкам
+                // сравнимы с натяжкой — а сравнение двух настроек и есть весь смысл замера.
+                extern u32 da_shadow_test_elapsed_ms();
+                if (da_shadow_test_elapsed_ms() > 60000)
+                {
+                    s_running = false;
+                    ::ps_r__shadow_test = 0;
+                    da_shadow_test_report();
+                }
+            }
+        }
+
+        if (::ps_r__gbuffer_probe)
+        {
+            extern float g_da_probe_cam_moved;
+            extern float g_da_probe_cam_turned;
+            // Порог заведомо выше дрожания: 0.1 град за кадр — это уже несколько пикселей сдвига,
+            // такое в буфере обязано быть видно. Ловить движение «поменьше» бессмысленно: полпикселя
+            // и настоящая дыра в векторах в логе выглядят одинаково.
+            if (g_da_probe_cam_moved > 0.005f || g_da_probe_cam_turned > 0.1f)
+            {
+                if (--::ps_r__gbuffer_probe == 0)
+                    da_dump_gbuffer_row();
+            }
+        }
+
         PIX_EVENT(DA_phase_fsr2);
         phase_sky_velocity(); // [DA_PORT] fill the sky in before anything reads the velocity buffer
         phase_reactive(); // [DA_PORT] reads the honest velocity, so it goes before the guard touches it
@@ -655,8 +785,11 @@ void CRenderTarget::phase_combine_volumetric()
     RCache.set_ColorWriteEnable(D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE);
     {
         // Fill VB
-        float scale_X = float(Device.dwWidth) / float(TEX_jitter);
-        float scale_Y = float(Device.dwHeight) / float(TEX_jitter);
+        // [DA_PORT] Разрешение рендера, а не окна: цели rt_Generic_*_r заводятся размером
+        // dwRenderWidth x dwRenderHeight. Разбор — в accum_direct, там же почему это ровно тот дефект,
+        // при котором лучи наезжают на куст.
+        float scale_X = float(Device.dwRenderWidth) / float(TEX_jitter);
+        float scale_Y = float(Device.dwRenderHeight) / float(TEX_jitter);
 
         // Fill vertex buffer
         FVF::TL* pv = (FVF::TL*)RImplementation.Vertex.Lock(4, g_combine->vb_stride, Offset);

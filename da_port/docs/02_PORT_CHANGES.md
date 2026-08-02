@@ -1,7 +1,7 @@
 # Карта правок порта
 
 Всё, что отличает этот порт от чистого OpenXRay, помечено в исходниках маркером `[DA_PORT]`
-(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1158 правк(и) в 236 файлах**.
+(инфраструктурные вещи — просто `DA:`). Ниже — полный список: **1381 правк(и) в 257 файлах**.
 
 Список сгенерирован из самих исходников, не написан вручную — значит он не разойдётся с кодом,
 пока маркеры на месте. Пересобрать: `python xray-16/da_port/docs/_regen_changes.py`.
@@ -13,7 +13,7 @@
 
 ## Рендер — DirectX 11 (R4)
 
-*76 файл(ов), 467 правк(и)*
+*82 файл(ов), 545 правк(и)*
 
 
 ### `Layers/xrRender/Blender_Recorder_R2.cpp`
@@ -22,14 +22,25 @@
 
 ### `Layers/xrRender/Blender_Recorder_StandartBinding.cpp`
 
-- **:27** — BIND_DECLARE(wvp_old); // [DA_PORT] motion vectors
-- **:28** — BIND_DECLARE(wvp_nojit); // [DA_PORT] motion vectors
-- **:42** — DECLARE_TREE_BIND(wave_old); // [DA_PORT]
-- **:43** — DECLARE_TREE_BIND(wind_old); // [DA_PORT]
-- **:333** — Deliberately the plain window size, i.e. stock behaviour. Deriving it from the current
-- **:398** — Motion vectors. Registered here, with the transforms, rather than as ordinary
-- **:409** — r_Constant("wave_old", &tree_binder_wave_old); // [DA_PORT] motion vectors
-- **:410** — r_Constant("wind_old", &tree_binder_wind_old); // [DA_PORT] motion vectors
+- **:11** — Ручки луж живут в глобальном пространстве имён (xr_ioc_cmd.cpp), объявлять их ВНУТРИ
+- **:26** — extern ENGINE_API float g_da_rain_wetness; // [DA_PORT] сюда кладём накопленную влажность для игры
+- **:44** — BIND_DECLARE(wvp_old); // [DA_PORT] motion vectors
+- **:45** — BIND_DECLARE(wvp_nojit); // [DA_PORT] motion vectors
+- **:59** — DECLARE_TREE_BIND(wave_old); // [DA_PORT]
+- **:60** — DECLARE_TREE_BIND(wind_old); // [DA_PORT]
+- **:229** — ---- Лужи: сила дождя и накопленная влажность --------------------------------------
+- **:258** — При включённой отладке — раз в секунду в лог. Нужно, чтобы отделить «значение
+- **:267** — Msg("* [DA_PORT] лужи: дождь %.3f, влажность %.3f, размер %.2f, force %.2f, вкл %d",
+- **:307** — Отдаём наружу: по этому числу игровой код решает, плескать ли под ногами.
+- **:317** — Вид воды: зеркальность, потемнение, глянец просто мокрой земли, сила ряби.
+- **:319** — Вторая константа вида: дальность, за которой луж не рисуем. Отдельной сделана потому,
+- **:334** — Отметка о том, что константу вообще спросили. Если этой строки в логе нет, а
+- **:344** — Msg("* [DA_PORT] лужи, вид: глянец %.2f, темнее в %.2f, мокрота %.2f, рябь %.2f",
+- **:474** — Deliberately the plain window size, i.e. stock behaviour. Deriving it from the current
+- **:539** — Motion vectors. Registered here, with the transforms, rather than as ordinary
+- **:550** — r_Constant("wave_old", &tree_binder_wave_old); // [DA_PORT] motion vectors
+- **:551** — r_Constant("wind_old", &tree_binder_wind_old); // [DA_PORT] motion vectors
+- **:574** — лужи: дождь сейчас + накопленная влажность, и отдельно — их вид
 
 ### `Layers/xrRender/D3DXRenderBase.cpp`
 
@@ -121,9 +132,10 @@
 
 - **:16** — World matrix this object had on the PREVIOUS frame, for motion vectors. set_W keeps it
 - **:23** — The two motion-vector matrices, kept here rather than behind R_constant_setup binders.
-- **:51** — void set_W_old(const Fmatrix& m); // [DA_PORT] motion vectors
-- **:64** — IC void set_c_wvp_old(R_constant* C); // [DA_PORT]
-- **:65** — IC void set_c_wvp_nojit(R_constant* C); // [DA_PORT]
+- **:36** — Оружие и предметы в руках рисуются СВОЕЙ проекцией (узкий HUD-обзор,
+- **:68** — void set_W_old(const Fmatrix& m); // [DA_PORT] motion vectors
+- **:81** — IC void set_c_wvp_old(R_constant* C); // [DA_PORT]
+- **:82** — IC void set_c_wvp_nojit(R_constant* C); // [DA_PORT]
 
 ### `Layers/xrRender/ResourceManager_Loader.cpp`
 
@@ -161,9 +173,32 @@
 
 - **:235** — NOTE: this C++ blender is NOT what builds the post-process pass in Dead Air —
 
+### `Layers/xrRender/blenders/blender_taa.cpp`
+
+- **:35** — Маска реактивности - «здесь истории верить нельзя». До 01.08 наша темпоралка её не
+
 ### `Layers/xrRender/blenders/blender_taa.h`
 
 - **:5** — temporal anti-aliasing resolve (R4 only). Blends the previous frame into the current one after
+
+### `Layers/xrRender/dxRainRender.cpp`
+
+- **:4** — Размеры и плотность дождя — ручками, а не константами 2007 года. См. xr_ioc_cmd.cpp.
+- **:33** — const int particles_cache = 1500; // [DA_PORT] было 400 — при плотном дожде всплески обрывались
+- **:76** — Цвет капли множится на r__rain_bright: в конфигах он тёмно-серо-бурый, и тонкая капля
+- **:83** — Всплеск на земле — своя яркость. Общий цвет с каплей давал белую крупу на тёмной земле.
+
+### `Layers/xrRender/light.cpp`
+
+- **:41** — vis.miss_streak = 0; // [DA_PORT]
+
+### `Layers/xrRender/light.h`
+
+- **:75** — Сколько проверок подряд сказали «не видно». Гасим лампу только после нескольких:
+
+### `Layers/xrRender/light_vis.cpp`
+
+- **:84** — Гистерезис вместо мгновенного приговора: лампа гаснет только после нескольких
 
 ### `Layers/xrRender/r__dsgraph_build.cpp`
 
@@ -176,6 +211,9 @@
 
 - **:11** — extern ENGINE_API float g_hud_fov_current; // [DA_PORT] nearwall: == psHUD_FOV unless modulated
 - **:32** — This used to be `if (equal) return false; return left.ssa >= right.ssa;`, which is not a
+- **:159** — HUD-камера для векторов движения: эта и прошлого кадра. Живут в самом объекте, потому
+- **:194** — Вектор движения для всего, что в руках, должен считаться в ТОЙ ЖЕ проекции, в
+- **:227** — cmd_list.xforms.da_set_VP_overrides(nullptr, nullptr); // [DA_PORT] сцена снова считает по себе
 
 ### `Layers/xrRender/xrRender_console.cpp`
 
@@ -204,34 +242,39 @@
 - **:362** — Ready-made grading profiles, so a player can pick a look instead of hunting for numbers.
 - **:377** — Default grading for Dead Air's palette: a slight push towards warm. The mod's world is
 - **:389** — Ceiling on shadow-casting lights per frame. 0 restores the stock "no limit".
-- **:421** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
-- **:561** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
-- **:568** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
-- **:587** — Счётчик кадров для da_sun_log (замер по каскадам солнца). 0 = молчит.
-- **:590** — da_sun_only N: накапливать солнечный свет только от каскада N (1..3), 0 = все.
-- **:613** — Presets for the shadow-casting light ceiling, exposed in the video options.
-- **:615** — One-touch performance preset for the Performance tab.
-- **:628** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:
-- **:632** — Пятый пункт списка — «Своё». Он ничего не применяет, и это не заглушка, а починка.
-- **:722** — Отсюда значение и берут: и список настроек для показа, и Save для записи в конфиг
-- **:746** — Размер теневой карты - единственное в наборе, что не применяется до перезапуска
-- **:755** — Msg("~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры",
-- **:768** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
-- **:786** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
-- **:959** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
-- **:993** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
-- **:1284** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
-- **:1286** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
-- **:1291** — Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
-- **:1297** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
-- **:1309** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
-- **:1311** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
-- **:1379** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
-- **:1443** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
-- **:1504** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
-- **:1535** — Dead Air compatibility stub commands
-- **:1561** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
-- **:1562** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
+- **:397** — Дефолт - «Минимум». Проверено в игре 01.08: разницы в картинке почти нет, а кадр по
+- **:425** — float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
+- **:565** — ---- Geometry cut-off (author's optimisation, see xrRender_console.h) -----------------
+- **:572** — Both levels default to off, unlike the author's 1/1. This subsystem comes from his
+- **:591** — Счётчик кадров для da_sun_log (замер по каскадам солнца). 0 = молчит.
+- **:594** — da_sun_only N: накапливать солнечный свет только от каскада N (1..3), 0 = все.
+- **:598** — Диагностические крутилки регистрируются через CCC_DaDebugInteger / CCC_DaDebugFloat
+- **:619** — Presets for the shadow-casting light ceiling, exposed in the video options.
+- **:621** — One-touch performance preset for the Performance tab.
+- **:634** — Пятый пункт («Ультра-производительность», st_opt_perf_max_fps) убран намеренно:
+- **:638** — Пятый пункт списка — «Своё». Он ничего не применяет, и это не заглушка, а починка.
+- **:671** — Тени от ламп сдвинуты на ступень вниз - иначе применение набора качества в меню
+- **:730** — Отсюда значение и берут: и список настроек для показа, и Save для записи в конфиг
+- **:754** — Размер теневой карты - единственное в наборе, что не применяется до перезапуска
+- **:763** — Msg("~ [DA_PORT] набор настроек: размер теневой карты %s применится после перезапуска игры",
+- **:776** — Note the first entry, and that it is 0 rather than a count: 0 means "no budget at all",
+- **:794** — r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
+- **:967** — Multisampling may not run next to a RECONSTRUCTING upscaler, so picking it clears those -
+- **:1001** — Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
+- **:1286** — Была под DEBUG, а зовёт её наш da_mem_test — в релизе он получал «Unknown command»
+- **:1296** — Geometry cut-off, ported from the author's build. Defaults match his: both levels on
+- **:1298** — Render breakdown into the log, N frames. Needs rs_stats 1 as well: the sub-counters are
+- **:1303** — Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
+- **:1305** — ⚠️ ЧЕРЕЗ CCC_DaDebugInteger, а не CCC_Integer: диагностика не должна оседать в
+- **:1311** — GPU time per render phase, N frames into the log. See da_gpu_timer.h.
+- **:1323** — CMD3(CCC_PerfPreset, "r__perf_preset", &ps_r__perf_preset, q_perf_preset); // [DA_PORT]
+- **:1325** — CMD3(CCC_Token, "r__light_shadow_budget", &ps_r__light_shadow_budget, q_light_shadow_budget); // [DA_PORT]
+- **:1393** — The author's bounds, not the stock ones: he raised the ceiling to 100 and, more to the
+- **:1457** — Un-commented: this drives r_dtex_range, the distance over which the detail texture
+- **:1518** — CMD3(CCC_MSAA, "r3_msaa", &ps_r3_msaa, qmsaa_token); // [DA_PORT] clears the upscaler list
+- **:1549** — Dead Air compatibility stub commands
+- **:1575** — CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+- **:1576** — CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
 
 ### `Layers/xrRender/xrRender_console.h`
 
@@ -288,15 +331,18 @@
 - **:390** — Цепочка всегда оконная: полноэкранный режим держит SDL, см. CHW::OnAppActivate.
 - **:448** — Цепочка всегда оконная (пустое описание полноэкранного = nullptr): полноэкранный
 - **:493** — Условие теперь не срабатывает никогда — цепочка всегда оконная, полноэкранным
-- **:519** — Поимённый список живых объектов D3D при выходе.
-- **:535** — Msg("* [DA_PORT] живые объекты D3D на выходе:");
-- **:537** — Снять потолок очереди ДО переписи. По умолчанию слой отладки хранит 1024
-- **:555** — Перепись уходит в очередь сообщений слоя отладки, а не в наш лог. Сливаем её
-- **:563** — Msg("* [DA_PORT] строк переписи: %u", (u32)count);
-- **:578** — Msg("! [DA_PORT] очередь сообщений недоступна, перепись ушла в отладочный вывод");
-- **:582** — Msg("! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен");
-- **:597** — Ни SetFullscreenState, ни ResizeTarget здесь больше нет.
-- **:711** — Pull whatever the validation layer has to say into the engine log, once per frame.
+- **:507** — Отвязать всё от конвейера и слить очередь уничтожения ПЕРЕД тем, как считать живые
+- **:533** — Поимённый список живых объектов D3D при выходе.
+- **:554** — Msg("* [DA_PORT] живые объекты D3D на выходе:");
+- **:557** — Перепись уходит в очередь сообщений слоя отладки, а не в наш лог, и очередь
+- **:583** — Msg("* [DA_PORT] перепись: потолок очереди %llu",
+- **:597** — Msg("! [DA_PORT] перепись(%s): очередь сообщений недоступна, список ушёл в отладочный вывод",
+- **:606** — Msg("! [DA_PORT] перепись(%s): очередь вернула %llu сообщений, обрезаю", stage,
+- **:611** — Msg("* [DA_PORT] перепись(%s): строк %u, выброшено очередью %u", stage, (u32)count, (u32)dropped);
+- **:636** — Msg("* [DA_PORT] перепись окончена");
+- **:641** — Msg("! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен");
+- **:656** — Ни SetFullscreenState, ни ResizeTarget здесь больше нет.
+- **:770** — Pull whatever the validation layer has to say into the engine log, once per frame.
 
 ### `Layers/xrRenderDX11/dx11R_Backend_Runtime.h`
 
@@ -325,8 +371,10 @@
 
 ### `Layers/xrRenderPC_R4/da_dlss.cpp`
 
-- **:153** — Знаки те же, что у FSR 2. Установлено НАБЛЮДЕНИЕМ, и иначе было нельзя.
-- **:204** — Говорим это громко и полностью, потому что провал здесь МАСКИРУЕТСЯ ПОД УСПЕХ.
+- **:5** — extern ENGINE_API void da_upscaler_mark_failed(pcstr who); // [DA_PORT]
+- **:155** — Знаки те же, что у FSR 2. Установлено НАБЛЮДЕНИЕМ, и иначе было нельзя.
+- **:206** — Говорим это громко и полностью, потому что провал здесь МАСКИРУЕТСЯ ПОД УСПЕХ.
+- **:215** — Тот же случай, что у FSR 3 на R9 290: без реконструкции джиттер трясёт экран.
 
 ### `Layers/xrRenderPC_R4/da_dlss.h`
 
@@ -335,9 +383,10 @@
 
 ### `Layers/xrRenderPC_R4/da_fsr2.cpp`
 
-- **:93** — Reactive mask. Alpha-tested foliage is marked here (deffer_base_aref_*.ps): a branch
-- **:98** — Transparency-and-composition mask. Fed the SAME buffer as the reactive one, on a
-- **:147** — Step 1 has no counterpart in the library - AMD's highest mode is 1.5x. It exists so
+- **:43** — ⚠️ HIGH_DYNAMIC_RANGE снят: кадр к этому месту УЖЕ тонемаплен.
+- **:102** — Reactive mask. Alpha-tested foliage is marked here (deffer_base_aref_*.ps): a branch
+- **:107** — Transparency-and-composition mask. Fed the SAME buffer as the reactive one, on a
+- **:156** — Step 1 has no counterpart in the library - AMD's highest mode is 1.5x. It exists so
 
 ### `Layers/xrRenderPC_R4/da_fsr2.h`
 
@@ -347,9 +396,12 @@
 
 ### `Layers/xrRenderPC_R4/da_fsr3.cpp`
 
-- **:9** — Type-free entry points, see da_fsr3_api.h for why they exist.
-- **:34** — The three buffers FSR 3 shares with whatever runs after it. Formats and usage are taken
-- **:114** — DEBUG_CHECKING stays on in Release. The backend answers a failed context with a bare
+- **:5** — extern ENGINE_API void da_upscaler_mark_failed(pcstr who); // [DA_PORT]
+- **:11** — Type-free entry points, see da_fsr3_api.h for why they exist.
+- **:36** — The three buffers FSR 3 shares with whatever runs after it. Formats and usage are taken
+- **:113** — ⚠️ HIGH_DYNAMIC_RANGE снят — ровно по той же причине, что и у FSR 2 (см. da_fsr2.cpp,
+- **:126** — DEBUG_CHECKING только в отладочной сборке, как у FSR 2. Бэкенд отвечает на неудачу
+- **:137** — Гасим апскейлер сразу: контекст не создался - значит не создастся и дальше, а
 
 ### `Layers/xrRenderPC_R4/da_fsr3.h`
 
@@ -377,7 +429,10 @@
 
 ### `Layers/xrRenderPC_R4/da_xess.cpp`
 
-- **:51** — XESS_RESULT_ERROR_UNSUPPORTED_DEVICE (-1) is the expected answer on most machines,
+- **:5** — extern ENGINE_API void da_upscaler_mark_failed(pcstr who); // [DA_PORT]
+- **:53** — XESS_RESULT_ERROR_UNSUPPORTED_DEVICE (-1) is the expected answer on most machines,
+- **:82** — LDR_INPUT_COLOR: кадр к моменту апскейла УЖЕ тонемаплен (combine_1 сводит сцену в
+- **:94** — Тот же случай, что у FSR 3 на R9 290: без реконструкции джиттер трясёт экран.
 
 ### `Layers/xrRenderPC_R4/da_xess.h`
 
@@ -399,40 +454,54 @@
 - **:73** — ref_rt rt_FSR2_out;    // FSR 2 output, at OUTPUT resolution and writable from a compute shader
 - **:157** — ref_shader s_taa; // temporal AA resolve
 - **:158** — ref_shader s_velocity_guard; // damps vegetation motion next to glossy surfaces
-- **:159** — ref_shader s_reactive; // marks pixels around genuinely moving objects as reactive
-- **:160** — ref_shader s_reactive_dilate_h; // widens that mark, horizontally
-- **:161** — ref_shader s_reactive_dilate_v; // and vertically, folding in the mask the G-buffer left
-- **:162** — ref_shader s_sky_velocity; // the sky writes no motion vectors of its own
-- **:248** — ID3DDepthStencilView* zb); // [DA_PORT] reactive mask as a fourth target
-- **:249** — Convenience form taking the depth buffer as a render target, mirroring the three-target
-- **:289** — void phase_taa(); // temporal AA resolve
-- **:291** — void phase_velocity_guard(); // [DA_PORT] damp vegetation motion next to glossy surfaces
-- **:292** — void phase_reactive(); // [DA_PORT] widen the reactive mask around moving objects, against ghosting
-- **:293** — void phase_sky_velocity(); // [DA_PORT] motion vectors for the sky, which no shader writes
-- **:294** — bool phase_fsr3(); // [DA_PORT] FSR 3 upscaler, same slot in the frame
-- **:295** — bool phase_dlss(); // [DA_PORT] NVIDIA DLSS, same slot in the frame
-- **:296** — bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // FSR 2 upscale; false when it did not run, so the caller can fall back
+- **:159** — ref_shader s_puddle_refl; // [DA_PORT] отражения в лужах, полноэкранный проход
+- **:160** — ref_shader s_reactive; // marks pixels around genuinely moving objects as reactive
+- **:161** — ref_shader s_reactive_dilate_h; // widens that mark, horizontally
+- **:162** — ref_shader s_reactive_dilate_v; // and vertically, folding in the mask the G-buffer left
+- **:163** — ref_shader s_reactive_emissive; // [DA_PORT] метка самосветящейся геометрии, см. phase_reactive_emissive
+- **:164** — ref_shader s_sky_velocity; // the sky writes no motion vectors of its own
+- **:250** — ID3DDepthStencilView* zb); // [DA_PORT] reactive mask as a fourth target
+- **:251** — Convenience form taking the depth buffer as a render target, mirroring the three-target
+- **:291** — void phase_taa(); // temporal AA resolve
+- **:294** — void phase_da_puddle_refl(); // [DA_PORT] // [DA_PORT] damp vegetation motion next to glossy surfaces
+- **:295** — void phase_reactive(); // [DA_PORT] widen the reactive mask around moving objects, against ghosting
+- **:296** — Помечает свечение в маске реактивности. Зовётся сразу после отрисовки свечения, а
+- **:299** — То же для прозрачной геометрии, из середины phase_combine. Своя ручка, по умолчанию 0.
+- **:307** — Срез G-буфера по строке через прицел: глубина, цвет, вектор и маска ОДНОГО пикселя
+- **:310** — void phase_sky_velocity(); // [DA_PORT] motion vectors for the sky, which no shader writes
+- **:311** — bool phase_fsr3(); // [DA_PORT] FSR 3 upscaler, same slot in the frame
+- **:312** — bool phase_dlss(); // [DA_PORT] NVIDIA DLSS, same slot in the frame
+- **:313** — bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // FSR 2 upscale; false when it did not run, so the caller can fall back
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_accum_direct.cpp`
 
-- **:581** — Проверка флага ВОЗВРАЩЕНА (была закомментирована).
+- **:581** — ⛔ [DA_PORT] ПРАВКА ОТКАЧЕНА — она давала видимый дефект. Возвращено поведение
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_phase_combine.cpp`
 
-- **:10** — Defined in dx11HW.cpp - see the note there on why the layer needs draining by hand.
-- **:205** — Visor rain-droplet ("lens water") intensity. blender_combine puts the combine_1.ps
-- **:243** — Scene-grab for water screen-space reflections (SSLR).
-- **:301** — The stand-alone full-screen SSR pass is retired: reflections are done inside Dead Air's
-- **:349** — u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
-- **:356** — u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
-- **:471** — Temporal AA, on the assembled frame.
-- **:485** — FSR 2 belongs HERE, not after phase_combine returns. phase_pp is called from inside
-- **:496** — phase_sky_velocity(); // [DA_PORT] fill the sky in before anything reads the velocity buffer
-- **:497** — phase_reactive(); // [DA_PORT] reads the honest velocity, so it goes before the guard touches it
-- **:498** — phase_velocity_guard(); // [DA_PORT] must run BEFORE any upscaler reads the buffer
-- **:500** — phase_fsr3(); // [DA_PORT]
-- **:502** — phase_dlss(); // [DA_PORT] NVIDIA DLSS, тот же слот кадра; включён всегда только один
-- **:503** — da_d3d_debug_drain(); // [DA_PORT] validation layer output, see dx11HW.cpp // [DA_PORT] the other upscaler; only one is ever enabled
+- **:6** — Разовый срез G-буфера (xr_ioc_cmd.cpp). Объявляем ВНЕ пространства имён: extern внутри
+- **:14** — Defined in dx11HW.cpp - see the note there on why the layer needs draining by hand.
+- **:210** — Visor rain-droplet ("lens water") intensity. blender_combine puts the combine_1.ps
+- **:248** — Scene-grab for water screen-space reflections (SSLR).
+- **:277** — Отражения в лужах — здесь и только здесь: копия кадра уже снята (её и отражаем), а
+- **:287** — Пока прямой проход рисует, пусть он оставляет о себе след в трафарете: бит 0x02
+- **:304** — До интерфейса: он рисуется следом и тоже оставил бы след в трафарете, а метить
+- **:327** — The stand-alone full-screen SSR pass is retired: reflections are done inside Dead Air's
+- **:375** — u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:382** — u_setrt(RCache, Device.dwWidth, Device.dwHeight, get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:497** — Temporal AA, on the assembled frame.
+- **:511** — FSR 2 belongs HERE, not after phase_combine returns. phase_pp is called from inside
+- **:521** — Снимок среза — ровно здесь, перед апскейлером: кадр уже собран (в rt_Color лежит
+- **:531** — phase_sky_velocity(); // [DA_PORT] fill the sky in before anything reads the velocity buffer
+- **:532** — phase_reactive(); // [DA_PORT] reads the honest velocity, so it goes before the guard touches it
+- **:533** — phase_velocity_guard(); // [DA_PORT] must run BEFORE any upscaler reads the buffer
+- **:535** — phase_fsr3(); // [DA_PORT]
+- **:537** — phase_dlss(); // [DA_PORT] NVIDIA DLSS, тот же слот кадра; включён всегда только один
+- **:538** — da_d3d_debug_drain(); // [DA_PORT] validation layer output, see dx11HW.cpp // [DA_PORT] the other upscaler; only one is ever enabled
+
+### `Layers/xrRenderPC_R4/r4_rendertarget_phase_da_puddle_refl.cpp`
+
+- **:3** — Ручки живут в движке (xr_ioc_cmd.cpp), объявлять их внутри namespace нельзя — имя
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_phase_dlss.cpp`
 
@@ -453,33 +522,43 @@
 
 - **:5** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
 - **:11** — extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
-- **:15** — Set only when the upscaler actually produced a frame. The post-process pass keys off
-- **:31** — Release the outputs first. Combine leaves rt_Color bound as the render target and
-- **:40** — The real depth buffer, not rt_Position. That one holds eye-space POSITIONS: four
-- **:60** — Same buffer, second input - see da_fsr2.cpp.
-- **:79** — Device.fFOV is the HORIZONTAL angle — the projection is built from it together with
-- **:88** — Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
-- **:92** — The library's own RCAS pass, on the same slider FSR 1.0 uses. Reconstruction from a
+- **:13** — extern ENGINE_API void da_upscaler_report_failure(pcstr who, bool failed); // [DA_PORT]
+- **:17** — Set only when the upscaler actually produced a frame. The post-process pass keys off
+- **:33** — Release the outputs first. Combine leaves rt_Color bound as the render target and
+- **:42** — The real depth buffer, not rt_Position. That one holds eye-space POSITIONS: four
+- **:62** — Same buffer, second input - see da_fsr2.cpp.
+- **:81** — Device.fFOV is the HORIZONTAL angle — the projection is built from it together with
+- **:90** — Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
+- **:94** — The library's own RCAS pass, on the same slider FSR 1.0 uses. Reconstruction from a
+- **:106** — Три провала подряд — гасим джиттер и объясняем в логе. Иначе на экран
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_phase_fsr3.cpp`
 
 - **:5** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
 - **:12** — extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
-- **:16** — Shared with FSR 2 and XeSS on purpose: only one upscaler reconstructs a given frame, and
-- **:29** — r__fsr3_debug 1: everything exists, nothing runs. See xr_ioc_cmd.cpp for what it splits.
-- **:76** — Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
-- **:87** — Put the pipeline back the way it was found.
+- **:14** — extern ENGINE_API void da_upscaler_report_failure(pcstr who, bool failed); // [DA_PORT]
+- **:18** — Shared with FSR 2 and XeSS on purpose: only one upscaler reconstructs a given frame, and
+- **:31** — r__fsr3_debug 1: everything exists, nothing runs. See xr_ioc_cmd.cpp for what it splits.
+- **:78** — Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
+- **:89** — Три провала подряд — гасим джиттер и объясняем в логе. Иначе на экран
+- **:93** — Put the pipeline back the way it was found.
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_phase_reactive.cpp`
 
 - **:3** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
 - **:12** — extern ENGINE_API bool da_upscaler_active(); // [DA_PORT]
-- **:20** — ---- Self-test: read the buffers back and put numbers in the log --------------------
-- **:154** — Через общий список, а не перечислением: этот if уже дважды забывали обновить при
-- **:161** — Everything this pass works in is travel PER FRAME, so every setting it takes is frame
-- **:186** — Inputs measured before the draw touches anything, output after - see da_probe.
-- **:243** — Fill the target with a value by hand first, then draw over it. The two readings that
-- **:261** — The same draw again per debug mode, each writing one ingredient AS THE SHADER SEES
+- **:15** — extern ENGINE_API float ps_r__reactive_emissive; // [DA_PORT] метка свечения, см. phase_reactive_emissive
+- **:16** — extern ENGINE_API float ps_r__reactive_transparent; // [DA_PORT] то же для прозрачной геометрии
+- **:22** — ---- Self-test: read the buffers back and put numbers in the log --------------------
+- **:142** — ---- Срез G-буфера по строке через прицел -------------------------------------------
+- **:228** — Найти в кадре самый яркий пиксель. Прицеливаться руками оказалось невозможно: предмет в
+- **:324** — Карта силуэта: одна строка могла попасть в ровный участок кромки, а зубцы идут с шагом
+- **:376** — Через общий список, а не перечислением: этот if уже дважды забывали обновить при
+- **:383** — Everything this pass works in is travel PER FRAME, so every setting it takes is frame
+- **:408** — Inputs measured before the draw touches anything, output after - see da_probe.
+- **:465** — Fill the target with a value by hand first, then draw over it. The two readings that
+- **:483** — The same draw again per debug mode, each writing one ingredient AS THE SHADER SEES
+- **:518** — ---- Метка свечения в маске реактивности ---------------------------------------------
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_phase_sky_velocity.cpp`
 
@@ -488,12 +567,13 @@
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_phase_taa.cpp`
 
-- **:3** — temporal anti-aliasing resolve. Blends the previous frame (rt_TAA_history) into the current one
-- **:15** — extern ENGINE_API bool da_upscaler_active(); // [DA_PORT]
-- **:16** — extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
-- **:27** — Not alongside an upscaler. Each of them is a temporal resolve in its own right, working
-- **:36** — Через общий список: забытый здесь бэкенд оставляет ДВА временных фильтра на кадре.
-- **:47** — Склейка: истории нет, смешивать не с чем.
+- **:3** — Определена в движке (xr_ioc_cmd.cpp), объявляется ВНЕ пространства имён.
+- **:6** — temporal anti-aliasing resolve. Blends the previous frame (rt_TAA_history) into the current one
+- **:18** — extern ENGINE_API bool da_upscaler_active(); // [DA_PORT]
+- **:19** — extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
+- **:30** — Not alongside an upscaler. Each of them is a temporal resolve in its own right, working
+- **:39** — Через общий список: забытый здесь бэкенд оставляет ДВА временных фильтра на кадре.
+- **:50** — Склейка: истории нет, смешивать не с чем.
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_phase_velocity_guard.cpp`
 
@@ -505,8 +585,10 @@
 
 - **:5** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace.
 - **:9** — extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
-- **:25** — Release the outputs first — same trap that made FSR 2 reconstruct a black frame and
-- **:60** — Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
+- **:11** — extern ENGINE_API void da_upscaler_report_failure(pcstr who, bool failed); // [DA_PORT]
+- **:27** — Release the outputs first — same trap that made FSR 2 reconstruct a black frame and
+- **:62** — Через общий сброс: загрузка уровня и телепорт тоже выбрасывают историю,
+- **:70** — Три провала подряд — гасим джиттер и объясняем в логе. Иначе на экран
 
 ### `Layers/xrRenderPC_R4/r4_rendertarget_u_set_rt.cpp`
 
@@ -521,11 +603,13 @@
 - **:42** — Tell a mod author when their shader will not work with the upscalers.
 - **:79** — Name-gated, and the first attempt without it was wrong.
 - **:96** — Msg("! [DA_PORT] shader [%s] draws into the G-buffer but writes no motion vector "
-- **:467** — Motion vectors as an extra G-buffer output — see f_deffer in common_iostructs.h. Must
-- **:470** — appendShaderOption(o.velocity_debug_ids, "DA_DEBUG_SHADER_IDS", "1"); // [DA_PORT] see r2.cpp
-- **:490** — Enable Dead Air's visor rain-droplet ("lens water") effect that lives in the
-- **:499** — Enable Dead Air's OWN screen-space reflections on water. DA's archive water.ps/waterd.ps
-- **:535** — Do NOT inject H_*/L_*/PIXEL_SIZE/eye_direction macros here!
+- **:105** — Второй молчаливый отказ той же природы: ВЕРШИННЫЙ шейдер без джиттера.
+- **:141** — Msg("! [DA_PORT] шейдер [%s] рисует геометрию, но не применяет джиттер "
+- **:511** — Motion vectors as an extra G-buffer output — see f_deffer in common_iostructs.h. Must
+- **:514** — appendShaderOption(o.velocity_debug_ids, "DA_DEBUG_SHADER_IDS", "1"); // [DA_PORT] see r2.cpp
+- **:534** — Enable Dead Air's visor rain-droplet ("lens water") effect that lives in the
+- **:543** — Enable Dead Air's OWN screen-space reflections on water. DA's archive water.ps/waterd.ps
+- **:579** — Do NOT inject H_*/L_*/PIXEL_SIZE/eye_direction macros here!
 
 ### `Layers/xrRenderPC_R4/xrRender_R4.cpp`
 
@@ -586,12 +670,20 @@
 
 - **:3** — GPU timing per phase - see da_gpu_timer.h. R4 only; the GL branch has no D3D11 queries.
 - **:25** — Defined in the engine (device.cpp). Declared out here, not inside the function that uses it:
-- **:42** — The composite path below draws the menu into rt_Generic_0 — but the UI lays itself out in
-- **:68** — Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
-- **:128** — Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
-- **:251** — Keep only the most prominent lights casting shadows; demote the rest.
-- **:461** — FSR 2 used to be dispatched here, which looked like "after the frame is assembled but
-- **:465** — Remember this frame's camera for the next one. Temporal effects reproject a pixel into
+- **:29** — Разовый дамп очередей, рисуемых после G-буфера, см. r__emissive_probe.
+- **:34** — Лампы, у которых бюджет теней снял флаг bShadow на этот кадр. Флаг - постоянное свойство
+- **:58** — The composite path below draws the menu into rt_Generic_0 — but the UI lays itself out in
+- **:84** — Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:144** — Target->u_setrt(RCache, Device.dwWidth, Device.dwHeight, Target->get_base_rt(), 0, 0, nullptr); // [DA_PORT] no depth on the back buffer
+- **:267** — Keep only the most prominent lights casting shadows; demote the rest.
+- **:282** — Бюджет забивается БЛИЖАЙШИМИ источниками, и меряется расстояние не до самой
+- **:320** — ⚠️ [DA_PORT] Флаг ОБЯЗАН сняться. Прежний комментарий здесь утверждал обратное -
+- **:503** — К общему биту 0x01 добавляется свой, 0x02, когда включена метка свечения. Иначе
+- **:526** — Разовый дамп: в какой очереди лежит то, что мерцает. Всё перечисленное рисуется
+- **:549** — Пока трафарет ещё помнит, где легло свечение: дальше идёт свет, а он переписывает
+- **:569** — Свет отрисован - возвращаем флаг тем, у кого его занял бюджет теней.
+- **:581** — FSR 2 used to be dispatched here, which looked like "after the frame is assembled but
+- **:585** — Remember this frame's camera for the next one. Temporal effects reproject a pixel into
 
 ### `Layers/xrRender_R2/r2_loader.cpp`
 
@@ -655,19 +747,23 @@
 - **:473** — FSR 3 создаётся под КОНКРЕТНЫЙ размер рендера, как DLSS выше, а не под предел,
 - **:757** — temporal AA resolve (R4-only). Skipped under MSAA: common.h then types s_position as
 - **:763** — Script blender, unlike the TAA one - it needs no textures beyond two
-- **:766** — Object-motion reactivity, see phase_reactive. Two blenders share one pixel
-- **:839** — see phase_pp: no depth when targeting the back buffer (sizes may differ)
-- **:907** — ⭐ Контексты апскейлеров уничтожаются ЗДЕСЬ. Раньше их не уничтожал никто.
+- **:766** — Отражения в лужах: читает копию освещённого кадра, пишет поверх сцены.
+- **:768** — Object-motion reactivity, see phase_reactive. Two blenders share one pixel
+- **:774** — Метка свечения: не читает вообще ничего, пишет константу по трафарету.
+- **:843** — see phase_pp: no depth when targeting the back buffer (sizes may differ)
+- **:911** — ⭐ Контексты апскейлеров уничтожаются ЗДЕСЬ. Раньше их не уничтожал никто.
 
 ### `Layers/xrRender_R2/r2_rendertarget_phase_PP.cpp`
 
 - **:3** — Defined in the engine (xr_ioc_cmd.cpp). Declared out here, not inside the namespace: an
-- **:8** — extern ENGINE_API int ps_r__dlss; // [DA_PORT] эти двое резкости не имеют своей
-- **:143** — no depth here on purpose: this composites a full-screen quad onto the back buffer,
-- **:203** — Colour grading. r__color_base_r/g/b and r2_vibrance_val existed as console variables
-- **:210** — Sharpening strength for the upscale (RCAS, the second half of FSR 1.0).
-- **:221** — w = 1, когда кадр сделал апскейлер, который НЕ точит сам.
-- **:233** — Gamma / brightness / contrast. These reach the screen through the hardware gamma ramp,
+- **:8** — extern ENGINE_API int ps_r__upscale_show_input; // [DA_PORT] показать вход апскейлера вместо выхода
+- **:9** — extern ENGINE_API int ps_r__dlss; // [DA_PORT] эти двое резкости не имеют своей
+- **:144** — no depth here on purpose: this composites a full-screen quad onto the back buffer,
+- **:204** — Colour grading. r__color_base_r/g/b and r2_vibrance_val existed as console variables
+- **:211** — Sharpening strength for the upscale (RCAS, the second half of FSR 1.0).
+- **:218** — `r__upscale_show_input 1` — на экран идёт ВХОД апскейлера, а не его выход. Сам он при
+- **:227** — w = 1, когда кадр сделал апскейлер, который НЕ точит сам.
+- **:239** — Gamma / brightness / contrast. These reach the screen through the hardware gamma ramp,
 
 ### `Layers/xrRender_R2/r2_rendertarget_phase_bloom.cpp`
 
@@ -714,7 +810,7 @@
 
 ## Движок и устройство
 
-*20 файл(ов), 163 правк(и)*
+*22 файл(ов), 213 правк(и)*
 
 
 ### `xrEngine/CameraManager.cpp`
@@ -804,6 +900,12 @@
 
 - **:47** — не крашиться, если класс не создался (битый/незарегистрированный clsid) — залогировать и вернуть null
 
+### `xrEngine/Rain.cpp`
+
+- **:7** — Ручки дождя, см. xr_ioc_cmd.cpp
+- **:34** — Пул всплесков. Был 1000 при отказе на каждый второй удар; теперь всплеск даёт каждая
+- **:200** — Было `if (0 != ::Random.randI(2)) return;` — половина капель падала бесследно, без
+
 ### `xrEngine/XR_IOConsole.cpp`
 
 - **:251** — Очистить строку ввода после выполнения. Её не очищал никто: команда
@@ -825,14 +927,15 @@
 ### `xrEngine/x_ray.cpp`
 
 - **:192** — Headless tooling runs (-da_export_scripts/-da_export_configs) and explicit
-- **:305** — Msg("* [DA_PORT] App: before TaskScheduler->Wait(lightAnim)"); FlushLog();
-- **:307** — Msg("* [DA_PORT] App: after TaskScheduler->Wait"); FlushLog();
-- **:315** — Msg("* [DA_PORT] App: after create_persistent"); FlushLog();
-- **:318** — Msg("* [DA_PORT] App: before OnAppStart"); FlushLog();
-- **:320** — Msg("* [DA_PORT] App: after OnAppStart"); FlushLog();
-- **:384** — Msg("* [DA_PORT] Run: before HideSplash"); FlushLog();
-- **:386** — Msg("* [DA_PORT] Run: before Device.Run"); FlushLog();
-- **:388** — Msg("* [DA_PORT] Run: after Device.Run, entering loop"); FlushLog();
+- **:284** — Перечисление устройств должно закончиться ДО user.ltx, а не после.
+- **:313** — Msg("* [DA_PORT] App: before TaskScheduler->Wait(lightAnim)"); FlushLog();
+- **:315** — Msg("* [DA_PORT] App: after TaskScheduler->Wait"); FlushLog();
+- **:323** — Msg("* [DA_PORT] App: after create_persistent"); FlushLog();
+- **:326** — Msg("* [DA_PORT] App: before OnAppStart"); FlushLog();
+- **:328** — Msg("* [DA_PORT] App: after OnAppStart"); FlushLog();
+- **:392** — Msg("* [DA_PORT] Run: before HideSplash"); FlushLog();
+- **:394** — Msg("* [DA_PORT] Run: before Device.Run"); FlushLog();
+- **:396** — Msg("* [DA_PORT] Run: after Device.Run, entering loop"); FlushLog();
 
 ### `xrEngine/xr_input.cpp`
 
@@ -853,83 +956,132 @@
 - **:401** — extern ENGINE_API int ps_r__dlss; // [DA_PORT]
 - **:419** — Our own temporal AA belongs here too: it owns the frame's history exactly as the
 - **:425** — Is a TEMPORAL upscaler reconstructing this frame?
-- **:441** — ---- Сброс истории временных фильтров -------------------------------------------------
-- **:458** — Msg("* [DA_PORT] temporal history discarded: %s", why);
-- **:495** — Msg("! [DA_PORT] %s switched off - only one upscaler may reconstruct a frame, and two at once "
-- **:501** — ---- What the menu actually shows: which upscaler, and how hard -----------------------
-- **:512** — Our own temporal AA belongs in this list, not beside it.
-- **:523** — Порядок строк — это порядок пунктов в меню, и он выбран, а не унаследован: сначала то,
-- **:610** — MSAA cannot run next to a RECONSTRUCTING upscaler, and loses to it.
-- **:637** — Msg("* [DA_PORT] upscaler %d, quality step %d: scene renders at %d%% of the output", ps_r__upscaler,
-- **:656** — Same idea as CCC_FSR2 below: the quality mode also sets the render scale, because Intel's
-- **:683** — Msg("* [DA_PORT] XeSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
-- **:687** — DLSS. Устроен как XeSS выше, но коэффициенты свои: они замерены у самой NGX через
-- **:719** — Msg("* [DA_PORT] DLSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
-- **:767** — Msg("* [DA_PORT] FSR 2 mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
-- **:789** — Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible
-- **:861** — Частоту приводим к той, что есть в списке для этого разрешения.
-- **:900** — Msg("~ [DA_PORT] режим %s: в списке для этого разрешения только %u Гц, беру её",
-- **:970** — Режима три, а не четыре, и порядок в списке — от оконного к полноэкранному.
-- **:993** — Старое имя режима из прежних конфигов приводим к ближайшему из оставшихся.
-- **:998** — Msg("~ [DA_PORT] режим окна без рамки больше не предлагается, включён оконный");
-- **:1025** — Выключение полного экрана даёт полный экран В ОКНЕ, а не окно без рамки:
-- **:1044** — Exported: the renderer now applies these itself when the hardware gamma ramp is
-- **:1254** — Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
-- **:1272** — Percentage of the output resolution the 3D scene is rendered at (see
-- **:1276** — Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
-- **:1282** — Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
-- **:1287** — Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
-- **:1293** — AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
-- **:1298** — Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
-- **:1301** — ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества
-- **:1303** — Отдавать ли DLSS нашу реактивную маску.
-- **:1314** — Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
-- **:1317** — FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
-- **:1322** — D3D11 validation layer, plus draining its messages into the engine log. Off by
-- **:1327** — Halves the FSR 3 path so the damage can be attributed without a validation layer.
-- **:1333** — Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности.
-- **:1350** — Reactivity from screen-space motion, against ghosting behind moving objects. The
-- **:1360** — Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
-- **:1398** — Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
-- **:1405** — One-shot readback of the pass's inputs and output into the log, with figures rather than a
-- **:1409** — The frame rate the three settings above are stated at.
-- **:1424** — Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
-- **:1428** — Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
-- **:1438** — Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
-- **:1460** — ---- Detail-bump stability under a temporal upscaler --------------------------------
-- **:1484** — Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
-- **:1491** — Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
-- **:1498** — ---- Glossy surfaces opt out of temporal accumulation -------------------------------
-- **:1512** — 0 = vegetation stands still in the shadow map while still swaying on screen. See
-- **:1516** — Качание ТРАВЫ на сильном ветру: 0 - как в исходном движке, 1 - как в Dead Air.
-- **:1530** — Частота качания травы, множителем к тому, что получилось выше. Единица - не вмешиваться.
-- **:1538** — 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
-- **:1543** — Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
-- **:1557** — Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
-- **:1563** — Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
-- **:1569** — One control instead of two. The pair that actually drives the upscale — render scale and
-- **:1581** — Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
-- **:1586** — Show the temporal resolve where it fetches history from - see da_taa.ps.
-- **:1592** — How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
-- **:1615** — Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
-- **:1619** — Projection jitter, separately switchable. TAA has two halves that fail in different ways —
-- **:1668** — Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
-- **:1673** — What the options menu shows. The three per-vendor variables above stay for the console.
-- **:1699** — Detail-bump damping, see the declarations. Sensitivity and strength in one number:
-- **:1711** — Качание травы: 0 = как в исходном движке (по умолчанию), 1 = как в моде.
-- **:1716** — CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
-- **:1717** — CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
-- **:1718** — CMD4(CCC_Integer, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
-- **:1720** — CMD4(CCC_Integer, "r__d3d_debug", &ps_r__d3d_debug, 0, 1); // [DA_PORT] restart to apply
-- **:1721** — CMD4(CCC_Integer, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
-- **:1722** — CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer res...
-- **:1723** — CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
-- **:1724** — CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
-- **:1726** — CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
-- **:1727** — CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
-- **:1728** — CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
-- **:1729** — CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
-- **:1734** — CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
+- **:436** — Апскейлер выбран, но НЕ РАБОТАЕТ на этой машине — взводится самим бэкендом после
+- **:451** — ---- Отказ апскейлера: гасим тихо и говорим громко ------------------------------------
+- **:481** — Msg("! [DA_PORT] %s не работает на этой видеокарте: три неудачных кадра подряд.", who);
+- **:482** — Msg("! [DA_PORT] Субпиксельный сдвиг выключен, иначе картинка тряслась бы: сцена сдвигается, а");
+- **:483** — Msg("! [DA_PORT] собрать её обратно некому. Сейчас кадр просто растягивается — будет мягче.");
+- **:484** — Msg("! [DA_PORT] Выберите другой апскейлер в настройках видео: FSR 2.0 работает на любой карте.");
+- **:487** — Мгновенный отказ: контекст библиотеки вообще не создался.
+- **:498** — Msg("! [DA_PORT] %s не запустился на этой видеокарте.", who ? who : "апскейлер");
+- **:499** — Msg("! [DA_PORT] Субпиксельный сдвиг выключен, иначе картинка тряслась бы: сцена сдвигается, а");
+- **:500** — Msg("! [DA_PORT] собрать её обратно некому. Кадр просто растягивается - будет мягче, но ровно.");
+- **:501** — Msg("! [DA_PORT] Выберите другой апскейлер в настройках видео: FSR 2.0 работает на любой карте.");
+- **:508** — Msg("* [DA_PORT] отметка «апскейлер не работает» снята: выбран другой режим");
+- **:513** — ---- Сброс истории временных фильтров -------------------------------------------------
+- **:530** — Msg("* [DA_PORT] temporal history discarded: %s", why);
+- **:567** — Msg("! [DA_PORT] %s switched off - only one upscaler may reconstruct a frame, and two at once "
+- **:573** — ---- What the menu actually shows: which upscaler, and how hard -----------------------
+- **:584** — Our own temporal AA belongs in this list, not beside it.
+- **:595** — Порядок строк — это порядок пунктов в меню, и он выбран, а не унаследован: сначала то,
+- **:648** — Новый выбор — новая попытка: прошлый отказ к нему отношения не имеет.
+- **:685** — MSAA cannot run next to a RECONSTRUCTING upscaler, and loses to it.
+- **:712** — Msg("* [DA_PORT] upscaler %d, quality step %d: scene renders at %d%% of the output", ps_r__upscaler,
+- **:731** — Same idea as CCC_FSR2 below: the quality mode also sets the render scale, because Intel's
+- **:758** — Msg("* [DA_PORT] XeSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:762** — DLSS. Устроен как XeSS выше, но коэффициенты свои: они замерены у самой NGX через
+- **:794** — Msg("* [DA_PORT] DLSS mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:842** — Msg("* [DA_PORT] FSR 2 mode %d: scene renders at %d%% of the output", *value, ps_r__render_scale);
+- **:864** — Upscaling presets (FSR 1.0). Scales follow the usual naming: quality is a barely visible
+- **:936** — Частоту приводим к той, что есть в списке для этого разрешения.
+- **:975** — Msg("~ [DA_PORT] режим %s: в списке для этого разрешения только %u Гц, беру её",
+- **:1045** — Режима три, а не четыре, и порядок в списке — от оконного к полноэкранному.
+- **:1068** — Старое имя режима из прежних конфигов приводим к ближайшему из оставшихся.
+- **:1073** — Msg("~ [DA_PORT] режим окна без рамки больше не предлагается, включён оконный");
+- **:1100** — Выключение полного экрана даёт полный экран В ОКНЕ, а не окно без рамки:
+- **:1119** — Exported: the renderer now applies these itself when the hardware gamma ramp is
+- **:1250** — Устройства с таким именем больше нет — не ругаемся «Invalid syntax» в пустоту, а
+- **:1367** — Effective per-frame HUD FOV. Equals psHUD_FOV unless the opt-in "nearwall" weapon
+- **:1385** — Percentage of the output resolution the 3D scene is rendered at (see
+- **:1389** — Temporal anti-aliasing. Lives in the engine rather than the renderer because the camera
+- **:1395** — Sharpening applied after the render-scale upscale (the RCAS half of FSR 1.0), in percent.
+- **:1400** — Motion vectors: an extra G-buffer target recording where each pixel was last frame. This is
+- **:1406** — AMD FidelityFX Super Resolution 2: 0 off, 1 quality, 2 balanced, 3 performance,
+- **:1411** — Intel XeSS. A separate variable rather than one shared "upscaler" enum: each builds its
+- **:1414** — ENGINE_API int ps_r__dlss = 0; // [DA_PORT] NVIDIA DLSS: 0 выкл, 1-5 ступень качества
+- **:1416** — Отдавать ли DLSS нашу реактивную маску.
+- **:1427** — Разовый замер векторов движения: числа в лог вместо перебора знаков глазами.
+- **:1429** — Показать ВХОД апскейлера вместо его результата.
+- **:1439** — Разовый снимок среза G-буфера по строке через прицел (см. CRenderTarget::
+- **:1446** — FSR 3 upscaler. A separate variable rather than a mode of r__fsr2: the two build
+- **:1451** — D3D11 validation layer, plus draining its messages into the engine log. Off by
+- **:1456** — Halves the FSR 3 path so the damage can be attributed without a validation layer.
+- **:1462** — Насколько апскейлеры должны не доверять своей истории на альфа-тестовой растительности.
+- **:1479** — Reactivity from screen-space motion, against ghosting behind moving objects. The
+- **:1489** — Reactivity from motion THROUGH THE WORLD, against the ghost trailing an NPC.
+- **:1508** — Метка самосветящейся геометрии - лампочка, экран телевизора, светящаяся палочка в руке.
+- **:1525** — Насколько маска реактивности гасит накопление в НАШЕЙ темпоралке (r__taa).
+- **:1536** — То же для прозрачной геометрии - стекло, вода, частицы. По умолчанию НОЛЬ, и это не
+- **:1542** — Сколько объектов лежит в очередях, которые рисуются ПОСЛЕ G-буфера, и сколько света в
+- **:1570** — Which ingredient of the pass to write out instead of the mask, so that "r__motion_vectors 4"
+- **:1577** — One-shot readback of the pass's inputs and output into the log, with figures rather than a
+- **:1581** — The frame rate the three settings above are stated at.
+- **:1596** — Motion vectors for the sky, which no shader writes - see da_sky_velocity.ps. A switch
+- **:1600** — Put a stalker that has slid off the navigation mesh back onto it, rather than let it fail
+- **:1610** — Velocity guard: damps vegetation motion near glossy standing surfaces, so that FSR's
+- **:1632** — ---- Detail-bump stability under a temporal upscaler --------------------------------
+- **:1656** — Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
+- **:1663** — Scales the sway amplitude of trees and grass. 0 freezes the vegetation completely while
+- **:1670** — ---- Glossy surfaces opt out of temporal accumulation -------------------------------
+- **:1684** — 0 = vegetation stands still in the shadow map while still swaying on screen. See
+- **:1688** — Качание ТРАВЫ на сильном ветру: 0 - как в исходном движке, 1 - как в Dead Air.
+- **:1702** — Частота качания травы, множителем к тому, что получилось выше. Единица - не вмешиваться.
+- **:1710** — ---- Лужи в дождь ------------------------------------------------------------------
+- **:1733** — Вид воды — отдельной константой, чтобы правился В ИГРЕ, а не пересборкой шейдера.
+- **:1752** — --- Сезон -------------------------------------------------------------------------------
+- **:1770** — ⚠️ Хранилище у сезона РОВНО ОДНО — файл-признак. В user.ltx команда не пишется намеренно.
+- **:1801** — Msg("* [DA_PORT] сезон: %s (применится после перезапуска игры)", value);
+- **:1804** — Msg("! [DA_PORT] сезон: не удалось записать %s", marker);
+- **:1808** — Поднять текущий сезон из того же признака, по которому файловая система уже смонтировала
+- **:1828** — Msg("* [DA_PORT] сезон: %s", (1 == ps_da_season) ? "лето" : "осень");
+- **:1841** — Msg("* [DA_PORT] сезон: лето (признака нет, летний архив на месте)");
+- **:1846** — Msg("* [DA_PORT] сезон: осень (признака нет, летнего архива тоже)");
+- **:1849** — Яркость луча фонарей. Множитель к цвету лампы, а не к дальности: цвет фонарей задаёт
+- **:1857** — ---- Дождь -------------------------------------------------------------------------
+- **:1893** — ---- «Стоим ли мы в луже» для остальной игры -------------------------------------------
+- **:1943** — ---- Пункты меню «Дождь» ------------------------------------------------------------
+- **:1947** — Отражения в лужах: отдельный полноэкранный проход (см. r4_rendertarget_phase_da_puddle_refl).
+- **:2064** — 0 = vegetation reports no motion at all to the upscaler. FSR 2 dilates velocity from the
+- **:2069** — Feeds the foliage mask to FSR 2's transparency-and-composition input as well as its
+- **:2083** — Which way round the jitter is handed to FSR 2: 0 = (+x,-y), 1 = (-x,+y), 2 = (+x,+y),
+- **:2089** — Sign of the motion vectors handed to FSR 2: 0 = (-x,+y), 1 = (-x,-y), 2 = (+x,+y),
+- **:2095** — One control instead of two. The pair that actually drives the upscale — render scale and
+- **:2107** — Post-resolve sharpening, in percent. Temporal accumulation is inherently softening — every
+- **:2112** — Show the temporal resolve where it fetches history from - see da_taa.ps.
+- **:2118** — How much of the normal history weight the SKY keeps, in percent. 100 is the behaviour
+- **:2141** — Negative mip bias to pair with TAA, in hundredths of a level. Off by default: it sharpens
+- **:2145** — Projection jitter, separately switchable. TAA has two halves that fail in different ways —
+- **:2194** — Above 100 the scene is rendered LARGER than the window and downsampled on the way out,
+- **:2199** — What the options menu shows. The three per-vendor variables above stay for the console.
+- **:2203** — Диагностика, не настройка: ноль — рабочее состояние (буфер скоростей включает сам
+- **:2222** — Обе — диагностика (см. CCC_DaDebug в xr_ioc_cmd.h): da_perf_dump печатает в лог
+- **:2234** — Detail-bump damping, see the declarations. Sensitivity and strength in one number:
+- **:2246** — Качание травы: 0 = как в исходном движке (по умолчанию), 1 = как в моде.
+- **:2250** — Лужи в дождь. Действуют сразу, без перезапуска: все четыре числа читаются на кадр.
+- **:2255** — Принудительная сырость — отладочная: держит мокрый асфальт в ясную погоду, поэтому
+- **:2264** — Яркость фонарей. Действуют сразу: цвет ламп пересчитывается каждый кадр.
+- **:2268** — Сезон: осень / лето. Применяется со следующего запуска игры.
+- **:2273** — Дождь. Действуют сразу, без перезапуска.
+- **:2279** — Пункты меню «Дождь»: две ступени вместо восьми чисел.
+- **:2293** — CMD3(CCC_DLSS, "r__dlss", (u32*)&ps_r__dlss, qdlss_token); // [DA_PORT]
+- **:2294** — CMD4(CCC_Integer, "r__dlss_reactive", &ps_r__dlss_reactive, 0, 1); // [DA_PORT] применяется сразу
+- **:2295** — CMD4(CCC_DaDebugInteger, "r__dlss_selftest", &ps_r__dlss_selftest, 0, 1); // [DA_PORT] разовый замер в лог
+- **:2296** — CMD4(CCC_DaDebugInteger, "r__upscale_show_input", &ps_r__upscale_show_input, 0, 1); // [DA_PORT] вход вместо выхода
+- **:2297** — CMD4(CCC_DaDebugInteger, "da_gbuffer_probe", &ps_r__gbuffer_probe, 0, 1); // [DA_PORT] срез по строке в лог
+- **:2299** — restart to apply. 1 — слой проверки DirectX, 2 — он же плюс перепись живых объектов
+- **:2303** — CMD4(CCC_DaDebugInteger, "r__fsr3_debug", &ps_r__fsr3_debug, 0, 1); // [DA_PORT] 1 = create but never dispatch
+- **:2304** — CMD4(CCC_Integer, "r__fsr3", &ps_r__fsr3, 0, 5); // [DA_PORT] quality step, restart to apply // sets r__render_scale to match; needs a renderer res...
+- **:2305** — CMD4(CCC_Integer, "r__upscale_sharpness", &ps_r__upscale_sharpness, 0, 100); // [DA_PORT] FSR-style RCAS
+- **:2306** — CMD4(CCC_Integer, "r__taa", &ps_r__taa, 0, 1); // [DA_PORT]
+- **:2308** — CMD4(CCC_Integer, "r__taa_sky", &ps_r__taa_sky, 0, 100); // [DA_PORT]
+- **:2309** — CMD4(CCC_Integer, "r__taa_sharp", &ps_r__taa_sharp, 0, 100); // [DA_PORT]
+- **:2310** — CMD4(CCC_Integer, "r__taa_mipbias", &ps_r__taa_mipbias, 0, 100); // [DA_PORT]
+- **:2311** — CMD4(CCC_Integer, "r__taa_jitter", &ps_r__taa_jitter, 0, 1); // [DA_PORT]
+- **:2316** — CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
+
+### `xrEngine/xr_ioc_cmd.h`
+
+- **:433** — Крутилка «на один сеанс»: ведёт себя как обычная, но НЕ пишется в user.ltx.
 
 ### `xrEngine/xr_level_controller.cpp`
 
@@ -943,7 +1095,7 @@
 
 ## Игровая логика
 
-*72 файл(ов), 349 правк(и)*
+*80 файл(ов), 417 правк(и)*
 
 
 ### `xrGame/Actor.cpp`
@@ -967,18 +1119,20 @@
 - **:2085** — Helmets were read but never applied: CHelmet loads health/radiation/power/bleeding/
 - **:2106** — as above: the outfit's stamina drain only bites while sprinting
 - **:2126** — How much artefacts take off a hit of this type. ONE function, used both by the damage path
+- **:2165** — Кислородный баллон гасит химию ПОРОГОМ, а не арифметикой.
 
 ### `xrGame/Actor.h`
 
 - **:24** — class IRenderVisual; // [DA_PORT] item placement-preview ghost
 - **:208** — Belt AND backpack slot - the tank and the exo backpack are artefacts too. Shared by the
-- **:446** — how hard the carried weapon / worn outfit cut into sprint speed (sprint_*_koef)
-- **:497** — "Установить" placement-preview mode (kerosene lamp etc.): a ghost of the item follows
-- **:507** — item placement-preview state
-- **:513** — Ghost highlight. The model itself cannot be tinted from here — IRenderVisual does not
-- **:525** — hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):
-- **:532** — float m_fCamRecoilCoeff{1.f}; // [DA_PORT] см. SetCamRecoilCoeff
-- **:537** — Множитель отдачи камеры, через который работает перк «Твёрдая рука». Скрипты ставят
+- **:211** — Порог кислородного баллона против химии — тот же, что в скрипте мода. См. Actor.cpp.
+- **:448** — how hard the carried weapon / worn outfit cut into sprint speed (sprint_*_koef)
+- **:499** — "Установить" placement-preview mode (kerosene lamp etc.): a ghost of the item follows
+- **:509** — item placement-preview state
+- **:515** — Ghost highlight. The model itself cannot be tinted from here — IRenderVisual does not
+- **:527** — hold-breath + DA zoom-inertion (see CActor::UpdateCL where zoom inertion is applied):
+- **:534** — float m_fCamRecoilCoeff{1.f}; // [DA_PORT] см. SetCamRecoilCoeff
+- **:539** — Множитель отдачи камеры, через который работает перк «Твёрдая рука». Скрипты ставят
 
 ### `xrGame/ActorAnimation.cpp`
 
@@ -1014,8 +1168,10 @@
 ### `xrGame/ActorInput.cpp`
 
 - **:42** — item placement-preview mode: fire = confirm, use/reload = cancel; swallow the rest so
-- **:131** — Night vision is owned by the Lua script: itms_manager.script on_key_press catches
-- **:288** — Отладочный пульс отсюда снят: он показал, что команда доходит до движения нормально,
+- **:126** — Переключение камеры с клавиш отключено — как у автора (`//case kCAM_1: ...` в
+- **:138** — Night vision is owned by the Lua script: itms_manager.script on_key_press catches
+- **:149** — Фонарь принадлежит скрипту — ровно как ночное зрение выше, и по той же причине.
+- **:309** — Отладочный пульс отсюда снят: он показал, что команда доходит до движения нормально,
 
 ### `xrGame/Actor_Movement.cpp`
 
@@ -1041,6 +1197,7 @@
 
 - **:14** — #include "xrEngine/LightAnimLibrary.h" // [DA_PORT] world lamp light (device_kerosinka) color animator
 - **:15** — #include "ParticlesObject.h" // [DA_PORT] world flame particle (device_kerosinka kerosine_glow)
+- **:180** — void CCustomDetector::OnHiddenItem() { DaStopHudEffects(); } // [DA_PORT] см. DaStopHudEffects
 - **:195** — m_world_light.destroy(); // [DA_PORT] release the world lamp light
 - **:196** — if (m_world_particles) // [DA_PORT] release the world flame particle
 - **:198** — if (m_hud_particles) // [DA_PORT] release the HUD flame particle
@@ -1054,10 +1211,12 @@
 - **:383** — particles_enabled=true DET_SIMP items (kerosene lamp -> "kerosine_glow") show a world flame.
 - **:391** — hud_particles_enabled=true (device_lighter) -> flame on the first-person HUD model bone.
 - **:428** — hud_ui_* generic 3D artefact screen -------------------------------------
-- **:560** — keep the world lamp's light positioned + flickering; runs for the independent
-- **:565** — keep the held lighter's HUD flame on its bone (self-gates on hud_particles_enabled + drawn).
-- **:580** — ActivateWorldLight(false); // [DA_PORT] picked up -> no world light (handheld uses device_torch)
-- **:586** — dropped into the world -> a light item (kerosene lamp) starts burning on the ground.
+- **:503** — Погасить пламя и подсветку зажигалки НЕМЕДЛЕННО, а не «когда-нибудь на обновлении».
+- **:576** — keep the world lamp's light positioned + flickering; runs for the independent
+- **:581** — keep the held lighter's HUD flame on its bone (self-gates on hud_particles_enabled + drawn).
+- **:596** — ActivateWorldLight(false); // [DA_PORT] picked up -> no world light (handheld uses device_torch)
+- **:602** — dropped into the world -> a light item (kerosene lamp) starts burning on the ground.
+- **:626** — DaStopHudEffects(); // [DA_PORT] убрали в рюкзак — огонёк туда не летит
 
 ### `xrGame/CustomDetector.h`
 
@@ -1067,7 +1226,8 @@
 - **:188** — World light for dropped/placed light items (e.g. the device_kerosinka kerosene lamp,
 - **:198** — world flame particle (device_kerosinka particles_enabled=true -> "kerosine_glow"). Plays and
 - **:206** — HUD flame particle (device_lighter hud_particles_enabled=true -> "gas_light_glow" attached to
-- **:212** — the held lighter must actually illuminate. device_lighter has no light_* of its own and its
+- **:209** — Гасит пламя и подсветку зажигалки по событию, а не по обновлению — убранный предмет
+- **:216** — the held lighter must actually illuminate. device_lighter has no light_* of its own and its
 
 ### `xrGame/CustomOutfit.cpp`
 
@@ -1112,11 +1272,17 @@
 - **:404** — Dead Air starts from "this hit wounds" and lets the switch below veto it, rather than
 - **:430** — No per-bone scaling on burns - Dead Air drops m_fHitBoneScale here. Fire damage
 
+### `xrGame/GameObject.cpp`
+
+- **:1053** — Объект без формы столкновений. Так бывает у уже уничтоженного объекта: net_Destroy
+- **:1071** — Msg("~ [DA_PORT] зрение: у объекта '%s' нет формы столкновений (уничтожается?) - точка взята без габаритов",
+
 ### `xrGame/GamePersistent.cpp`
 
 - **:3** — #include "da_memory_probe.h" // [DA_PORT]
-- **:684** — Загрузка сохранения ИЗНУТРИ игры — отдельный путь: уровень остаётся в памяти,
-- **:690** — Погасить все звучащие эмиттеры перед сносом мира.
+- **:484** — Отложенная команда — ИМЕННО ЗДЕСЬ, а не в CLevel::OnFrame.
+- **:691** — Загрузка сохранения ИЗНУТРИ игры — отдельный путь: уровень остаётся в памяти,
+- **:697** — Погасить все звучащие эмиттеры перед сносом мира.
 
 ### `xrGame/HudItem.cpp`
 
@@ -1126,19 +1292,21 @@
 
 ### `xrGame/Inventory.cpp`
 
-- **:51** — false, // [DA_PORT] script animation slot (13)
-- **:52** — true, // [DA_PORT] grenade slot (14) - DA relocated hand grenades here (DA slot_active_14 = true)
-- **:53** — false // [DA_PORT] backpack slot (15)
-- **:98** — Only warn when the config actually defines MORE slots than the engine enum knows
-- **:191** — Dead Air's slot 14 (GRENADE_SLOT) is a MANUAL utility slot the actor shares between a
-- **:611** — Skip the auto-refill for the ACTOR: Dead Air's slot 14 is a manual utility
-- **:752** — The mod's own key, bound to G. A TOGGLE rather than a select: press once to take the
-- **:1058** — Equipped gear counts at 30% of its weight, as in Dead Air.
-- **:1266** — Dead Air: an outfit with backpack_avaliable=false (scientific suit) forbids a backpack.
-- **:1289** — Dead Air backpacks are artefact-class (belt=true from af_base) but must NEVER live on the
-- **:1531** — Сообщение осталось только на ОТКАЗ вернуть слот — молчание вместо шума.
-- **:1546** — Msg("~ [DA_PORT] слот %d не вернулся после блокировки: предмет %s, слот %s", PrevActiveSlot,
-- **:1567** — Убранное сообщение: см. TryActivatePrevSlot. Само по себе убирание оружия под
+- **:18** — #include "Torch.h" // [DA_PORT] запрет второго скрытого фонаря, см. CanTakeItem
+- **:52** — false, // [DA_PORT] script animation slot (13)
+- **:53** — true, // [DA_PORT] grenade slot (14) - DA relocated hand grenades here (DA slot_active_14 = true)
+- **:54** — false // [DA_PORT] backpack slot (15)
+- **:99** — Only warn when the config actually defines MORE slots than the engine enum knows
+- **:192** — Dead Air's slot 14 (GRENADE_SLOT) is a MANUAL utility slot the actor shares between a
+- **:612** — Skip the auto-refill for the ACTOR: Dead Air's slot 14 is a manual utility
+- **:753** — The mod's own key, bound to G. A TOGGLE rather than a select: press once to take the
+- **:1059** — Equipped gear counts at 30% of its weight, as in Dead Air.
+- **:1267** — Dead Air: an outfit with backpack_avaliable=false (scientific suit) forbids a backpack.
+- **:1290** — Dead Air backpacks are artefact-class (belt=true from af_base) but must NEVER live on the
+- **:1360** — Второй скрытый фонарь не берём.
+- **:1552** — Сообщение осталось только на ОТКАЗ вернуть слот — молчание вместо шума.
+- **:1567** — Msg("~ [DA_PORT] слот %d не вернулся после блокировки: предмет %s, слот %s", PrevActiveSlot,
+- **:1588** — Убранное сообщение: см. TryActivatePrevSlot. Само по себе убирание оружия под
 
 ### `xrGame/InventoryOwner.cpp`
 
@@ -1181,6 +1349,10 @@
 - **:201** — Msg("! [DA_PORT] -da_export_configs: exported %u/%u VFS configs to appdata\\logs\\vfs_configs\\, quitting",
 - **:384** — Drawing the paused scene behind the menu was tried and reverted: the menu is composed
 
+### `xrGame/Missile.cpp`
+
+- **:465** — Печать номера кадра на каждый бросок была под MASTER_GOLD, а его в нашей сборке нет —
+
 ### `xrGame/RegistryFuncs.cpp`
 
 - **:15** — Отсутствие ключа — норма, а не ошибка, и печаталась она четыре раза за запуск.
@@ -1201,26 +1373,57 @@
 
 ### `xrGame/Torch.cpp`
 
-- **:40** — m_da_color.set(1.f, 1.f, 1.f, 1.f); // [DA_PORT] default white; overridden per item by torch_set_color_*
-- **:179** — "torch" - dim companion light only (light_omni). Dead Air's itms_manager.script
-- **:184** — Spot items (flashlight) must NOT light the omni companion - it floods the whole area
-- **:200** — "torch2" - the real flashlight beam (light_render, spot+shadow), toggled
-- **:296** — Always start the actor's torch in the OFF state.
-- **:338** — --- Dead Air per-item torch light tuning (driven by xr_actor.script apply_torch_type) ---
-- **:388** — light_omni->set_active(false);  // [DA_PORT] spot item (flashlight): kill the omni flood; light is the beam only
-- **:397** — Either light (torch/omni or torch2/spot) being on needs position/rotation updates.
-- **:553** — Actor's torch/torch2 must stay under local key-press control, not server state.
+- **:22** — Яркость луча фонарей (xrEngine, xr_ioc_cmd.cpp) — множители к цвету ламп.
+- **:44** — m_da_color.set(1.f, 1.f, 1.f, 1.f); // [DA_PORT] default white; overridden per item by torch_set_color_*
+- **:46** — Налобный фонарь. Значения - те же, что каждый тик шлёт xr_actor.script (UpdateTorch),
+- **:192** — Модель автора: у ИГРОКА светит одна лампа — light_render, а light_omni ему не светит
+- **:203** — Единственное место, где решается, горит ли лампа игрока.
+- **:217** — ПРОСТЫЕ ЯВНЫЕ ПРАВИЛА (31.07, решение принято намеренно). Прежняя схема разводила два скриптовых
+- **:231** — Отчёт о КОНЕЧНОМ состоянии лампы, по факту его смены. Ставится здесь, а не в
+- **:244** — Msg("* [DA_PORT] лампа: луч %d, рассеянная %d (torch1 %d, torch2 %d, предмет %d), "
+- **:253** — Сообщить СКРИПТУ, что фонарь погашен.
+- **:277** — Msg("%s [DA_PORT] фонарь: состояние скрипта %s", ok ? "*" : "~",
+- **:281** — Сколько скрытых фонарей у владельца. См. Switch2.
+- **:304** — "torch2" - the real flashlight beam (light_render, spot+shadow), toggled
+- **:322** — Здесь действует АБСОЛЮТНАЯ семантика: скрипт присылает состояние, а не «переключи».
+- **:336** — Налобный включается только если он ОДИН. Второй скрытый фонарь снимается с трупа
+- **:342** — Msg("~ [DA_PORT] налобный фонарь не включён: скрытых фонарей в инвентаре %d, должен быть один",
+- **:350** — Отчёт о состоянии луча в момент переключения. Ставится не "на всякий случай": когда
+- **:358** — Msg("* [DA_PORT] фонарь: %s, луч %s, дальность %.1f, конус %.0f, цвет %.2f/%.2f/%.2f, дин.свет %d, текстура %s",
+- **:439** — Always start the actor's torch in the OFF state.
+- **:469** — Фонарь игрока обязан быть работоспособен СРАЗУ, как попал к нему в руки, а не после
+- **:487** — Фонарь игрока ВСЕГДА начинает погашенным — при новой игре, загрузке сохранения и
+- **:510** — --- Dead Air per-item torch light tuning (driven by xr_actor.script apply_torch_type) ---
+- **:538** — --- Налобный фонарь (torch2) ---------------------------------------------------------
+- **:562** — Чёрный цвет = лампа не светит, хотя формально включена. Так и получалось у фонарика:
+- **:574** — Своя текстура проекции налобному. Прожектор светит СКВОЗЬ неё, и без пригодной
+- **:629** — Смена аниматора меняет и то, кто задаёт цвет лампы: с ним — он, без него — наш цвет.
+- **:640** — Msg("~ [DA_PORT] фонарь: цветовой аниматор '%s' не найден - цвет берётся из настроек предмета", name);
+- **:655** — Как у автора: переключается ТИП одной лампы, а не выбор между двумя источниками.
+- **:667** — Смена источника света в руках ГАСИТ всё: взял фонарик — палочка погасла, и наоборот.
+- **:680** — Either light (torch/omni or torch2/spot) being on needs position/rotation updates.
+- **:799** — Здесь цвет луча задаёт АНИМАТОР, кадр за кадром, минуя DaApplyBeam — значит и
+- **:841** — Actor's torch/torch2 must stay under local key-press control, not server state.
 
 ### `xrGame/Torch.h`
 
 - **:24** — Dead Air's scripts drive two independent lights: "torch" (itms_manager.script
 - **:35** — Runtime light tuning driven by Dead Air's xr_actor.script. DA carries ONE hidden
-- **:65** — "torch2" - the real player-controlled flashlight beam (see m_switched_on2 above).
-- **:70** — Dead Air per-item light tuning (xr_actor.script -> torch_set_* bindings). Applied to
+- **:43** — ВТОРОЕ семейство настроек - для налобного фонаря (torch2). DA настраивает луч двумя
+- **:81** — "torch2" - the real player-controlled flashlight beam (see m_switched_on2 above).
+- **:86** — Dead Air per-item light tuning (xr_actor.script -> torch_set_* bindings). Applied to
+- **:101** — Налобный фонарь (torch2_set_* из xr_actor.script). См. m_da2_* выше.
+- **:110** — Единственное место, решающее, горит ли лампа игрока. См. Torch.cpp.
+- **:113** — Сообщить скрипту, что фонарь погашен (itms_manager.Torch2). См. Torch.cpp.
 
 ### `xrGame/UIGameSP.cpp`
 
 - **:125** — The engine deliberately does NOT open the PDA here - the author disabled this in his
+
+### `xrGame/UITimeDilator.cpp`
+
+- **:5** — Ход времени, выбранный игроком (console_commands.cpp). См. stopTimeDilation ниже.
+- **:79** — Возвращаем ход времени, выбранный игроком, а не жёсткую единицу.
 
 ### `xrGame/Weapon.cpp`
 
@@ -1313,7 +1516,8 @@
 
 ### `xrGame/ai/stalker/ai_stalker.cpp`
 
-- **:750** — Counted at the door, because the numbers stopped adding up: sixteen of these run per
+- **:461** — ⭐ Убитый NPC договаривал начатую фразу.
+- **:759** — Counted at the door, because the numbers stopped adding up: sixteen of these run per
 
 ### `xrGame/ai/stalker/ai_stalker_fire.cpp`
 
@@ -1368,56 +1572,66 @@
 ### `xrGame/console_commands.cpp`
 
 - **:2** — #include "xrEngine/Engine.h" // [DA_PORT] da_dev_mode()
-- **:78** — extern float g_scope_fov; // Actor.cpp [DA_PORT] CoC-Xray compat
-- **:115** — see WeaponMagazined::state_Fire - weapons pick up breakages while being fired.
-- **:174** — #include "da_memory_probe.h" // [DA_PORT]
-- **:195** — Dump the UI xml files the game actually loads, straight through the engine's VFS, into
-- **:223** — Msg("~ [DA_PORT] ui dump: cannot open [%s]", src);
-- **:242** — Msg("~ [DA_PORT] ui dump: cannot write [%s]", dst);
-- **:246** — Msg("~ [DA_PORT] dumped %u/%u ui xml files to appdata" DELIMITER "logs" DELIMITER "vfs_ui" DELIMITER,
-- **:253** — Same trick for shaders, needed to edit the G-buffer output structure for motion vectors.
-- **:288** — Msg("~ [DA_PORT] shader dump: cannot open [%s]", src);
-- **:306** — Msg("~ [DA_PORT] shader dump: cannot write [%s]", dst);
-- **:310** — Msg("~ [DA_PORT] dumped %u/%u shader files from [%s] to appdata" DELIMITER "logs" DELIMITER
-- **:328** — Поиск утечки памяти. Подробности и протокол — в da_memory_probe.h.
-- **:343** — Целая крутилка, которая НЕ сохраняется в user.ltx: живёт ровно один запуск.
-- **:359** — Снимок посреди игры: замер для ПОКАДРОВЫХ утечек, которые протокол загрузок не видит.
-- **:367** — Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число
-- **:726** — Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
-- **:829** — Walk the live in-game HUD window tree and report what is actually on screen: every widget's
-- **:850** — Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
-- **:862** — Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
-- **:869** — Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
-- **:873** — Msg("~ [DA_PORT] --- HUD tree ---");
-- **:875** — Msg("~ [DA_PORT] --- end of HUD tree ---");
-- **:879** — Report what every belt item actually gives the actor.
-- **:898** — Msg("! [DA_PORT] no level loaded - run this in the game world");
-- **:905** — Msg("! [DA_PORT] no actor - run this in the game world");
-- **:909** — Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
-- **:917** — Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
-- **:921** — Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
-- **:927** — Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
-- **:932** — Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
-- **:935** — Msg("~ [DA_PORT] --- end of belt ---");
-- **:2471** — CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
-- **:2472** — CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
-- **:2473** — CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
-- **:2474** — CMD1(CCC_DaMemSnap, "da_mem_snap");   // [DA_PORT] снимок посреди игры: покадровые утечки
-- **:2476** — Размытие при прицеливании и перезарядке. По умолчанию выключено: эффект
-- **:2483** — extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
-- **:2485** — extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
-- **:2487** — extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
-- **:2495** — Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного
-- **:2545** — Dead Air compatibility aliases
-- **:2551** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
-- **:2561** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
-- **:2568** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
-- **:2580** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
-- **:2582** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
-- **:2721** — Developer commands: registered only when the game was started with "-dev".
-- **:2740** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
-- **:2920** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
-- **:2972** — Брать широкоформатную разметку и на узком экране. Подробности - у самой
+- **:55** — #include "da_memory_probe.h" // [DA_PORT] инструменты замера и воспроизведения
+- **:65** — ⚠️ [DA_PORT] Ниже — ВНЕ блока #ifdef DEBUG, и это намеренно: проверять отчёт о вылете
+- **:68** — Отложенная команда: da_after_load <кадров> <команда с аргументами>.
+- **:97** — Намеренная авария: проверка отчёта о вылете на той же сборке, что у игроков.
+- **:105** — Msg("~ [DA_PORT] ===== НАМЕРЕННАЯ АВАРИЯ (da_crash_test) =====");
+- **:106** — Msg("~ [DA_PORT] Это проверка отчёта о вылете, а НЕ дефект. Если такой лог пришёл от");
+- **:107** — Msg("~ [DA_PORT] игрока - значит команду набрали руками. В расследование не брать.");
+- **:133** — extern float g_scope_fov; // Actor.cpp [DA_PORT] CoC-Xray compat
+- **:170** — see WeaponMagazined::state_Fire - weapons pick up breakages while being fired.
+- **:249** — Dump the UI xml files the game actually loads, straight through the engine's VFS, into
+- **:277** — Msg("~ [DA_PORT] ui dump: cannot open [%s]", src);
+- **:296** — Msg("~ [DA_PORT] ui dump: cannot write [%s]", dst);
+- **:300** — Msg("~ [DA_PORT] dumped %u/%u ui xml files to appdata" DELIMITER "logs" DELIMITER "vfs_ui" DELIMITER,
+- **:307** — Same trick for shaders, needed to edit the G-buffer output structure for motion vectors.
+- **:342** — Msg("~ [DA_PORT] shader dump: cannot open [%s]", src);
+- **:360** — Msg("~ [DA_PORT] shader dump: cannot write [%s]", dst);
+- **:364** — Msg("~ [DA_PORT] dumped %u/%u shader files from [%s] to appdata" DELIMITER "logs" DELIMITER
+- **:382** — Поиск утечки памяти. Подробности и протокол — в da_memory_probe.h.
+- **:397** — Крутилки, которые НЕ сохраняются в user.ltx и живут ровно один запуск, регистрируются
+- **:401** — Снимок посреди игры: замер для ПОКАДРОВЫХ утечек, которые протокол загрузок не видит.
+- **:409** — Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число
+- **:768** — Was Level().g_cl_Spawn(args, 0xff, M_SPAWN_OBJECT_LOCAL, pos), a purely client-side
+- **:871** — Walk the live in-game HUD window tree and report what is actually on screen: every widget's
+- **:892** — Msg("~ [DA_PORT] %s%s [%s] shown=%d abs=(%.0f,%.0f)-(%.0f,%.0f) size=%.0fx%.0f", pad, name ? name : "<noname>",
+- **:904** — Msg("~ [DA_PORT] hud flags: draw=%d draw_info=%d draw_map=%d info=%d", psHUD_Flags.test(HUD_DRAW) ? 1 : 0,
+- **:911** — Msg("! [DA_PORT] no in-game HUD right now - run this while in the game world");
+- **:915** — Msg("~ [DA_PORT] --- HUD tree ---");
+- **:917** — Msg("~ [DA_PORT] --- end of HUD tree ---");
+- **:921** — Report what every belt item actually gives the actor.
+- **:940** — Msg("! [DA_PORT] no level loaded - run this in the game world");
+- **:947** — Msg("! [DA_PORT] no actor - run this in the game world");
+- **:951** — Msg("~ [DA_PORT] --- belt contents (%u item(s)) ---", (u32)actor->inventory().m_belt.size());
+- **:959** — Msg("~ [DA_PORT]   %s : NOT a CArtefact - contributes nothing", sect);
+- **:963** — Msg("~ [DA_PORT]   %s : cond=%.3f power=%.5f health=%.5f satiety=%.5f bleed=%.5f rad=%.5f addw=%.2f", sect,
+- **:969** — Msg("~ [DA_PORT]   summed power restore = %.5f/s (the artefact tick applies it at double rate)",
+- **:974** — Msg("~ [DA_PORT]   load = %.2f kg, carry limit = %.2f, walk limit = %.2f, power now = %.3f",
+- **:977** — Msg("~ [DA_PORT] --- end of belt ---");
+- **:1781** — Выбранный ИГРОКОМ ход времени. Нужен отдельно от `Device.time_factor()`, потому что
+- **:1800** — Сохраняется в user.ltx: иначе значение пришлось бы задавать заново каждый запуск.
+- **:2527** — CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
+- **:2528** — CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
+- **:2529** — CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
+- **:2530** — CMD1(CCC_DaMemSnap, "da_mem_snap");   // [DA_PORT] снимок посреди игры: покадровые утечки
+- **:2532** — Размытие при прицеливании и перезарядке. По умолчанию выключено: эффект
+- **:2539** — extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
+- **:2541** — extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного
+- **:2543** — extern int g_da_mem_trap_size; // [DA_PORT] размер блока, содержимое которого показываем
+- **:2551** — Ловушка в самом аллокаторе: печатает стек в момент выделения блока заданного
+- **:2601** — Dead Air compatibility aliases
+- **:2607** — "hud_draw_map" used to be mapped onto the shared HUD_DRAW bit - toggling it off
+- **:2617** — psHUD_Flags.set(HUD_DRAW_INFO, true); // [DA_PORT] bottom-left readout is on unless the player says otherwise
+- **:2624** — nearwall weapon-collision HUD FOV (opt-in, off by default; vars defined in HudItem.cpp)
+- **:2636** — CMD4(CCC_Float, "scope_fov", &g_scope_fov, 5.0f, 180.0f); // [DA_PORT] CoC-Xray compat
+- **:2638** — Weapons pick up breakages while firing - Dead Air's own mechanic, which its author left
+- **:2777** — Developer commands: registered only when the game was started with "-dev".
+- **:2795** — Msg("~ [DA_PORT] developer mode: cheat and script commands registered");
+- **:2798** — Ход времени доступен в обычной игре, а не только в режиме разработчика: это не читерская
+- **:2980** — Registered outside the DEBUG block on purpose: we need it in the Release build we ship
+- **:3005** — Намеренная авария для проверки отчёта о вылете.
+- **:3044** — Брать широкоформатную разметку и на узком экране. Подробности - у самой
 
 ### `xrGame/da_memory_probe.cpp`
 
@@ -1425,10 +1639,12 @@
 - **:180** — Ловушка аллокатора обязана молчать на время обхода, иначе игра падает в HeapLock.
 - **:201** — Обходим ТОЛЬКО СВОИ кучи, а не все кучи процесса.
 - **:309** — По умолчанию ВЫКЛЮЧЕНО. Было включено на время охоты за утечкой, и это оказалось
+- **:1147** — ---- Отложенное выполнение команды: da_after_load ---------------------------------------
 
 ### `xrGame/da_memory_probe.h`
 
 - **:3** — Поиск утечки памяти по повторным загрузкам одного и того же сохранения.
+- **:60** — Отложенное выполнение консольной команды после загрузки уровня — см. .cpp.
 
 ### `xrGame/game_base.cpp`
 
@@ -1452,6 +1668,26 @@
 - **:29** — Consecutive failures, for the hopeless case - see process().
 - **:108** — Counted because this is the last unmeasured occupant of the parallel sequence, and
 - **:126** — Back off only once a stalker has failed REPEATEDLY.
+
+### `xrGame/material_manager.cpp`
+
+- **:12** — Есть ли лужа в этой точке мира (xrEngine, xr_ioc_cmd.cpp).
+- **:89** — Земля под ногами для звука шага. Шаги играет CStepManager через get_current_pair(), а не
+- **:115** — Msg("* [DA_PORT] шаги по лужам: материал воды %s (индекс %u)",
+- **:122** — Под крышей плеска быть не должно. Картинка это уже учитывает — там гейтом служит
+- **:142** — Лог пишется ПО СМЕНЕ состояния и только для игрока, а не по таймеру и не для каждого
+- **:153** — Msg("* [DA_PORT] под ногами %s: шум %d, крыша %d, влажность %.2f, пара с водой %d",
+- **:165** — Msg("* [DA_PORT] шаги: влажность %.2f, в луже %d, крыша %d, пара с водой есть %d, земля %u",
+- **:181** — Шаги по лужам. Земля под ногами считается водой, если в этой точке есть лужа — тогда
+
+### `xrGame/material_manager.h`
+
+- **:41** — Пара БЕЗ подмены на воду: нужна для частиц. Звук в луже должен быть водяным, а вот
+- **:46** — Какой материал считать землёй под ногами: обычно тот, что под персонажем, но в луже —
+
+### `xrGame/material_manager_inline.h`
+
+- **:16** — в луже землёй считается вода — см. da_ground_material_idx()
 
 ### `xrGame/player_hud.cpp`
 
@@ -1499,6 +1735,10 @@
 - **:228** — Msg("! [DA_PORT] AI: [%s] is stuck off the navigation mesh and the "
 - **:236** — Say WHO, and stop saying it every frame.
 
+### `xrGame/step_manager.cpp`
+
+- **:205** — Частицы берутся из ПАРЫ ЗЕМЛИ, а не из той, что пошла на звук. В луже звуковая
+
 ### `xrGame/trade2.cpp`
 
 - **:160** — Dead Air reads the condition exponent from config ([trade] buy_condition_koeff),
@@ -1511,10 +1751,14 @@
 - **:99** — Msg("* [DA_PORT] create_persistent: after object_factory, before CGamePersistent"); FlushLog();
 - **:101** — Msg("* [DA_PORT] create_persistent: after CGamePersistent"); FlushLog();
 
+### `xrGame/xrServer_process_event_reject.cpp`
+
+- **:46** — Печатался УКАЗАТЕЛЬ e_parent под %d вместо id_parent. В логе это выглядело как
+
 
 ## Интерфейс (UI)
 
-*26 файл(ов), 82 правк(и)*
+*28 файл(ов), 90 правк(и)*
 
 
 ### `xrGame/ui/ArtefactDetectorUI.cpp`
@@ -1568,17 +1812,19 @@
 
 - **:54** — ShowIfExist(m_pLists[eInventorySidearmList], true); // [DA_PORT] slot 5 sidearm (pistol/binocular) cell
 - **:252** — m_pLists[eInventorySidearmList], // [DA_PORT] slot 5 sidearm cell
-- **:394** — Dead Air equips items to small "utility" slot cells whose authored capacity (rows_num x
-- **:431** — A Dead Air slot cell can be authored smaller than the item it must hold (the slot-14
-- **:546** — Dead Air shares engine slot 14 between the hand grenade and the binocular. Double-
-- **:613** — block equipping a backpack (incl. force/drag) when the worn outfit forbids it.
-- **:658** — same slot-cell-too-small guard as InitCellForSlot: grow the target cell to fit the
-- **:820** — Dead Air backpacks are artefact-class (belt=true) but must never go on the artefact belt.
-- **:902** — engine slot 14 = Dead Air's binocular/grenade utility slot (GRENADE_SLOT == 14). Route
-- **:911** — engine slot 5 = Dead Air's sidearm slot: every pistol and the binocular item live here
-- **:1093** — hide "move to slot" for a backpack the worn outfit forbids (scientific suit) - equipping is
-- **:1114** — Only offer "unequip / move to bag" for an item that is actually equipped (slot or belt).
-- **:1662** — same blocker treatment for the backpack cell: shrink to 0 (draws backpack_over) when the
+- **:270** — Печать на каждую раскладку предмета: под MASTER_GOLD, которого у нас нет, и вдобавок
+- **:396** — Dead Air equips items to small "utility" slot cells whose authored capacity (rows_num x
+- **:433** — A Dead Air slot cell can be authored smaller than the item it must hold (the slot-14
+- **:548** — Dead Air shares engine slot 14 between the hand grenade and the binocular. Double-
+- **:615** — block equipping a backpack (incl. force/drag) when the worn outfit forbids it.
+- **:660** — same slot-cell-too-small guard as InitCellForSlot: grow the target cell to fit the
+- **:822** — Dead Air backpacks are artefact-class (belt=true) but must never go on the artefact belt.
+- **:874** — ⚠️ [DA_PORT] ЯЧЕЙКА МОЖЕТ БЫТЬ ПУСТА, и раньше это роняло игру.
+- **:919** — engine slot 14 = Dead Air's binocular/grenade utility slot (GRENADE_SLOT == 14). Route
+- **:928** — engine slot 5 = Dead Air's sidearm slot: every pistol and the binocular item live here
+- **:1110** — hide "move to slot" for a backpack the worn outfit forbids (scientific suit) - equipping is
+- **:1131** — Only offer "unequip / move to bag" for an item that is actually equipped (slot or belt).
+- **:1679** — same blocker treatment for the backpack cell: shrink to 0 (draws backpack_over) when the
 
 ### `xrGame/ui/UIActorMenuTrade.cpp`
 
@@ -1597,6 +1843,10 @@
 ### `xrGame/ui/UICellCustomItems.cpp`
 
 - **:37** — Numbering starts at 1, not 0. Every layered icon in Dead Air is declared as
+
+### `xrGame/ui/UIDragDropReferenceList.cpp`
+
+- **:78** — Та же дыра, что и в ветке обмена на поясе (UIActorMenuInventory.cpp): ячейка
 
 ### `xrGame/ui/UIHudStatesWnd.cpp`
 
@@ -1621,8 +1871,8 @@
 ### `xrGame/ui/UIItemInfo.cpp`
 
 - **:26** — #include "xrEngine/StringTable/StringTable.h" // [DA_PORT] weapon condition-type localized strings
-- **:33** — Dead Air shows a weapon's malfunction state in its description: a header (st_condition_type =
-- **:322** — append the weapon "condition type" (malfunction) section, as Dead Air does.
+- **:33** — Список поломок оружия в описании предмета.
+- **:353** — append the weapon "condition type" (malfunction) section, as Dead Air does.
 
 ### `xrGame/ui/UIMainIngameWnd.cpp`
 
@@ -1659,7 +1909,15 @@
 
 ### `xrGame/ui/ui_af_params.cpp`
 
-- **:90** — The caption was passed as a raw string-table KEY, so the inventory showed the literal
+- **:55** — Артефакт в контейнере? Отличаем по хвосту секции — ровно так же, как это делает сам мод
+- **:73** — Значение, которое реально живёт на предмете, а не в его секции.
+- **:122** — The caption was passed as a raw string-table KEY, so the inventory showed the literal
+- **:162** — Числа берём у САМОГО предмета, а не у его секции.
+- **:205** — У артефакта в контейнере строка радиации отвечает на другой вопрос — сколько её
+
+### `xrGame/ui/ui_af_params.h`
+
+- **:47** — Подпись строки может зависеть от предмета: у артефакта в контейнере строка радиации
 
 ### `xrUICore/ComboBox/UIComboBox.cpp`
 
@@ -1680,7 +1938,7 @@
 
 ## Мост Lua ↔ C++
 
-*10 файл(ов), 38 правк(и)*
+*10 файл(ов), 40 правк(и)*
 
 
 ### `xrGame/alife_simulator_script.cpp`
@@ -1711,8 +1969,10 @@
 - **:12** — #include "Torch.h" // [DA_PORT] for the real torch_set_* light-tuning bindings
 - **:13** — #include "Actor.h" // [DA_PORT] for start_item_placement binding
 - **:40** — Called from CActor::ConfirmItemPlacement (Actor.cpp is not a script TU, so luabind can't
-- **:273** — flashlight/glowstick/lighter light tuning — REAL impl. Dead Air's xr_actor.script
-- **:287** — "Установить" placement preview: start the ghost-follows-crosshair mode for an item.
+- **:273** — Состояние луча из движка. У мода на этот счёт есть свой флаг
+- **:280** — flashlight/glowstick/lighter light tuning — REAL impl. Dead Air's xr_actor.script
+- **:294** — "Установить" placement preview: start the ghost-follows-crosshair mode for an item.
+- **:297** — Налобный фонарь. Были заглушками - и налобный свет не работал вовсе: щелчок
 
 ### `xrScriptEngine/ScriptEngineScript.cpp`
 
@@ -1797,17 +2057,33 @@
 
 ## Звук
 
-*3 файл(ов), 4 правк(и)*
+*5 файл(ов), 14 правк(и)*
 
 
 ### `xrSound/OpenALDeviceList.cpp`
 
 - **:38** — OpenAL Soft returns device names as UTF-8 on Windows, but the game's fonts and string
-- **:186** — Only the string shown in the UI/console is transcoded; m_devices[i].name keeps the
+- **:77** — Имя без служебного префикса бэкенда (см. Sound.h).
+- **:93** — Слева от скобки стоит не имя, а РОЛЬ выхода — Windows пишет так, когда имя самого
+- **:124** — Имя устройства для ЛЮДЕЙ: то, что стоит В МЕНЮ, в консоли и в user.ltx.
+- **:273** — Первым пунктом — «системное устройство». Это не имя конкретной звуковой карты, а
+- **:281** — Only the string shown in the UI/console is transcoded; m_devices[i].name keeps the
+- **:286** — Если без скобки два устройства свелись к одной строке (две пары наушников — обе
+- **:333** — Разрешает ВЫБОР игрока (snd_device_id) в индекс устройства, которое сейчас будем
+
+### `xrSound/Sound.h`
+
+- **:53** — Два разных числа, и путать их нельзя.
+- **:73** — OpenAL Soft приписывает это к имени КАЖДОГО устройства: «OpenAL Soft on Наушники (JBL
+- **:79** — Имя устройства для показа и для user.ltx: без служебного префикса и без хвостовой скобки
 
 ### `xrSound/SoundRender_Core.cpp`
 
 - **:20** — XRSOUND_API int psSoundTargets = 256; // больше одновременных звуков (было 32) — меньше обрезания
+
+### `xrSound/SoundRender_CoreA.cpp`
+
+- **:44** — Открываем то, что разрешил SelectBestDevice, а не выбор игрока: «авто» индексом не
 
 ### `xrSound/SoundRender_Emitter.cpp`
 
@@ -1816,7 +2092,7 @@
 
 ## Ядро и прочее
 
-*22 файл(ов), 39 правк(и)*
+*23 файл(ов), 46 правк(и)*
 
 
 ### `Include/xrRender/xrRender.h`
@@ -1863,6 +2139,11 @@
 
 - **:163** — See FTimer.cpp - GOAP planner accounting for the performance dump.
 
+### `xrCore/LocatorAPI.cpp`
+
+- **:522** — --- Выбор сезона ------------------------------------------------------------------------
+- **:570** — Осенью летний архив не подключаем вовсе — см. da_seasonal_archive_enabled.
+
 ### `xrCore/Threading/Lock.cpp`
 
 - **:66** — Lock out-of-line: GCC LTO was eliding the inline Lock() ctor for members
@@ -1874,6 +2155,8 @@
 ### `xrCore/log.cpp`
 
 - **:33** — Ловушка аллокатора обязана молчать, пока работает логгер: она печатает найденное через
+- **:222** — Оставляем последние N логов, остальные удаляем.
+- **:270** — ---- Свой лог на КАЖДЫЙ запуск: ..._001.log, _002.log и так далее ----------------
 
 ### `xrCore/string_concatenations.cpp`
 
@@ -1881,12 +2164,15 @@
 
 ### `xrCore/xrDebug.cpp`
 
-- **:525** — Сначала - ЧТО и ГДЕ, потом стек. Прежде отчёт начинался сразу со стека, и вид
-- **:546** — Msg("! [DA_PORT] отказ: %s (код %08X), адрес кода %p", kind, er->ExceptionCode,
-- **:553** — Msg("! [DA_PORT]   %s по адресу %p", what, (void*)er->ExceptionInformation[1]);
-- **:741** — Перехватчик отказов, которых штатный обработчик НЕ ВИДИТ.
-- **:778** — Msg("! [DA_PORT] СМЕРТЕЛЬНЫЙ ОТКАЗ: %s (код %08X), обычный обработчик такое не увидит", name, code);
-- **:804** — Первым в цепочке: см. da_fatal_vectored.
+- **:16** — #   include <tlhelp32.h> // [DA_PORT] карта модулей при аварии
+- **:517** — ---- Карта загруженных модулей для расшифровки стека -------------------------------
+- **:565** — Сначала - ЧТО и ГДЕ, потом стек. Прежде отчёт начинался сразу со стека, и вид
+- **:586** — Msg("! [DA_PORT] отказ: %s (код %08X), адрес кода %p", kind, er->ExceptionCode,
+- **:593** — Msg("! [DA_PORT]   %s по адресу %p", what, (void*)er->ExceptionInformation[1]);
+- **:616** — Карта модулей - то, без чего чужой стек не расшифровывается.
+- **:792** — Перехватчик отказов, которых штатный обработчик НЕ ВИДИТ.
+- **:829** — Msg("! [DA_PORT] СМЕРТЕЛЬНЫЙ ОТКАЗ: %s (код %08X), обычный обработчик такое не увидит", name, code);
+- **:855** — Первым в цепочке: см. da_fatal_vectored.
 
 ### `xrCore/xrMemory.cpp`
 

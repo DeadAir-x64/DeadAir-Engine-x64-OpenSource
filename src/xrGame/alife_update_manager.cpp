@@ -175,8 +175,15 @@ bool CALifeUpdateManager::change_level(NET_Packet& net_packet)
 
     if (graph().actor()->m_holderID != 0xffff)
     {
-        holder = objects().object(graph().actor()->m_holderID);
+        // [DA_PORT] Level change with a stale holder id used to end the session here
+        // (the registry throws for an unknown id and nobody catches it).
+        holder = objects().object(graph().actor()->m_holderID, true);
+        if (!holder)
+            Msg("! [DA] change_level: actor holder [%d] is not registered", graph().actor()->m_holderID);
+    }
 
+    if (holder)
+    {
         holder_safe_graph_vertex_id = holder->m_tGraphID;
         holder_safe_level_vertex_id = holder->m_tNodeID;
         holder_safe_position = holder->o_Position;
@@ -203,9 +210,8 @@ bool CALifeUpdateManager::change_level(NET_Packet& net_packet)
     graph().actor()->o_Angle = safe_angles;
     graph().actor()->o_torso = safe_torso;
 
-    if (graph().actor()->m_holderID != 0xffff)
+    if (holder)
     {
-        VERIFY(holder);
         holder->m_tGraphID = holder_safe_graph_vertex_id;
         holder->m_tNodeID = holder_safe_level_vertex_id;
         holder->o_Position = holder_safe_position;
@@ -306,24 +312,41 @@ bool CALifeUpdateManager::load_game(LPCSTR game_name, bool no_assert)
     return (true);
 }
 
+// [DA_PORT] All three are bound to Lua and are called by mod scripts during object release
+// and level changes, where the id may already be stale. The registry throws for an unknown
+// id, nothing catches it on the MinGW path, and the session ended with the generic
+// "Unexpected application termination". Report and ignore instead - a stale id here is a
+// script-side race the player can do nothing about, and it is not worth the save.
 void CALifeUpdateManager::set_switch_online(ALife::_OBJECT_ID id, bool value)
 {
-    CSE_ALifeDynamicObject* object = objects().object(id);
-    VERIFY(object);
+    CSE_ALifeDynamicObject* object = objects().object(id, true);
+    if (!object)
+    {
+        Msg("! [DA] set_switch_online: no object with id [%d]", id);
+        return;
+    }
     object->can_switch_online(value);
 }
 
 void CALifeUpdateManager::set_switch_offline(ALife::_OBJECT_ID id, bool value)
 {
-    CSE_ALifeDynamicObject* object = objects().object(id);
-    VERIFY(object);
+    CSE_ALifeDynamicObject* object = objects().object(id, true);
+    if (!object)
+    {
+        Msg("! [DA] set_switch_offline: no object with id [%d]", id);
+        return;
+    }
     object->can_switch_offline(value);
 }
 
 void CALifeUpdateManager::set_interactive(ALife::_OBJECT_ID id, bool value)
 {
-    CSE_ALifeDynamicObject* object = objects().object(id);
-    VERIFY(object);
+    CSE_ALifeDynamicObject* object = objects().object(id, true);
+    if (!object)
+    {
+        Msg("! [DA] set_interactive: no object with id [%d]", id);
+        return;
+    }
     object->interactive(value);
 }
 

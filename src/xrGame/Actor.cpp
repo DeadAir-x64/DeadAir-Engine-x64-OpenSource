@@ -2162,8 +2162,41 @@ float CActor::ArtefactProtection(ALife::EHitType hit_type) const
     return sum;
 }
 
+// [DA_PORT] Кислородный баллон гасит химию ПОРОГОМ, а не арифметикой.
+//
+// Так это устроено у самого мода, и понять это по движку нельзя: на Дикой территории урон от газа даёт
+// логика уровня, а разрешение ей выдаёт скрипт `xr_conditions.actor_has_chem_protection` — он просто
+// проверяет НАЛИЧИЕ предмета: слот рюкзака, секция ровно `airtank`, износ больше 0.1. Ни иммунитеты,
+// ни их сумма там не участвуют, и защита поэтому не ослабевает плавно: выше порога она полная, ниже
+// пропадает разом.
+//
+// В лабораториях урон идёт иначе — настоящими химическими полями (`zone_field_acidic`) через хиты
+// движка, — и туда скриптовая проверка не достаёт. Получалось, что один и тот же предмет в двух местах
+// игры работает по двум разным законам: на Дикой территории выключателем, в лабораториях слабой
+// добавкой к иммунитету (у автора `chemical_burn_immunity = 0.03`, то есть почти ничем).
+//
+// Приведено к одному закону: порог из скрипта применяется и к химическим хитам. Значение и износ в
+// конфигах остаются авторскими — правились раньше данные (`0.03 → 0.55`), и та правка отменена.
+//
+// ⚠️ Имя секции здесь зашито намеренно: его так же зашивает и сам мод в `actor_has_chem_protection`.
+// Признака «это дыхательный аппарат» в конфигах нет, и придумывать его — правка данных.
+bool CActor::da_chem_gear_blocks_hit() const
+{
+    const PIItem item = inventory().ItemFromSlot(BACKPACK_SLOT);
+    if (!item)
+        return false;
+
+    if (0 != xr_strcmp(item->object().cNameSect().c_str(), "airtank"))
+        return false;
+
+    return (item->GetCondition() > 0.1f); // тот же порог, что в скрипте
+}
+
 float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
 {
+    if (ALife::eHitTypeChemicalBurn == hit_type && da_chem_gear_blocks_hit())
+        return 0.0f;
+
     hit_power -= ArtefactProtection(hit_type);
     clamp(hit_power, 0.0f, flt_max);
 

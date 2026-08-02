@@ -8,11 +8,17 @@
 
 #include "StdAfx.h"
 #include "material_manager.h"
+
+// [DA_PORT] Есть ли лужа в этой точке мира (xrEngine, xr_ioc_cmd.cpp).
+extern ENGINE_API bool da_puddle_at(const Fvector& p);
+extern ENGINE_API float g_da_rain_wetness;
+extern ENGINE_API int ps_r__puddles_debug;
 #include "alife_space.h"
 #include "PHMovementControl.h"
 #include "entity_alive.h"
 #include "CharacterPhysicsSupport.h"
 #include "Include/xrRender/Kinematics.h"
+#include "Level.h"
 
 CMaterialManager::CMaterialManager(IGameObject* object, CPHMovementControl* movement_control)
 {
@@ -79,14 +85,107 @@ void CMaterialManager::reinit()
     }
 }
 
+
+// [DA_PORT] Земля под ногами для звука шага. Шаги играет CStepManager через get_current_pair(), а не
+// CMaterialManager::update — тот в этой сборке не зовётся ниоткуда вовсе. Первая версия правки жила
+// именно в update, и молчала не потому, что что-то не сработало, а потому, что не выполнялась.
+u16 CMaterialManager::da_ground_material_idx()
+{
+    // ⚠️ ЧЕРЕЗ GetMaterial(), а не GetMaterialIdx(). У второй внутри VERIFY, а VERIFY в релизе вырезан:
+    // если имени в списке нет, она молча возвращает индекс ЗА КОНЦОМ списка, и следующий же поиск пары
+    // падает уже настоящим R_ASSERT — что и случилось при первой попытке. GetMaterial честно отдаёт
+    // nullptr, и тогда мы просто ничего не подменяем.
+    static bool  s_probed = false;
+    static u16   s_water_idx = GAMEMTL_NONE_IDX;
+    static bool  s_have_water = false;
+    if (!s_probed)
+    {
+        s_probed = true;
+        // GetMaterialID отдаёт GAMEMTL_NONE_ID для ненайденного имени — в отличие от GetMaterialIdx,
+        // которая в релизе вернула бы индекс за концом списка (VERIFY внутри вырезан) и уронила игру
+        // на следующем же поиске пары. Так и произошло с первой версией этой правки.
+        // ⚠️ ДВА слэша. С одним `\w` — не escape-последовательность, компилятор молча оставляет букву,
+        // и ищется имя "materialswater". Именно так эта правка и «не работала» с первого раза.
+        const u32 water_id = GMLib.GetMaterialID("materials\\water");
+        if (GAMEMTL_NONE_ID != water_id)
+        {
+            s_water_idx = GMLib.GetMaterialIdx((int)water_id);
+            s_have_water = true;
+        }
+        Msg("* [DA_PORT] шаги по лужам: материал воды %s (индекс %u)",
+            s_have_water ? "найден" : "НЕ НАЙДЕН, плеска не будет", (u32)s_water_idx);
+    }
+
+    if (!s_have_water)
+        return m_last_material_idx;
+
+    // [DA_PORT] Под крышей плеска быть не должно. Картинка это уже учитывает — там гейтом служит
+    // доступ солнца из лайтмапы, — но da_puddle_at про лайтмапу ничего не знает: это движковая
+    // функция, у неё есть только координаты. Поэтому здесь свой признак: луч вверх. Упёрся в
+    // геометрию — значит над головой крыша, и лужи под ногами нет.
+    //
+    // Один луч на шаг, не на кадр: дорого не бывает.
+    const Fvector foot = m_object->Position();
+    const bool noise_hit = da_puddle_at(foot);
+    bool roof = false;
+    if (noise_hit)
+    {
+        collide::rq_result rq;
+        Fvector up, from = foot;
+        up.set(0.f, 1.f, 0.f);
+        from.y += 0.5f;
+        roof = !!Level().ObjectSpace.RayPick(from, up, 20.f, collide::rqtStatic, rq, m_object);
+    }
+    const bool in_puddle = noise_hit && !roof;
+    const bool have_pair = (nullptr != GMLib.GetMaterialPairByIndices(m_my_material_idx, s_water_idx));
+
+    // [DA_PORT] Лог пишется ПО СМЕНЕ состояния и только для игрока, а не по таймеру и не для каждого
+    // сталкера: так он живёт постоянно, не засоряя лог, и отвечает на единственный вопрос, который по
+    // картинке не проверить, - совпадает ли слышимое с видимым. Отдельно показан признак крыши: без
+    // него «плеск в помещении» и «плеск на сухом месте» в логе выглядели бы одинаково.
+    if (Level().CurrentControlEntity() == m_object)
+    {
+        static int last_state = -1;
+        const int state = in_puddle ? 1 : 0;
+        if (state != last_state)
+        {
+            last_state = state;
+            Msg("* [DA_PORT] под ногами %s: шум %d, крыша %d, влажность %.2f, пара с водой %d",
+                in_puddle ? "ЛУЖА" : "сухо", noise_hit ? 1 : 0, roof ? 1 : 0, g_da_rain_wetness,
+                have_pair ? 1 : 0);
+        }
+    }
+
+    if (ps_r__puddles_debug)
+    {
+        static u32 last_log = 0;
+        if (Device.dwTimeGlobal - last_log > 1000)
+        {
+            last_log = Device.dwTimeGlobal;
+            Msg("* [DA_PORT] шаги: влажность %.2f, в луже %d, крыша %d, пара с водой есть %d, земля %u",
+                g_da_rain_wetness, in_puddle ? 1 : 0, roof ? 1 : 0, have_pair ? 1 : 0,
+                (u32)m_last_material_idx);
+        }
+    }
+
+    return (in_puddle && have_pair) ? s_water_idx : m_last_material_idx;
+}
+
 void CMaterialManager::reload(LPCSTR section) {}
 void CMaterialManager::update(float time_delta, float volume, float step_time, bool standing)
 {
     VERIFY(GAMEMTL_NONE_IDX != m_my_material_idx);
     VERIFY(GAMEMTL_NONE_IDX != m_last_material_idx);
+    Fvector position = m_object->Position();
+
+    // [DA_PORT] Шаги по лужам. Земля под ногами считается водой, если в этой точке есть лужа — тогда
+    // движок сам возьмёт водяную пару материалов с её звуками шагов, и плеск получается без единого
+    // нового ассета: в gamemtl.xr для воды уже прописаны n_water_1..4.
+    //
+    // Признак лужи считается ТЕМ ЖЕ шумом, что рисует картинку (da_puddle_at в xr_ioc_cmd.cpp): иначе
+    // звук и вид разойдутся, и игрок будет слышать плеск на сухом месте.
     SGameMtlPair* mtl_pair = GMLib.GetMaterialPairByIndices(m_my_material_idx, m_last_material_idx);
     VERIFY3(mtl_pair, "Undefined material pair: ", GMLib.GetMaterialByIdx(m_last_material_idx)->m_Name.c_str());
-    Fvector position = m_object->Position();
     if (m_movement_control->CharacterExist())
     {
         position.y += m_movement_control->FootRadius();

@@ -46,6 +46,77 @@ void render_sun::init()
     o.mt_draw_enabled = RImplementation.o.mt_render;
 }
 
+// [DA_PORT] ---- Кэш теневых карт солнца ------------------------------------------------------
+//
+// Зачем. Каждый кадр в теневую карту заново отрисовывается ВСЯ статика каскада: замером da_sun_log
+// это 97 объектов у ближнего, 175 у среднего и 359 у дальнего. При этом содержимое дальних каскадов
+// от кадра к кадру практически не меняется — дома и деревья неподвижны, солнце ползёт медленно, а
+// ящик каскада при ходьбе смещается на малую долю своего размера (160 м у дальнего).
+//
+// Что делаем. Держим снятую карту в слоте и не перерисовываем её, пока она годна. Годность решают
+// три условия, и все три обязательны:
+//
+//   • камера не ушла далеко — порог пропорционален размеру каскада, потому что смещение на метр для
+//     ящика в 20 м и в 160 м это совершенно разные доли кадра;
+//   • солнце не повернулось — иначе тени поедут, а это заметно даже на статике;
+//   • карта не слишком стара — страховка на всё остальное: разрушаемые объекты, смена погоды,
+//     подгрузка геометрии. Дешевле обновлять раз в N миллисекунд, чем перечислять причины.
+//
+// ⚠️ Срок жизни во ВРЕМЕНИ, а не в кадрах, и это принципиально. Сперва он считался в кадрах, и на
+// быстрой машине всё выглядело прекрасно: 16 кадров при 270 к/с — это 60 мс устаревания. Но та же
+// настройка при 30 к/с даёт уже 533 мс, то есть полсекунды замороженных теней. Хуже всего, что
+// портится картинка тем сильнее, чем слабее компьютер, — а слабый компьютер и есть та аудитория,
+// ради которой оптимизация делается. Замер на быстрой машине этого показать не может в принципе.
+//
+// ⚠️ ГЛАВНОЕ: если карта берётся из кэша, её МАТРИЦУ ТОЖЕ НЕЛЬЗЯ ПЕРЕСЧИТЫВАТЬ. Накопление света
+// выбирает тень по матрице каскада; посчитай её заново для сдвинувшейся камеры — и выборка пойдёт
+// из карты, снятой под другим ракурсом. Тени поедут по всему экрану, причём тем сильнее, чем дольше
+// живёт кэш. Поэтому решение принимается ЗДЕСЬ, до записи xform, и render() обязан ему следовать.
+//
+// ⚠️ Динамика (NPC, актёр) рисуется в ту же карту, что и статика, поэтому в кэшированном каскаде её
+// тень замирает вместе с остальным. Отсюда значение по умолчанию: кэшируются только средний и
+// дальний каскады, где чужие фигуры далеко и их тень занимает единицы пикселей. Ближний каскад
+// (0..20 м, где стоит сам игрок) кэшируется только принудительно, ключом da_smap_cache_near — это
+// режим для замера, а не для игры.
+u32 ps_da_smap_cache = 0;      // 0 = выключено; N = сколько МИЛЛИСЕКУНД карта живёт без перерисовки
+// [DA_PORT] u32, а не int, потому что настройку показывает список в меню (CCC_Token хранит u32).
+int ps_da_smap_cache_near = 0; // 1 = кэшировать и ближний каскад (только для замеров)
+u32 g_da_smap_skipped = 0;     // сколько отрисовок пропущено с последнего замера
+u32 g_da_smap_skipped_by[R__NUM_SUN_CASCADES] = {}; // и то же по каскадам — какой кэшируется реально
+u32 g_da_smap_drawn_by[R__NUM_SUN_CASCADES] = {};   // сколько раз каскад всё же перерисовали
+
+bool render_sun::da_smap_should_render(u32 cascade_ind, const Fmatrix& /*fresh_xform*/) const
+{
+    if (ps_da_smap_cache == 0)
+        return true;
+
+    // Ближний каскад — только по явному разрешению: в нём живут тени игрока и всего, что рядом.
+    if (cascade_ind == 0 && !ps_da_smap_cache_near)
+        return true;
+
+    const smap_cache& c = m_smap_cache[cascade_ind];
+    if (!c.valid)
+        return true;
+
+    if (Device.dwTimeGlobal - c.time_ms >= ps_da_smap_cache)
+        return true;
+
+    // Порог смещения — доля размера каскада. 1/32 подобрана так, чтобы у дальнего (160 м) он вышел
+    // около пяти метров: на таком расстоянии сдвиг тени от статики в кадре не читается.
+    const float move_limit = m_sun_cascades[cascade_ind].size / 32.f;
+    if (Device.vCameraPosition.distance_to(c.cam_pos) > move_limit)
+        return true;
+
+    // Поворот солнца — через длину хорды между направлениями, а не через acos скалярного
+    // произведения: у почти сонаправленных векторов acos теряет точность и выдаёт мусор порядка
+    // 0.03 градуса из воздуха. На этом мы уже обжигались в пробе камеры.
+    const float chord = sun->direction.distance_to(c.sun_dir);
+    if (rad2deg(2.f * asinf(chord > 2.f ? 1.f : chord * 0.5f)) > 0.05f)
+        return true;
+
+    return false;
+}
+
 void render_sun::calculate()
 {
     ZoneScoped;
@@ -100,6 +171,27 @@ void render_sun::calculate()
     CFrustum cull_frustum[R__NUM_SUN_CASCADES];
     Fvector3 cull_COP[R__NUM_SUN_CASCADES];
     Fmatrix cull_xform[R__NUM_SUN_CASCADES];
+
+    // [DA_PORT] Решение о кэше принимается ОДНО НА ВСЕ кэшируемые каскады, а не отдельно на каждый.
+    //
+    // Дальний каскад строит свой световой объём по матрице ПРЕДЫДУЩЕГО (accum_direct_cascade,
+    // ветка SE_SUN_FAR: `inv_XDcombine.invert(xform_prev)`). Замороженный средний рядом со свежим
+    // дальним означал бы, что дальний накладывает свет по устаревшему ящику — а это ровно тот
+    // дефект, который уже был: экран режет ровная диагональ с вершиной на солнце.
+    //
+    // Поэтому: нужен хоть одному — перерисовываем всю группу. Выигрыш от этого почти не страдает
+    // (условия у соседних каскадов срабатывают почти одновременно), а целый класс рассогласований
+    // закрывается сразу.
+    // ⚠️ Голосуют ТОЛЬКО кэшируемые каскады. Первая версия опрашивала все подряд, включая ближний, а
+    // он при выключенном da_smap_cache_near всегда отвечает «рисовать» — один такой голос делал
+    // группу вечно свежей, и кэш не срабатывал НИ РАЗУ. В логе это выглядело как «пропущено
+    // отрисовок 0» при включённом кэше: механизм на месте, а работы не убавилось.
+    const auto cacheable = [](u32 i) { return i > 0 || ps_da_smap_cache_near != 0; };
+
+    bool group_needs_render = false;
+    for (u32 i = 0; i < R__NUM_SUN_CASCADES; ++i)
+        if (cacheable(i) && da_smap_should_render(i, Fidentity))
+            group_needs_render = true;
 
     for (u32 cascade_ind = 0; cascade_ind < R__NUM_SUN_CASCADES; ++cascade_ind)
     {
@@ -243,6 +335,30 @@ void render_sun::calculate()
             cull_xform[cascade_ind].mulB_44(adjust);
         }
 
+        // [DA_PORT] Решение о кэше принимается ЗДЕСЬ — до того, как матрица уйдёт дальше.
+        //
+        // Берём карту из кэша — значит и матрицу берём ту, с которой она снята. Иначе накопление
+        // будет выбирать тень из карты, снятой под другим ракурсом, и тени поедут по всему экрану.
+        m_smap_render[cascade_ind] = cacheable(cascade_ind) ? group_needs_render : true;
+
+        if (m_smap_render[cascade_ind])
+        {
+            m_smap_cache[cascade_ind].xform = cull_xform[cascade_ind];
+            m_smap_cache[cascade_ind].cam_pos = Device.vCameraPosition;
+            m_smap_cache[cascade_ind].sun_dir = sun->direction;
+            m_smap_cache[cascade_ind].time_ms = Device.dwTimeGlobal;
+            m_smap_cache[cascade_ind].valid = true;
+        }
+        else
+        {
+            cull_xform[cascade_ind] = m_smap_cache[cascade_ind].xform;
+            ++g_da_smap_skipped;
+            ++g_da_smap_skipped_by[cascade_ind];
+        }
+
+        if (m_smap_render[cascade_ind])
+            ++g_da_smap_drawn_by[cascade_ind];
+
         m_sun_cascades[cascade_ind].xform = cull_xform[cascade_ind];
 
         s32 limit = RImplementation.o.smapsize - 1;
@@ -277,6 +393,15 @@ void render_sun::calculate()
     {
         for (u32 cascade_ind = range.begin(); cascade_ind != range.end(); ++cascade_ind)
         {
+            // [DA_PORT] Каскад берётся из кэша — отбор геометрии не нужен вовсе.
+            //
+            // Это половина выигрыша и не менее важная, чем пропуск отрисовки: build_subspace обходит
+            // сцену и набивает список видимого, а у дальнего каскада это 359 объектов каждый кадр.
+            // Пропускаем ЦЕЛИКОМ, вместе с самим контекстом — рисовать по пустому списку всё равно
+            // нечего, а очистка карты глубины стёрла бы то, ради чего кэш и заводился.
+            if (!m_smap_render[cascade_ind])
+                continue;
+
             // Begin SMAP-render
             auto& dsgraph = RImplementation.get_context(contexts_ids[cascade_ind]);
             {
@@ -322,16 +447,61 @@ void render_sun::calculate()
     }
 
     // Печать после параллельной части: из рабочих потоков в лог писать нельзя.
+    //
+    // [DA_PORT] Пишем КАЖДЫЙ кадр и сами помечаем, что изменилось с предыдущего.
+    //
+    // Отбор по движению камеры отсюда убран: дефект, ради которого замер и делался, мерцает при
+    // ПОЛНОСТЬЮ неподвижной камере (проверено в игре). При неподвижной камере вход каскада от кадра
+    // к кадру один и тот же, поэтому любое расхождение в числах — уже находка, а не шум. Именно
+    // такой срез теперь и нужен.
+    //
+    // Смещение камеры печатается всё равно: оно доказывает, что камера действительно стояла, а не
+    // «мне казалось». Перенос ящика — с двумя знаками: при одном мелкие сдвиги пропадали и всё
+    // выглядело мёртво-стабильным.
     if (ps_da_sun_log > 0)
     {
+        extern float g_da_probe_cam_moved; // считаются покадрово в phase_combine
+        extern float g_da_probe_cam_turned;
+
+        static u32 prev_static[R__NUM_SUN_CASCADES] = {};
+        static u32 prev_planes[R__NUM_SUN_CASCADES] = {};
+        static Fvector prev_org[R__NUM_SUN_CASCADES] = {};
+        static bool have_prev = false;
+
         for (u32 i = 0; i < R__NUM_SUN_CASCADES; ++i)
-            Msg("~ [DA_SUN] кадр %u каскад %u | плоскостей %u | статики %u | динамики %u | "
-                "объём (%.1f %.1f %.1f) | reset_chain %d",
-                Device.dwFrame, i, dbg_planes[i], dbg_static[i], dbg_dynamic[i],
-                cull_xform[i]._41, cull_xform[i]._42, cull_xform[i]._43,
-                m_sun_cascades[i].reset_chain ? 1 : 0);
+        {
+            const Fvector org = {cull_xform[i]._41, cull_xform[i]._42, cull_xform[i]._43};
+
+            string256 mark;
+            mark[0] = 0;
+            if (have_prev)
+            {
+                if (prev_static[i] != dbg_static[i])
+                    xr_strcat(mark, "  <== ТЕНЕОБРАЗУЮЩИЕ");
+                if (prev_planes[i] != dbg_planes[i])
+                    xr_strcat(mark, "  <== ПЛОСКОСТИ");
+                if (!org.similar(prev_org[i], EPS_S))
+                    xr_strcat(mark, "  <== ЯЩИК СДВИНУЛСЯ");
+            }
+
+            Msg("~ [DA_SUN] кадр %u каскад %u | %-8s | плоскостей %u | статики %u | динамики %u | "
+                "объём (%.3f %.3f %.3f) | reset_chain %d | камера %.3f м / %.2f град%s",
+                Device.dwFrame, i, m_smap_render[i] ? "рисуем" : "из кэша", dbg_planes[i], dbg_static[i],
+                dbg_dynamic[i], org.x, org.y, org.z, m_sun_cascades[i].reset_chain ? 1 : 0,
+                g_da_probe_cam_moved, g_da_probe_cam_turned, mark);
+
+            prev_static[i] = dbg_static[i];
+            prev_planes[i] = dbg_planes[i];
+            prev_org[i] = org;
+        }
+        have_prev = true;
+
         if (--ps_da_sun_log == 0)
-            Msg("~ [DA_SUN] ---- готово ----");
+        {
+            Msg("~ [DA_SUN] ---- готово ---- пропущено отрисовок теневых карт: %u (кэш %s)",
+                g_da_smap_skipped, ps_da_smap_cache != 0 ? "включён" : "выключен");
+            g_da_smap_skipped = 0;
+        }
     }
 }
 
@@ -351,6 +521,11 @@ void render_sun::render()
 #if defined(USE_DX11)
             //TracyD3D11Zone(HW.profiler_ctx, "render_sun::render_cascade");
 #endif
+
+            // [DA_PORT] Тот же пропуск, что и в calculate: карта в слоте уже готова, трогать её
+            // нельзя. Первым делом phase_smap_direct очищает глубину — вот её и надо миновать.
+            if (!m_smap_render[cascade_ind])
+                continue;
 
             auto& dsgraph = RImplementation.get_context(contexts_ids[cascade_ind]);
 

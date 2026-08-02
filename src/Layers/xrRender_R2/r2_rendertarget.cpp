@@ -17,6 +17,7 @@
 #include "Layers/xrRenderPC_R4/da_dlss.h" // [DA_PORT] NVIDIA DLSS
 #include "Layers/xrRenderPC_R4/da_fsr3_api.h" // DA: Intel XeSS
 extern ENGINE_API int ps_r__fsr2;
+extern ENGINE_API void da_upscaler_set_available(u32 mask, pcstr why_hidden); // [DA_PORT]
 extern ENGINE_API int ps_r__xess;
 extern ENGINE_API int ps_r__dlss; // [DA_PORT]
 extern ENGINE_API int ps_r__fsr3;
@@ -418,6 +419,43 @@ CRenderTarget::CRenderTarget()
         rt_FSR2_out.create(r2_RT_fsr2_out, Device.dwWidth, Device.dwHeight, D3DFMT_A16B16G16R16F, 1,
             { CRT::CreateUAV });
 
+        // [DA_PORT] ---- Подрезаем список апскейлеров под железо -------------------------------
+        //
+        // Один раз за запуск, здесь: устройство уже создано, вендор видеокарты известен, библиотеки
+        // можно спросить напрямую. Меню строится из таблицы токенов движка, поэтому вычеркнутый
+        // пункт просто исчезает из списка — игрок не сможет выбрать то, что на его карте не
+        // заработает. Подробности и мотив — в da_upscaler_set_available (xr_ioc_cmd.cpp).
+        //
+        // FSR 3 проверяется настоящей пробой: заранее по железу это не определить, а его отказ у
+        // тестера на R9 290 выглядел как поломка игры. Проба стоит одного создания контекста и
+        // делается только если FSR 3 сейчас не выбран — выбранный и так создаётся ниже, и его
+        // результат учтёт da_upscaler_mark_failed.
+        {
+            static bool probed = false;
+            if (!probed)
+            {
+                probed = true;
+
+                u32 mask = 0;
+                if (da_dlss::supported(HW.pDevice))
+                    mask |= 1u << 6; // DLSS
+                if (HW.Caps.id_vendor == 0x8086)
+                    mask |= 1u << 5; // XeSS: путь D3D11 только на Intel
+
+                bool fsr3_ok = !!::ps_r__fsr3;
+                if (!fsr3_ok)
+                {
+                    fsr3_ok = da_fsr3_create(Device.dwRenderWidth, Device.dwRenderHeight,
+                        Device.dwWidth, Device.dwHeight, HW.pDevice);
+                    da_fsr3_destroy();
+                }
+                if (fsr3_ok)
+                    mask |= 1u << 4; // FSR 3
+
+                da_upscaler_set_available(mask, "видеокарта не поддерживает");
+            }
+        }
+
         // The upscaler is told both resolutions once, at creation: it allocates its history buffers for
         // them. Changing either means recreating the context, which is why r__fsr2 needs a restart.
         if (::ps_r__fsr2)
@@ -763,12 +801,19 @@ CRenderTarget::CRenderTarget()
             // [DA_PORT] Script blender, unlike the TAA one - it needs no textures beyond two
             // render targets and is simpler to keep in the shader tree.
             s_velocity_guard.create("da_velocity_guard");
+            // [DA_PORT] Знаковая копия векторов для XeSS: у него, в отличие от FSR и DLSS, нет
+            // параметра масштаба, и знак поправить больше негде. См. da_xess_mv.s.
+            s_xess_mv.create("da_xess_mv");
+            // [DA_PORT] Отражения в лужах: читает копию освещённого кадра, пишет поверх сцены.
+            s_puddle_refl.create("da_puddle_refl");
             // [DA_PORT] Object-motion reactivity, see phase_reactive. Two blenders share one pixel
             // shader and differ only in which buffer they read - that is what lets the widening run
             // along one axis and then the other without a target ever being its own source.
             s_reactive.create("da_reactive");
             s_reactive_dilate_h.create("da_reactive_dilate_h");
             s_reactive_dilate_v.create("da_reactive_dilate_v");
+            // [DA_PORT] Метка свечения: не читает вообще ничего, пишет константу по трафарету.
+            s_reactive_emissive.create("da_reactive_emissive");
             s_sky_velocity.create("da_sky_velocity");
         }
 #endif

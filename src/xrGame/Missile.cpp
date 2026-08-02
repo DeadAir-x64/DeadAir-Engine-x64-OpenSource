@@ -462,9 +462,11 @@ void CMissile::setup_throw_params()
 
 void CMissile::Throw()
 {
-#ifndef MASTER_GOLD
+    // [DA_PORT] Печать номера кадра на каждый бросок была под MASTER_GOLD, а его в нашей сборке нет —
+    // за сеанс это десятки строк в логе ни о чём. Оставлена отладочной.
+#ifdef DEBUG
     Msg("throw [%d]", Device.dwFrame);
-#endif // #ifndef MASTER_GOLD
+#endif
     VERIFY(smart_cast<CEntity*>(H_Parent()));
     setup_throw_params();
 

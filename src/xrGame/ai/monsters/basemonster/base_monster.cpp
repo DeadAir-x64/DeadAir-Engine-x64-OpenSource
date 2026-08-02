@@ -881,11 +881,22 @@ void CBaseMonster::OnEvent(NET_Packet& P, u16 type)
     {
         P.r_u16(id);
         IGameObject* O = Level().Objects.net_Find(id);
-        VERIFY(O);
+        // [DA_PORT] Same guard the actor's handler already has (Actor_Events.cpp): the
+        // object may be gone by the time the event is processed, and VERIFY is compiled
+        // out in Release.
+        if (!O)
+        {
+            Msg("! GE_OWNERSHIP_TAKE: object not found, id = [%d]", id);
+            break;
+        }
 
         CGameObject* GO = smart_cast<CGameObject*>(O);
         CInventoryItem* pIItem = smart_cast<CInventoryItem*>(GO);
-        VERIFY(inventory().CanTakeItem(pIItem));
+        if (!pIItem)
+        {
+            Msg("! GE_OWNERSHIP_TAKE: object [%d] is not an inventory item", id);
+            break;
+        }
         pIItem->m_ItemCurrPlace.type = eItemPlaceRuck;
 
         O->H_SetParent(this);
@@ -897,7 +908,11 @@ void CBaseMonster::OnEvent(NET_Packet& P, u16 type)
     {
         P.r_u16(id);
         IGameObject* O = Level().Objects.net_Find(id);
-        VERIFY(O);
+        if (!O)
+        {
+            Msg("! GE_OWNERSHIP_REJECT: object not found, id = [%d]", id);
+            break;
+        }
 
         const bool just_before_destroy = !P.r_eof() && P.r_u8();
         const bool dont_create_shell = (type == GE_TRADE_SELL) || just_before_destroy;

@@ -31,7 +31,13 @@ IC void construct_string(pstr result, u32 const result_size, const xr_vector<ALi
     xr_vector<ALife::_OBJECT_ID>::const_iterator E = restrictions.end();
     for (; I != E; ++I)
     {
-        CSE_ALifeDynamicObject* object = ai().alife().objects().object(*I);
+        // [DA_PORT] Restriction lists are filled from scripts and can outlive the restrictor
+        // they name. The loud form of the lookup throws, and nothing catches it - skip the
+        // stale entry instead of ending the session over a debug string.
+        CSE_ALifeDynamicObject* object = ai().alife().objects().object(*I, true);
+        if (!object)
+            continue;
+
         if (ai().game_graph().vertex(object->m_tGraphID)->level_id() != ai().level_graph().level_id())
             continue;
 

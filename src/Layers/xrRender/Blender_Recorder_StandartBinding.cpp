@@ -8,6 +8,23 @@
 #include "xrEngine/IGame_Persistent.h"
 #include "xrEngine/Environment.h"
 
+// [DA_PORT] Ручки луж живут в глобальном пространстве имён (xr_ioc_cmd.cpp), объявлять их ВНУТРИ
+// namespace нельзя: имя сманглится в render_r4:: и линковка упадёт на неразрешённых символах.
+extern ENGINE_API int ps_r__puddles;
+extern ENGINE_API float ps_r__puddles_buildup;
+extern ENGINE_API float ps_r__puddles_dry;
+extern ENGINE_API float ps_r__puddles_size;
+extern ENGINE_API float ps_r__puddles_force;
+extern ENGINE_API float ps_r__puddles_gloss;
+extern ENGINE_API float ps_r__puddles_dark;
+extern ENGINE_API float ps_r__puddles_damp;
+extern ENGINE_API float ps_r__puddles_ripple;
+extern ENGINE_API int ps_r__puddles_debug;
+extern ENGINE_API u32 ps_r__puddles_dist;
+extern ENGINE_API float ps_r__puddles_rim;
+extern ENGINE_API float ps_r__puddles_rim_width;
+extern ENGINE_API float g_da_rain_wetness; // [DA_PORT] сюда кладём накопленную влажность для игры
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // matrices
@@ -208,6 +225,130 @@ class cl_times : public R_constant_setup
     }
 };
 static cl_times binder_times;
+
+// [DA_PORT] ---- Лужи: сила дождя и накопленная влажность --------------------------------------
+//
+// x — сколько льёт сейчас (rain_density текущей погоды, 0..1);
+// y — насколько земля намокла (0..1), с задержкой на набор и высыхание;
+// z — доля поверхности под лужами при полной влажности (r__puddles_size);
+// w — свободно.
+//
+// Накопитель считается РАЗ НА КАДР, а не на каждую привязку: биндер зовут по разу на каждый проход
+// и каждый объект, и без пометки кадра влага набиралась бы со скоростью, зависящей от того, сколько
+// геометрии в кадре (см. [[silent-failure-debugging]] — биндер раз на проход вместо раза на объект
+// уже стоил нам одного молчаливого дефекта, тут та же ловушка с другой стороны).
+class cl_rain_params : public R_constant_setup
+{
+    u32 marker{};
+    float wetness{};
+    Fvector4 result{};
+
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        if (marker != Device.dwFrame)
+        {
+            marker = Device.dwFrame;
+
+            const float rain = ps_r__puddles ? g_pGamePersistent->Environment().CurrentEnv.rain_density : 0.f;
+
+            // Проверочный режим: сырость задана руками, накопитель не участвует — иначе после
+            // r__puddles_force пришлось бы ещё полторы минуты ждать, пока «наберётся».
+            const float dbg = float(ps_r__puddles_debug); // 1 — каналы, 2 — заливка
+
+            // [DA_PORT] При включённой отладке — раз в секунду в лог. Нужно, чтобы отделить «значение
+            // не посчиталось в движке» от «посчиталось, но не доехало до шейдера»: по одной картинке
+            // эти два случая неотличимы, а перебирать их вслепую уже дважды выходило дороже.
+            if (ps_r__puddles_debug)
+            {
+                static u32 last_log = 0;
+                if (Device.dwTimeGlobal - last_log > 1000)
+                {
+                    last_log = Device.dwTimeGlobal;
+                    Msg("* [DA_PORT] лужи: дождь %.3f, влажность %.3f, размер %.2f, force %.2f, вкл %d",
+                        rain, wetness, ps_r__puddles_size, ps_r__puddles_force, ps_r__puddles);
+                }
+            }
+
+            if (ps_r__puddles && ps_r__puddles_force > 0.f)
+            {
+                wetness = ps_r__puddles_force;
+                g_da_rain_wetness = wetness;
+                result.set(ps_r__puddles_force, wetness, ps_r__puddles_size, dbg);
+                cmd_list.set_c(C, result);
+                return;
+            }
+
+            // ⚠️ Сила дождя задаёт СКОРОСТЬ намокания, а не потолок.
+            //
+            // Раньше влажность шла экспонентой К ЗНАЧЕНИЮ rain_density, то есть слабый дождь навсегда
+            // упирался в свою же долю: при 0.2 влажность стояла на 0.2, маска луж умножалась на неё
+            // же — и луж не было вовсе. А в конфигах DA слабый дождь это как раз 0.1–0.3, единица
+            // бывает только в грозу. Получалось, что лужи появлялись лишь в ливень.
+            //
+            // В жизни слабый дождь мочит землю не слабее, а ДОЛЬШЕ: воды в минуту меньше, но она
+            // копится, и через полчаса моросящего дождя лужи не хуже грозовых. Поэтому дождь любой
+            // силы ведёт влажность к единице, и только скорость зависит от силы.
+            //
+            // Нижняя граница 0.25 — чтобы морось (0.05) не набирала воду сутки: самый слабый дождь
+            // наполняет за четыре срока r__puddles_buildup, ливень — за один.
+            const float dt = Device.fTimeDelta;
+            if (rain > 0.02f)
+            {
+                const float speed = (0.25f + 0.75f * rain) / _max(ps_r__puddles_buildup, EPS_S);
+                wetness += dt * speed;
+            }
+            else
+            {
+                // Сохнет тем же ходом, только во столько раз медленнее, во сколько сказано ручкой.
+                wetness -= dt / _max(ps_r__puddles_buildup * ps_r__puddles_dry, EPS_S);
+            }
+            clamp(wetness, 0.f, 1.f);
+
+            // [DA_PORT] Отдаём наружу: по этому числу игровой код решает, плескать ли под ногами.
+            g_da_rain_wetness = wetness;
+
+            result.set(rain, wetness, ps_r__puddles_size, dbg);
+        }
+        cmd_list.set_c(C, result);
+    }
+};
+static cl_rain_params binder_rain_params;
+
+// [DA_PORT] Вид воды: зеркальность, потемнение, глянец просто мокрой земли, сила ряби.
+// Отдельной константой от rain_params — та про погоду, эта про внешний вид, и меняется руками.
+// [DA_PORT] Вторая константа вида: дальность, за которой луж не рисуем. Отдельной сделана потому,
+// что первые четыре слота заняты, а расширять по месту дешевле, чем перетасовывать смыслы.
+class cl_puddle_look2 : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, float(ps_r__puddles_dist), ps_r__puddles_rim, ps_r__puddles_rim_width, 0.f);
+    }
+};
+static cl_puddle_look2 binder_puddle_look2;
+
+class cl_puddle_look : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // [DA_PORT] Отметка о том, что константу вообще спросили. Если этой строки в логе нет, а
+        // строка про влажность есть — значит имя da_puddle_look не нашлось в таблице, шейдер читает
+        // мусор из чужого регистра, и внутри лужи не работают ни потемнение, ни глянец. Отличить это
+        // от «работает, но выглядит слабо» по картинке нельзя, а по логу — сразу.
+        if (ps_r__puddles_debug)
+        {
+            static u32 last_log = 0;
+            if (Device.dwTimeGlobal - last_log > 1000)
+            {
+                last_log = Device.dwTimeGlobal;
+                Msg("* [DA_PORT] лужи, вид: глянец %.2f, темнее в %.2f, мокрота %.2f, рябь %.2f",
+                    ps_r__puddles_gloss, ps_r__puddles_dark, ps_r__puddles_damp, ps_r__puddles_ripple);
+            }
+        }
+        cmd_list.set_c(C, ps_r__puddles_gloss, ps_r__puddles_dark, ps_r__puddles_damp, ps_r__puddles_ripple);
+    }
+};
+static cl_puddle_look binder_puddle_look;
 
 // eye-params
 class cl_eye_P : public R_constant_setup
@@ -429,6 +570,11 @@ void CBlender_Compile::SetMapping()
 #endif
     // time
     r_Constant("timers", &binder_times);
+
+    // [DA_PORT] лужи: дождь сейчас + накопленная влажность, и отдельно — их вид
+    r_Constant("rain_params", &binder_rain_params);
+    r_Constant("da_puddle_look", &binder_puddle_look);
+    r_Constant("da_puddle_look2", &binder_puddle_look2);
 
     // eye-params
     r_Constant("eye_position", &binder_eye_P);

@@ -75,8 +75,13 @@ void CUIDragDropReferenceList::SetItem(CUICellItem* itm, Fvector2 abs_pos)
     {
         if (dest_cell_pos.x != -1 && dest_cell_pos.y != -1)
         {
+            // [DA_PORT] Та же дыра, что и в ветке обмена на поясе (UIActorMenuInventory.cpp): ячейка
+            // под курсором может оказаться ПУСТОЙ, и тогда `RemoveItem(nullptr)` разыменует ноль -
+            // `i->SetOwnerList(...)` сразу за вызовом. Здесь это ещё не роняло игру только потому,
+            // что список-ссылка используется реже; чиним заодно, раз причина одна.
             CUICellItem* old_itm = GetCellAt(dest_cell_pos).m_item;
-            RemoveItem(old_itm, false);
+            if (old_itm)
+                RemoveItem(old_itm, false);
             SetItem(itm, dest_cell_pos);
         }
     }

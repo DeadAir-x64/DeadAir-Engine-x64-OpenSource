@@ -519,9 +519,57 @@ void CLocatorAPI::archive::close()
 #endif
 }
 
+// [DA_PORT] --- Выбор сезона ------------------------------------------------------------------------
+//
+// Летний вид Зоны — это один архив `xtra_green.xdb0` с зелёными текстурами. Раньше сезон переключался
+// перекладыванием этого файла между каталогом игры и хранилищем (наш PowerShell-переключатель): 204 МБ
+// туда-обратно, только при закрытой игре, и с риском потерять файл на полпути.
+//
+// Здесь то же самое делается без единого перемещения: архив всегда лежит в `database\`, а осенью просто
+// не подключается. Точка ровно одна — эта функция, через неё проходит монтирование всех архивов.
+//
+// ⚠️ Момент чтения. Архивы монтируются на старте движка, ДО консоли, скриптов и user.ltx, поэтому взять
+// значение оттуда нельзя — его там ещё нет. Признак лежит обычным файлом рядом с самим архивом, и путь к
+// нему выводится из пути архива: никакого глобального состояния и никакой зависимости от порядка
+// инициализации.
+//
+// Отсутствие файла-признака означает «вести себя как раньше»: у того, кто уже включил лето старым
+// переключателем, ничего не поменяется само по себе.
+static bool da_seasonal_archive_enabled(pcstr archive_path)
+{
+    pcstr name = archive_path;
+    for (pcstr p = archive_path; *p; ++p)
+        if (*p == '\\' || *p == '/')
+            name = p + 1;
+
+    if (0 != xr_stricmp(name, "xtra_green.xdb0"))
+        return true; // не сезонный архив — не наше дело
+
+    string_path marker;
+    xr_strcpy(marker, sizeof(marker), archive_path);
+    const size_t prefix = name - archive_path;
+    marker[prefix] = 0;
+    xr_strcat(marker, sizeof(marker), "da_season.txt");
+
+    FILE* f = fopen(marker, "rb");
+    if (!f)
+        return true; // признака нет — прежнее поведение
+
+    char buf[32] = {};
+    const size_t got = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[got] = 0;
+
+    return (nullptr != strstr(buf, "summer"));
+}
+
 void CLocatorAPI::ProcessArchive(pcstr _path)
 {
     ZoneScoped;
+
+    // [DA_PORT] Осенью летний архив не подключаем вовсе — см. da_seasonal_archive_enabled.
+    if (!da_seasonal_archive_enabled(_path))
+        return;
 
     // find existing archive
     shared_str path = _path;

@@ -40,6 +40,22 @@ protected:
     Fcolor m_da_color;
     bool m_da_use_spot;
 
+    // [DA_PORT] ВТОРОЕ семейство настроек - для налобного фонаря (torch2). DA настраивает луч двумя
+    // независимыми наборами: torch_set_* описывает свет ПРЕДМЕТА в руках (фонарик, палочка,
+    // зажигалка) и применяется один раз при смене предмета, а torch2_set_* описывает налобный луч и
+    // применяется КАЖДЫЙ тик (xr_actor.script, UpdateTorch). У нас прожектор один на оба, поэтому
+    // значения хранятся раздельно, а в лампу уходит тот набор, чей свет сейчас и должен гореть:
+    // предмет есть (дальность > 0) - его, нет - налобный. Пока torch2-сеттеры были заглушками,
+    // налобный фонарь получал от ветки "предмета нет" дальность 0 и чёрный цвет - и не светил вовсе
+    // при живом звуке щелчка и включённой лампе.
+    float m_da_item_range;      // torch_set_range: <=0 означает "предмета со светом нет"
+    float m_da_item_cone_deg;   // torch_set_radius
+    float m_da2_range;          // torch2_set_range
+    float m_da2_cone_deg;       // torch2_set_radius
+    Fcolor m_da2_color;         // torch2_set_color_* (яркость падает с зарядом батареи)
+    Fvector2 m_da2_offset;      // torch2_set_offset_*: зарезервировано, положение луча см. UpdateCL
+    shared_str m_da_beam_texture; // что сейчас в прожекторе (см. DaApplyBeam: у налобного своя)
+
 private:
     inline bool can_use_dynamic_lights();
 
@@ -81,6 +97,21 @@ public:
     void TorchSetTexture(LPCSTR name);
     void TorchSwitchSpot(bool spot);
     void TorchApplyDAColor();
+
+    // [DA_PORT] Налобный фонарь (torch2_set_* из xr_actor.script). См. m_da2_* выше.
+    void Torch2SetRange(float r);
+    void Torch2SetRadius(float deg);
+    void Torch2SetColorR(float v);
+    void Torch2SetColorG(float v);
+    void Torch2SetColorB(float v);
+    void Torch2SetOffsetX(float v);
+    void Torch2SetOffsetY(float v);
+    void DaApplyBeam();
+    // [DA_PORT] Единственное место, решающее, горит ли лампа игрока. См. Torch.cpp.
+    void DaUpdateLightState();
+    static int da_torch_count(CInventoryOwner* owner);
+    // [DA_PORT] Сообщить скрипту, что фонарь погашен (itms_manager.Torch2). См. Torch.cpp.
+    void DaSyncScriptSwitch();
 
     virtual bool can_be_attached() const;
 

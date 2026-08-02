@@ -2,6 +2,8 @@
 
 #include "da_fsr3.h"
 
+extern ENGINE_API void da_upscaler_mark_failed(pcstr who); // [DA_PORT]
+
 namespace xray::render::RENDER_NAMESPACE
 {
 da_fsr3 g_da_fsr3;
@@ -108,18 +110,33 @@ bool da_fsr3::create(const init_params& p)
     desc.backendInterface = m_backend;
     desc.fpMessage = fsr3_message;
 
-    // HIGH_DYNAMIC_RANGE: the scene reaching the upscaler has not been tonemapped yet, so values go
-    // above 1. DEPTH_INVERTED is deliberately NOT set - X-Ray's projection is the conventional way up,
-    // the same reasoning as in da_fsr2.
-    // [DA_PORT] DEBUG_CHECKING stays on in Release. The backend answers a failed context with a bare
-    // FFX_ERROR_BACKEND_API_ERROR, which says only "something inside went wrong"; the message callback
-    // is the only way to learn what. It costs a few validations at startup and nothing per frame.
-    desc.flags = FFX_FSR3UPSCALER_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR3UPSCALER_ENABLE_DEBUG_CHECKING;
+    // [DA_PORT] ⚠️ HIGH_DYNAMIC_RANGE снят — ровно по той же причине, что и у FSR 2 (см. da_fsr2.cpp,
+    // там разбор целиком). Кадр к этому месту УЖЕ тонемаплен: диспетч стоит внутри phase_combine,
+    // после того как combine_1 свёл сцену в отображаемый диапазон. Библиотеке говорили «линейный
+    // HDR», а давали 0..1, и вся её работа с яркостью — веса, кламп по соседству, определение
+    // нестабильности — считалась в чужой шкале.
+    //
+    // ⛔ ЭТУ СТРОКУ ЗАБЫЛИ 01.08: тогда правились FSR 2, XeSS и DLSS, а FSR 3 остался с прежним
+    // флагом. Симптом у него потому и держался — дрожь листвы там, где на FSR 2 её уже не было.
+    // Урок: правка «одинаковой ошибки в трёх местах» обязана заканчиваться проверкой ЧЕТВЁРТОГО.
+    //
+    // INVERTED_DEPTH по-прежнему НЕ ставим - проекция X-Ray обычная.
+    desc.flags = 0;
+
+    // [DA_PORT] DEBUG_CHECKING только в отладочной сборке, как у FSR 2. Бэкенд отвечает на неудачу
+    // голым FFX_ERROR_BACKEND_API_ERROR, и колбэк сообщений — единственный способ узнать причину,
+    // но у игрока это лишние проверки и строки в логе.
+#ifdef DEBUG
+    desc.flags |= FFX_FSR3UPSCALER_ENABLE_DEBUG_CHECKING;
+#endif
 
     code = ffxFsr3UpscalerContextCreate(&m_context, &desc);
     if (code != FFX_OK)
     {
         Msg("! [FSR3] context creation failed (%d)", code);
+        // [DA_PORT] Гасим апскейлер сразу: контекст не создался - значит не создастся и дальше, а
+        // джиттер без реконструкции даёт тряску всего экрана. Проверено у тестера на R9 290.
+        ::da_upscaler_mark_failed("FSR 3.0");
         destroy_shared();
         xr_free(m_scratch);
         m_scratch = nullptr;

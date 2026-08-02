@@ -208,6 +208,8 @@ public:
     // [DA_PORT] Belt AND backpack slot - the tank and the exo backpack are artefacts too. Shared by the
     // damage path and by the displayed numbers so the two cannot drift apart. See Actor.cpp.
     float ArtefactProtection(ALife::EHitType hit_type) const;
+    // [DA_PORT] Порог кислородного баллона против химии — тот же, что в скрипте мода. См. Actor.cpp.
+    bool da_chem_gear_blocks_hit() const;
 
 protected:
     //звук тяжелого дыхания

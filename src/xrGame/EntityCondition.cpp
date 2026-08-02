@@ -12,6 +12,10 @@
 #include "Common/object_broker.h"
 #include "ActorHelmet.h"
 #include "ActorBackpack.h" // [DA_PORT] CBackpack::m_fPowerLoss in HitPowerEffect
+#include "Actor.h" // [DA_PORT] da_rad_log: разбор радиационного хита пишем только по актёру
+
+// [DA_PORT] см. console_commands.cpp, команда da_rad_log
+int g_da_rad_log = 0;
 
 #define MAX_HEALTH 1.0f
 #define MIN_HEALTH -0.01f
@@ -454,14 +458,33 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
         bAddWound = false;
         break;
     case ALife::eHitTypeRadiation:
+    {
+        // [DA_PORT] Разбор хита по слагаемым — включается `da_rad_log 1`. Защита ВЫЧИТАЕТСЯ, а не
+        // умножается, поэтому «сквозь костюм всё равно проходит» само по себе не дефект: значит
+        // источник сильнее суммы защит. Числа отвечают, что именно: снаряжение не участвует
+        // (после брони столько же, сколько пришло) или участвует, но его мало.
+        const float rad_after_gear = hit_power;
+
         hit_power -= m_fBoostRadiationProtection;
         if (hit_power < 0.f)
             hit_power = 0.f;
+
+        const float rad_after_boost = hit_power;
+
         hit_power *= GetHitImmunity(pHDS->hit_type) - m_fBoostRadiationImmunity;
         m_fDeltaRadiation += hit_power;
+
+        if (g_da_rad_log && Actor() && m_object == Actor())
+        {
+            Msg("~ [DA_RAD] пришло %.4f -> снаряжение %.4f -> артефакты %.4f -> в счётчик %.4f "
+                "(иммунитет %.3f, накоплено %.3f)",
+                hit_power_org, rad_after_gear, rad_after_boost, hit_power,
+                GetHitImmunity(pHDS->hit_type) - m_fBoostRadiationImmunity, GetRadiation());
+        }
+
         bAddWound = false;
         return NULL;
-        break;
+    }
     case ALife::eHitTypeExplosion:
         hit_power *= GetHitImmunity(pHDS->hit_type) - m_fBoostExplImmunity;
         m_fHealthLost = hit_power * m_fHealthHitPart;

@@ -214,10 +214,33 @@ void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
     // Which is why the artefact was intermittent (the race is not won every frame), grew more frequent
     // the more trees were on screen (more draws, more chances), and never appeared in the original: the
     // race was always there, it just had nothing to corrupt.
+    // [DA_PORT] ⚠️ Мало вычислить один раз — надо ещё дождаться, пока вычислят.
+    //
+    // Замена ниже гарантирует, что calculate() выполнится ровно однажды за кадр. Она НЕ гарантирует,
+    // что остальные потоки увидят результат готовым: победитель ещё пишет tvs.wind / wind_old /
+    // scale, а соседние каскады уже читают эти поля несколькими строками ниже. Прочитанный на
+    // середине ветер сдвигает листву в теневой карте, и тень куста прыгает на целый кадр.
+    //
+    // Отсюда и повадки: редко (окно перекрытия узкое), широко (кривой ветер двигает ВСЮ
+    // растительность разом) и с мгновенным возвратом на следующем кадре. Замер da_light_watch по
+    // строке во всю ширину показал ровно это: десять широких событий на три с половиной тысячи
+    // кадров при 84% узких, в один-два пикселя.
+    //
+    // Поэтому к «посчитано» добавлен флаг «результат виден», а опоздавшие ждут его. Ожидание почти
+    // всегда нулевое: calculate() — это несколько матричных операций.
     static std::atomic<u32> s_frame{ 0 };
+    static std::atomic<u32> s_ready{ 0 };
     u32 seen = s_frame.load(std::memory_order_relaxed);
     if (seen != Device.dwFrame && s_frame.compare_exchange_strong(seen, Device.dwFrame))
+    {
         tvs.calculate();
+        s_ready.store(Device.dwFrame, std::memory_order_release);
+    }
+    else
+    {
+        while (s_ready.load(std::memory_order_acquire) != Device.dwFrame)
+            std::this_thread::yield();
+    }
 // setup constants
 #if RENDER != R_R1
     Fmatrix xform_v;

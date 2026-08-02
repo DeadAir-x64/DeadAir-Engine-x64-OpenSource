@@ -30,34 +30,65 @@ extern const LPCSTR g_inventory_upgrade_xml;
 #define INV_GRID_WIDTH2 40.0f
 #define INV_GRID_HEIGHT2 40.0f
 
-// [DA_PORT] Dead Air shows a weapon's malfunction state in its description: a header (st_condition_type =
-// "Состояние:") followed, per set bit of the 32-bit condition_type bitmask, by st_condition_type_<bit+1>
-// (or st_condition_type_0 = "perfect" when the mask is empty). The mask is maintained by scripts
-// (items_condition.script) via get/set_weapon_condition_type. The port had the field but never displayed it.
+// [DA_PORT] Список поломок оружия в описании предмета.
+//
+// Идентификаторы строк здесь были ВЫДУМАНЫ и не существуют: код спрашивал "st_condition_type" и
+// "st_condition_type_<бит+1>", а у мода они называются "st_condition_type_text_<бит+1>" (см. вызов
+// translate_string в gamedata/scripts/ui_itm_repair.script). Заголовка "st_condition_type" нет вовсе,
+// а на нём стоял ранний выход - поэтому блок НЕ ПОКАЗЫВАЛСЯ НИКОГДА, и игрок не мог узнать, что у
+// ствола сломано.
+//
+// Цена этой мелочи велика. Починка идёт по ОДНОЙ поломке за раз, и окно ремонта показывает только те,
+// что чинит набор в руках: там стоит проверка «бит есть и в маске ствола, и в маске набора». Игрок
+// вылечил доступное, увидел пустой список и решил, что автомат целый - а оставшиеся биты продолжают
+// добавлять к разбросу. Отсюда «починил, не клинит, а стреляет косо».
+//
+// Заголовок берём свой (ui_da_wpn_breakage): чужого нет, а заводить строку в чужом пространстве имён
+// нельзя - таблицы строк грузятся параллельно, и дубликат идентификатора даёт гонку.
 static void DA_AppendWeaponConditionType(xr_string& text, CInventoryItem& item)
 {
     CWeapon* w = smart_cast<CWeapon*>(&item);
     if (!w)
         return;
-    if (!StringTable().has_translation("st_condition_type"))
-        return; // localization not loaded -> show nothing rather than raw ids
 
     const u32 mask = w->m_weapon_condition_type;
-    text += StringTable().translate("st_condition_type").c_str();
+
+    text += StringTable().translate("ui_da_wpn_breakage").c_str();
 
     if (mask == 0)
     {
-        text += StringTable().translate("st_condition_type_0").c_str(); // "Идеальное"
+        text += StringTable().translate("ui_da_wpn_breakage_none").c_str();
         return;
     }
+
+    bool first = true;
     for (int i = 0; i < 32; ++i)
     {
-        if (mask & (1u << i))
+        if (0 == (mask & (1u << i)))
+            continue;
+
+        // Идентификатор берём тот же, что и окно ремонта мода (ui_itm_repair.script):
+        // st_condition_type_text_<бит+1>.
+        string64 id;
+        xr_sprintf(id, "st_condition_type_text_%d", i + 1);
+
+        if (!first)
+            text += ", ";
+        first = false;
+
+        // ⚠️ Проверить наличие этих строк по данным НЕ УДАЛОСЬ: в распакованных таблицах их нет, а
+        // в архивы игры наш распаковщик не пролез. Поэтому никакого «нет строки - молчим»: без
+        // названия печатаем номер поломки. Игрок в любом случае увидит, ЧТО ствол не целый и
+        // сколько на нём висит - а это и есть то, чего ему не хватало.
+        if (StringTable().has_translation(id))
         {
-            string64 id;
-            xr_sprintf(id, "st_condition_type_%d", i + 1);
-            if (StringTable().has_translation(id))
-                text += StringTable().translate(id).c_str();
+            text += StringTable().translate(id).c_str();
+        }
+        else
+        {
+            string64 fallback;
+            xr_sprintf(fallback, "#%d", i + 1);
+            text += fallback;
         }
     }
 }

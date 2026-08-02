@@ -14,6 +14,7 @@ light::light() : SpatialBase(g_pGamePersistent->SpatialSpace)
     flags.bShadow = false;
     flags.bVolumetric = false;
     flags.bHudMode = false;
+    flags.bNeverDemote = false;
     position.set(0, -1000, 0);
     direction.set(0, -1, 0);
     right.set(0, 0, 0);
@@ -38,6 +39,7 @@ light::light() : SpatialBase(g_pGamePersistent->SpatialSpace)
     vis.query_order = 0;
     vis.visible = true;
     vis.pending = false;
+    vis.miss_streak = 0; // [DA_PORT]
     for (u32 id = 0; id < R__NUM_CONTEXTS; ++id)
         svis[id].id = id;
 #endif // (RENDER==R_R2) || (RENDER==R_R3) || (RENDER==R_R4) || (RENDER==R_GL)

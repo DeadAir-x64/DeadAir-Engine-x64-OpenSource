@@ -241,9 +241,23 @@ Flags32 ps_r2_ls_flags = {R2FLAG_SUN
     | R3FLAG_GBUFFER_OPT | R2FLAG_DETAIL_BUMP | R2FLAG_SOFT_PARTICLES | R2FLAG_SOFT_WATER |
     R2FLAG_STEEP_PARALLAX | R2FLAG_SUN_FOCUS | R2FLAG_SUN_TSM | R2FLAG_TONEMAP | R2FLAG_VOLUMETRIC_LIGHTS}; // r2-only
 
+// [DA_PORT] ⚠️ R2FLAGEXT_SUN_ZCULLING ДОБАВЛЕН в набор по умолчанию (в апстриме его тут нет).
+//
+// Флаг решает, как дальний каскад солнца накладывает свет, и при ВЫКЛЮЧЕННОМ отсечении картинка
+// неверна в обе стороны - это проверено в игре 01.08:
+//
+//   выключено, объём свой         -> дальний каскад режет экран ровной диагональю с вершиной на
+//                                    солнце (видно на открытом месте при низком солнце);
+//   выключено, объём предыдущего  -> дальше среднего каскада солнце не доходит вовсе, мир тёмный;
+//   ВКЛЮЧЕНО                      -> объём предыдущего каскада плюс тест глубины "ближе": дальний
+//                                    каскад добирает ровно то, что не осветили ближние. Верно.
+//
+// Мы всё это время играли с `on` в user.ltx и потому не видели ни первого, ни второго; у тестера
+// стояло `off` (значение по умолчанию), и он получил сначала полосу, а после отката - темноту.
+// Значение по умолчанию должно давать правильную картинку, а не то, что осталось от апстрима.
 Flags32 ps_r2_ls_flags_ext = {
     /*R2FLAGEXT_SSAO_OPT_DATA |*/ R2FLAGEXT_SSAO_HALF_DATA | R2FLAGEXT_ENABLE_TESSELLATION | R3FLAGEXT_SSR_HALF_DEPTH |
-    R3FLAGEXT_SSR_JITTER};
+    R3FLAGEXT_SSR_JITTER | R2FLAGEXT_SUN_ZCULLING};
 
 float ps_r2_df_parallax_h = 0.02f;
 float ps_r2_df_parallax_range = 75.f;
@@ -394,7 +408,11 @@ int ps_r__detail_radius = 49;
 // pipeline nearly sixty times. Lights ate 3.7 ms of the 4.5 ms GPU frame there.
 // Lights beyond the budget are demoted to the unshadowed path (they still light the scene, they just
 // stop casting), keeping the ones that matter most on screen.
-u32 ps_r__light_shadow_budget = 12;
+// [DA_PORT] Дефолт - «Минимум». Проверено в игре 01.08: разницы в картинке почти нет, а кадр по
+// процессорной части дешевле на 78% (1.56 мс против 2.78 мс на базе, подача геометрии 0.27 против
+// 0.99). Одна ТЕНЕВАЯ точечная лампа - это шесть проходов сцены, а не один: движок разбирает её
+// на шесть 90-градусных секторов, см. light::Export.
+u32 ps_r__light_shadow_budget = 1;
 
 u32 dm_size = 24;
 u32 dm_cache1_line = 12; //dm_size*2/dm_cache1_count
@@ -591,6 +609,8 @@ int ps_da_sun_log = 0;
 // Замер под мерцание тени; см. render_sun::accumulate_cascade.
 int ps_da_sun_only = 0;
 
+// [DA_PORT] Диагностические крутилки регистрируются через CCC_DaDebugInteger / CCC_DaDebugFloat
+// (xr_ioc_cmd.h): они не пишутся в user.ltx и живут ровно один запуск. Там же — почему.
 
 float o_optimize_static_l1_dist = O_S_L1_D_MED;
 float o_optimize_static_l1_size = O_S_L1_S_MED;
@@ -658,18 +678,30 @@ struct Preset
 {
     pcstr shadow_lights, sun_far, smap, opt_static, opt_dyn;
     pcstr vis_dist, detail_radius, detail_density, geometry_lod, detail_height;
+    pcstr smap_cache; // [DA_PORT] срок жизни кэша теневых карт солнца, МИЛЛИСЕКУНДЫ (0 = выключен)
 };
 
 // low, medium, high, ultra
 const Preset s_perf_presets[4] = {
-    { "st_opt_shadow_lights_low",    "51",  "1024", "st_optimize_high", "st_optimize_high",
-      "0.8", "60",  "0.75", "0.7", "1.0" },
-    { "st_opt_shadow_lights_medium", "51",  "1024", "st_optimize_med",  "st_optimize_med",
-      "1.0", "100", "0.5",  "1.0", "1.3" },
-    { "st_opt_shadow_lights_high",   "80",  "2048", "st_optimize_low",  "st_optimize_low",
-      "1.0", "150", "0.4",  "1.3", "1.5" },
-    { "st_opt_shadow_lights_high",   "120", "2048", "st_optimize_off",  "st_optimize_off",
-      "1.0", "200", "0.3",  "1.6", "1.8" },
+    // [DA_PORT] Тени от ламп сдвинуты на ступень вниз - иначе применение набора качества в меню
+    // сбивало бы настройку обратно, а «Минимум» проверен в игре и стоит вдвое дешевле по процессору.
+    // [DA_PORT] Последний столбец — кэш теневых карт солнца, в МИЛЛИСЕКУНДАХ.
+    //
+    // Замерено: фаза теневых карт дешевеет вдвое (0.803 -> 0.42 мс при 60 мс кэша). Цена — тень
+    // средних и дальних каскадов отстаёт от мира на этот срок, включая тени NPC на средней
+    // дистанции. Ступени названы по КАЧЕСТВУ и совпадают с именем набора: низкая точность = 150 мс,
+    // средняя = 100, высокая = 50, ультра = без кэша. См. q_smap_cache — там же, почему наоборот.
+    //
+    // На «Максимуме» выключено намеренно: там игрок платит за точность, а не за кадры, и проверки
+    // артефактов глазами у нас пока нет. Как проверим — можно будет включить и там.
+    { "st_opt_shadow_lights_off",    "51",  "1024", "st_optimize_high", "st_optimize_high",
+      "0.8", "60",  "0.75", "0.7", "1.0", "st_opt_smap_cache_low" },
+    { "st_opt_shadow_lights_off",    "51",  "1024", "st_optimize_med",  "st_optimize_med",
+      "1.0", "100", "0.5",  "1.0", "1.3", "st_opt_smap_cache_medium" },
+    { "st_opt_shadow_lights_low",    "80",  "2048", "st_optimize_low",  "st_optimize_low",
+      "1.0", "150", "0.4",  "1.3", "1.5", "st_opt_smap_cache_high" },
+    { "st_opt_shadow_lights_medium", "120", "2048", "st_optimize_off",  "st_optimize_off",
+      "1.0", "200", "0.3",  "1.6", "1.8", "st_opt_smap_cache_ultra" },
 };
 
 // Сверяем через саму консоль, а не через десяток внешних переменных: так список настроек набора
@@ -707,7 +739,8 @@ u32 da_perf_detect_preset()
             da_perf_value_matches("r__detail_radius", p.detail_radius) &&
             da_perf_value_matches("r__detail_density", p.detail_density) &&
             da_perf_value_matches("r__geometry_lod", p.geometry_lod) &&
-            da_perf_value_matches("r__detail_height", p.detail_height))
+            da_perf_value_matches("r__detail_height", p.detail_height) &&
+            da_perf_value_matches("da_smap_cache", p.smap_cache))
             return i;
     }
     return PERF_PRESET_CUSTOM;
@@ -762,6 +795,7 @@ public:
         xr_sprintf(cmd, "r__detail_density %s", p.detail_density);       Console->Execute(cmd);
         xr_sprintf(cmd, "r__geometry_lod %s", p.geometry_lod);           Console->Execute(cmd);
         xr_sprintf(cmd, "r__detail_height %s", p.detail_height);         Console->Execute(cmd);
+        xr_sprintf(cmd, "da_smap_cache %s", p.smap_cache);               Console->Execute(cmd);
     }
 };
 
@@ -781,6 +815,95 @@ xr_token q_light_shadow_budget[] = {
     { "st_opt_shadow_lights_medium", 12 },
     { "st_opt_shadow_lights_high", 18 },
     { nullptr, 0 },
+};
+
+// [DA_PORT] Кэш теневых карт солнца. Значение токена — САМ СРОК ЖИЗНИ В МИЛЛИСЕКУНДАХ, лишней
+// таблицы перевода нет: одно число, один смысл (урок [[jitter-path-unified]] — константа с двумя
+// смыслами молча гасит половину логики).
+//
+// Почему миллисекунды, а не кадры: тот же лимит в кадрах на быстрой машине означает 60 мс, а на
+// слабой — полсекунды замороженных теней. То есть картинка портилась бы тем сильнее, чем слабее
+// компьютер, — ровно у той аудитории, ради которой оптимизация и делается. Во времени устаревание
+// ограничено одинаково у всех, а доля пропусков сама подстраивается под частоту кадров.
+//
+// Обратная сторона выбора шага: срок жизни короче кадра не даёт НИЧЕГО. При 30 к/с кадр длится
+// 33 мс, поэтому нижняя ступень взята с запасом (50 мс), иначе на слабой машине «низкое» означало
+// бы «выключено» — и именно там, где оно нужнее всего.
+//
+// ⚠️ Ступени идут ОТ БОЛЬШЕГО СРОКА К МЕНЬШЕМУ, и это не опечатка. Строка называется «точность теней
+// солнца», то есть меряет КАЧЕСТВО, как и все остальные строки меню: «низкая» = тени обновляются
+// реже = кадров больше. Если назвать её по механизму («кэш»), получится, что на общем наборе
+// «Высокие» стоит «высокое кэширование», то есть худшая картинка — набор и строка читались бы
+// в противоположные стороны. Поэтому имя ступени совпадает с именем общего набора один в один.
+xr_token q_smap_cache[] = {
+    { "st_opt_smap_cache_low", 150 },
+    { "st_opt_smap_cache_medium", 100 },
+    { "st_opt_smap_cache_high", 50 },
+    { "st_opt_smap_cache_ultra", 0 },
+    { nullptr, 0 },
+};
+
+// [DA_PORT] Настройка из меню. Числа консоль здесь НЕ принимает, и это защита, а не строгость.
+//
+// Список сохраняет себя в user.ltx через GetStatus, а комбо-бокс — через get_token_name(id): у обоих
+// для значения вне списка ответ ПУСТАЯ СТРОКА. То есть стоило бы принять `da_smap_cache 75`, зайти в
+// настройки и нажать «Применить» — и в конфиг ушло бы `da_smap_cache` без аргумента, на следующем
+// запуске разбор бы упал, а настройка молча вернулась к нулю. Игрок увидел бы «настройки не
+// сохраняются», причём не сразу и без единого сообщения.
+//
+// Точные миллисекунды остались нужны — ими искали насыщение кэша и ими же придётся искать порог
+// артефактов. Они живут отдельной отладочной ручкой da_smap_cache_ms, которая пишет ту же
+// переменную, но НЕ сохраняется: одно значение, один хозяин в конфиге.
+class CCC_SmapCache : public CCC_Token
+{
+public:
+    CCC_SmapCache(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    // Если da_smap_cache_ms увёл значение в сторону, показываем БЛИЖАЙШУЮ ступень: пусть ответ будет
+    // приблизительным, лишь бы он всегда оставался годным и для конфига, и для списка в меню.
+    void GetStatus(TStatus& S) override
+    {
+        CCC_Token::GetStatus(S);
+        if (S[0] != '?')
+            return;
+        pcstr best = tokens[0].name;
+        int best_d = -1;
+        for (const xr_token* t = tokens; t->name; ++t)
+        {
+            const int d = _abs(t->id - (int)*value);
+            if (best_d < 0 || d < best_d)
+            {
+                best_d = d;
+                best = t->name;
+            }
+        }
+        xr_strcpy(S, best);
+    }
+};
+
+// [DA_PORT] Отладочная форма той же настройки: точный срок жизни в миллисекундах.
+class CCC_SmapCacheMs : public IConsole_Command
+{
+    u32* value;
+
+public:
+    // bEmptyArgsHandled НЕ трогаем: с ним пустой аргумент уходит в Execute, а atoi("") = 0, то есть
+    // запрос значения сам бы его и обнулял.
+    CCC_SmapCacheMs(pcstr N, u32* V) : IConsole_Command(N), value(V) {}
+
+    void Execute(pcstr args) override
+    {
+        const int ms = atoi(args);
+        if (ms < 0 || ms > 1000)
+        {
+            InvalidSyntax();
+            return;
+        }
+        *value = (u32)ms;
+    }
+    void GetStatus(TStatus& S) override { xr_sprintf(S, "%u", *value); }
+    void Info(TInfo& I) override { xr_strcpy(I, "срок жизни кэша теней солнца, миллисекунды 0..1000"); }
+    void Save(IWriter*) override {} // хозяин настройки в конфиге - da_smap_cache
 };
 
 // [DA_PORT] r2_sun_details: у автора это ТРИ состояния, у нас остаётся флаг — и это осознанно.
@@ -1273,8 +1396,12 @@ void xrRender_initconsole()
     CMD4(CCC_Float, "r__ssa_glod_end", &ps_r__GLOD_ssa_end, 16, 96);
     CMD4(CCC_Float, "r__wallmark_shift_pp", &ps_r__WallmarkSHIFT, 0.0f, 1.f);
     CMD4(CCC_Float, "r__wallmark_shift_v", &ps_r__WallmarkSHIFT_V, 0.0f, 1.f);
-    CMD1(CCC_ModelPoolStat, "stat_models");
 #endif // DEBUG
+
+    // [DA_PORT] Была под DEBUG, а зовёт её наш da_mem_test — в релизе он получал «Unknown command»
+    // и молча терял перепись пула моделей из отчёта о памяти. Команда только печатает содержимое
+    // пула, держать её отладочной незачем.
+    CMD1(CCC_ModelPoolStat, "stat_models");
     CMD4(CCC_Float, "r__wallmark_ttl", &ps_r__WallmarkTTL, 1.0f, 10.f * 60.f);
 
     CMD4(CCC_Integer, "r__supersample", &ps_r__Supersample, 1, 8);
@@ -1287,17 +1414,56 @@ void xrRender_initconsole()
     // only totalled up inside DumpStatistics, so with the overlay off there is nothing to print.
     {
         extern int ps_da_render_log;
-        CMD4(CCC_Integer, "da_render_log", &ps_da_render_log, 0, 2000);
+        // [DA_PORT] Потолок поднят с 2000 до 200000: значение — ЧИСЛО КАДРОВ, а минута игры при
+        // 450 к/с это 27 тысяч. Прежний предел молча обрезал команду, и замер заканчивался на
+        // четвёртой секунде — в отчёте это выглядело как «данных нет», а не как упёртый лимит.
+        CMD4(CCC_DaDebugInteger, "da_render_log", &ps_da_render_log, 0, 200000);
         // [DA_PORT] Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
         // мерцания целой тени на улице — см. комментарий в render_phase_sun.cpp::calculate.
-        CMD4(CCC_Integer, "da_sun_log", &ps_da_sun_log, 0, 2000);
-        CMD4(CCC_Integer, "da_sun_only", &ps_da_sun_only, 0, 3);
+        // [DA_PORT] ⚠️ ЧЕРЕЗ CCC_DaDebugInteger, а не CCC_Integer: диагностика не должна оседать в
+        // user.ltx (почему именно — в xr_ioc_cmd.h, у самого CCC_DaDebug).
+        CMD4(CCC_DaDebugInteger, "da_sun_log", &ps_da_sun_log, 0, 200000);
+        CMD4(CCC_DaDebugInteger, "da_sun_only", &ps_da_sun_only, 0, 3);
+
+        // [DA_PORT] Кэш теневых карт солнца. Разбор — в render_phase_sun.cpp, у da_smap_should_render.
+        // ⚠️ Обычные CCC_Integer, а не CCC_DaDebug: это настройка производительности, она ДОЛЖНА
+        // сохраняться в user.ltx, в отличие от диагностики.
+        {
+            extern u32 ps_da_smap_cache;
+            extern int ps_da_smap_cache_near;
+            CMD3(CCC_SmapCache, "da_smap_cache", &ps_da_smap_cache, q_smap_cache);
+            CMD2(CCC_SmapCacheMs, "da_smap_cache_ms", &ps_da_smap_cache);
+            // [DA_PORT] ⚠️ ЧЕРЕЗ CCC_DaDebugInteger: это ручка для замеров, а не настройка.
+            // Кэширование ближнего каскада замораживает тень САМОГО ИГРОКА — оставить единицу в
+            // user.ltx значит унести дефект в следующий запуск и искать его уже без подсказки.
+            CMD4(CCC_DaDebugInteger, "da_smap_cache_near", &ps_da_smap_cache_near, 0, 1);
+        }
     }
 #if RENDER == R_R4
     // [DA_PORT] GPU time per render phase, N frames into the log. See da_gpu_timer.h.
     {
         extern int ps_da_gpu_log;
-        CMD4(CCC_Integer, "da_gpu_log", &ps_da_gpu_log, 0, 2000);
+        CMD4(CCC_DaDebugInteger, "da_gpu_log", &ps_da_gpu_log, 0, 200000);
+    }
+
+    // [DA_PORT] Прогрев кэша шейдеров в несколько потоков. Разбор — у da_shader_warmup в
+    // r4_shaders.cpp. Команда, а не автозапуск: сначала мерим, потом решаем, где её звать.
+    {
+        class CCC_ShaderWarmup : public IConsole_Command
+        {
+        public:
+            CCC_ShaderWarmup(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+            void Execute(pcstr args) override { RImplementation.da_shader_warmup(args && args[0] == '1'); }
+        };
+        CMD1(CCC_ShaderWarmup, "da_shader_warmup");
+
+        class CCC_ShaderManifest : public IConsole_Command
+        {
+        public:
+            CCC_ShaderManifest(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+            void Execute(pcstr) override { RImplementation.da_shader_manifest_save(); }
+        };
+        CMD1(CCC_ShaderManifest, "da_shader_manifest");
     }
 #endif
     CMD3(CCC_OptimizeStatic, "r__optimize_static_geom", &ps_r_optimize_static, q_optimize_geom);

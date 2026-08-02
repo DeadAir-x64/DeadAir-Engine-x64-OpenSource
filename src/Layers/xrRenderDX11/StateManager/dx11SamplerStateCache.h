@@ -40,18 +40,41 @@ private:
     {
         u32 m_crc;
         IDeviceState* m_pState;
+        // [DA_PORT] Keep the description alongside the state. FindState used to ask D3D for it
+        // (m_pState->GetDesc) on every crc match, i.e. a driver round-trip inside a lookup that
+        // runs for each shader bind. Spotted in Dead Air: Refined
+        // (github.com/MMadmer/Dead-Air-Refined), MIT like the rest of OpenXRay.
+        StateDecs m_desc;
     };
 
 private:
     void CreateState(StateDecs desc, IDeviceState** ppIState);
     SHandle FindState(const StateDecs& desc, u32 StateCRC);
 
-    void PrepareSamplerStates(HArray& samplers, ID3DSamplerState* pSS[D3D_COMMONSHADER_SAMPLER_SLOT_COUNT]) const;
+    // [DA_PORT] Returns how many slots actually have to be handed to D3D: the ones this shader uses,
+    // plus whatever the previous bind on this context/stage left behind so those get cleared. The
+    // engine used to set all 16 every time regardless.
+    enum class ShaderStage : u32
+    {
+        Vertex = 0,
+        Pixel,
+        Geometry,
+        Hull,
+        Domain,
+        Compute,
+        COUNT
+    };
+
+    u32 PrepareSamplerStates(u32 context_id, ShaderStage stage, HArray& samplers,
+        ID3DSamplerState* pSS[D3D_COMMONSHADER_SAMPLER_SLOT_COUNT]);
 
     //	Private data
 private:
     //	This must be cleared on device destroy
     xr_vector<StateRecord> m_StateArray;
+
+    // [DA_PORT] How many sampler slots the previous bind occupied, per context and shader stage.
+    u8 m_boundSamplerCounts[R__NUM_CONTEXTS][static_cast<u32>(ShaderStage::COUNT)]{};
 
     u32 m_uiMaxAnisotropy;
     float m_uiMipLODBias;

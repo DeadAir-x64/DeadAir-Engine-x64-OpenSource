@@ -2,6 +2,8 @@
 
 #include "da_xess.h"
 
+extern ENGINE_API void da_upscaler_mark_failed(pcstr who); // [DA_PORT]
+
 namespace xray::render::RENDER_NAMESPACE
 {
 da_xess g_da_xess;
@@ -77,12 +79,21 @@ bool da_xess::create(const init_params& p)
     // reasoning as in da_fsr2.
     // RESPONSIVE_PIXEL_MASK is Intel's name for the same thing FSR 2 calls the reactive mask, and it
     // takes the identical texture - one mask serves both, which is why it is worth building properly.
-    init.initFlags = XESS_INIT_FLAG_USE_NDC_VELOCITY | XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK;
+    // [DA_PORT] LDR_INPUT_COLOR: кадр к моменту апскейла УЖЕ тонемаплен (combine_1 сводит сцену в
+    // отображаемый диапазон, дальше половины складываются в rt_Color). Без этого флага XeSS считает
+    // вход линейным HDR — та же ошибка, что была у FSR 2 и DLSS, и та же ступенчатая кромка у самого
+    // яркого предмета в кадре. Подробности — в da_fsr2.cpp.
+    init.initFlags = XESS_INIT_FLAG_USE_NDC_VELOCITY | XESS_INIT_FLAG_RESPONSIVE_PIXEL_MASK |
+        XESS_INIT_FLAG_LDR_INPUT_COLOR;
 
     r = xessD3D11Init(m_context, &init);
     if (r != XESS_RESULT_SUCCESS)
     {
         Msg("! [XESS] initialisation failed (%d)", int(r));
+
+        // [DA_PORT] Тот же случай, что у FSR 3 на R9 290: без реконструкции джиттер трясёт экран.
+
+        ::da_upscaler_mark_failed("XeSS");
         xessDestroyContext(m_context);
         m_context = nullptr;
         return false;
@@ -90,10 +101,16 @@ bool da_xess::create(const init_params& p)
 
     m_created = true;
 
+    // [DA_PORT] ⚠️ Это ИДЕАЛЬНЫЙ вход по таблице Intel, а НЕ тот размер, в котором рисуется сцена.
+    //
+    // Настоящий приходит позже, в execute (p.render_width), и берётся из процентной шкалы движка:
+    // 1920 * 0.77 = 1478, тогда как формула Intel для 1.3x даёт 1476. Разницы в работе нет - XeSS
+    // допускает вход в диапазоне, - но в логе два числа стояли рядом с «[FSR3] ready: 1478», и на
+    // этом расхождении легко потерять время, что со мной и случилось при разборе мазни у тестера.
     u32 rw, rh;
     render_size_for(p.quality, p.display_width, p.display_height, rw, rh);
-    Msg("* [XESS] ready: %ux%u -> %ux%u, quality mode %d", rw, rh, p.display_width, p.display_height,
-        p.quality);
+    Msg("* [XESS] ready: вход %ux%u (идеальный по Intel) -> %ux%u, режим качества %d", rw, rh,
+        p.display_width, p.display_height, p.quality);
     return true;
 }
 

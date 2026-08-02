@@ -44,6 +44,10 @@ public:
 
     void SetValue(float value);
 
+    // [DA_PORT] Подпись строки может зависеть от предмета: у артефакта в контейнере строка радиации
+    // отвечает на другой вопрос — сколько её проходит наружу.
+    void SetCaption(pcstr caption);
+
     pcstr GetDebugType() override { return "UIArtefactParamItem"; }
 
 private:

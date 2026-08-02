@@ -2,6 +2,9 @@
 
 #include "UITimeDilator.h"
 
+// [DA_PORT] Ход времени, выбранный игроком (console_commands.cpp). См. stopTimeDilation ниже.
+extern float g_da_time_factor_user;
+
 UITimeDilator* time_dilator;
 
 UITimeDilator* TimeDilator()
@@ -73,5 +76,11 @@ void UITimeDilator::startTimeDilation()
 
 void UITimeDilator::stopTimeDilation()
 {
-    Device.time_factor(1.0f);
+    // [DA_PORT] Возвращаем ход времени, выбранный игроком, а не жёсткую единицу.
+    //
+    // Здесь стояло `Device.time_factor(1.0f)`, и это гасило команду `time_factor` при каждом закрытии
+    // инвентаря или КПК — со стороны игрока «ускорение времени иногда работает, иногда нет». Хуже
+    // того, строка не проверяла, включено ли само замедление: время сбрасывалось даже там, где
+    // интерфейс его вовсе не трогал.
+    Device.time_factor(g_da_time_factor_user);
 }

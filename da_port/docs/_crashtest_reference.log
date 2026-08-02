@@ -1,0 +1,118 @@
+OpenXRay Release build 10035, Jul 30 2026 (Windows 64-bit, shared)
+Custom build from commit[] branch[]
+ 
+command line -nointro 
+
+* CPU features: RDTSC, MMX, SSE, SSE2, SSE3, SSE41, SSE42, AVX, AVX2, AVX512F
+* CPU threads: 16
+
+Starting INPUT device...
+Initializing File System...
+~ [DA_PORT] ввод захвачен, приёмников 1: <= ВЕРХ 13DummyReceiver
+$fs_root$ = D:\Dead Air\Dead Air
+using fs-ltx fsgame.ltx
+SOUND: OpenAL: enumerate devices...
+SOUND: OpenAL: system default sound device name is JBL TUNE770NC
+SOUND: OpenAL: All available devices:
+1. Наушники (JBL TUNE770NC), Spec Version 1.1 (default) eax[5] efx[yes]
+2. Realtek Digital Output (Realtek USB Audio), Spec Version 1.1  eax[5] efx[yes]
+3. P2510H PLUS (NVIDIA High Definition Audio), Spec Version 1.1  eax[5] efx[yes]
+4. A24FAA-RG (NVIDIA High Definition Audio), Spec Version 1.1  eax[5] efx[yes]
+FS: 82074 files cached 28 archives, 23360Kb memory used.
+Init FileSystem 0.764381 sec
+-----loading d:\dead air\dead air\gamedata\configs\system.ltx
+-----loading d:\dead air\dead air\gamedata\configs\system.ltx
+* [DA_PORT] монитор 0: режимов 136, разрешений 20
+* [DA_PORT] монитор 1: режимов 139, разрешений 20
+* [DA_PORT] сезон: осень
+Loading module: dxgi
+Loading module: d3d11
+* GPU [vendor:10DE]-[device:2C05]: NVIDIA GeForce RTX 5070 Ti
+* CREATE: DeviceREF: 3
+*   Texture memory: 15995 M
+refCount:m_pSwapChain 1
+refCount:pContext 1
+refCount:pDevice: 1
+refCount:m_pAdapter 1
+refCount:m_pFactory 1
+Available render modes[1]:
+renderer_r4
+Executing config-script "user.ltx"...
+[appdata\user.ltx] successfully loaded.
+Selected renderer: renderer_r4
+~ [DA_PORT] розничный STALKER не установлен (Software\GSC Game World\STALKER-COP\) - профиль сетевой игры не читается, для одиночной это нормально
+! Player name registry key (InstallUserName) not found !
+~ duplicate string table id [zat_b7_bandit_boss_sultan_task_1_name]
+~ duplicate string table id [zat_b7_bandit_boss_sultan_task_1_text]
+~ duplicate string table id [zat_b7_bandit_boss_sultan_task_1_about]
+~ duplicate string table id [zat_b7_bandit_boss_sultan_task_1_finish]
+~ duplicate string table id [zat_b22_stalker_medic_start_1]
+~ duplicate string table id [st_ui_containers]
+~ duplicate string table id [ui_mm_r2_sun_quality]
+~ duplicate string table id [svoboda_light_outfit_description]
+~ duplicate string table id [st_dyn_news_l12u_control_monolith]
+~ duplicate string table id [st_af_electra_sparkler_descr]
+~ duplicate string table id [st_af_electra_sparkler_name]
+~ duplicate string table id [sleep_itm_warning_blowout]
+~ duplicate string table id [st_itm_sleepbag_name]
+StringTable: loaded 68 files
+Initializing Engine...
+Executing config-script "d:\dead air\dead air\gamedata\configs\default_controls.ltx"...
+[d:\dead air\dead air\gamedata\configs\default_controls.ltx] successfully loaded.
+Executing config-script "user.ltx"...
+Executing config-script "d:\dead air\dead air\gamedata\configs\rspec_extreme.ltx"...
+[d:\dead air\dead air\gamedata\configs\rspec_extreme.ltx] successfully loaded.
+! Unknown command:  ai_ignore_actor
+Executing config-script "d:\dead air\dead air\gamedata\configs\default_controls.ltx"...
+[d:\dead air\dead air\gamedata\configs\default_controls.ltx] successfully loaded.
+! Unknown command:  g_god
+! Unknown command:  g_unlimitedammo
+* [DA_PORT] DLSS mode 1: scene renders at 67% of the output
+* [DA_PORT] upscaler 6, quality step 1: scene renders at 67% of the output
+* [DA_PORT] upscaler 6, quality step 0: scene renders at 77% of the output
+~ Invalid syntax in call to 'sv_adm_menu_ban_time'
+~ Valid arguments: ui_mp_am_10_minutes/ui_mp_am_30_minutes/ui_mp_am_1_hour/ui_mp_am_6_hours/ui_mp_am_1_day/ui_mp_am_1_week/ui_mp_am_1_month/ui_mp_am_3_monthes/ui_mp_am_forever
+~ Invalid syntax in call to 'sv_suspicious_actions_ban_time'
+~ Valid arguments: ui_mp_am_10_minutes/ui_mp_am_30_minutes/ui_mp_am_1_hour/ui_mp_am_6_hours/ui_mp_am_1_day/ui_mp_am_1_week/ui_mp_am_1_month/ui_mp_am_3_monthes/ui_mp_am_forever
+~ [DA_PORT] ===== НАМЕРЕННАЯ АВАРИЯ (da_crash_test) =====
+~ [DA_PORT] Это проверка отчёта о вылете, а НЕ дефект. Если такой лог пришёл от
+~ [DA_PORT] игрока - значит команду набрали руками. В расследование не брать.
+! [DA_PORT] отказ: обращение по неверному адресу (код C0000005), адрес кода 000000018b021f4d
+! [DA_PORT]   запись по адресу 0000000000000000
+stack trace:
+
+D:\Dead Air\Dead Air\bin\xrGame.dll at 000000018B021F4D xrFactory_Create() + 6521457 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 00000001880038D7 ZN8CConsole14ExecuteCommandEPKcb() + 567 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 0000000188003AFB ZN8CConsole7ExecuteEPKc() + 15 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 00000001880066BA ZN11CCC_LoadCFG7ExecuteEPKc() + 474 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 000000018800395E ZN8CConsole14ExecuteCommandEPKcb() + 702 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 0000000188003AFB ZN8CConsole7ExecuteEPKc() + 15 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 0000000188003B68 ZN8CConsole13ExecuteScriptEPKc() + 102 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 000000018803E4F7 ZN12CApplication10SplashProcEv() + 557 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.dll at 000000018803F300 ZN12CApplicationC2EPKcP10GameModuleRKSt5arrayIP14RendererModuleLy1EE() + 914 byte(s)
+D:\Dead Air\Dead Air\bin\xrEngine.exe at 00000001400014EA
+D:\Dead Air\Dead Air\bin\xrEngine.exe at 00000001400010FA
+C:\WINDOWS\System32\KERNEL32.DLL at 00007FFDBD82E957 BaseThreadInitThunk() + 23 byte(s)
+C:\WINDOWS\SYSTEM32\ntdll.dll at 00007FFDBE4EAD6C RtlUserThreadStart() + 44 byte(s)
+~ [DA_MODULES] карта модулей (сборка Jul 30 2026, build 10035) - для da_port/tools/symbolicate.py:
+~ [DA_MODULES]   0000000140000000  1536000  D:\Dead Air\Dead Air\bin\xrEngine.exe
+~ [DA_MODULES]   0000000188000000  2379776  D:\Dead Air\Dead Air\bin\xrEngine.dll
+~ [DA_MODULES]   00000001a0000000 14102528  D:\Dead Air\Dead Air\bin\xrRenderPC_R4.dll
+~ [DA_MODULES]   0000000186000000  2154496  D:\Dead Air\Dead Air\bin\xrCore.dll
+~ [DA_MODULES]   000000018a000000 45641728  D:\Dead Air\Dead Air\bin\xrGame.dll
+~ [DA_MODULES]   0000000192000000   364544  D:\Dead Air\Dead Air\bin\xrLuabind.dll
+~ [DA_MODULES]   0000000190000000  1089536  D:\Dead Air\Dead Air\bin\xrLuaJIT.dll
+~ [DA_MODULES]   0000000184000000   348160  D:\Dead Air\Dead Air\bin\xrCDB.dll
+~ [DA_MODULES]   0000000182000000   126976  D:\Dead Air\Dead Air\bin\xrAPI.dll
+~ [DA_MODULES]   0000000196000000   512000  D:\Dead Air\Dead Air\bin\xrNetServer.dll
+~ [DA_MODULES]   0000000194000000   155648  D:\Dead Air\Dead Air\bin\xrMaterialSystem.dll
+~ [DA_MODULES]   00000001a4000000   581632  D:\Dead Air\Dead Air\bin\xrScriptEngine.dll
+~ [DA_MODULES]   00000001a6000000   237568  D:\Dead Air\Dead Air\bin\xrSound.dll
+~ [DA_MODULES]   000000019c000000   278528  D:\Dead Air\Dead Air\bin\xrParticles.dll
+~ [DA_MODULES]   0000000180000000   421888  D:\Dead Air\Dead Air\bin\xrAICore.dll
+~ [DA_MODULES]   000000018e000000  1015808  D:\Dead Air\Dead Air\bin\xrGameSpy.dll
+~ [DA_MODULES]   00000001a8000000  2383872  D:\Dead Air\Dead Air\bin\xrUICore.dll
+~ [DA_MODULES]   000000019e000000  1155072  D:\Dead Air\Dead Air\bin\xrPhysics.dll
+~ [DA_MODULES]   000000019a000000   286720  D:\Dead Air\Dead Air\bin\xrOPCODE.dll
+~ [DA_MODULES]   0000000198000000   630784  D:\Dead Air\Dead Air\bin\xrODE.dll
+~ [DA_MODULES] ---- конец карты ----

@@ -201,9 +201,14 @@ void CStepManager::update(bool b_hud_view)
                 m_step_sound.play_next(mtl_pair, m_object, m_step_info.params.step[i].power, b_hud_view);
 
             // Играть партиклы
-            if (b_play && !mtl_pair->CollideParticles.empty())
+            //
+            // [DA_PORT] Частицы берутся из ПАРЫ ЗЕМЛИ, а не из той, что пошла на звук. В луже звуковая
+            // пара подменяется на водяную (плеск под ногами), но частицы у воды — это круги-всплески,
+            // и на мелкой луже они читаются как ходьба по озеру.
+            SGameMtlPair* ps_pair = m_object->material().get_current_pair_ground();
+            if (b_play && ps_pair && !ps_pair->CollideParticles.empty())
             {
-                LPCSTR ps_name = mtl_pair->CollideParticles[::Random.randI(0, mtl_pair->CollideParticles.size())].c_str();
+                LPCSTR ps_name = ps_pair->CollideParticles[::Random.randI(0, ps_pair->CollideParticles.size())].c_str();
 
                 //отыграть партиклы столкновения материалов
                 CParticlesObject* ps = CParticlesObject::Create(ps_name, TRUE);

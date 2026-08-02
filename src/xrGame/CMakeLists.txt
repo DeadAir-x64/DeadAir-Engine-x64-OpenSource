@@ -370,6 +370,8 @@ target_sources(xrGame PRIVATE
     CycleConstStorage.h
     da_memory_probe.cpp
     da_memory_probe.h
+    da_script_functor.cpp
+    da_script_functor.h
     DamagableItem.cpp
     DamagableItem.h
     damage_manager.cpp

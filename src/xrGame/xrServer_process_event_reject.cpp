@@ -43,7 +43,13 @@ bool xrServer::Process_event_reject(
     xr_vector<u16>::iterator c = std::find(C.begin(), C.end(), id_entity);
     if (c == C.end())
     {
-        Msg("! WARNING: SV: can't find children [%d] of parent [%d]", id_entity, e_parent);
+        // [DA_PORT] Печатался УКАЗАТЕЛЬ e_parent под %d вместо id_parent. В логе это выглядело как
+        // «parent [1183593840]» — то есть как испорченный идентификатор, и читающий лог начинал
+        // искать порчу памяти там, где её нет: родитель к этому месту уже найден, выше стоят два
+        // выхода по nullptr. Настоящий смысл сообщения другой — предмет отвязывают ПОВТОРНО, в
+        // списке детей его больше нет.
+        Msg("! WARNING: SV: предмет [%d] уже не числится в списке детей родителя [%d] — повторная "
+            "отвязка", id_entity, id_parent);
         return false;
     }
 

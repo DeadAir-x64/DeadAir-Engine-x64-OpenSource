@@ -30,14 +30,36 @@ void CInventoryBox::OnEvent(NET_Packet& P, u16 type)
         u16 id;
         P.r_u16(id);
         IGameObject* itm = Level().Objects.net_Find(id);
-        VERIFY(itm);
+
+        // ⚠️ [DA_PORT] Предмета может УЖЕ НЕ БЫТЬ, и это роняло игру.
+        //
+        // Отчёт тестера 01.08: чтение по адресу 0, стек — `net_Stop` → `remove_objects` →
+        // `ProcessGameEvents` → сюда. То есть уровень уже выгружается, объекты сняты с учёта, а
+        // отложенные события всё ещё разбираются: `net_Find` возвращает ноль, и `H_SetParent`
+        // разыменовывает его.
+        //
+        // Проверка ТУТ БЫЛА — `VERIFY(itm)` строкой ниже. В релизной сборке она вырезается, то есть
+        // защищала ровно ту сборку, где падений и так нет. Это третий случай с таким шаблоном за
+        // сутки (пояс, граф ALife, теперь ящик).
+        //
+        // Важен и порядок: `m_items.push_back(id)` стоял ДО обращения к предмету, поэтому ящик
+        // успевал записать себе номер несуществующей вещи. Отсюда же и жалобы на пропажу предметов:
+        // ящик помнит то, чего нет, а настоящая вещь не получает нового хозяина.
+        if (!itm)
+        {
+            Msg("! [DA_PORT] ящик: предмет [%d] уже снят с учёта (выгрузка уровня?) - событие "
+                "пропущено, номер в ящик не записан", id);
+            break;
+        }
+
         m_items.push_back(id);
         itm->H_SetParent(this);
         itm->setVisible(FALSE);
         itm->setEnabled(FALSE);
 
         CInventoryItem* pIItem = smart_cast<CInventoryItem*>(itm);
-        VERIFY(pIItem);
+        if (!pIItem)
+            break;
         if (CurrentGameUI())
         {
             if (CurrentGameUI()->GetActorMenu().GetMenuMode() == mmDeadBodySearch)
@@ -55,10 +77,22 @@ void CInventoryBox::OnEvent(NET_Packet& P, u16 type)
         u16 id;
         P.r_u16(id);
         IGameObject* itm = Level().Objects.net_Find(id);
-        VERIFY(itm);
-        xr_vector<u16>::iterator it;
-        it = std::find(m_items.begin(), m_items.end(), id);
-        VERIFY(it != m_items.end());
+
+        // [DA_PORT] То же самое, что и в ветке взятия выше, плюс своя мина: `erase` по итератору
+        // `end()` — это уже не чтение нуля, а порча вектора, и проявляется она где угодно потом.
+        // Обе проверки стояли под VERIFY, то есть в релизе отсутствовали.
+        if (!itm)
+        {
+            Msg("! [DA_PORT] ящик: предмет [%d] уже снят с учёта - событие возврата пропущено", id);
+            break;
+        }
+
+        xr_vector<u16>::iterator it = std::find(m_items.begin(), m_items.end(), id);
+        if (it == m_items.end())
+        {
+            Msg("! [DA_PORT] ящик: предмет [%d] не числится в этом ящике - возврат пропущен", id);
+            break;
+        }
         m_items.erase(it);
 
         bool just_before_destroy = !P.r_eof() && P.r_u8();
@@ -69,7 +103,10 @@ void CInventoryBox::OnEvent(NET_Packet& P, u16 type)
         if (m_in_use)
         {
             CGameObject* GO = smart_cast<CGameObject*>(itm);
-            Actor()->callback(GameObject::eInvBoxItemTake)(this->lua_game_object(), GO->lua_game_object());
+            // [DA_PORT] И здесь тоже: приведение типа может не удаться, а результат уходил в Lua
+            // без единой проверки.
+            if (GO && Actor())
+                Actor()->callback(GameObject::eInvBoxItemTake)(this->lua_game_object(), GO->lua_game_object());
         }
     }
     break;

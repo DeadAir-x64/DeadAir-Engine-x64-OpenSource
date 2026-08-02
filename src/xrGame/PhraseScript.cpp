@@ -9,6 +9,7 @@
 #include "ai_debug.h"
 #include "xrUICore/XML/xrUIXmlParser.h"
 #include "Actor.h"
+#include "da_script_functor.h"
 
 //загрузка из XML файла
 void CDialogScriptHelper::Load(CUIXml* uiXml, XML_NODE phrase_node)
@@ -83,8 +84,10 @@ LPCSTR CDialogScriptHelper::GetScriptText(LPCSTR str_to_translate, const CGameOb
         return str_to_translate;
 
     luabind::functor<LPCSTR> lua_function;
-    [[maybe_unused]] bool functor_exists = GEnv.ScriptEngine->functor(m_sScriptTextFunc.c_str(), lua_function);
-    THROW3(functor_exists, "Cannot find phrase script text ", m_sScriptTextFunc.c_str());
+    // [DA_PORT] A missing function used to take the game down (see da_script_functor.h).
+    // Fall back to the untranslated text so the phrase still shows.
+    if (!da_functor(m_sScriptTextFunc.c_str(), lua_function, "dialog text", dialog_id))
+        return str_to_translate;
 
     LPCSTR res = lua_function(pSpeakerGO1->lua_game_object(), pSpeakerGO2->lua_game_object(), dialog_id, phrase_id);
 
@@ -107,9 +110,10 @@ bool CDialogScriptHelper::Precondition(const CGameObject* pSpeakerGO, LPCSTR dia
     for (u32 i = 0; i < Preconditions().size(); ++i)
     {
         luabind::functor<bool> lua_function;
-        THROW(Preconditions()[i].c_str());
-        [[maybe_unused]] bool functor_exists = GEnv.ScriptEngine->functor(Preconditions()[i].c_str(), lua_function);
-        THROW3(functor_exists, "Cannot find precondition", Preconditions()[i].c_str());
+        // [DA_PORT] A precondition we cannot evaluate must not open the phrase up:
+        // treat it as "not satisfied" instead of taking the game down.
+        if (!da_functor(Preconditions()[i].c_str(), lua_function, "dialog precondition", dialog_id))
+            return false;
         predicate_result = lua_function(pSpeakerGO->lua_game_object());
         if (!predicate_result)
         {
@@ -128,9 +132,9 @@ void CDialogScriptHelper::Action(const CGameObject* pSpeakerGO, LPCSTR dialog_id
     for (u32 i = 0; i < Actions().size(); ++i)
     {
         luabind::functor<void> lua_function;
-        THROW(Actions()[i].c_str());
-        [[maybe_unused]] bool functor_exists = GEnv.ScriptEngine->functor(Actions()[i].c_str(), lua_function);
-        THROW3(functor_exists, "Cannot find phrase dialog script function", Actions()[i].c_str());
+        // [DA_PORT] Skip an action we cannot resolve; the info transfer below still runs.
+        if (!da_functor(Actions()[i].c_str(), lua_function, "dialog action", dialog_id))
+            continue;
         lua_function(pSpeakerGO->lua_game_object(), dialog_id);
     }
     TransferInfo(smart_cast<const CInventoryOwner*>(pSpeakerGO));
@@ -152,9 +156,9 @@ bool CDialogScriptHelper::Precondition(const CGameObject* pSpeakerGO1, const CGa
     for (u32 i = 0; i < Preconditions().size(); ++i)
     {
         luabind::functor<bool> lua_function;
-        THROW(Preconditions()[i].c_str());
-        [[maybe_unused]] bool functor_exists = GEnv.ScriptEngine->functor(Preconditions()[i].c_str(), lua_function);
-        THROW3(functor_exists, "Cannot find phrase precondition", Preconditions()[i].c_str());
+        // [DA_PORT] See above: unresolvable precondition means the phrase stays hidden.
+        if (!da_functor(Preconditions()[i].c_str(), lua_function, "phrase precondition", dialog_id))
+            return false;
         predicate_result = lua_function(
             pSpeakerGO1->lua_game_object(), pSpeakerGO2->lua_game_object(), dialog_id, phrase_id, next_phrase_id);
         if (!predicate_result)
@@ -177,9 +181,9 @@ void CDialogScriptHelper::Action(
     for (u32 i = 0; i < Actions().size(); ++i)
     {
         luabind::functor<void> lua_function;
-        THROW(Actions()[i].c_str());
-        [[maybe_unused]] bool functor_exists = GEnv.ScriptEngine->functor(Actions()[i].c_str(), lua_function);
-        THROW3(functor_exists, "Cannot find phrase dialog script function", Actions()[i].c_str());
+        // [DA_PORT] Skip an action we cannot resolve instead of taking the game down.
+        if (!da_functor(Actions()[i].c_str(), lua_function, "phrase action", dialog_id))
+            continue;
         try
         {
             lua_function(pSpeakerGO1->lua_game_object(), pSpeakerGO2->lua_game_object(), dialog_id, phrase_id);

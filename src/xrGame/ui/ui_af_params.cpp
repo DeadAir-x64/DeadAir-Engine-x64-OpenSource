@@ -52,6 +52,38 @@ constexpr std::tuple<ALife::EConditionRestoreType, cpcstr, cpcstr, cpcstr, float
 static_assert(std::size(af_restore) == ALife::eRestoreTypeMax,
     "All restore types should be listed in the tuple above.");
 
+// [DA_PORT] Артефакт в контейнере? Отличаем по хвосту секции — ровно так же, как это делает сам мод
+// (`itms_manager.container_remove` ищет `af.-_iam`, `af.-_aac`, `af.-_aam`, `lead.-_box`). Упакованный
+// предмет — это отдельная секция `<артефакт>_<контейнер>`, отдельного признака у неё нет.
+static bool da_is_packed_artefact(pcstr section)
+{
+    static constexpr pcstr containers[] = { "_af_iam", "_af_aac", "_af_aam", "_lead_box" };
+
+    const size_t len = xr_strlen(section);
+    for (pcstr suffix : containers)
+    {
+        const size_t suffix_len = xr_strlen(suffix);
+        if (len > suffix_len && 0 == xr_strcmp(section + len - suffix_len, suffix))
+            return true;
+    }
+
+    return false;
+}
+
+// [DA_PORT] Значение, которое реально живёт на предмете, а не в его секции.
+static float artefact_restore_speed(const CArtefact& artefact, ALife::EConditionRestoreType type)
+{
+    switch (type)
+    {
+    case ALife::eHealthRestoreSpeed: return artefact.m_fHealthRestoreSpeed;
+    case ALife::eSatietyRestoreSpeed: return artefact.m_fSatietyRestoreSpeed;
+    case ALife::ePowerRestoreSpeed: return artefact.m_fPowerRestoreSpeed;
+    case ALife::eBleedingRestoreSpeed: return artefact.m_fBleedingRestoreSpeed;
+    case ALife::eRadiationRestoreSpeed: return artefact.m_fRadiationRestoreSpeed;
+    default: return 0.0f;
+    }
+}
+
 bool CUIArtefactParams::InitFromXml(CUIXml& xml)
 {
     XML_NODE stored_root = xml.GetLocalRoot();
@@ -127,6 +159,21 @@ void CUIArtefactParams::SetInfo(const CInventoryItem& pInvItem)
     if (!actor)
         return;
 
+    // [DA_PORT] Числа берём у САМОГО предмета, а не у его секции.
+    //
+    // В Dead Air двух одинаковых артефактов не бывает: `se_artefact.script` при рождении умножает
+    // каждое значение секции на случайный множитель **0.2…1.8**, и живёт эта величина на объекте.
+    // Панель же читала секцию — то есть показывала «эталон», а игрок получал что угодно от пятой
+    // части до почти двойного. Живой случай: «Болванка» обещала +4578 г, а поднимала предел на 1470
+    // (ролл ×0.32), и это выглядело как поломка порта.
+    //
+    // Секция остаётся запасным путём: у объекта те же значения, пока никто не выдал ему свои
+    // (`CArtefact::Load` читает ровно эту секцию), так что хуже от этого нигде не станет.
+    //
+    // Заодно честно показывается контейнер: у упакованного артефакта радиация обнулена вычетом
+    // `antirad`, и строка радиации просто исчезает — вместо прежней, взятой из секции.
+    const CArtefact* artefact = smart_cast<const CArtefact*>(&pInvItem.object());
+
     const auto& af_section = pInvItem.object().cNameSect().c_str();
     const auto& actor_sect = actor->cNameSect().c_str();
     const auto& condition_sect = pSettings->read_if_exists<pcstr>(actor_sect, "condition_sect", actor_sect);
@@ -155,13 +202,25 @@ void CUIArtefactParams::SetInfo(const CInventoryItem& pInvItem)
 
     const bool is_soc = GMLib.GetLibraryVersion() <= GAMEMTL_VERSION_SOC;
 
+    // [DA_PORT] У артефакта в контейнере строка радиации отвечает на другой вопрос — сколько её
+    // проходит НАРУЖУ. И ноль здесь не пустота, а ответ («контейнер держит всё»), поэтому строку
+    // показываем даже нулевой: иначе игрок не отличит герметичную упаковку от протекающей.
+    const bool packed = artefact && da_is_packed_artefact(af_section);
+
     for (auto [id, restore_section, actor_condition, restore_caption, magnitude, sign_inverse, unit] : af_restore)
     {
         if (!m_restore_item[id])
             continue;
 
-        float val = pSettings->r_float(af_section, restore_section);
-        if (fis_zero(val))
+        const bool leak_row = packed && (id == ALife::eRadiationRestoreSpeed);
+        if (id == ALife::eRadiationRestoreSpeed)
+        {
+            m_restore_item[id]->SetCaption(
+                StringTable().translate(leak_row ? "ui_mm_af_rad_through" : restore_caption).c_str());
+        }
+
+        float val = artefact ? artefact_restore_speed(*artefact, id) : pSettings->r_float(af_section, restore_section);
+        if (fis_zero(val) && !leak_row)
             continue;
 
         val = val * pInvItem.GetCondition();
@@ -181,7 +240,7 @@ void CUIArtefactParams::SetInfo(const CInventoryItem& pInvItem)
         if (!m_immunity_item[id])
             continue;
 
-        float val = immunities.GetHitImmunity(id);
+        float val = artefact ? artefact->GetArtefactImmunity(id) : immunities.GetHitImmunity(id);
         if (fis_zero(val))
             continue;
 
@@ -196,7 +255,8 @@ void CUIArtefactParams::SetInfo(const CInventoryItem& pInvItem)
 
     if (m_additional_weight)
     {
-        float val = pSettings->r_float(af_section, "additional_inventory_weight");
+        float val = artefact ? artefact->AdditionalInventoryWeight()
+                             : pSettings->r_float(af_section, "additional_inventory_weight");
         if (!fis_zero(val))
         {
             val *= pInvItem.GetCondition();
@@ -213,6 +273,15 @@ UIArtefactParamItem::UIArtefactParamItem(pcstr param_name)
     : CUIStatic(param_name), m_positive_color(green_clr_cop), m_negative_color(red_clr_cop)
 {
     AttachChild(&m_value);
+}
+
+void UIArtefactParamItem::SetCaption(pcstr caption)
+{
+    // Куда именно писать подпись, решил Init: либо в отдельную строку, либо в саму панель.
+    if (m_caption)
+        m_caption->SetText(caption);
+    else
+        SetText(caption);
 }
 
 bool UIArtefactParamItem::Init(CUIXml& xml, pcstr section, pcstr caption,

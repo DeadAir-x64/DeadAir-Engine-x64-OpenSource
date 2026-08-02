@@ -267,9 +267,11 @@ void CUIActorMenu::OnInventoryAction(PIItem pItem, u16 action_type)
             pl.type = eItemPlaceRuck;
             pl.slot_id = GRENADE_SLOT;
         }
-#ifndef MASTER_GOLD
-        Msg("item place [%d]", pl);
-#endif // #ifndef MASTER_GOLD
+        // [DA_PORT] Печать на каждую раскладку предмета: под MASTER_GOLD, которого у нас нет, и вдобавок
+        // структура SInvItemPlace передавалась как %d — печаталось не место, а мусор. Оставлена отладочной.
+#ifdef DEBUG
+        Msg("item place [%d]", pl.type);
+#endif
 
         if (pl.type == eItemPlaceSlot)
             lst_to_add = GetSlotList(pl.slot_id);
@@ -868,10 +870,25 @@ bool CUIActorMenu::ToBelt(CUICellItem* itm, bool b_use_cursor_pos)
         //		PIItem	_iitem						= m_pActorInvOwner->inventory().ItemFromSlot(slot_id);
 
         CUICellItem* slot_cell = belt_list->GetCellAt(belt_cell_pos).m_item;
-        //		VERIFY								(slot_cell && ((PIItem)slot_cell->m_pData)==_iitem);
+
+        // ⚠️ [DA_PORT] ЯЧЕЙКА МОЖЕТ БЫТЬ ПУСТА, и раньше это роняло игру.
+        //
+        // Сюда попадают, когда `CanPutInBelt` отказал — например, на поясе кончились места. Ветка
+        // называется «слот занят» и рассчитана на обмен: вынуть чужой предмет в рюкзак, положить свой.
+        // Но игрок целится курсором куда угодно, в том числе в ПУСТУЮ ячейку, и тогда `m_item` — ноль.
+        // Дальше `ToBag(nullptr)` первой же строкой берёт `itm->m_pData` и падает: обращение по
+        // адресу 0x170, ровно то, что видно в отчётах тестера (три штуки, стек байт в байт).
+        //
+        // Проверка тут БЫЛА — строкой ниже лежит закомментированный VERIFY авторов движка. Он и
+        // работал бы только в отладочной сборке, а у игрока молча пропускал бы ноль дальше.
+        //
+        // Сценарий из отчёта: набивать патроны в пояс, когда мест уже нет.
+        if (!slot_cell)
+            return false;
 
         bool result = ToBag(slot_cell, false);
-        VERIFY(result);
+        if (!result)
+            return false;
 
         result = ToBelt(itm, b_use_cursor_pos);
         return result;

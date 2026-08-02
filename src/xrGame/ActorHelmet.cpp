@@ -344,7 +344,14 @@ float CHelmet::HitThroughArmor(float hit_power, s16 element, float ap, bool& add
         }
         else
         {
-            float one = 0.1f;
+            // [DA_PORT] См. CCustomOutfit::HitThroughArmor, ветка CS: делитель на 10 снят и здесь,
+            // чтобы обе формулы считали одинаково.
+            //
+            // Уточнение по данным мода: сейчас в эту ветку не попадает НИ ОДИН шлем — её выбирает
+            // наличие `fire_wound_protection`, а в outfit_helmet.ltx этого ключа нет ни у одного из
+            // семи. То есть шлемы и так считались по полной формуле; правка здесь — на будущее и
+            // ради того, чтобы две ветки не расходились молча.
+            float one = 1.0f; // was 0.1f
             if (hit_type == ALife::eHitTypeWound ||
                 hit_type == ALife::eHitTypeWound_2 ||
                 hit_type == ALife::eHitTypeExplosion)

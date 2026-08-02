@@ -64,6 +64,13 @@ public:
     virtual void set_color(float r, float g, float b) = 0;
     virtual void set_hud_mode(bool b) = 0;
     virtual bool get_hud_mode() = 0;
+
+    // [DA_PORT] Источник, который потолок теневых ламп не вытесняет НИКОГДА и который не занимает
+    // место в бюджете (см. r__light_shadow_budget). Ставится фонарю в руках игрока: при бюджете по
+    // умолчанию слот всего один, и уйти он может лампе на стене, а не тому, чем игрок светит.
+    // Не чисто виртуальный: остальным рендерам это безразлично.
+    virtual void set_never_demote(bool) {}
+
     virtual ~IRender_Light();
 };
 struct ENGINE_API resptrcode_light : public resptr_base<IRender_Light>

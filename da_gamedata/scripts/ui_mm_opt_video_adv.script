@@ -203,6 +203,43 @@ function opt_video_adv:InitControls(x, y, xml, handler)
 	xml:InitCheck("video_adv:check_lensdirt", _st)
 	table.insert(handler.m_preconditions, {func=mode_ge_2a, control=_st})
 
+	-- [DA_PORT] Дождь. Порядок пунктов задан осознанно: сперва включение, потом качество, потом
+	-- дальность, и в конце — сам дождь. Все действуют сразу, без перезапуска.
+	_st = xml:InitStatic("video_adv:templ_header", nil)
+	xml:InitStatic("video_adv:cap_grp_rain", _st)
+	table.insert(handler.m_preconditions, {func=mode_ge_2, control=_st})
+
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_puddles", _st)
+	xml:InitCheck("video_adv:check_puddles", _st)
+	table.insert(handler.m_preconditions, {func=mode_ge_2, control=_st})
+
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_puddles_quality", _st)
+	xml:InitComboBox("video_adv:list_puddles_quality", _st)
+	table.insert(handler.m_preconditions, {func=mode_ge_2, control=_st})
+
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_puddles_dist", _st)
+	xml:InitComboBox("video_adv:list_puddles_dist", _st)
+	table.insert(handler.m_preconditions, {func=mode_ge_2, control=_st})
+
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_rain_quality", _st)
+	xml:InitComboBox("video_adv:list_rain_quality", _st)
+	table.insert(handler.m_preconditions, {func=all_modes, control=_st})
+
+	-- [DA_PORT] Сезон. Применяется со следующего запуска: летние текстуры лежат в архиве,
+	-- а архивы подключаются на старте движка. Поэтому подпись прямо говорит о перезапуске.
+	_st = xml:InitStatic("video_adv:templ_header", nil)
+	xml:InitStatic("video_adv:cap_grp_world", _st)
+	table.insert(handler.m_preconditions, {func=all_modes, control=_st})
+
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_season", _st)
+	xml:InitComboBox("video_adv:list_season", _st)
+	table.insert(handler.m_preconditions, {func=all_modes, control=_st})
+
 
 
 ---------

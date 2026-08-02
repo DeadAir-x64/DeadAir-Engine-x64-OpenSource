@@ -22,6 +22,9 @@ uniform float4x4	m_prev_VP;	// eye-space -> previous frame's clip space
 uniform float4		taa_params;	// x = sharpening (r__taa_sharp/100), y = r__taa_debug, z = sky feedback scale
 
 Texture2D		s_history;
+// [DA_PORT] Маска реактивности: «здесь истории верить нельзя». Пишется прямо из G-буфера - листве
+// ставит r__reactive_foliage, движущимся пикселям da_motion_reactive (см. deffer_base.ps).
+Texture2D		s_reactive;
 
 // Matches combine_1.vs: tc0.xy is the screen texcoord (tc0.zw carry the tonemap scale, unused here).
 struct	vf
@@ -284,6 +287,20 @@ _out main(vf I)
 	// Fade the history out towards the screen border, where reprojection has the least to work with.
 	float2 edge = abs(prev_tc - 0.5) * 2.0;
 	feedback *= saturate(1.0 - pow(max(edge.x, edge.y), 8.0));
+
+	// [DA_PORT] Маска реактивности: до 01.08 эта строка отсутствовала, и в этом была вся разница
+	// между «FSR 2 чист, а TAA дрожит» на одной и той же листве.
+	//
+	// Листва помечается в маске прямо из G-буфера (r__reactive_foliage, обычно 0.05), и FSR 2 по этой
+	// пометке перестаёт копить на ней историю. Наша темпоралка пометку не читала вовсе: колышущийся
+	// лист копился как неподвижная стена, накопление промахивалось мимо него каждый кадр, и джиттер
+	// вместо сглаживания давал рябь. Ровно поэтому дефект не показывался на FSR 1 (там джиттера нет
+	// вообще) и на FSR 2 (там пометка учитывается).
+	//
+	// Усиление вынесено в ручку: 0.05 подбиралось под то, как эту величину понимает FSR, а у нас она
+	// умножает совсем другую формулу накопления. Ноль возвращает прежнее поведение точь-в-точь.
+	const float reactive = saturate(s_reactive.Load(int3(I.hpos.xy, 0)).x * taa_params.w);
+	feedback *= 1.0 - reactive;
 
 	// [DA_PORT] The sky's own share of the history, "r__taa_sky" in percent.
 	//

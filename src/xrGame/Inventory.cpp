@@ -15,6 +15,7 @@
 #include "xrEngine/xr_level_controller.h"
 #include "Level.h"
 #include "ai_space.h"
+#include "Torch.h" // [DA_PORT] запрет второго скрытого фонаря, см. CanTakeItem
 #include "EntityCondition.h"
 #include "game_base_space.h"
 #include "UIGameCustom.h"
@@ -1355,6 +1356,26 @@ bool CInventory::CanTakeItem(CInventoryItem* inventory_item) const
         if ((*it)->object().ID() == inventory_item->object().ID())
             break;
     VERIFY3(it == m_all.end(), "item already exists in inventory", inventory_item->object().cName().c_str());
+
+    // [DA_PORT] Второй скрытый фонарь не берём.
+    //
+    // `device_torch` — невидимый носитель света, которым мод управляет через ОДИН объект:
+    // `db.actor:object("device_torch")` возвращает первый попавшийся, и при двух экземплярах скрипт
+    // настраивает один, а включает другой. В игре это выглядит так, что фонари перестают работать
+    // совсем: включается ненастроенный дубль, у которого заводская текстура луча, а она света не даёт.
+    //
+    // Взяться второму есть откуда: `sr_light.script` выдаёт `device_torch` сталкерам на ночь, и он
+    // снимается с трупа как обычный предмет.
+    //
+    // Проверка стоит здесь, а не в скриптах, потому что это ремонт порта, а данные мы не трогаем.
+    // Ограничение общее, не только для игрока: у сталкеров фонарь тоже ровно один — `sr_light` сам
+    // создаёт его лишь при отсутствии.
+    if (smart_cast<CTorch*>(inventory_item))
+    {
+        for (const auto& it : m_all)
+            if (smart_cast<CTorch*>(it))
+                return false;
+    }
 
     CActor* pActor = smart_cast<CActor*>(m_pOwner);
     //актер всегда может взять вещь

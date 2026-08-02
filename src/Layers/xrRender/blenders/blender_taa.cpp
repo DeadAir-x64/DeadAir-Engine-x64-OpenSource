@@ -32,6 +32,10 @@ void CBlender_TAA::Compile(CBlender_Compile& C)
         // combine_1.vs Loads the tonemap scale out of s_tonemap and passes it on in tc0.zw; da_taa.ps
         // ignores it, but the slot still has to be filled.
         C.r_dx11Texture("s_tonemap", r2_RT_luminance_cur);
+        // [DA_PORT] Маска реактивности - «здесь истории верить нельзя». До 01.08 наша темпоралка её не
+        // читала вовсе, хотя листва в неё пишется (r__reactive_foliage), и именно этим FSR 2 отличался
+        // от TAA на дрожащей листве: у одного сигнал был, у другого нет. См. da_taa.ps.
+        C.r_dx11Texture("s_reactive", r2_RT_reactive);
 
         C.r_dx11Sampler("smp_nofilter");
         C.r_dx11Sampler("smp_rtlinear");

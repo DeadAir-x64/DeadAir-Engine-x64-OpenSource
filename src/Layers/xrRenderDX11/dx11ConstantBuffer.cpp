@@ -3,6 +3,9 @@
 
 #include "Layers/xrRender/BufferUtils.h"
 
+// [DA_PORT] Global scope on purpose: the cvar lives in xrEngine, not in the render namespace.
+extern ENGINE_API int ps_r__cb_skip_redundant;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 dx11ConstantBuffer::~dx11ConstantBuffer()
@@ -14,6 +17,7 @@ dx11ConstantBuffer::~dx11ConstantBuffer()
     //	Flush();
     _RELEASE(m_pBuffer);
     xr_free(m_pBufferData);
+    xr_free(m_pCommittedData);
 }
 
 dx11ConstantBuffer::dx11ConstantBuffer(ID3DShaderReflectionConstantBuffer* pTable) : m_bChanged(true)
@@ -60,6 +64,12 @@ dx11ConstantBuffer::dx11ConstantBuffer(ID3DShaderReflectionConstantBuffer* pTabl
     VERIFY(m_pBufferData);
     ZeroMemory(m_pBufferData, Desc.Size);
 
+    // [DA_PORT] Shadow of the last upload; see r__cb_skip_redundant. Zeroed for the same reason as
+    // the line above, though it is never compared until the first Flush has filled it.
+    m_pCommittedData = xr_malloc(Desc.Size);
+    VERIFY(m_pCommittedData);
+    ZeroMemory(m_pCommittedData, Desc.Size);
+
 #ifdef DEBUG
     if (m_pBuffer)
     {
@@ -101,6 +111,17 @@ void dx11ConstantBuffer::Flush(u32 context_id)
 {
     if (m_bChanged)
     {
+        // [DA_PORT] Access() flags the buffer on any write, whether or not the value differs (the
+        // author's own "TODO: check if set actually changes" sits right there), so a constant that
+        // is rewritten with the same value every frame still costs a map and a full copy. Compare
+        // first - a memcmp is cheaper than a map, and these buffers are small.
+        if (ps_r__cb_skip_redundant && m_bHasCommittedData &&
+            0 == memcmp(m_pBufferData, m_pCommittedData, m_uiBufferSize))
+        {
+            m_bChanged = false;
+            return;
+        }
+
         void* pData;
 #ifdef USE_DX11
         D3D11_MAPPED_SUBRESOURCE pSubRes;
@@ -117,6 +138,10 @@ void dx11ConstantBuffer::Flush(u32 context_id)
 #else
         m_pBuffer->Unmap();
 #endif
+        // [DA_PORT] Remember exactly what went to the GPU so the comparison above has something
+        // truthful to work against.
+        CopyMemory(m_pCommittedData, m_pBufferData, m_uiBufferSize);
+        m_bHasCommittedData = true;
         m_bChanged = false;
     }
 }

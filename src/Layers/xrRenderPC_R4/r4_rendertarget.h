@@ -156,9 +156,12 @@ private:
     ref_shader s_ssao;
     ref_shader s_taa; // DA: temporal AA resolve
     ref_shader s_velocity_guard; // DA: damps vegetation motion next to glossy surfaces
+    ref_shader s_xess_mv; // [DA_PORT] знаковая копия векторов движения для XeSS, см. da_xess_mv.s
+    ref_shader s_puddle_refl; // [DA_PORT] отражения в лужах, полноэкранный проход
     ref_shader s_reactive; // DA: marks pixels around genuinely moving objects as reactive
     ref_shader s_reactive_dilate_h; // DA: widens that mark, horizontally
     ref_shader s_reactive_dilate_v; // DA: and vertically, folding in the mask the G-buffer left
+    ref_shader s_reactive_emissive; // [DA_PORT] метка самосветящейся геометрии, см. phase_reactive_emissive
     ref_shader s_sky_velocity; // DA: the sky writes no motion vectors of its own
     ref_shader s_ssao_msaa[8];
     ref_shader s_hdao_cs;      // HDAO compute shader
@@ -288,12 +291,35 @@ public:
     void phase_hdao();
     void phase_taa(); // DA: temporal AA resolve
     bool phase_fsr2();
-    void phase_velocity_guard(); // [DA_PORT] damp vegetation motion next to glossy surfaces
+    void phase_velocity_guard();
+    void phase_da_puddle_refl(); // [DA_PORT] // [DA_PORT] damp vegetation motion next to glossy surfaces
     void phase_reactive(); // [DA_PORT] widen the reactive mask around moving objects, against ghosting
+    // [DA_PORT] Помечает свечение в маске реактивности. Зовётся сразу после отрисовки свечения, а
+    // не рядом с phase_reactive: работает по трафарету, а свет затирает его своими маркерами.
+    void phase_reactive_emissive();
+    // [DA_PORT] То же для прозрачной геометрии, из середины phase_combine. Своя ручка, по умолчанию 0.
+    void phase_reactive_transparent();
+    // Условия включения меток. Спрашиваются и здесь, и по месту записи бита в трафарет - см. там.
+    bool da_emissive_mark_ready() const;
+    bool da_transparent_mark_ready() const;
+    // Общая часть обеих: полноэкранный проход по трафаретному биту 0x02.
+    void da_mark_reactive_from_stencil(float value);
+
+    // [DA_PORT] Срез G-буфера по строке через прицел: глубина, цвет, вектор и маска ОДНОГО пикселя
+    // рядом друг с другом. Средние по кадру дефект в десятке пикселей не видят — этот видит.
+    void da_dump_gbuffer_row();
+    void da_light_watch(); // [DA_PORT] покадровое наблюдение за светом в пикселе, см. .cpp
+
+    // [DA_PORT] Замер кэша теневых карт: фаза 1 — только время, фаза 2 — дрожание по всему экрану.
+    void da_shadow_test_start();
+    void da_shadow_test_frame(int phase);
+    void da_shadow_test_report();
     void phase_sky_velocity(); // [DA_PORT] motion vectors for the sky, which no shader writes
     bool phase_fsr3(); // [DA_PORT] FSR 3 upscaler, same slot in the frame
     bool phase_dlss(); // [DA_PORT] NVIDIA DLSS, same slot in the frame
     bool phase_xess(); // [DA_PORT] Intel XeSS, same slot in the frame // DA: FSR 2 upscale; false when it did not run, so the caller can fall back
+    // [DA_PORT] Знаковая копия векторов движения для XeSS; пустая ссылка = отдавать буфер как есть.
+    ref_rt da_xess_signed_velocity();
     void phase_downsamp();
     void phase_wallmarks();
 

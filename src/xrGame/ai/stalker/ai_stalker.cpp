@@ -458,7 +458,16 @@ void CAI_Stalker::Die(IGameObject* who)
 
     if (m_death_sound_enabled)
     {
-        sound().set_sound_mask((u32)eStalkerSoundMaskDie);
+        // [DA_PORT] ⭐ Убитый NPC договаривал начатую фразу.
+        //
+        // Было set_sound_mask(eStalkerSoundMaskDie). Маска -1 глушит играющее, но ОСТАЁТСЯ у трупа
+        // навсегда, а предсмертный крик зарегистрирован с той же маской -1 — поэтому play() ниже
+        // отсеивался проверкой check_sound_legacy, и крика не было вовсе. Автор оригинала строку
+        // просто закомментировал: крик вернулся, но недоговорённая фраза осталась играть с трупа.
+        //
+        // remove_active_sounds глушит текущее и возвращает прежнюю маску — верно и то, и другое.
+        // Новых фраз труп не начнёт: звук ранения играется под g_Alive(), боевые — из действий ИИ.
+        sound().remove_active_sounds(u32(-1));
         if (is_special_killer(who))
             sound().play(eStalkerSoundDieInAnomaly);
         else

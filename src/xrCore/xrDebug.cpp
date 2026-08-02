@@ -13,6 +13,7 @@
 
 #if defined(XR_PLATFORM_WINDOWS)
 #   include <dbghelp.h>
+#   include <tlhelp32.h> // [DA_PORT] карта модулей при аварии
 #   include <direct.h>
 #   include <new.h> // for _set_new_mode
 #   include <errorrep.h> // ReportFault
@@ -513,6 +514,45 @@ void xrDebug::FormatLastError(char* buffer, const size_t& bufferSize)
 #endif
 }
 
+// [DA_PORT] ---- Карта загруженных модулей для расшифровки стека -------------------------------
+//
+// Печатается при аварии, сразу после стека. Каждая строка: база, размер, путь. С ней инструмент
+// da_port/tools/symbolicate.py пересчитывает адрес из лога в смещение внутри модуля и находит имя
+// функции - даже если та же сборка загрузилась по другому адресу.
+//
+// На голом Win32 (Toolhelp): psapi тянуть в xrCore ради одного места незачем, Toolhelp есть всегда.
+static void da_dump_module_map()
+{
+#if defined(XR_PLATFORM_WINDOWS)
+    Msg("~ [DA_MODULES] карта модулей (сборка %s, build %d) - для da_port/tools/symbolicate.py:",
+        xrCore::GetBuildDate(), Core.GetBuildId());
+
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+    if (snap == INVALID_HANDLE_VALUE)
+    {
+        Msg("~ [DA_MODULES] снимок модулей недоступен (%u)", GetLastError());
+        return;
+    }
+
+    MODULEENTRY32 me{};
+    me.dwSize = sizeof(me);
+    if (Module32First(snap, &me))
+    {
+        do
+        {
+            // Только наши модули: системных в стеке десятки, и разбирать их всё равно нечем.
+            if (nullptr == strstr(me.szModule, "xr") && nullptr == strstr(me.szModule, "da_"))
+                continue;
+
+            Msg("~ [DA_MODULES]   %p %8u  %s", me.modBaseAddr, me.modBaseSize, me.szExePath);
+        } while (Module32Next(snap, &me));
+    }
+    CloseHandle(snap);
+    Msg("~ [DA_MODULES] ---- конец карты ----");
+#endif
+}
+
+
 LONG WINAPI xrDebug::UnhandledFilter(EXCEPTION_POINTERS* exPtrs)
 {
 #if defined(XR_PLATFORM_WINDOWS)
@@ -573,6 +613,17 @@ LONG WINAPI xrDebug::UnhandledFilter(EXCEPTION_POINTERS* exPtrs)
                 os_clipboard::update_clipboard(buffer);
 #endif
         }
+        // [DA_PORT] Карта модулей - то, без чего чужой стек не расшифровывается.
+        //
+        // В логе стоят абсолютные адреса, а модуль грузится не всегда по своему предпочтительному
+        // базовому адресу. Совпадёт - расшифровка идёт напрямую; не совпадёт (перемещение образов,
+        // другая версия сборки) - адреса надо пересчитывать, а не на что. Сдвиг знает только сам
+        // процесс, поэтому пишем его СЮДА, в момент падения.
+        //
+        // Стоило это трёх нерасследуемых отчётов от тестера 01.08: имя функции не удалось получить
+        // ни для одного кадра стека.
+        da_dump_module_map();
+
         if (*errMsg)
         {
             Msg("\n%s", errMsg);

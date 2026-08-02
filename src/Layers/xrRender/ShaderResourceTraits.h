@@ -4,6 +4,12 @@
 
 namespace xray::render::RENDER_NAMESPACE
 {
+#if RENDER == R_R4
+// [DA_PORT] Путь исходника для манифеста прогрева, определён в r4_shaders.cpp. Объявление именно
+// здесь, в области пространства имён: внутри функции такое объявление некорректно.
+extern string_path da_shader_src_path;
+#endif
+
 #ifdef USE_OGL
 static void show_compile_errors(cpcstr filename, GLuint program, GLuint shader)
 {
@@ -694,6 +700,13 @@ T* CResourceManager::CreateShader(cpcstr name, pcstr filename /*= nullptr*/, u32
 #   else
         flags |= D3DCOMPILE_PACK_MATRIX_ROW_MAJOR | D3DCOMPILE_DEBUG;
 #   endif
+#endif
+
+        // [DA_PORT] Путь исходника — прогреву кэша, см. da_warm_record в r4_shaders.cpp. Отсюда,
+        // потому что здесь он уже разрешён (с учётом подмены на stub_default), а внутрь компиляции
+        // приходит только читатель, без имени файла.
+#if RENDER == R_R4
+        xr_strcpy(da_shader_src_path, cname);
 #endif
 
         // Compile

@@ -1143,3 +1143,131 @@ void DA_MemDump()
         "AI-граф, физика, звук.");
     Msg("~ ===============================================================");
 }
+
+// [DA_PORT] ---- Отложенное выполнение команды: da_after_load ---------------------------------------
+//
+// Зачем. Вылет у тестера воспроизводится связкой «загрузить сейв -> сбросить устройство», а сброс
+// делает консольная команда (vid_restart, смена апскейлера). Загрузку сейва можно задать из
+// командной строки (-start server(...)), а вот команду В ИГРЕ выполнить нечем: user.ltx исполняется
+// до того, как уровень появился, и `Device.b_is_Ready` там ещё ложь - сброса не происходит.
+//
+// Отсюда механизм: `da_after_load <кадров> <команда>` ждёт, пока уровень действительно загрузится,
+// отсчитывает заданное число кадров и выполняет команду. Этого хватает, чтобы прогнать сценарий
+// целиком без единого нажатия клавиши - и повторить его столько раз, сколько нужно, чтобы поймать
+// гонку, которая случается не каждый раз.
+//
+// Полезно не только для этого вылета: тем же способом проверяются пункты «проверить в игре» из
+// дорожной карты.
+namespace
+{
+string512 g_after_load_cmd = {};
+int g_after_load_frames = -1; // -1 = выключено
+}
+
+void DA_AfterLoadArm(int frames, pcstr command)
+{
+    if (frames < 0 || !command || !*command)
+    {
+        g_after_load_frames = -1;
+        g_after_load_cmd[0] = 0;
+        Msg("~ [DA_AFTER] отложенная команда снята");
+        return;
+    }
+    g_after_load_frames = frames;
+    xr_strcpy(g_after_load_cmd, sizeof(g_after_load_cmd), command);
+    Msg("~ [DA_AFTER] через %d кадров после загрузки уровня будет выполнено: %s", frames,
+        g_after_load_cmd);
+}
+
+void DA_AfterLoadTick()
+{
+    if (g_after_load_frames < 0)
+        return;
+    // Достаточно самого уровня: этот тик и зовётся из CLevel::OnFrame, то есть уровень уже есть.
+    // Флаг bReady проверять НЕЛЬЗЯ - он у IGame_Level никем не выставляется, и условие не срабатывало
+    // никогда: первый прогон воспроизведения молча простоял в меню и ничего не выполнил.
+    if (!g_pGameLevel)
+        return;
+
+    if (g_after_load_frames > 0)
+    {
+        --g_after_load_frames;
+        return;
+    }
+
+    g_after_load_frames = -1;
+    Msg("~ [DA_AFTER] выполняю: %s", g_after_load_cmd);
+    FlushLog();
+    Console->Execute(g_after_load_cmd);
+}
+
+// [DA_PORT] ---- Команда из командной строки: -da_cmd "<консольная команда>" -------------------
+//
+// Нужен автотестам (da_port/tools/run_headless.ps1). Своего механизма «выполнить консольную
+// команду при запуске» у движка нет: `-r4`, `-nointro` и прочие разбираются поимённо, а всё
+// остальное игнорируется. Без этого моста прогон на скрытом рабочем столе умеет только
+// запуститься и висеть до таймаута - ни `da_after_load`, ни `quit` ему не отдать.
+//
+// Один раз за сессию, на первом же кадре с уровнем ИЛИ главным меню. Кавычки обязательны,
+// если в команде есть пробелы: `-da_cmd "da_after_load 300 quit"`.
+//
+// ⚠️ Берётся ТОЛЬКО ПЕРВОЕ вхождение. Несколько команд задаются через консольный разделитель
+// внутри одних кавычек: `-da_cmd "load_last_save ; da_after_load 600 quit"`.
+void DA_StartupCommandTick()
+{
+    static bool done = false;
+    if (done)
+        return;
+
+    pcstr params = Core.Params;
+    if (!params)
+    {
+        done = true;
+        return;
+    }
+
+    pcstr at = strstr(params, "-da_cmd");
+    if (!at)
+    {
+        done = true;
+        return;
+    }
+
+    done = true;
+
+    if (strstr(at + 1, "-da_cmd"))
+        Msg("! [DA] -da_cmd указан несколько раз: выполнится только первый, остальные потеряны");
+
+    at += xr_strlen("-da_cmd");
+    while (*at == ' ')
+        ++at;
+
+    string512 command = {};
+    if (*at == '"')
+    {
+        ++at;
+        pcstr end = strchr(at, '"');
+        if (!end)
+        {
+            Msg("! [DA] -da_cmd: незакрытая кавычка, команда не выполнена");
+            return;
+        }
+        const size_t len = _min(size_t(end - at), sizeof(command) - 1);
+        strncpy(command, at, len);
+    }
+    else
+    {
+        // Без кавычек берём до первого пробела - иначе съели бы остаток командной строки.
+        sscanf(at, "%511s", command);
+    }
+
+    if (!command[0])
+    {
+        Msg("! [DA] -da_cmd: пустая команда");
+        return;
+    }
+
+    Msg("~ [DA_STARTUP] выполняю: %s", command);
+    FlushLog();
+    Console->Execute(command);
+}

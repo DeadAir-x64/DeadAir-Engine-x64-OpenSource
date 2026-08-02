@@ -169,6 +169,21 @@
 	<string id="st_opt_shadow_lights_high">
 		<text>Высокие</text>
 	</string>
+	<string id="ui_mm_smap_cache">
+		<text>Точность теней солнца</text>
+	</string>
+	<string id="st_opt_smap_cache_low">
+		<text>Низкая</text>
+	</string>
+	<string id="st_opt_smap_cache_medium">
+		<text>Средняя</text>
+	</string>
+	<string id="st_opt_smap_cache_high">
+		<text>Высокая</text>
+	</string>
+	<string id="st_opt_smap_cache_ultra">
+		<text>Ультра</text>
+	</string>
 	<string id="ui_mm_performance">
 		<text>Производительность</text>
 	</string>
@@ -292,6 +307,10 @@
 	<string id="st_opt_perf_ultra">
 		<text>Ультра</text>
 	</string>
+	<!-- [DA_PORT] Пункт списка наборов: значения не совпадают ни с одним набором. -->
+	<string id="st_opt_perf_custom">
+		<text>Своё</text>
+	</string>
 	<string id="st_opt_perf_max_fps">
 		<text>Ультра-производительность</text>
 	</string>
@@ -303,5 +322,87 @@
 	</string>
 	<string id="ui_mm_grp_image">
 		<text>Изображение</text>
+	</string>
+	<!-- [DA_PORT] Режимы окна. Список строится из команды vid_window_mode, и её имена токенов —
+	     это идентификаторы строк, поэтому названия задаются здесь. -->
+	<string id="ui_mm_window_mode">
+		<text>Режим окна</text>
+	</string>
+	<string id="st_opt_windowed">
+		<text>В окне</text>
+	</string>
+	<string id="st_opt_fullscreen_borderless">
+		<text>Полноэкранный в окне</text>
+	</string>
+	<string id="st_opt_fullscreen">
+		<text>Полноэкранный</text>
+	</string>
+	<!-- [DA_PORT] rain and puddles -->
+	<string id="ui_mm_grp_rain">
+		<text>Дождь</text>
+	</string>
+	<string id="ui_mm_puddles">
+		<text>Лужи</text>
+	</string>
+	<string id="ui_mm_puddles_dist">
+		<text>Дистанция луж</text>
+	</string>
+	<string id="ui_mm_puddles_dist_low">
+		<text>Низкое</text>
+	</string>
+	<string id="ui_mm_puddles_dist_med">
+		<text>Среднее</text>
+	</string>
+	<string id="ui_mm_puddles_dist_high">
+		<text>Высокое</text>
+	</string>
+	<string id="ui_mm_rain_quality">
+		<text>Качество дождя</text>
+	</string>
+	<string id="ui_mm_rain_quality_low">
+		<text>Низкое</text>
+	</string>
+	<string id="ui_mm_rain_quality_med">
+		<text>Среднее</text>
+	</string>
+	<string id="ui_mm_rain_quality_high">
+		<text>Высокое</text>
+	</string>
+	<string id="ui_mm_puddles_quality">
+		<text>Качество луж</text>
+	</string>
+	<string id="ui_mm_puddles_q_low">
+		<text>Низкое</text>
+	</string>
+	<string id="ui_mm_puddles_q_med">
+		<text>Среднее</text>
+	</string>
+	<string id="ui_mm_puddles_q_high">
+		<text>Высокое</text>
+	</string>
+	<string id="ui_mm_grp_world">
+		<text>Мир</text>
+	</string>
+	<string id="ui_mm_season">
+		<text>Сезон (нужен перезапуск)</text>
+	</string>
+	<string id="ui_mm_season_autumn">
+		<text>Осень</text>
+	</string>
+	<string id="ui_mm_season_summer">
+		<text>Лето</text>
+	</string>
+	<string id="ui_mm_snd_device_auto">
+		<text>Системное устройство</text>
+	</string>
+	<string id="ui_mm_af_rad_through">
+		<text>Радиация наружу</text>
+	</string>
+	<string id="ui_da_wpn_breakage">
+		<text>
+Поломки: </text>
+	</string>
+	<string id="ui_da_wpn_breakage_none">
+		<text>нет</text>
 	</string>
 </string_table>
