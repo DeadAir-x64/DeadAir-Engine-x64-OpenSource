@@ -198,11 +198,19 @@ void CPortalTraverser::traverse_sector(CSector* sector, CFrustum& F, _scissor& R
         {
             Fvector dir2portal;
             dir2portal.sub(PORTAL->S.P, i_vBase);
-            float R = PORTAL->S.R;
-            float distSQ = dir2portal.square_magnitude();
-            float ssa = R * R / distSQ;
+            const float R = PORTAL->S.R;
+            const float distSQ = dir2portal.square_magnitude();
+
+            // [DA_PORT] Верхняя оценка ДО нормализации: множитель |dot| не больше единицы, поэтому
+            // портал, уже не проходящий порог без него, не пройдёт и с ним. Отбор от этого не
+            // меняется ни на один портал - экономятся корень, деление и скалярное произведение на
+            // каждом отброшенном. Перенесено из Dead Air Refined (0d60934a).
+            const float ssa_upper = R * R / distSQ;
+            if (ssa_upper < r_ssaDISCARD)
+                continue;
+
             dir2portal.div(_sqrt(distSQ));
-            ssa *= _abs(PORTAL->P.n.dotproduct(dir2portal));
+            const float ssa = ssa_upper * _abs(PORTAL->P.n.dotproduct(dir2portal));
             if (ssa < r_ssaDISCARD)
                 continue;
 

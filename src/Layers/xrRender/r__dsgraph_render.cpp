@@ -93,6 +93,7 @@ void R_dsgraph_structure::render_graph(u32 _priority)
             }
             nrmPasses.clear();
             map.clear();
+            invalidate_pass_item_cache(_priority, iPass); // [DA_PORT] карта очищена — указатель мёртв
         }
     }
 
@@ -138,6 +139,7 @@ void R_dsgraph_structure::render_graph(u32 _priority)
             }
             matPasses.clear();
             map.clear();
+            invalidate_pass_item_cache(_priority, iPass); // [DA_PORT] карта очищена — указатель мёртв
         }
     }
 

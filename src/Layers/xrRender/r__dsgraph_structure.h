@@ -50,6 +50,23 @@ struct R_dsgraph_structure
     R_dsgraph::mapNormalPasses_T mapNormalPasses[2]; // 2==(priority/2)
     // R_dsgraph::mapMatrix_T										mapMatrix	[2]		;
     R_dsgraph::mapMatrixPasses_T mapMatrixPasses[2];
+
+    // [DA_PORT] Кэш последней корзины прохода. Подряд идущие визуалы одного материала искали её в
+    // xr_fixed_map заново на КАЖДЫЙ визуал; запоминаем последний SPass и найденное значение.
+    //
+    // Указатель внутрь карты законен только потому, что писателей у неё ровно два - insert_static и
+    // insert_dynamic, - и оба ходят через аксессор, который на промахе берёт указатель заново. Любая
+    // вставка мимо аксессора может переселить значения и оставить здесь мусор.
+    //
+    // Экземпляр R_dsgraph_structure свой у каждого контекста рендера, поэтому кэш не общий и гонки
+    // тут нет; см. пул контекстов в D3DXRenderBase.h.
+    //
+    // Перенесено из Dead Air Refined (0d60934a).
+    SPass* cachedNormalPasses[2][SHADER_PASSES_MAX]{};
+    R_dsgraph::mapNormalItems* cachedNormalItems[2][SHADER_PASSES_MAX]{};
+    SPass* cachedMatrixPasses[2][SHADER_PASSES_MAX]{};
+    R_dsgraph::mapMatrixItems* cachedMatrixItems[2][SHADER_PASSES_MAX]{};
+
     R_dsgraph::mapSorted_T mapSorted;
     R_dsgraph::mapHUD_T mapHUD;
     R_dsgraph::mapLOD_T mapLOD;
@@ -99,6 +116,35 @@ struct R_dsgraph_structure
     }
     void clear_Counters() { counter_S = counter_D = 0; }
 
+    // [DA_PORT] см. поля cached* выше
+    R_dsgraph::mapNormalItems& get_normal_pass_items(u32 priority, u32 passIndex, SPass* pass)
+    {
+        if (cachedNormalPasses[priority][passIndex] != pass)
+        {
+            cachedNormalPasses[priority][passIndex] = pass;
+            cachedNormalItems[priority][passIndex] = &mapNormalPasses[priority][passIndex][pass];
+        }
+        return *cachedNormalItems[priority][passIndex];
+    }
+
+    R_dsgraph::mapMatrixItems& get_matrix_pass_items(u32 priority, u32 passIndex, SPass* pass)
+    {
+        if (cachedMatrixPasses[priority][passIndex] != pass)
+        {
+            cachedMatrixPasses[priority][passIndex] = pass;
+            cachedMatrixItems[priority][passIndex] = &mapMatrixPasses[priority][passIndex][pass];
+        }
+        return *cachedMatrixItems[priority][passIndex];
+    }
+
+    void invalidate_pass_item_cache(u32 priority, u32 passIndex)
+    {
+        cachedNormalPasses[priority][passIndex] = nullptr;
+        cachedNormalItems[priority][passIndex] = nullptr;
+        cachedMatrixPasses[priority][passIndex] = nullptr;
+        cachedMatrixItems[priority][passIndex] = nullptr;
+    }
+
     R_dsgraph_structure() : Sectors_xrc("dsgraph")
     {
         r_pmask(true, true);
@@ -131,6 +177,10 @@ struct R_dsgraph_structure
 
         for (int i = 0; i < SHADER_PASSES_MAX; ++i)
         {
+            // [DA_PORT] Сначала кэш, потом сами карты: указатель ведёт внутрь них.
+            invalidate_pass_item_cache(0, i);
+            invalidate_pass_item_cache(1, i);
+
             mapNormalPasses[0][i].destroy();
             mapNormalPasses[1][i].destroy();
             mapMatrixPasses[0][i].destroy();
