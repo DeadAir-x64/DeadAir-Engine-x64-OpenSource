@@ -251,6 +251,10 @@ void CUIComboBox::SetItemToken(int tok_id)
 bool CUIComboBox::SetNextItemSelected(bool next, bool loop)
 {
     const auto lastItem = (int)m_list_box.GetSize() - 1;
+    // [DA_PORT] Пустой список даёт lastItem = -1, и дальше по нему считают индексы. Пусто он бывает,
+    // когда узел разметки не загрузился — тот же случай, что уже прикрыт в SetItemIDX выше.
+    if (lastItem < 0)
+        return false;
 
     int idx = (int)m_list_box.GetSelectedIDX();
 
