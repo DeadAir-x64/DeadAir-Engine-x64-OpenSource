@@ -306,12 +306,34 @@ void CCustomDetector::UpdateHudParticles()
     xf.identity();
     if (hi && hi->m_model)
     {
-        const u16 bid = hi->m_model->LL_BoneID(m_hud_particles_bone.c_str());
-        if (bid != u16(-1))
+        // [DA_PORT] Положение берём через setup_firedeps, а НЕ перемножением матриц вручную.
+        //
+        // Раньше здесь было `xf.mul(m_item_transform, bone.mTransform)`, и это выглядело разумно, но
+        // давало не то: в матрицу кости входит её собственный поворот и масштаб, а у кости огонька в
+        // скелете зажигалки он произвольный. Частица уезжала и разворачивалась, и на экране огня
+        // просто не было — без единого сообщения, потому что играть она при этом продолжала.
+        //
+        // setup_firedeps делает то, что нужно: сам обновляет позу на текущий кадр (наш вариант брал
+        // прошлую), переносит ТОЧКУ огня с её смещением из конфига и строит ориентацию от направления
+        // предмета в руке. Ровно так же считает огонь фальшфейер (flare.cpp) — то есть путь в нашем
+        // дереве уже проверен, - и так же делал автор мода.
+        //
+        // Точка ПЕРВАЯ, хотя в секции предмета написано `particles_bone = light_bone_2`. Ключ
+        // относится не сюда: у автора он идёт в мировой партикл на брошенном предмете
+        // (`StartParticles(..., m_particles_bone, ...)`), а огонь в руке позиционируется первой точкой
+        // огня — `fire_bone = light_bone_1` со смещением `fire_point = 0,-0.02,0.01`, то есть кем-то
+        // подобранным под фитиль. По второй точке пламя горело В СТОРОНЕ от зажигалки.
+        //
+        // Так же считает фальшфейер (flare.cpp) — берёт vLastFP, не vLastFP2.
+        firedeps fd;
+        hi->setup_firedeps(fd);
+
+        const auto& flags = hi->m_measures.m_prop_flags;
+        const bool have1 = flags.test(hud_item_measures::e_fire_point);
+        if (have1 || flags.test(hud_item_measures::e_fire_point2))
         {
-            // world bone matrix = HUD item world xform * bone-local xform (same space the weapon muzzle
-            // particle uses). 1-frame lag vs the render pose is imperceptible for a flame.
-            xf.mul(hi->m_item_transform, hi->m_model->LL_GetBoneInstance(bid).mTransform);
+            xf.set(fd.m_FireParticlesXForm);
+            xf.c.set(have1 ? fd.vLastFP : fd.vLastFP2);
             show = true;
         }
     }
@@ -325,8 +347,16 @@ void CCustomDetector::UpdateHudParticles()
         if (m_hud_particles)
             m_hud_particles->SetXFORM(xf);
     }
-    else if (m_hud_particles && m_hud_particles->IsPlaying())
-        m_hud_particles->Stop();
+    else
+    {
+        // [DA_PORT] УНИЧТОЖАЕМ, а не просто гасим.
+        //
+        // Stop() лишь прекращает выброс: объект остаётся живым и в очереди отрисовки, а матрицу ему
+        // больше никто не обновляет — он застывает в последнем HUD-положении, то есть привязанным к
+        // камере. Со стороны это выглядит как огонёк, который ходит за игроком и после того, как
+        // зажигалка убрана. Так же поступают фальшфейер (flare.cpp) и авторская реализация.
+        CParticlesObject::Destroy(m_hud_particles);
+    }
 
     // [DA_PORT] warm glow so the held lighter lights the environment (world-space, near the actor - the HUD
     // bone is in view space and would not illuminate the world). Self-contained; independent of device_torch.
@@ -508,8 +538,7 @@ void CCustomDetector::on_b_hud_detach()
 // отсоединении модели от рук и на уборке предмета.
 void CCustomDetector::DaStopHudEffects()
 {
-    if (m_hud_particles && m_hud_particles->IsPlaying())
-        m_hud_particles->Stop();
+    CParticlesObject::Destroy(m_hud_particles); // [DA_PORT] см. UpdateHudParticles: гасить мало
 
     if (m_held_light)
         m_held_light->set_active(false);

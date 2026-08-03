@@ -172,7 +172,10 @@ void CHudTuner::on_tool_frame()
                     ImGui::LogText("%s", selectable);
                     xr_sprintf(selectable, "fire_point = %f,%f,%f\n", new_measures.m_fire_point_offset.x, new_measures.m_fire_point_offset.y, new_measures.m_fire_point_offset.z);
                     ImGui::LogText("%s", selectable);
-                    xr_sprintf(selectable, "fire_point = %f,%f,%f\n", new_measures.m_fire_point2_offset.x, new_measures.m_fire_point2_offset.y, new_measures.m_fire_point2_offset.z);
+                    // [DA_PORT] fire_point2, а не fire_point: вторая точка печаталась под именем
+                    // первой, и блок, скопированный кнопкой целиком, молча ЗАТИРАЛ настроенное
+                    // значение дубликатом ключа. Ошибка апстрима, нашлась при подгонке огня.
+                    xr_sprintf(selectable, "fire_point2 = %f,%f,%f\n", new_measures.m_fire_point2_offset.x, new_measures.m_fire_point2_offset.y, new_measures.m_fire_point2_offset.z);
                     ImGui::LogText("%s", selectable);
                     xr_sprintf(selectable, "shell_point = %f,%f,%f\n", new_measures.m_shell_point_offset.x, new_measures.m_shell_point_offset.y, new_measures.m_shell_point_offset.z);
                     ImGui::LogText("%s", selectable);
