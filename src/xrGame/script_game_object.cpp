@@ -157,7 +157,30 @@ const CScriptEntityAction* CScriptGameObject::GetActionByIndex(u32 action_index)
 
 u16 CScriptGameObject::get_bone_id(LPCSTR bone_name) const
 {
-    return object().Visual()->dcast_PKinematics()->LL_BoneID(bone_name);
+    // [DA_PORT] Та же дыра, что была в bone_position, только на шаг раньше: у объекта без скелетного
+    // визуала dcast даёт ноль, и разыменование убивает игру прямо здесь. SetBoneVisible и
+    // IsBoneVisible рядом уже прикрыты — эта осталась последней в семействе.
+    //
+    // BI_NONE наружу отдаём как есть: это законный ответ «такой кости нет», и скрипты обязаны его
+    // проверять. Наша задача — не упасть, а не решать за них.
+    IKinematics* K = object().Visual() ? object().Visual()->dcast_PKinematics() : nullptr;
+    if (!K)
+    {
+        static xr_vector<shared_str> seen;
+        const shared_str v = object().cNameVisual();
+        bool known = false;
+        for (const auto& it : seen)
+            if (it == v)
+                known = true;
+        if (!known)
+        {
+            seen.push_back(v);
+            Msg("! [DA_PORT] get_bone_id: визуал [%s] не скелетный, кость [%s] спрошена зря",
+                v.c_str(), bone_name ? bone_name : "");
+        }
+        return BI_NONE;
+    }
+    return K->LL_BoneID(bone_name);
 }
 
 CPhysicsShell* CScriptGameObject::get_physics_shell() const
@@ -309,15 +332,50 @@ u32 CScriptGameObject::get_current_patrol_point_index()
 
 Fvector CScriptGameObject::bone_position(LPCSTR bone_name) const
 {
-    u16 bone_id;
-    if (xr_strlen(bone_name))
-        bone_id = smart_cast<IKinematics*>(object().Visual())->LL_BoneID(bone_name);
-    else
-        bone_id = smart_cast<IKinematics*>(object().Visual())->LL_GetBoneRoot();
+    // [DA_PORT] Две проверки, которых здесь не было, и обе на вылет с чтением мусора.
+    //
+    // 1. Визуал может не быть скелетным — тогда smart_cast даёт ноль, и разыменование его убивает
+    //    игру на месте.
+    // 2. LL_BoneID для несуществующей кости возвращает BI_NONE (0xFFFF), и ЭТИМ ЧИСЛОМ шли
+    //    индексироваться в массив костей. Читалось что попало, падало в Fmatrix::mul_43 — то есть
+    //    стек показывал на арифметику, а виноват был индекс.
+    //
+    // Вызывается из update() скриптовых привязок, то есть каждый кадр и для каждого объекта: опечатка
+    // в имени кости в любом моде или аддоне роняла игру. Теперь возвращаем положение объекта и
+    // сообщаем один раз — этого хватает, чтобы найти виновный скрипт, и не засоряет лог.
+    // Сообщаем ОДИН РАЗ НА ПАРУ «визуал + кость», а не один раз вообще. Разница существенная:
+    // с глобальным флагом перебор мобов дал бы одну строку и молчание, а нужен полный список — какие
+    // визуалы какой кости не имеют.
+    const auto report_once = [](pcstr what, pcstr visual, pcstr bone)
+    {
+        static xr_vector<shared_str> seen;
+        string256 key;
+        xr_sprintf(key, "%s|%s", visual ? visual : "", bone ? bone : "");
+        const shared_str k = key;
+        for (const auto& it : seen)
+            if (it == k)
+                return;
+        seen.push_back(k);
+        Msg("! [DA_PORT] bone_position: %s — визуал [%s], кость [%s]", what, visual ? visual : "?",
+            bone ? bone : "");
+    };
+
+    IKinematics* K = smart_cast<IKinematics*>(object().Visual());
+    if (!K)
+    {
+        report_once("визуал НЕ СКЕЛЕТНЫЙ", object().cNameVisual().c_str(), bone_name);
+        return object().Position();
+    }
+
+    const u16 bone_id = xr_strlen(bone_name) ? K->LL_BoneID(bone_name) : K->LL_GetBoneRoot();
+    if (BI_NONE == bone_id)
+    {
+        report_once("КОСТИ НЕТ", object().cNameVisual().c_str(), bone_name);
+        return object().Position();
+    }
 
     Fmatrix matrix;
-    matrix.mul_43(
-        object().XFORM(), smart_cast<IKinematics*>(object().Visual())->LL_GetBoneInstance(bone_id).mTransform);
+    matrix.mul_43(object().XFORM(), K->LL_GetBoneInstance(bone_id).mTransform);
     return (matrix.c);
 }
 

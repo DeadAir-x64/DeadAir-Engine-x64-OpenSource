@@ -24,11 +24,50 @@ MONSTER_COMMUNITY::MONSTER_RELATION_TABLE MONSTER_COMMUNITY::m_relation_table;
 //////////////////////////////////////////////////////////////////////////
 MONSTER_COMMUNITY::MONSTER_COMMUNITY() { m_current_index = NO_MONSTER_COMMUNITY_INDEX; }
 MONSTER_COMMUNITY::~MONSTER_COMMUNITY() {}
-void MONSTER_COMMUNITY::set(MONSTER_COMMUNITY_ID id) { m_current_index = IdToIndex(id); }
+// [DA_PORT] Неизвестное сообщество больше НЕ роняет игру.
+//
+// Цепочка была такая: в секции существа нет `species` -> сообщество ищется по пустому имени ->
+// не найдено -> проверка в GetById в релизе вырезана (см. release-assert-macros) -> IdToIndex
+// возвращает -1 -> этим числом лезут в массив. Падало в strcmp внутри GetByIndex, то есть стек
+// показывал на поиск, а виновата была ОПЕЧАТКА В КОНФИГЕ за десять шагов до него.
+//
+// Ошибку конфига движок при этом честно печатал («Can't find variable species in [...]») и шёл
+// дальше — то есть сообщение было, а связи между ним и вылетом никакой.
+//
+// Теперь неизвестное сообщество откатывается к первому известному: существо получит не свои
+// отношения, но игра доживёт до конца сессии, а в логе останется строка с именем.
+void MONSTER_COMMUNITY::set(MONSTER_COMMUNITY_ID id)
+{
+    const MONSTER_COMMUNITY_INDEX idx = IdToIndex(id, MONSTER_COMMUNITY_INDEX(-1), true);
+    if (idx < 0 || (size_t)idx >= m_pItemDataVector->size())
+    {
+        static xr_vector<shared_str> seen;
+        bool known = false;
+        for (const auto& it : seen)
+            if (it == id)
+                known = true;
+        if (!known)
+        {
+            seen.push_back(id);
+            Msg("! [DA_PORT] сообщество монстров [%s] не найдено в [%s]; беру первое известное. "
+                "Обычно это отсутствующая или ошибочная строка species в секции существа",
+                id.c_str(), MONSTER_RELATIONS_SECT);
+        }
+        m_current_index = m_pItemDataVector->empty() ? NO_MONSTER_COMMUNITY_INDEX : 0;
+        return;
+    }
+    m_current_index = idx;
+}
 void MONSTER_COMMUNITY::set(MONSTER_COMMUNITY_INDEX index) { m_current_index = index; }
 MONSTER_COMMUNITY_ID MONSTER_COMMUNITY::id() const { return IndexToId(m_current_index); }
 MONSTER_COMMUNITY_INDEX MONSTER_COMMUNITY::index() const { return m_current_index; }
-u8 MONSTER_COMMUNITY::team() const { return (*m_pItemDataVector)[m_current_index].team; }
+u8 MONSTER_COMMUNITY::team() const
+{
+    // [DA_PORT] та же защита: индекс мог остаться отрицательным у существа без species.
+    if (m_current_index < 0 || (size_t)m_current_index >= m_pItemDataVector->size())
+        return 0;
+    return (*m_pItemDataVector)[m_current_index].team;
+}
 void MONSTER_COMMUNITY::InitIdToIndex()
 {
     section_name = MONSTER_RELATIONS_SECT;
