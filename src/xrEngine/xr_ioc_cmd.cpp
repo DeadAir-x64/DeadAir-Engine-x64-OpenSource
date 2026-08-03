@@ -1997,7 +1997,7 @@ ENGINE_API float ps_r__torch_bright_item = 3.0f; // ручной фонарик 
 // Правильная длина считается из выдержки: капля летит 40–80 м/с, кадр 1/60 с, значит след 0.7–1.3 м.
 // Ширина у настоящей капли миллиметры; для видимости оставлен запас, но не в сто раз.
 ENGINE_API float ps_r__rain_len = 2.0f;
-ENGINE_API float ps_r__rain_width = 0.08f;
+ENGINE_API float ps_r__rain_width = 0.20f;	// 0.08 не читалось на экране: при рендере 77% полоска в доли пикселя
 
 // Яркость капель множителем к rain_color погоды. Нужна потому, что в конфигах ливня цвет капли —
 // (0.34, 0.31, 0.26), тёмно-серо-бурый: при исходной ширине в 30 см такую каплю было видно просто за
@@ -2082,7 +2082,33 @@ ENGINE_API bool da_puddle_at(const Fvector& p)
 // Отдельной ручкой от самих луж потому, что стоит она заметно дороже: это ray-march по глубине, тот
 // же, которым отражает вода.
 ENGINE_API int ps_r__puddles_refl = 1;
-ENGINE_API float ps_r__puddles_refl_power = 2.0f;	// подобрано в игре и утверждено
+ENGINE_API float ps_r__puddles_refl_power = 1.5f;	// подобрано в игре и утверждено
+
+// [DA_PORT] Нижняя граница френеля у луж: сколько отражения остаётся, когда смотришь В УПОР.
+//
+// Физически честное значение около 0.05 — вода в упор почти не зеркалит, и лужа под ногами
+// пропадает. Это верно, но в кадре читается как «отражений нет». Ручка задаёт пол этой кривой:
+// вблизи горизонта отражение по-прежнему полное, меняется только взгляд сверху вниз.
+ENGINE_API float ps_r__puddles_facing = 0.10f;
+
+// [DA_PORT] Доля отражения НЕБА там, где луч-марш не нашёл геометрии. Без неё лужа при взгляде
+// сверху вниз пропадала: луч уходит в небо, а неба в буфере глубины нет.
+ENGINE_API float ps_r__puddles_sky = 0.15f;
+
+// [DA_PORT] 1 — лужи меняют G-буфер (нормаль, глянец, потемнение, кайма) плюс проход отражений;
+// 0 — только проход отражений поверх кадра. Обводка родится исключительно в первом варианте: у края
+// маски встречаются бугристая земля и плоская вода. Второй свободен от неё по построению, но теряет
+// отклик воды на лампы и костры. Ручка — чтобы сравнить в игре, а не спорить.
+ENGINE_API int ps_r__puddles_gbuf = 1;
+
+// [DA_PORT] Жёсткость края лужи, 0..1. Единица — чистая ступень без смешивания: именно она убирает
+// зернистую обводку по контуру. Меньше единицы — переход мягче, зерно возвращается. Умолчание 1.
+ENGINE_API float ps_r__puddles_edge = 0.3f; // подобрано в игре 03.08 вместе с нормалью-«вверх»
+
+// [DA_PORT] Кайма промокшего грунта вокруг воды: сила потемнения и ширина полосы. Значения
+// утверждены в игре 31.07 вместе с остальным видом луж.
+ENGINE_API float ps_r__puddles_rim = 0.72f;
+ENGINE_API float ps_r__puddles_rim_width = 0.22f;
 
 // Качество луж одной ступенью. Низкое — только влажная земля, без самих луж: это дёшево и всё равно
 // читается как дождь. Среднее — лужи как они есть. Высокое — они же с отражениями, а отражения это
@@ -2131,8 +2157,6 @@ public:
 //
 // _rim — во сколько раз кайма темнее сухой земли (1 = нет каймы), _rim_width — её ширина в долях
 // шума: 0.1 узкая полоска, 0.4 широкий разлив мокроты.
-ENGINE_API float ps_r__puddles_rim = 0.72f;
-ENGINE_API float ps_r__puddles_rim_width = 0.22f;
 
 ENGINE_API u32 ps_r__puddles_dist = 20;
 ENGINE_API xr_token qpuddles_dist_token[] = {
@@ -2425,11 +2449,15 @@ void CCC_Register()
 
     // [DA_PORT] Пункты меню «Дождь»: две ступени вместо восьми чисел.
     CMD3(CCC_PuddlesQuality, "r__puddles_quality", &ps_r__puddles_quality, qpuddles_quality_token);
-    CMD4(CCC_Float, "r__puddles_rim", &ps_r__puddles_rim, 0.2f, 1.f);
-    CMD4(CCC_Float, "r__puddles_rim_width", &ps_r__puddles_rim_width, 0.02f, 0.5f);
     CMD3(CCC_Token, "r__puddles_dist", &ps_r__puddles_dist, qpuddles_dist_token);
     CMD4(CCC_Integer, "r__puddles_refl", &ps_r__puddles_refl, 0, 1);
     CMD4(CCC_Float, "r__puddles_refl_power", &ps_r__puddles_refl_power, 0.f, 2.f);
+    CMD4(CCC_Float, "r__puddles_facing", &ps_r__puddles_facing, 0.f, 1.f); // [DA_PORT]
+    CMD4(CCC_Float, "r__puddles_sky", &ps_r__puddles_sky, 0.f, 1.f); // [DA_PORT]
+    CMD4(CCC_Integer, "r__puddles_gbuf", &ps_r__puddles_gbuf, 0, 1); // [DA_PORT]
+    CMD4(CCC_Float, "r__puddles_edge", &ps_r__puddles_edge, 0.f, 1.f); // [DA_PORT]
+    CMD4(CCC_Float, "r__puddles_rim", &ps_r__puddles_rim, 0.2f, 1.f);
+    CMD4(CCC_Float, "r__puddles_rim_width", &ps_r__puddles_rim_width, 0.02f, 0.5f);
     CMD3(CCC_RainQuality, "r__rain_quality", &ps_r__rain_quality, qrain_quality_token);
     CMD4(CCC_Integer, "r__rain_drops", &ps_r__rain_drops, 500, 40000);
     CMD4(CCC_Float, "r__rain_radius", &ps_r__rain_radius, 5.f, 40.f);

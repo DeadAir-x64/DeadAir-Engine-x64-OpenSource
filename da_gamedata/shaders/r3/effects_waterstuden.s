@@ -9,7 +9,10 @@ local tex_env1                = "$user$sky1"         -- "sky\\sky_8_cube"
 
 --local tex_leaves              = "decal\\decal_listja"
 --local tex_leaves              = "decal\\decal_listja_vetki"
-local tex_leaves              = "water\\water_foam"
+-- [DA_PORT] Настоящие листья вместо пены. Слот s_leaves читает water.ps и кладёт сор ПОВЕРХ
+-- пены. Стояла водная пена, то есть слой рисовал пену поверх пены и не давал ничего.
+-- Обе текстуры листьев лежат в архивах игры (levels.xdb0..4, xtra.xdb0).
+local tex_leaves              = "decal\\decal_listja_vetki"
 
 function normal                (shader, t_base, t_second, t_detail)
 	shader	:begin		("water_soft","water_green")

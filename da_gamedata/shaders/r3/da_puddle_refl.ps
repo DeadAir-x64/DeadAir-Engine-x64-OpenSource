@@ -16,12 +16,28 @@
 #include "ogse_reflections.h"
 #include "da_puddles.h"
 
-// x — сила отражения (r__puddles_refl_power), y — включено ли (0/1). Остальное свободно.
+// x — сила отражения (r__puddles_refl_power), y — включено ли (0/1), z — нижняя граница френеля
+// (r__puddles_facing), w — доля отражения НЕБА, когда луч-марш ничего не нашёл (r__puddles_sky).
 uniform float4 da_puddle_refl;
 
 // s_image (копия кадра) объявлен в ogse_reflections.h — там же, где им пользуется ray-march.
 // Ray-march по буферу глубины: шагаем вдоль отражённого луча в экранных координатах, пока не упрёмся
 // в геометрию. Возвращает цвет попадания и вес: 0 — не попали или попали у самого края экрана.
+
+// [DA_PORT] Запасное отражение: НЕБО.
+//
+// Луч-марш ищет геометрию в буфере глубины, а неба там нет — на небе он возвращал ноль, и вся
+// формула отражения обнулялась целиком. Заметно это именно при взгляде СВЕРХУ ВНИЗ: отражённый луч
+// уходит в небо, попадать ему не во что, и лужа под ногами пропадала. Ручка френеля при этом не
+// помогала — она умножалась на этот же ноль.
+//
+// Цвет берём из полусферической освещённости: это и есть свет неба, посчитанный движком. Точнее было
+// бы сэмплировать небосвод, но за это пришлось бы тащить его текстуру в проход.
+float4 da_puddle_sky()
+{
+	return float4(L_hemi_color.rgb, saturate(da_puddle_refl.w));
+}
+
 float4 da_puddle_march(float3 pos_w, float3 vreflect)
 {
 	const float3 v_pixel = mul((float3x4)m_V, float4(pos_w, 1.0f));
@@ -61,7 +77,7 @@ float4 da_puddle_march(float3 pos_w, float3 vreflect)
 
 		// Ушли за экран — отражать нечего. Раньше здесь оставался белый цвет.
 		if (cur.x < 0.0f || cur.x > 1.0f || cur.y < 0.0f || cur.y > 1.0f)
-			return 0.0f;
+			return da_puddle_sky();
 
 		float depth = get_depth_fast(cur.xy);
 		depth = lerp(depth, 0.0f, is_sky(depth));
@@ -75,7 +91,7 @@ float4 da_puddle_march(float3 pos_w, float3 vreflect)
 			return float4(s_image.SampleLevel(smp_rtlinear, cur.xy, 0).xyz, edge);
 		}
 	}
-	return 0.0f;	// не нашли — значит отражения нет
+	return da_puddle_sky();	// геометрию не нашли — значит там небо
 }
 
 struct vf
@@ -122,7 +138,13 @@ float4 main(vf I) : SV_Target
 	// Френель: к горизонту вода становится зеркалом. Показатель мягкий (2.5, не 4) и с заметной
 	// постоянной частью: честные 5% отражения в упор физически верны, но в кадре означают «отражения
 	// нет», а лужа без отражения — просто тёмное пятно.
-	const float fres = saturate(0.15f + 0.85f * pow(saturate(1.0f + dot(view_w, water_n)), 2.5f));
+	//
+	// [DA_PORT] Постоянная часть теперь ручкой (r__puddles_facing), а не числом. Это ровно тот случай,
+	// когда физика и читаемость расходятся: смотришь на лужу сверху вниз — угол нормальный, отражения
+	// по формуле почти нет, и лужа под ногами исчезает. Пол кривой поднимает ТОЛЬКО этот случай;
+	// у горизонта отражение и так полное, там ручка ничего не меняет.
+	const float f0 = saturate(da_puddle_refl.z);
+	const float fres = saturate(f0 + (1.0f - f0) * pow(saturate(1.0f + dot(view_w, water_n)), 2.5f));
 
 	// Отражение мира.
 	const float4 refl = da_puddle_march(pos_w, vreflect);

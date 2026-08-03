@@ -5,6 +5,8 @@
 extern ENGINE_API int ps_r__puddles;
 extern ENGINE_API int ps_r__puddles_refl;
 extern ENGINE_API float ps_r__puddles_refl_power;
+extern ENGINE_API float ps_r__puddles_facing;
+extern ENGINE_API float ps_r__puddles_sky;
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -44,7 +46,8 @@ void CRenderTarget::phase_da_puddle_refl()
 
     RCache.set_Element(s_puddle_refl->E[0]);
     RCache.set_Geometry(g_combine);
-    RCache.set_c("da_puddle_refl", ps_r__puddles_refl_power, 1.f, 0.f, 0.f);
+    // [DA_PORT] z — нижняя граница френеля (r__puddles_facing), см. xr_ioc_cmd.cpp
+    RCache.set_c("da_puddle_refl", ps_r__puddles_refl_power, 1.f, ps_r__puddles_facing, ps_r__puddles_sky);
     RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 }
 } // namespace xray::render::RENDER_NAMESPACE

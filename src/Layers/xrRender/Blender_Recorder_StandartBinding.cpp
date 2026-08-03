@@ -21,6 +21,8 @@ extern ENGINE_API float ps_r__puddles_damp;
 extern ENGINE_API float ps_r__puddles_ripple;
 extern ENGINE_API int ps_r__puddles_debug;
 extern ENGINE_API u32 ps_r__puddles_dist;
+extern ENGINE_API int ps_r__puddles_gbuf;
+extern ENGINE_API float ps_r__puddles_edge;
 extern ENGINE_API float ps_r__puddles_rim;
 extern ENGINE_API float ps_r__puddles_rim_width;
 extern ENGINE_API float g_da_rain_wetness; // [DA_PORT] сюда кладём накопленную влажность для игры
@@ -322,10 +324,24 @@ class cl_puddle_look2 : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
     {
-        cmd_list.set_c(C, float(ps_r__puddles_dist), ps_r__puddles_rim, ps_r__puddles_rim_width, 0.f);
+        // [DA_PORT] w — выключатель G-буферной половины (r__puddles_gbuf), см. deffer_impl_flat.ps
+        // [DA_PORT] y — жёсткость края, z — сила каймы, w — выключатель G-буферной половины.
+        cmd_list.set_c(C, float(ps_r__puddles_dist), ps_r__puddles_edge, ps_r__puddles_rim,
+            float(ps_r__puddles_gbuf));
     }
 };
 static cl_puddle_look2 binder_puddle_look2;
+
+// [DA_PORT] Третья константа вида: ширина каймы. Заведена потому, что в look2 остался один слот, а
+// кайме нужно два — сила и ширина. Три свободных слота оставлены на будущее.
+class cl_puddle_look3 : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_r__puddles_rim_width, 0.f, 0.f, 0.f);
+    }
+};
+static cl_puddle_look3 binder_puddle_look3;
 
 class cl_puddle_look : public R_constant_setup
 {
@@ -575,6 +591,7 @@ void CBlender_Compile::SetMapping()
     r_Constant("rain_params", &binder_rain_params);
     r_Constant("da_puddle_look", &binder_puddle_look);
     r_Constant("da_puddle_look2", &binder_puddle_look2);
+    r_Constant("da_puddle_look3", &binder_puddle_look3);
 
     // eye-params
     r_Constant("eye_position", &binder_eye_P);
