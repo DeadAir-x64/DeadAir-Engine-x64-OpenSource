@@ -541,6 +541,16 @@ void CSE_ALifeItemWeapon::UPDATE_Read(NET_Packet& tNetPacket)
 }
 
 void CSE_ALifeItemWeapon::clone_addons(CSE_ALifeItemWeapon* parent) { m_addon_flags = parent->m_addon_flags; }
+// [DA_PORT] ⚠️ ДОЛГ ПЕРЕД РЕЛИЗОМ: wpn_state здесь и в STATE_Read — это CHUDState::EHudStates, а его
+// нумерация была возвращена к оригинальной (см. HudItem.h). Сейвы, записанные сборками до этой
+// правки, несут СТАРЫЕ числа, и состояния 0..3 прочитаются со сдвигом: спрятанное оружие сойдёт за
+// покоящееся и наоборот. Автомат состояний, скорее всего, доведёт себя за кадр — но «скорее всего»
+// это не «проверено», а вылезет оно у игрока, а не у нас.
+//
+// Что сделать: поднять SPAWN_VERSION 129 -> 130 и при версии меньше 130 пересчитывать wpn_state по
+// таблице старая->новая. Механизм ровно тот же, что применён к маске поломок рядом.
+//
+// Сознательно отложено: сборка тестовая, сейвы одноразовые.
 void CSE_ALifeItemWeapon::UPDATE_Write(NET_Packet& tNetPacket)
 {
     inherited::UPDATE_Write(tNetPacket);
