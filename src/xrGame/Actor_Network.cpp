@@ -909,6 +909,11 @@ void CActor::OnChangeVisual()
         m_current_legs_blend = NULL;
         m_current_torso_blend = NULL;
         m_current_jump_blend = NULL;
+
+        // [DA_PORT] Скелет сменился — теневую модель и перволичные ноги надо пересобрать: их кости
+        // привязаны к костям этого визуала по именам. См. CActor::RebuildShadowVisual.
+        RebuildShadowVisual();
+        RebuildLegsVisual();
     }
 };
 

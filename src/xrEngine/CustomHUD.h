@@ -39,6 +39,12 @@ class ENGINE_API XR_NOVTABLE CCustomHUD
 {
 public:
     virtual void Render_First(u32 context_id) = 0;
+    // [DA_PORT] Отдельный вход для ТЕНЕВОГО прохода. Раньше и камера, и построение теневого
+    // подпространства звали один и тот же Render_First, поэтому в обоих случаях рисовалась одна и та
+    // же модель актёра — и выбрать между «ноги от первого лица» и «целое тело для тени» было нельзя.
+    // Теперь проходы разведены: Render_First рисует то, что видит игрок, Render_ActorShadow — то,
+    // что отбрасывает тень. См. CHUDManager и CActor::renderable_RenderShadow.
+    virtual void Render_ActorShadow(u32 context_id) = 0;
     virtual void Render_Last(u32 context_id) = 0;
 
     virtual void OnFrame() = 0;

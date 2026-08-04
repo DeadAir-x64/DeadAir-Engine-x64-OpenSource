@@ -103,6 +103,13 @@ public:
 
     // Render
     void renderable_Render(u32 context_id, IRenderable* root) override;
+    // [DA_PORT] Тело как оно есть — то, что видит игрок. Вынесено из renderable_Render, чтобы
+    // теневой проход мог рисовать другое. См. CustomHUD.h.
+    void renderable_RenderBody(u32 context_id, IRenderable* root);
+    // [DA_PORT] Целая модель для теневого прохода плюс оружие в её руках.
+    void renderable_RenderShadow(u32 context_id, IRenderable* root);
+    // [DA_PORT] Перволичные ноги в главном проходе.
+    void renderable_RenderLegs(u32 context_id, IRenderable* root);
     virtual bool renderable_ShadowGenerate();
     void feel_sound_new(IGameObject* who, int type, const CSound_UserDataPtr& user_data,
         const Fvector& position, float power) override;
@@ -205,9 +212,10 @@ public:
     virtual void UpdateArtefactsOnBeltAndOutfit();
     float HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type);
     float GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type) const;
-    // [DA_PORT] Belt AND backpack slot - the tank and the exo backpack are artefacts too. Shared by the
-    // damage path and by the displayed numbers so the two cannot drift apart. See Actor.cpp.
-    float ArtefactProtection(ALife::EHitType hit_type) const;
+    // [DA_PORT] Пояс И слот рюкзака — баллон и ранец экзоскелета тоже артефакты.
+    // `with_condition` воспроизводит авторский раскол: боевой путь считает БЕЗ износа артефакта,
+    // отображаемое число — С износом. Разбор в Actor.cpp.
+    float ArtefactProtection(ALife::EHitType hit_type, bool with_condition) const;
     // [DA_PORT] Порог кислородного баллона против химии — тот же, что в скрипте мода. См. Actor.cpp.
     bool da_chem_gear_blocks_hit() const;
 
@@ -708,6 +716,45 @@ private:
 protected:
     CStatGraph* pStatGraph;
 
+    // [DA_PORT] Теневая модель актёра.
+    //
+    // Dead Air одевает актёру перволичное тело `actors\legs\*.ogf` — ноги с торсом, без рук и
+    // головы. В камере это правильно, в тени — нет. Поэтому целая NPC-модель держится ОТДЕЛЬНО и
+    // рисуется только в теневом проходе, а её кости каждый кадр берут положение из настоящего
+    // скелета актёра: имена костей у обеих моделей совпадают, поэтому поза переносится один в один.
+    //
+    // Положение костей кладётся в саму привязку, а колбэк только присваивает его. Лезть из колбэка
+    // в чужую кинематику нельзя: он зовётся внутри её же расчёта.
+    struct ShadowBoneBinding
+    {
+        u16 source_id{ u16(-1) };
+        Fmatrix transform{ Fidentity };
+    };
+
+    IRenderVisual* m_shadow_visual{};
+    IKinematics* m_shadow_kinematics{};
+    xr_vector<ShadowBoneBinding> m_shadow_bones;
+
+    static void ShadowBoneCallback(CBoneInstance* bone);
+
+    // [DA_PORT] Перволичные ноги — та же техника, что и у теневой модели, но со своей матрицей.
+    //
+    // Подход взят у Anomaly (player_hud_legs.cpp): тело не просто обрезается, а ОТОДВИГАЕТСЯ от
+    // камеры и привязывается к ней по горизонтали. Иначе торс лезет в лицо, а при повороте уезжает
+    // вбок, потому что камера вращается вокруг своей оси, а модель вокруг своей.
+    IRenderVisual* m_legs_visual{};
+    IKinematics* m_legs_kinematics{};
+    xr_vector<ShadowBoneBinding> m_legs_bones;
+    int m_legs_hide_applied{ -1 }; // какой набор скрытия сейчас стоит на модели, см. da_legs_hide
+    void ApplyLegsBoneMask();
+
+public:
+    void RebuildShadowVisual();
+    void DestroyShadowVisual();
+    void RebuildLegsVisual();
+    void DestroyLegsVisual();
+
+protected:
     shared_str m_DefaultVisualOutfit;
 
     LPCSTR invincibility_fire_shield_3rd;

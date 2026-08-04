@@ -604,6 +604,20 @@ bool CWeapon::net_Spawn(CSE_Abstract* DC)
     SetState(E->wpn_state);
     SetNextState(E->wpn_state);
 
+    // [DA_PORT] Тип патрона приходит ИЗ СЕЙВА, а индексируется вектор — без проверки это чтение за
+    // границей. Сработает на оружии, у которого список патронов в конфиге стал короче, чем был на
+    // момент сохранения: правка данных мода, перепаковка, откат версии.
+    //
+    // Отдельно неловко: наша же проверка `m_ammoType < m_ammoTypes.size()` стоит семнадцатью
+    // строками ниже, у расчёта осечки. То есть про выход за диапазон мы знали и закрыли только
+    // второе место. Найдено в Dead Air Refined 1.1.0.
+    if (m_ammoType >= m_ammoTypes.size())
+    {
+        Msg("! [DA_PORT] оружие '%s': сохранённый тип патрона %u вне списка (всего %u), беру нулевой",
+            cNameSect().c_str(), m_ammoType, (u32)m_ammoTypes.size());
+        m_ammoType = 0;
+    }
+
     m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType);
     if (iAmmoElapsed)
     {
@@ -987,6 +1001,55 @@ void CWeapon::EnableActorNVisnAfterZoom()
 }
 
 bool CWeapon::need_renderable() { return !(IsZoomed() && ZoomTexture() && !IsRotatingToZoom()); }
+// [DA_PORT] Поставить оружие в руки ТЕНЕВОЙ модели актёра.
+//
+// Обычный путь считает положение от костей визуала, надетого на актёра, а тень рисует другой
+// скелет — поэтому кости приходят снаружи, уже пересчитанные под теневую модель. Логика
+// позиционирования авторская: направление ствола задаётся вектором от левой кисти к правой, и
+// одноручному оружию, перезарядке и мёртвому носителю левая кисть заменяется запасной костью.
+void CWeapon::renderable_RenderShadow(u32 context_id, IRenderable* root, IKinematics* parent_visual,
+    const Fmatrix& parent_transform, int bone_l, int bone_r, int bone_r2)
+{
+    if (!parent_visual || bone_r == -1 || !Visual())
+        return;
+
+    ScopeLock lock{ &render_lock };
+
+    CEntityAlive* parent = smart_cast<CEntityAlive*>(H_Parent());
+    if ((HandDependence() == hd1Hand) || (GetState() == eReload) || (parent && !parent->g_Alive()))
+        bone_l = bone_r2;
+
+    if (bone_l == -1)
+        return;
+
+    const Fmatrix& left = parent_visual->LL_GetTransform(u16(bone_l));
+    const Fmatrix& right = parent_visual->LL_GetTransform(u16(bone_r));
+
+    Fmatrix weapon_transform;
+    Fvector direction;
+    direction.sub(left.c, right.c);
+
+    if (fis_zero(direction.magnitude()))
+    {
+        weapon_transform.set(parent_transform);
+        weapon_transform.c.set(right.c);
+    }
+    else
+    {
+        direction.normalize();
+        Fvector right_axis;
+        right_axis.crossproduct(right.j, direction);
+        Fvector normal;
+        normal.crossproduct(direction, right_axis);
+        normal.normalize();
+        weapon_transform.set(right_axis, normal, direction, right.c);
+        weapon_transform.mulA_43(parent_transform);
+    }
+
+    weapon_transform.mulB_43(m_strapped_mode ? m_StrapOffset : m_Offset);
+    GEnv.Render->add_Visual(context_id, root, Visual(), weapon_transform);
+}
+
 void CWeapon::renderable_Render(u32 context_id, IRenderable* root)
 {
     ScopeLock lock{ &render_lock };

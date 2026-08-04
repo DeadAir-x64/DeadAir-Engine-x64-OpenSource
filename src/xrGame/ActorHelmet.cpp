@@ -38,14 +38,16 @@ void CHelmet::Load(LPCSTR section)
     {
         m_boneProtection->m_fHitFrac = pSettings->r_float(section, "hit_fraction_actor");
 
+        // [DA_PORT] Жёстко COP, по тем же причинам, что и у костюма — разбор в
+        // CCustomOutfit::Load. Коротко: у автора и в базе Call of Chernobyl ветвления нет вовсе,
+        // ветка COP совпадает с их кодом, а CS расходится сразу в трёх местах.
+        //
+        // Оригинальный комментарий апстрима:
         // Since hit_fraction_actor exists both in CS and COP, but fire_wound_protection was removed in COP,
         // We can use this hacky solution to determine which damage formula to use.
         // It not robust for mods, because they can have fire_wound_protection in configs, despite that
         // original COP engine doesn't read it.
-        if (pSettings->line_exist(section, "fire_wound_protection"))
-            m_boneProtection->m_hitFracType = SBoneProtections::HitFractionActorCS;
-        else
-            m_boneProtection->m_hitFracType = SBoneProtections::HitFractionActorCOP;
+        m_boneProtection->m_hitFracType = SBoneProtections::HitFractionActorCOP;
     }
 
     if (pSettings->line_exist(section, "nightvision_sect"))
@@ -254,6 +256,20 @@ float CHelmet::HitThroughArmor(float hit_power, s16 element, float ap, bool& add
 {
     float NewHitPower = hit_power;
 
+    // [DA_PORT] Авторский ранний выход, которого нет ни в базе CoC, ни в апстриме. Он стоит ДО
+    // разбора типа урона, то есть действует на все хиты: если шлем эту кость не закрывает
+    // (bone armor <= 0) и удар пришёл в конкретную кость, шлем не участвует вовсе — ни защитой,
+    // ни износом.
+    //
+    // Условие `element != -1` здесь ключевое. Зоны бьют с element = BI_NONE, а BI_NONE как s16
+    // это ровно -1, поэтому от аномалий шлем защищает и изнашивается всегда, независимо от
+    // костей. Без этой строки шлем прикрывал всё тело от ожогов, тока и химии по любой кости.
+    {
+        const float ba = GetBoneArmor(element);
+        if (ba <= 0.0f && element != -1)
+            return NewHitPower;
+    }
+
     switch (m_boneProtection->m_hitFracType)
     {
     default:
@@ -365,8 +381,14 @@ float CHelmet::HitThroughArmor(float hit_power, s16 element, float ap, bool& add
                 NewHitPower = 0.0f;
         }
 
-        //увеличить изношенность шлема
-        Hit(NewHitPower, hit_type);
+        // [DA_PORT] То же, что в CCustomOutfit::HitThroughArmor, и по той же сверке трёх деревьев:
+        // у автора и в базе CoC ветка одна и заканчивается Hit(hit_power, hit_type). Ветка CS из
+        // апстрима — единственная, где в износ уходит остаток после защиты.
+        //
+        // Здесь это важнее, чем у костюма: от химии в Dead Air защищает прежде всего голова —
+        // респиратор, противогаз, — и именно они не изнашивались в кислоте ровно в той мере, в
+        // какой хорошо защищали.
+        Hit(hit_power, hit_type);
         break;
     }
     case SBoneProtections::HitFraction:

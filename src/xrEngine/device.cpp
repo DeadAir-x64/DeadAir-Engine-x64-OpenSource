@@ -494,7 +494,13 @@ void CRenderDevice::ProcessFrame()
 
     if (GEnv.isDedicatedServer)
         budget = 1000000000ull / g_svDedicateServerUpdateReate;
-    else if (Paused() || g_pGameLevel == nullptr)
+    // [DA_PORT] Потолок кадров в меню НЕ применяется при вертикальной синхронизации.
+    //
+    // Два ограничителя на один кадр дерутся: синхронизация ждёт развёртки, наш сон ждёт своего
+    // бюджета, и они почти никогда не совпадают — кадры в меню идут рывками. У конкурента этот
+    // потолок сняли целиком (Dead Air Refined, 5d02c6c8); мы оставляем его для тех, у кого
+    // синхронизация выключена, — там он честно экономит питание и нагрев на статичной картинке.
+    else if ((Paused() || g_pGameLevel == nullptr) && !psDeviceFlags.test(rsVSync))
         budget = ps_fps_limit_in_menu ? 1000000000ull / ps_fps_limit_in_menu : 0;
 
     // [DA_PORT] Time the sleep, and the whole of this function, because the parts measured above stopped

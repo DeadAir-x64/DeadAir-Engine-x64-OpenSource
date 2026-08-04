@@ -574,15 +574,22 @@ void CActor::g_cl_Orientate(u32 mstate_rl, float dt)
     }
     else
     {
-        // if camera rotated more than 45 degrees - align model with it
-        float ty = angle_normalize(r_torso.yaw);
-        if (_abs(r_model_yaw - ty) > PI_DIV_4)
+        // [DA_PORT] Стоковый код сравнивал `_abs(r_model_yaw - ty)` — разность СЫРЫХ углов, без
+        // нормализации. На переходе через ноль это врёт: 0.1 против 6.2 даёт 6.1 вместо настоящих
+        // 0.18, то есть порог срабатывает там, где камера почти не двигалась, и тело дёргается на
+        // ровном месте. Считаем через знаковую разность, она нормализована по построению.
+        //
+        // Заодно порог опущен до 30°, а цель доворота ставится не в текущий угол камеры, а на
+        // границу допуска: тело подтягивается за камерой и остаётся развёрнутым к ней, вместо
+        // того чтобы каждый раз догонять её вплотную. Перенесено из Dead Air Refined 1.1.0.
+        const float ty = angle_normalize(r_torso.yaw);
+        const float yaw_delta = angle_difference_signed(r_model_yaw, ty);
+        if (_abs(yaw_delta) > PI_DIV_6)
         {
-            r_model_yaw_dest = ty;
-            //
+            r_model_yaw_dest = angle_normalize(ty + (yaw_delta > 0.f ? PI_DIV_6 : -PI_DIV_6));
             mstate_real |= mcTurn;
         }
-        if (_abs(r_model_yaw - r_model_yaw_dest) < EPS_L)
+        if (angle_difference(r_model_yaw, r_model_yaw_dest) < EPS_L)
         {
             mstate_real &= ~mcTurn;
         }

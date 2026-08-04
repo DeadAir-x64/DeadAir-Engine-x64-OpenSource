@@ -16,6 +16,8 @@
 
 // [DA_PORT] см. console_commands.cpp, команда da_rad_log
 int g_da_rad_log = 0;
+// [DA_PORT] см. console_commands.cpp, команда da_hit_log — разбор любого хита по актёру
+int g_da_hit_log = 0;
 
 #define MAX_HEALTH 1.0f
 #define MIN_HEALTH -0.01f
@@ -413,7 +415,43 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 
     float hit_power_org = pHDS->damage();
     float hit_power = hit_power_org;
+
+    // [DA_PORT] Разбор ЛЮБОГО хита по актёру — включается `da_hit_log 1`. Штатная печать в
+    // HitOutfitEffect для этого не годится: она под `bDebug`, а он в релизе `#define bDebug 0`.
+    // Прибор отвечает на вопрос «броня не изнашивается или просто медленно» числами: показывает,
+    // сколько пришло, сколько осталось после брони, и прочность костюма и шлема ДО и ПОСЛЕ.
+    // Нулевое «пришло» при этом само по себе диагноз — значит хит погасили раньше, до брони
+    // (пояс, артефакты, кислородный баллон в рюкзаке — см. CActor::HitArtefactsOnBelt).
+    float cond_outfit_before = -1.0f, cond_helmet_before = -1.0f;
+    const bool da_log = (g_da_hit_log != 0) && Actor() && (m_object == Actor());
+    CCustomOutfit* da_outfit = nullptr;
+    CHelmet* da_helmet = nullptr;
+    if (da_log)
+    {
+        if (CInventoryOwner* owner = smart_cast<CInventoryOwner*>(m_object))
+        {
+            da_outfit = smart_cast<CCustomOutfit*>(owner->inventory().ItemFromSlot(OUTFIT_SLOT));
+            da_helmet = smart_cast<CHelmet*>(owner->inventory().ItemFromSlot(HELMET_SLOT));
+            if (da_outfit)
+                cond_outfit_before = da_outfit->GetCondition();
+            if (da_helmet)
+                cond_helmet_before = da_helmet->GetCondition();
+        }
+    }
+
     hit_power = HitOutfitEffect(hit_power_org, pHDS->hit_type, pHDS->boneID, pHDS->armor_piercing, bAddWound);
+
+    if (da_log)
+    {
+        Msg("~ [DA_HIT] %s кость %d ap %.3f | пришло %.4f -> после брони %.4f | костюм %.4f->%.4f "
+            "(%+.5f) | шлем %.4f->%.4f (%+.5f)",
+            ALife::g_cafHitType2String(pHDS->hit_type), (int)(s16)pHDS->boneID, pHDS->armor_piercing,
+            hit_power_org, hit_power,
+            cond_outfit_before, da_outfit ? da_outfit->GetCondition() : -1.0f,
+            da_outfit ? da_outfit->GetCondition() - cond_outfit_before : 0.0f,
+            cond_helmet_before, da_helmet ? da_helmet->GetCondition() : -1.0f,
+            da_helmet ? da_helmet->GetCondition() - cond_helmet_before : 0.0f);
+    }
 
     switch (pHDS->hit_type)
     {

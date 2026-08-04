@@ -74,14 +74,30 @@ void CCustomOutfit::Load(LPCSTR section)
     {
         m_boneProtection.m_fHitFrac = pSettings->r_float(section, "hit_fraction_actor");
 
+        // [DA_PORT] Формула у Dead Air всегда COP-овская. Апстрим выбирает её по наличию
+        // `fire_wound_protection` и сам называет эту эвристику ненадёжной для модов (авторский
+        // комментарий сохранён ниже) — мод в неё и попал: ключ у костюмов есть, и весь расчёт уходил
+        // в ветку CS.
+        //
+        // Сверка трёх деревьев показала, что ветвления не существует вовсе:
+        //   * coc_base — одна ветка, без switch;
+        //   * da_alpha — то же самое, автор правит в ней только `one` (снимает делитель 0.1);
+        //   * наш порт — switch OpenXRay из трёх веток, и ветка COP совпадает с авторским кодом
+        //     строка в строку, а CS расходится с ним в трёх местах сразу:
+        //       1) в износ уходит остаток после защиты, а не пришедший урон;
+        //       2) защита домножается на костный коэффициент;
+        //       3) пробившая пуля в одиночной игре режется на (ap-BoneArmor)/ap, тогда как у автора
+        //          она наносит полный урон, а броня решает только «пробила / не пробила».
+        //
+        // Поэтому тип назначается жёстко. Ветка CS ниже остаётся на месте и приведена к авторскому
+        // поведению по пункту 1, но при данных Dead Air она недостижима.
+        //
+        // Оригинальный комментарий апстрима:
         // Since hit_fraction_actor exists both in CS and COP, but fire_wound_protection was removed in COP,
         // We can use this hacky solution to determine which damage formula to use.
         // It not robust for mods, because they can have fire_wound_protection in configs, despite that
         // original COP engine doesn't read it.
-        if (pSettings->line_exist(section, "fire_wound_protection"))
-            m_boneProtection.m_hitFracType = SBoneProtections::HitFractionActorCS;
-        else
-            m_boneProtection.m_hitFracType = SBoneProtections::HitFractionActorCOP;
+        m_boneProtection.m_hitFracType = SBoneProtections::HitFractionActorCOP;
     }
 
     if (pSettings->line_exist(section, "nightvision_sect"))
@@ -133,6 +149,16 @@ void CCustomOutfit::ReloadBonesProtection()
 void CCustomOutfit::Hit(float hit_power, ALife::EHitType hit_type)
 {
     hit_power *= GetHitImmunity(hit_type);
+
+    // [DA_PORT] Пол в ноль — авторская строка, которой в апстриме нет, и она не декоративная.
+    // Апгрейды складывают иммунитеты через `immunities_sect_add`, а прибавки в данных мода
+    // ОТРИЦАТЕЛЬНЫЕ: у сталкерского костюма база chemical_burn_immunity = 0.005, а секцию
+    // `sect_stalker_outfit_immunities_chemical_burn_add` (-0.002) дёргают три разных узла апгрейда.
+    // Полностью прокачанный костюм выходит на -0.001, и без этой строки износ становится
+    // отрицательным: костюм ЧИНИЛСЯ бы от стояния в кислоте. У «Свободы» лёгкой сумма даёт ровно 0,
+    // то есть костюм переставал изнашиваться вообще.
+    clamp(hit_power, 0.0f, hit_power);
+
     ChangeCondition(-hit_power);
 }
 
@@ -275,8 +301,26 @@ float CCustomOutfit::HitThroughArmor(float hit_power, s16 element, float ap, boo
                 NewHitPower = 0.0f;
         }
 
-        //увеличить изношенность костюма
-        Hit(NewHitPower, hit_type);
+        // [DA_PORT] Износ считается от ПРИШЕДШЕГО урона, а не от остатка после защиты.
+        //
+        // Здесь стояло Hit(NewHitPower). Сверка трёх деревьев показала, что это чужое:
+        //   * coc_base   — одна ветка без switch, в конце Hit(hit_power, hit_type);
+        //   * da_alpha   — то же самое, автор трогает только `one` (снимает делитель 0.1);
+        //   * наш порт   — switch OpenXRay из трёх веток, и ТОЛЬКО ветка CS передаёт остаток.
+        // То есть ни у автора, ни в базе Call of Chernobyl износ от остатка никогда не считался, и
+        // две другие ветки этого же switch тоже передают hit_power. Расходится ровно одна.
+        //
+        // Разница не косметическая. Кислотное поле бьёт 0.30 за удар (max_start_power 3 при
+        // интервале 0.1 и attenuation 1 в центре), а авторский порог защиты — ровно 0.30 суммарно.
+        // Значит у костюма, который поле держит, остаток NewHitPower равен НУЛЮ, и износ выходил
+        // нулевым: чем лучше костюм защищает от химии, тем меньше он от неё изнашивается, а тот,
+        // что защищает полностью, не изнашивается вовсе. FAQ мода описывает обратное — «костюм
+        // быстро умирает в аномальном поле».
+        //
+        // Ветку выбирает наличие `fire_wound_protection` в секции костюма — у Dead Air он есть,
+        // поэтому работает именно CS. Сам выбор апстрим в комментарии выше называет ненадёжным для
+        // модов, что и подтвердилось: мод попал в ветку с изменённой формулой.
+        Hit(hit_power, hit_type);
         break;
     }
     case SBoneProtections::HitFraction:
@@ -353,50 +397,16 @@ void CCustomOutfit::ApplySkinModel(CActor* pActor, bool bDress, bool bHUDOnly)
             }
             if (!NewVisual.size())
             {
-                // [DA_HEAD] Dead Air's outfit `actor_visual` (actors\legs\*.ogf) is a FIRST-PERSON
-                // body model — legs + torso only, with NO arms and NO head (in first person the arms
-                // are the separate HUD weapon model and you never see your own head). It is therefore
-                // unusable for the actor's third-person passes (self-shadow, death corpse): swapping
-                // Visual() to it gave a headless/armless shadow, and grafting a head submesh onto it
-                // left the head floating over an armless torso.
+                // [DA_PORT] Видимый визуал — авторский `actor_visual` костюма, то есть перволичное
+                // тело `actors\legs\*.ogf`: ноги с торсом, без рук и головы. В первом лице это ровно
+                // то, что нужно — руки там HUD-модель оружия, а своей головы игрок не видит.
                 //
-                // Instead map each outfit to a full NPC faction model (head + arms + matching armour)
-                // via the port config gamedata\configs\da_port_actor_visual.ltx ([da_actor_visual_3d],
-                // keyed by outfit section). Those are stock game models that NPCs already wear, so they
-                // load cleanly and look correct in third person. Fall back to the actor's config base
-                // visual (stalker_hero — headed, generic) when an outfit is unmapped or its model is
-                // missing.
-                static bool s_map_tried = false;
-                static CInifile* s_map = nullptr;
-                if (!s_map_tried)
-                {
-                    s_map_tried = true;
-                    string_path map_fn;
-                    if (FS.exist(map_fn, "$game_config$", "da_port_actor_visual.ltx"))
-                        s_map = xr_new<CInifile>(map_fn);
-                }
-                if (s_map && s_map->section_exist("da_actor_visual_3d") &&
-                    s_map->line_exist("da_actor_visual_3d", cNameSect().c_str()))
-                {
-                    LPCSTR model = s_map->r_string("da_actor_visual_3d", cNameSect().c_str());
-                    if (model && model[0])
-                    {
-                        string_path model_ogf, mesh_fn;
-                        xr_sprintf(model_ogf, "%s.ogf", model);
-                        if (FS.exist(mesh_fn, "$game_meshes$", model_ogf))
-                            NewVisual = model; // full NPC faction model (armour + head)
-                    }
-                }
-                if (!NewVisual.size())
-                {
-                    LPCSTR actorSect = pActor->cNameSect().c_str();
-                    if (actorSect && pSettings->line_exist(actorSect, "visual"))
-                        NewVisual = pSettings->r_string(actorSect, "visual");
-                    else if (pActor->GetDefaultVisualOutfit().size())
-                        NewVisual = pActor->GetDefaultVisualOutfit();
-                    else
-                        NewVisual = m_ActorVisual;
-                }
+                // Раньше здесь стояла подмена на полную NPC-модель, потому что одним визуалом
+                // обслуживались сразу три вещи: камера, тень и труп. Ноги в камере были платой за
+                // приличную тень. Теперь тень рисуется отдельной моделью
+                // (CActor::renderable_RenderShadow), труп подменяется на смерти
+                // (CActor::Die), и видимому визуалу можно вернуть авторский.
+                NewVisual = m_ActorVisual;
             }
 
             pActor->ChangeVisual(NewVisual);
@@ -538,4 +548,78 @@ void CCustomOutfit::AddBonesProtection(LPCSTR bones_section)
 
     if (parent && parent->Visual() && m_BonesProtectionSect.size())
         m_boneProtection.add(bones_section, smart_cast<IKinematics*>(parent->Visual()));
+}
+
+// [DA_PORT] Полная NPC-модель под секцию костюма — см. объявление в CustomOutfit.h.
+//
+// Таблица gamedata\configs\da_port_actor_visual.ltx сопоставляет каждому костюму стоковую модель
+// фракции: голова, руки и броня того же вида. Раньше она подменяла видимый визуал актёра целиком и
+// ценой этого были пропавшие ноги в первом лице; теперь по ней строится теневая модель и труп, а в
+// камере остаётся авторское перволичное тело.
+//
+// Файл читается один раз за сессию и держится до выхода: он крошечный, а спрашивают его при каждой
+// смене костюма.
+shared_str da_actor_full_visual(LPCSTR outfit_section)
+{
+    if (!outfit_section || !outfit_section[0])
+        return shared_str();
+
+    static bool s_map_tried = false;
+    static CInifile* s_map = nullptr;
+    if (!s_map_tried)
+    {
+        s_map_tried = true;
+        string_path map_fn;
+        if (FS.exist(map_fn, "$game_config$", "da_port_actor_visual.ltx"))
+            s_map = xr_new<CInifile>(map_fn);
+    }
+
+    if (!s_map || !s_map->section_exist("da_actor_visual_3d") ||
+        !s_map->line_exist("da_actor_visual_3d", outfit_section))
+        return shared_str();
+
+    LPCSTR model = s_map->r_string("da_actor_visual_3d", outfit_section);
+    if (!model || !model[0])
+        return shared_str();
+
+    // Модели может не быть в поставке — тогда молча отказываемся, вместо падения на загрузке меша.
+    string_path model_ogf, mesh_fn;
+    xr_sprintf(model_ogf, "%s.ogf", model);
+    if (!FS.exist(mesh_fn, "$game_meshes$", model_ogf))
+        return shared_str();
+
+    return shared_str(model);
+}
+
+// [DA_PORT] Та же таблица, другая секция: модель без головы для перволичного тела. См. CustomOutfit.h.
+shared_str da_actor_legs_visual(LPCSTR outfit_section)
+{
+    static bool s_map_tried = false;
+    static CInifile* s_map = nullptr;
+    if (!s_map_tried)
+    {
+        s_map_tried = true;
+        string_path map_fn;
+        if (FS.exist(map_fn, "$game_config$", "da_port_actor_visual.ltx"))
+            s_map = xr_new<CInifile>(map_fn);
+    }
+
+    if (!s_map || !s_map->section_exist("da_actor_legs_3d"))
+        return shared_str();
+
+    LPCSTR model = nullptr;
+    if (outfit_section && outfit_section[0] && s_map->line_exist("da_actor_legs_3d", outfit_section))
+        model = s_map->r_string("da_actor_legs_3d", outfit_section);
+    else if (s_map->line_exist("da_actor_legs_3d", "default"))
+        model = s_map->r_string("da_actor_legs_3d", "default");
+
+    if (!model || !model[0])
+        return shared_str();
+
+    string_path model_ogf, mesh_fn;
+    xr_sprintf(model_ogf, "%s.ogf", model);
+    if (!FS.exist(mesh_fn, "$game_meshes$", model_ogf))
+        return shared_str();
+
+    return shared_str(model);
 }

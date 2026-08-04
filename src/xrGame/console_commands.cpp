@@ -2545,6 +2545,36 @@ void CCC_RegisterCommands()
         // в релизе `#define bDebug 0`, то есть мёртв.
         extern int g_da_rad_log;
         CMD4(CCC_DaDebugInteger, "da_rad_log", &g_da_rad_log, 0, 1);
+        // [DA_PORT] Разбор ЛЮБОГО хита по актёру: тип, кость, ap, сколько пришло, сколько осталось
+        // после брони, и прочность костюма и шлема до и после. Отвечает на вопрос «броня не
+        // изнашивается или изнашивается незаметно медленно» числами. Нулевое «пришло» — само по
+        // себе диагноз: хит погашен ДО брони, в CActor::HitArtefactsOnBelt.
+        extern int g_da_hit_log;
+        CMD4(CCC_DaDebugInteger, "da_hit_log", &g_da_hit_log, 0, 1);
+        // [DA_PORT] Перволичное тело — наша добавка поверх мода: модель актёра рисуется в главном
+        // проходе, а не только в теневом. Настройка игрока, поэтому обычный CCC_Integer, с
+        // сохранением: погасить её должно быть можно навсегда, а не до перезапуска.
+        extern int g_da_fp_body;
+        CMD4(CCC_Integer, "da_fp_body", &g_da_fp_body, 0, 1);
+        // [DA_PORT] Размещение перволичного тела. Умолчания — числа Anomaly (player_hud_legs.cpp),
+        // они там подобраны на живых игроках; свои подбирать поверх проверенных смысла нет.
+        extern float g_da_legs_fwd;
+        extern float g_da_legs_y;
+        extern int g_da_legs_cam;
+        CMD4(CCC_Float, "da_legs_fwd", &g_da_legs_fwd, -2.0f, 2.0f);
+        CMD4(CCC_Float, "da_legs_y", &g_da_legs_y, -1.0f, 1.0f);
+        CMD4(CCC_Integer, "da_legs_cam", &g_da_legs_cam, 0, 1);
+        // Поправка на взгляд вниз: добавка к сдвигу назад и по высоте при взгляде под ноги.
+        extern float g_da_legs_pitch_fwd;
+        extern float g_da_legs_pitch_y;
+        CMD4(CCC_Float, "da_legs_pitch_fwd", &g_da_legs_pitch_fwd, -2.0f, 2.0f);
+        CMD4(CCC_Float, "da_legs_pitch_y", &g_da_legs_pitch_y, -1.0f, 1.0f);
+        // Набор скрываемых костей: 1 шея и плечи (как в Anomaly), дальше вверх по позвоночнику.
+        extern int g_da_legs_hide;
+        CMD4(CCC_Integer, "da_legs_hide", &g_da_legs_hide, 0, 4);
+        // Экранный отчёт числами для подгонки — диагностика, в user.ltx не уходит.
+        extern int g_da_fp_body_debug;
+        CMD4(CCC_DaDebugInteger, "da_fp_body_debug", &g_da_fp_body_debug, 0, 1);
         extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
         CMD4(CCC_DaDebugInteger, "da_mem_probe", &g_da_mem_probe, 0, 1);
         extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного

@@ -228,6 +228,8 @@ CActor::CActor() : CEntityAlive(), current_ik_cam_shift(0)
 
 CActor::~CActor()
 {
+    DestroyShadowVisual(); // [DA_PORT] теневая модель живёт отдельно от визуала актёра
+    DestroyLegsVisual();   // [DA_PORT] и перволичные ноги тоже
     xr_delete(m_location_manager);
     xr_delete(m_memory);
 
@@ -853,6 +855,26 @@ void CActor::Die(IGameObject* who)
     Msg("--- Actor [%s] dies !", this->Name());
 #endif // #ifdef DEBUG
     inherited::Die(who);
+
+    // [DA_PORT] Труп рисуется обычным путём и в третьем лице, поэтому перволичное тело
+    // (`actors\legs\*.ogf` — без рук и головы) в качестве трупа выглядело бы поломанным. Меняем
+    // визуал на ту же полную NPC-модель, которой до этого рисовалась тень, и теневую модель
+    // отпускаем: живому она была нужна, мёртвому нет.
+    //
+    // Порядок важен: сначала гасим теневую (её кости привязаны к старому скелету), потом меняем
+    // визуал. RebuildShadowVisual из OnChangeVisual увидит !g_Alive() и ничего не соберёт.
+    if (IsGameTypeSingle())
+    {
+        if (CCustomOutfit* outfit = GetOutfit())
+        {
+            const shared_str full = da_actor_full_visual(outfit->cNameSect().c_str());
+            if (full.size() && full != cNameVisual())
+            {
+                DestroyShadowVisual();
+                ChangeVisual(full);
+            }
+        }
+    }
 
     if (OnServer())
     {
@@ -1684,6 +1706,340 @@ void CActor::CancelItemPlacement()
     m_item_placement_section = nullptr;
 }
 
+void CActor::renderable_RenderBody(u32 context_id, IRenderable* root)
+{
+    VERIFY(_valid(XFORM()));
+    inherited::renderable_Render(context_id, root);
+    CInventoryOwner::renderable_Render(context_id, root);
+}
+
+// [DA_PORT] Кости теневой модели получают позу настоящего скелета. Колбэк только присваивает
+// заранее снятое положение: он вызывается изнутри расчёта костей, и лезть оттуда в чужую кинематику
+// нельзя. Снимает положения renderable_RenderShadow ниже.
+void CActor::ShadowBoneCallback(CBoneInstance* bone)
+{
+    auto* binding = static_cast<ShadowBoneBinding*>(bone->callback_param());
+    if (!binding || binding->source_id == u16(-1))
+        return;
+
+    bone->mTransform = binding->transform;
+}
+
+void CActor::DestroyShadowVisual()
+{
+    m_shadow_bones.clear();
+    m_shadow_kinematics = nullptr;
+    if (m_shadow_visual)
+        GEnv.Render->model_Delete(m_shadow_visual);
+}
+
+// [DA_PORT] Собрать теневую модель под текущий костюм. Модель берётся из нашей таблицы
+// da_port_actor_visual.ltx — той самой, что раньше подменяла видимый визуал целиком.
+void CActor::RebuildShadowVisual()
+{
+    DestroyShadowVisual();
+
+    IKinematics* source = smart_cast<IKinematics*>(Visual());
+    if (!source)
+        return;
+
+    // Мёртвому теневая модель не нужна: камера уходит в третье лицо и труп рисуется обычным путём.
+    if (!g_Alive())
+        return;
+
+    CCustomOutfit* outfit = GetOutfit();
+    const shared_str full = outfit ? da_actor_full_visual(outfit->cNameSect().c_str()) : shared_str();
+    if (!full.size())
+        return;
+
+    string_path model_ogf;
+    xr_sprintf(model_ogf, "%s.ogf", full.c_str());
+
+    m_shadow_visual = GEnv.Render->model_Create(model_ogf);
+    m_shadow_kinematics = smart_cast<IKinematics*>(m_shadow_visual);
+    if (!m_shadow_kinematics)
+    {
+        DestroyShadowVisual();
+        return;
+    }
+
+    m_shadow_kinematics->LL_SetBonesVisible(u64(-1));
+    const u16 bone_count = m_shadow_kinematics->LL_BoneCount();
+    m_shadow_bones.resize(bone_count);
+    for (u16 bone_id = 0; bone_id < bone_count; ++bone_id)
+    {
+        ShadowBoneBinding& binding = m_shadow_bones[bone_id];
+        binding.source_id = source->LL_BoneID(m_shadow_kinematics->LL_BoneName_dbg(bone_id));
+        m_shadow_kinematics->LL_GetBoneInstance(bone_id).set_callback(
+            bctCustom, ShadowBoneCallback, &binding, binding.source_id != u16(-1));
+    }
+}
+
+// [DA_PORT] Ручки перволичных ног. Числа — из Anomaly (player_hud_legs.cpp), там их подбирали
+// долго и на живых игроках, так что начинаем с проверенных, а не со своих.
+float g_da_legs_fwd = -0.35f; // на сколько метров отодвинуть тело НАЗАД от камеры
+float g_da_legs_y = 0.0f;    // подсадить/поднять торс по высоте
+int g_da_legs_cam = 1;       // привязать XZ модели к камере, а не к актёру
+
+// [DA_PORT] Поправка на взгляд вниз. Постоянного сдвига мало: на бегу анимация от третьего лица
+// клонит тело вперёд, и стоит опустить взгляд — торс подныривает в кадр снизу.
+//
+// Anomaly объявляет под это `remove_camera_pitch`, то есть снятие наклона камеры с костей, но в её
+// же исходнике метод только объявлен и не реализован. Правильнее было бы вычесть наклон из костей
+// позвоночника, однако он приходит туда с РАЗНЫМИ множителями (см. p_*_factor в ActorAnimation.cpp),
+// и точное обратное преобразование пришлось бы держать в согласии с ними вручную.
+//
+// Здесь дешевле и устойчивее: чем ниже смотрит игрок, тем сильнее модель уезжает назад и вниз.
+// Линейно по углу, ноль на горизонте и полная поправка при взгляде строго под ноги.
+//
+// Числа сильно уменьшены после того, как перволичной моделью стало туловище БЕЗ ГОЛОВЫ. Большая
+// поправка нужна была, пока в камере рисовалась полная модель героя: её торс подныривал в кадр, и
+// приходилось отодвигать всё тело почти на метр — вместе с ногами, которых из-за этого не было
+// видно. Голову убрали моделью, а не расстоянием, и отодвигать так далеко стало незачем.
+float g_da_legs_pitch_fwd = -0.10f;
+float g_da_legs_pitch_y = -0.05f;
+
+// Набор скрываемых костей, разбор у CActor::ApplyLegsBoneMask.
+//
+// Умолчание НОЛЬ, хотя Anomaly прячет шею и плечи. Проверено в игре: при нашем сдвиге назад голова
+// и руки за камеру и так не попадают, а скрытие оставляло от себя чёрный клин у таза — стянутую к
+// началу модели геометрию спрятанных костей. То есть их набор решал задачу, которую у нас уже решил
+// сдвиг, и платил за это артефактом.
+int g_da_legs_hide = 0;
+
+void CActor::DestroyLegsVisual()
+{
+    m_legs_bones.clear();
+    m_legs_kinematics = nullptr;
+    if (m_legs_visual)
+        GEnv.Render->model_Delete(m_legs_visual);
+}
+
+// [DA_PORT] Модель для перволичных ног. Порядок поиска авторский из Anomaly: сначала специальный
+// ключ костюма, потом его же обычный `actor_visual` (у Dead Air это как раз `actors\legs\*.ogf`),
+// и только потом визуал из секции актёра — он с головой, поэтому лишнее придётся прятать.
+void CActor::RebuildLegsVisual()
+{
+    DestroyLegsVisual();
+
+    IKinematics* source = smart_cast<IKinematics*>(Visual());
+    if (!source || !g_Alive())
+        return;
+
+    // Порядок поиска. Первые два шага — авторские данные (у Dead Air `actor_visual` костюма это и
+    // есть туловище без головы). Третий — наша таблица, она закрывает случай «костюма нет»: своих
+    // `legs`-моделей мод под это не держит, и без неё откат уходил на базовую модель героя — с
+    // головой, которая лезет в кадр на широком угле обзора.
+    CCustomOutfit* outfit = GetOutfit();
+    LPCSTR outfit_sect = outfit ? outfit->cNameSect().c_str() : nullptr;
+
+    shared_str model;
+    if (outfit_sect)
+    {
+        if (pSettings->line_exist(outfit_sect, "legs_visual"))
+            model = pSettings->r_string(outfit_sect, "legs_visual");
+        else if (pSettings->line_exist(outfit_sect, "actor_visual"))
+            model = pSettings->r_string(outfit_sect, "actor_visual");
+    }
+    if (!model.size())
+        model = da_actor_legs_visual(outfit_sect);
+    if (!model.size())
+    {
+        LPCSTR sect = cNameSect().c_str();
+        if (pSettings->line_exist(sect, "legs_visual"))
+            model = pSettings->r_string(sect, "legs_visual");
+    }
+    if (!model.size())
+        return; // базовый визуал актёра сюда НЕ берём: он с головой
+
+    string_path model_ogf, mesh_fn;
+    xr_sprintf(model_ogf, "%s", model.c_str());
+    if (!strext(model_ogf))
+        xr_strcat(model_ogf, ".ogf");
+    if (!FS.exist(mesh_fn, "$game_meshes$", model_ogf))
+        return;
+
+    m_legs_visual = GEnv.Render->model_Create(model_ogf);
+    m_legs_kinematics = smart_cast<IKinematics*>(m_legs_visual);
+    if (!m_legs_kinematics)
+    {
+        DestroyLegsVisual();
+        return;
+    }
+
+    m_legs_kinematics->LL_SetBonesVisible(u64(-1));
+    const u16 bone_count = m_legs_kinematics->LL_BoneCount();
+    m_legs_bones.resize(bone_count);
+    for (u16 bone_id = 0; bone_id < bone_count; ++bone_id)
+    {
+        ShadowBoneBinding& binding = m_legs_bones[bone_id];
+        binding.source_id = source->LL_BoneID(m_legs_kinematics->LL_BoneName_dbg(bone_id));
+        m_legs_kinematics->LL_GetBoneInstance(bone_id).set_callback(
+            bctCustom, ShadowBoneCallback, &binding, binding.source_id != u16(-1));
+    }
+
+    m_legs_hide_applied = -1;
+    ApplyLegsBoneMask();
+}
+
+// [DA_PORT] Набор скрываемых костей, da_legs_hide.
+//
+// Уровень 1 — ровно то, что прячет Anomaly: шея и оба плеча. Голова и руки уходят рекурсивно, торс
+// остаётся; он не мешает, потому что тело отодвинуто назад.
+//
+// Дальше уровни на случай, если от скрытых костей остаётся мусор. Скрытая кость не убирает
+// геометрию, а стягивает её вершины к началу модели, и на некоторых мешах это видно плоским клином.
+// Тогда нужно уносить и ту кость, к которой мусор привязан.
+//
+// Маска ставится один раз и переставляется, только когда ручку покрутили: это состояние НАШЕЙ
+// модели, чужого тут нет.
+void CActor::ApplyLegsBoneMask()
+{
+    if (!m_legs_kinematics || m_legs_hide_applied == g_da_legs_hide)
+        return;
+
+    m_legs_hide_applied = g_da_legs_hide;
+    m_legs_kinematics->LL_SetBonesVisible(u64(-1));
+
+    if (g_da_legs_hide <= 0)
+        return;
+
+    for (cpcstr name : { "bip01_neck", "bip01_l_upperarm", "bip01_r_upperarm" })
+    {
+        const u16 bone = m_legs_kinematics->LL_BoneID(name);
+        if (bone != BI_NONE)
+            m_legs_kinematics->LL_SetBoneVisible(bone, FALSE, TRUE);
+    }
+
+    if (g_da_legs_hide >= 2)
+    {
+        const u16 bone = m_legs_kinematics->LL_BoneID("bip01_spine2");
+        if (bone != BI_NONE)
+            m_legs_kinematics->LL_SetBoneVisible(bone, FALSE, TRUE);
+    }
+    if (g_da_legs_hide >= 3)
+    {
+        const u16 bone = m_legs_kinematics->LL_BoneID("bip01_spine1");
+        if (bone != BI_NONE)
+            m_legs_kinematics->LL_SetBoneVisible(bone, FALSE, TRUE);
+    }
+    if (g_da_legs_hide >= 4)
+    {
+        const u16 bone = m_legs_kinematics->LL_BoneID("bip01_spine");
+        if (bone != BI_NONE)
+            m_legs_kinematics->LL_SetBoneVisible(bone, FALSE, TRUE);
+    }
+}
+
+// [DA_PORT] Перволичные ноги: поза берётся у актёра, а место — своё.
+void CActor::renderable_RenderLegs(u32 context_id, IRenderable* root)
+{
+    IKinematics* source = smart_cast<IKinematics*>(Visual());
+    if (!source || !m_legs_visual || !m_legs_kinematics)
+        return;
+
+    ApplyLegsBoneMask(); // ручку могли покрутить между кадрами
+
+    const u64 visible_bones = source->LL_GetBonesVisible();
+    source->LL_SetBonesVisible(u64(-1));
+    source->CalculateBones(TRUE);
+
+    for (ShadowBoneBinding& binding : m_legs_bones)
+    {
+        if (binding.source_id != u16(-1))
+            binding.transform = source->LL_GetTransform(binding.source_id);
+    }
+
+    source->LL_SetBonesVisible(visible_bones);
+    source->CalculateBones_Invalidate();
+
+    m_legs_kinematics->CalculateBones_Invalidate();
+    m_legs_kinematics->CalculateBones(TRUE);
+
+    // Место модели. Привязка к камере по горизонтали важнее, чем кажется: камера вращается вокруг
+    // своей оси, модель вокруг своей, и без этого тело при повороте уезжает вбок. Сдвиг назад
+    // убирает торс из лица — это и есть замена «отрезать всё выше пояса».
+    Fmatrix xf;
+    xf.set(XFORM());
+    if (g_da_legs_cam)
+    {
+        xf.c.x = Device.vCameraPosition.x;
+        xf.c.z = Device.vCameraPosition.z;
+    }
+
+    // Доля взгляда вниз: 0 на горизонте, 1 строго под ноги. Вверх не трогаем — там тела не видно.
+    float down = 0.f;
+    if (cam_Active())
+    {
+        down = cam_Active()->pitch / (PI * 0.5f);
+        clamp(down, 0.f, 1.f);
+    }
+
+    xf.c.y += g_da_legs_y + g_da_legs_pitch_y * down;
+
+    Fvector fwd = xf.k;
+    fwd.y = 0.f;
+    fwd.normalize_safe();
+    xf.c.mad(fwd, g_da_legs_fwd + g_da_legs_pitch_fwd * down);
+
+    GEnv.Render->add_Visual(context_id, root, m_legs_visual, xf);
+}
+
+// [DA_PORT] Теневой проход: целое тело вместо перволичных ног, плюс оружие в его руках.
+// Если теневой модели нет (не сопоставлена, не нашлась, актёр мёртв) — рисуем как раньше, тело.
+void CActor::renderable_RenderShadow(u32 context_id, IRenderable* root)
+{
+    IKinematics* source = smart_cast<IKinematics*>(Visual());
+    if (source && m_shadow_visual && m_shadow_kinematics)
+    {
+        // Снять позу с настоящего скелета целиком: часть костей может быть скрыта под текущий
+        // костюм, а теневой модели нужны все.
+        const u64 visible_bones = source->LL_GetBonesVisible();
+        source->LL_SetBonesVisible(u64(-1));
+        source->CalculateBones(TRUE);
+
+        for (ShadowBoneBinding& binding : m_shadow_bones)
+        {
+            if (binding.source_id != u16(-1))
+                binding.transform = source->LL_GetTransform(binding.source_id);
+        }
+
+        source->LL_SetBonesVisible(visible_bones);
+        source->CalculateBones_Invalidate();
+
+        m_shadow_kinematics->CalculateBones_Invalidate();
+        m_shadow_kinematics->CalculateBones(TRUE);
+        GEnv.Render->add_Visual(context_id, root, m_shadow_visual, XFORM());
+    }
+    else
+    {
+        renderable_RenderBody(context_id, root);
+        return;
+    }
+
+    CInventoryItem* active_item = inventory().ActiveItem();
+    CWeapon* weapon = active_item ? active_item->object().cast_weapon() : nullptr;
+    if (!weapon || !source)
+        return;
+
+    int source_bone_l = -1;
+    int source_bone_r = -1;
+    int source_bone_r2 = -1;
+    g_WeaponBones(source_bone_l, source_bone_r, source_bone_r2);
+
+    const auto shadow_bone_id = [source, this](int source_bone)
+    {
+        if (source_bone == -1)
+            return -1;
+
+        const u16 bone_id = m_shadow_kinematics->LL_BoneID(source->LL_BoneName_dbg(u16(source_bone)));
+        return bone_id == u16(-1) ? -1 : int(bone_id);
+    };
+
+    weapon->renderable_RenderShadow(context_id, root, m_shadow_kinematics, XFORM(),
+        shadow_bone_id(source_bone_l), shadow_bone_id(source_bone_r), shadow_bone_id(source_bone_r2));
+}
+
 void CActor::renderable_Render(u32 context_id, IRenderable* root)
 {
     VERIFY(_valid(XFORM()));
@@ -1693,8 +2049,7 @@ void CActor::renderable_Render(u32 context_id, IRenderable* root)
     const bool ghost_only = m_item_placement_active && HUDview();
     if (!ghost_only)
     {
-        inherited::renderable_Render(context_id, root);
-        CInventoryOwner::renderable_Render(context_id, root);
+        renderable_RenderBody(context_id, root);
     }
 
     // [DA_PORT] draw the placement-preview ghost at the crosshair.
@@ -2145,12 +2500,29 @@ void CActor::UpdateArtefactsOnBeltAndOutfit()
 //
 // Plain backpacks are unaffected - kit_hunt and its derivatives inherit af_base_absorbation, which is
 // all zeros.
-float CActor::ArtefactProtection(ALife::EHitType hit_type) const
+// [DA_PORT] `with_condition` — это НЕ ручка, а воспроизведение авторского раскола.
+//
+// У автора и в базе Call of Chernobyl на одно и то же понятие две разные формулы:
+//   * HitArtefactsOnBelt (боевой путь)          — `hit_power -= AffectHit(1.0f, type)`, БЕЗ износа;
+//   * GetProtection_ArtefactsOnBelt (интерфейс) — `AffectHit(...) * GetCondition()`, С износом.
+// То есть изношенный артефакт в бою защищает как целый, а в панели показан ослабленным. Расхождение
+// пришло из стока, автор его не трогал.
+//
+// Порт сначала свёл обе стороны к одной формуле — с износом. Решено вернуть авторское поведение:
+// правило «воспроизводим баланс автора» здесь важнее внутренней согласованности, а цифра в панели
+// остаётся такой же, какой её видел игрок оригинального мода.
+//
+// Общим осталось только одно — перебор идёт по поясу И слоту рюкзака (см. разбор выше про баллон),
+// это наша правка и она не отменяется.
+float CActor::ArtefactProtection(ALife::EHitType hit_type, bool with_condition) const
 {
     const auto add = [&](const PIItem item) -> float
     {
         const auto artefact = smart_cast<CArtefact*>(item);
-        return artefact ? artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type) * artefact->GetCondition() : 0.0f;
+        if (!artefact)
+            return 0.0f;
+        const float base = artefact->m_ArtefactHitImmunities.AffectHit(1.0f, hit_type);
+        return with_condition ? base * artefact->GetCondition() : base;
     };
 
     float sum = 0.0f;
@@ -2194,16 +2566,35 @@ bool CActor::da_chem_gear_blocks_hit() const
 
 float CActor::HitArtefactsOnBelt(float hit_power, ALife::EHitType hit_type)
 {
-    if (ALife::eHitTypeChemicalBurn == hit_type && da_chem_gear_blocks_hit())
-        return 0.0f;
+    // [DA_PORT] Этот слой стоит ДО брони, и потому умеет обнулить хит так, что костюм его вообще не
+    // увидит. Прибор `da_hit_log` показывает это явно: иначе «броня не изнашивается» неотличимо от
+    // «до брони ничего не дошло». См. EntityCondition.cpp.
+    extern int g_da_hit_log;
 
-    hit_power -= ArtefactProtection(hit_type);
+    if (ALife::eHitTypeChemicalBurn == hit_type && da_chem_gear_blocks_hit())
+    {
+        if (g_da_hit_log)
+            Msg("~ [DA_HIT] химия %.4f ПОГАШЕНА кислородным баллоном в рюкзаке, до брони не дошла",
+                hit_power);
+        return 0.0f;
+    }
+
+    const float before = hit_power;
+    hit_power -= ArtefactProtection(hit_type, false); // боевой путь — без износа, как у автора
     clamp(hit_power, 0.0f, flt_max);
+
+    if (g_da_hit_log && before != hit_power)
+        Msg("~ [DA_HIT] %s: пояс и рюкзак сняли %.4f (%.4f -> %.4f) до брони",
+            ALife::g_cafHitType2String(hit_type), before - hit_power, before, hit_power);
 
     return hit_power;
 }
 
-float CActor::GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type) const { return ArtefactProtection(hit_type); }
+// Отображаемое число — с износом, как у автора и в базе CoC.
+float CActor::GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type) const
+{
+    return ArtefactProtection(hit_type, true);
+}
 
 void CActor::SetZoomRndSeed(s32 Seed)
 {

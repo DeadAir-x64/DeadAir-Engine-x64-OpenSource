@@ -54,7 +54,11 @@ void CEatableItem::load(IReader& packet)
 {
     inherited::load(packet);
 
-    m_iRemainingUses = packet.r_u8();
+    // [DA_PORT] В старых сейвах Dead Air этого байта у части расходников нет, и безусловное чтение
+    // уходит за конец пакета. Найдено в Dead Air Refined 1.1.0; поле оставляем со значением из
+    // конфига, как будто предмет только что заспавнен.
+    if (packet.elapsed())
+        m_iRemainingUses = packet.r_u8();
 }
 
 void CEatableItem::save(NET_Packet& packet)

@@ -1029,14 +1029,30 @@ void R_dsgraph_structure::build_subspace()
                             continue;
 
                         // renderable
-                        g_pGameLevel->pHUD->Render_First(context_id);
+                        // [DA_PORT] Здесь строится ТЕНЕВОЕ подпространство, а не картинка для
+                        // игрока, поэтому и модель нужна своя — целая, а не перволичные ноги.
+                        g_pGameLevel->pHUD->Render_ActorShadow(context_id);
                     }
                 } while (0);
             }
 #endif
 
+            // [DA_PORT] Перволичное тело: модель актёра в ГЛАВНОМ проходе.
+            //
+            // В первом лице актёр помечен невидимым (CActor::UpdateCL: setVisible(!HUDview())), то
+            // есть в обычный обход он не попадает вовсе — ровно поэтому, посмотрев вниз, игрок не
+            // видел ничего. Единственный впрыск модели, что здесь был, работал только в фазе
+            // теневой карты выше.
+            //
+            // У самого Dead Air этого нет: в его движке тело CHUDManager::Render_First
+            // закомментировано целиком, а модели actors\legs\*.ogf лежат в конфигах без потребителя.
+            // Это наша добавка, и она именно на них рассчитана — они без головы и рук, то есть
+            // сделаны под взгляд изнутри.
             if (o.is_main_pass)
+            {
+                g_pGameLevel->pHUD->Render_First(context_id);
                 g_pGameLevel->pHUD->Render_Last(context_id);
+            }
         }
     }
 

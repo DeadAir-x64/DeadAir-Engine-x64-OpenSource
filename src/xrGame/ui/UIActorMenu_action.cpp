@@ -450,8 +450,31 @@ void CUIActorMenu::OnPressUserKey(bool take)
     case mmUndefined: break;
     case mmInventory: break;
     case mmTrade:
-        //		OnBtnPerformTrade( this, 0 );
+    {
+        // [DA_PORT] Клавиша использования в торговле не делала НИЧЕГО: вызов был закомментирован ещё
+        // в апстриме, и кнопка молча ничего не выполняла. При этом в инвентаре, обыске трупа и
+        // ремонте она работает — то есть в одном режиме из четырёх у игрока просто пропадала.
+        //
+        // У бартерных торговцев обмен один и кнопка одна, поэтому там жмём её. В обычной торговле
+        // выбираем по спискам: есть что покупать — покупаем, иначе продаём. `take` различает два
+        // варианта нажатия (см. вызовы выше) и решает спор, когда непусты оба списка.
+        //
+        // Перенесено из Dead Air Refined 1.1.0.
+        if (m_pPartnerInvOwner && m_pPartnerInvOwner->SpecificCharacter().barter_mode())
+        {
+            OnBtnPerformTrade(this, nullptr);
+            break;
+        }
+
+        const bool has_items_to_buy = m_pLists[eTradePartnerList]->ItemsCount() != 0;
+        const bool has_items_to_sell = m_pLists[eTradeActorList]->ItemsCount() != 0;
+
+        if (has_items_to_buy && (!has_items_to_sell || take))
+            OnBtnPerformTradeBuy(this, nullptr);
+        else if (has_items_to_sell)
+            OnBtnPerformTradeSell(this, nullptr);
         break;
+    }
     case mmUpgrade: TrySetCurUpgrade(); break;
     case mmDeadBodySearch:
     {

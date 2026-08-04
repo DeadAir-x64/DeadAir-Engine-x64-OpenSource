@@ -57,6 +57,11 @@ public:
     virtual void shedule_Update(u32 dt);
 
     void renderable_Render(u32 context_id, IRenderable* root) override;
+    // [DA_PORT] Оружие в руках ТЕНЕВОЙ модели актёра. Обычный renderable_Render не годится: он
+    // ставит оружие по костям того визуала, который на актёре, а тень рисуется другим скелетом.
+    // См. CActor::renderable_RenderShadow.
+    void renderable_RenderShadow(u32 context_id, IRenderable* root, IKinematics* parent_visual,
+        const Fmatrix& parent_transform, int bone_l, int bone_r, int bone_r2);
     void render_hud_mode() override;
     bool need_renderable() override;
 
