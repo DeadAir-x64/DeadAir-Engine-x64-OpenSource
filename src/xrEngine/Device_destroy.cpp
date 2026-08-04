@@ -9,6 +9,19 @@ void CRenderDevice::Destroy()
         return;
 
     ZoneScoped;
+
+    // [DA_PORT] Итог по отложенным задачам печатается САМ при выходе, если ловушка была включена.
+    //
+    // Иначе его пришлось бы просить отдельной командой, а на стенде это невозможно: команды туда
+    // приходят одной строкой через -da_cmd, консоль режет её по «;», и любая цепочка вида
+    // «напечатать ; выйти» выполнилась бы целиком на старте — игра закрылась бы, не загрузив сейв.
+    {
+        extern ENGINE_API float ps_da_seq_trap;
+        extern ENGINE_API void da_seq_dump_stats(bool reset);
+        if (ps_da_seq_trap > 0.f)
+            da_seq_dump_stats(false);
+    }
+
     Log("Destroying Render...");
     b_is_Ready = false;
     Statistic->OnDeviceDestroy();

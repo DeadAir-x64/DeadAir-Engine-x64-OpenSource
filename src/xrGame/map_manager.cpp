@@ -238,6 +238,7 @@ void CMapManager::GetMapLocations(const shared_str& spot_type, u16 id, xr_vector
 void CMapManager::Update()
 {
     ZoneScoped;
+    da_seq_probe _probe("map manager"); // [DA_PORT] ловушка da_seq_trap
     delete_data(m_deffered_destroy_queue); // from prev frame
 
     auto it = Locations().begin();

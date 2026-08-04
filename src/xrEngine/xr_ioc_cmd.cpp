@@ -2396,6 +2396,23 @@ void CCC_Register()
         CMD4(CCC_DaDebugInteger, "da_perf_dump", &ps_da_perf_dump, 0, 2000);
         extern ENGINE_API int ps_da_perf_watch;
         CMD4(CCC_DaDebugInteger, "da_perf_watch", &ps_da_perf_watch, 0, 500);
+
+        // [DA_PORT] Ловушка на выброс в отложенных задачах кадра (поле `seq` у da_perf_dump).
+        //
+        // Порог в миллисекундах, 0 — выключено. Когда цикл seqParallel за кадр перевалил порог, в
+        // лог уходит разбор: сколько всего, сколько задач, какая из них худшая и на сколько. Плюс
+        // сами задачи, помеченные пробой, называют себя по имени — см. da_seq_probe в Device.h.
+        //
+        // Зачем: обычный дамп ловит выброс только если снять его ровно в тот кадр, а выброс редкий.
+        extern ENGINE_API float ps_da_seq_trap;
+        CMD4(CCC_DaDebugFloat, "da_seq_trap", &ps_da_seq_trap, 0.f, 100.f);
+        // Сколько отчётов о выбросе напечатать и замолчать. Ноль — без предела; поставлен предел
+        // после случая, когда сломанный замер выдал 11928 строк за один прогон.
+        extern ENGINE_API int ps_da_seq_trap_max;
+        CMD4(CCC_DaDebugInteger, "da_seq_trap_max", &ps_da_seq_trap_max, 0, 10000);
+        // Итог за сессию: 1 — напечатать, 2 — напечатать и обнулить. Сбрасывается сам после печати.
+        extern ENGINE_API int ps_da_seq_stats;
+        CMD4(CCC_DaDebugInteger, "da_seq_stats", &ps_da_seq_stats, 0, 2);
     }
     CMD4(CCC_Float, "ai_unstick_range", &ps_ai_unstick_range, 0.5f, 20.f);
     CMD4(CCC_Float, "r__vguard_strength", &ps_r__vguard_strength, 0.f, 1.f);

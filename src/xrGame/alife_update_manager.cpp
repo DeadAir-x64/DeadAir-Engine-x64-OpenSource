@@ -77,6 +77,10 @@ float CALifeUpdateManager::shedule_Scale() const
 
 void CALifeUpdateManager::update_switch()
 {
+    // [DA_PORT] Половинки замеряются ПОРОЗНЬ: бюджет `process_time` из alife.ltx ограничивает
+    // только вторую (scheduled), а переключение объектов онлайн/офлайн не ограничено ничем.
+    // Пока проба стояла на общем update(), различить их было нельзя.
+    da_seq_probe _probe("alife switch (онлайн/офлайн)");
     init_ef_storage();
 
     START_PROFILE("ALife/switch");
@@ -86,6 +90,7 @@ void CALifeUpdateManager::update_switch()
 
 void CALifeUpdateManager::update_scheduled(bool init_ef)
 {
+    da_seq_probe _probe("alife scheduled (по бюджету process_time)");
     if (init_ef)
         init_ef_storage();
 
@@ -96,6 +101,7 @@ void CALifeUpdateManager::update_scheduled(bool init_ef)
 
 void CALifeUpdateManager::update()
 {
+    da_seq_probe _probe("alife update (обе половины)"); // [DA_PORT] ловушка da_seq_trap
     update_switch();
     update_scheduled(false);
 }

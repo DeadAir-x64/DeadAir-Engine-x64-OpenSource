@@ -34,8 +34,125 @@ ENGINE_API int ps_da_perf_dump = 0;
 // the clock. See ProcessFrame.
 ENGINE_API int ps_da_perf_watch = 0;
 
+// [DA_PORT] Ловушка на выброс в отложенных задачах кадра, см. Device.h и xr_ioc_cmd.cpp.
+ENGINE_API float ps_da_seq_trap = 0.f;
+ENGINE_API int ps_da_seq_trap_max = 20; // сколько отчётов о выбросе печатать, 0 — без предела
+ENGINE_API int ps_da_seq_stats = 0;     // 1 — напечатать накопленное, 2 — напечатать и обнулить
+
+// Опознание задачи по её собственным байтам.
+//
+// Цикл видит безымянные делегаты, и назвать задачу он не может. Но делегат — это указатель на
+// объект плюс указатель на метод, и этой пары достаточно, чтобы отличить одну задачу от другой и
+// склеить её замеры за всю сессию. Имена, где они есть, добавляет da_seq_probe; здесь же ключ
+// работает для ЛЮБОЙ задачи, в том числе той, куда пробу никто не вставлял.
+//
+// Номер в очереди для этого не годится: сталкеры появляются и исчезают, и «задача №17» в двух
+// кадрах — разные задачи.
+struct da_seq_key
+{
+    u64 a{}, b{};
+    bool operator<(const da_seq_key& o) const { return (a != o.a) ? (a < o.a) : (b < o.b); }
+};
+
+struct da_seq_stat
+{
+    u64 calls{};
+    double total_ms{};
+    float max_ms{};
+    u32 max_frame{};
+};
+
+struct da_seq_sample
+{
+    da_seq_key key;
+    float ms;
+    u32 idx;
+};
+
+static xr_map<da_seq_key, da_seq_stat> g_da_seq_stats;
+static u32 g_da_seq_reports = 0;
+
+static da_seq_key da_seq_key_of(const fastdelegate::FastDelegate0<>& d)
+{
+    da_seq_key k;
+    const size_t n = _min(sizeof(d), sizeof(k));
+    CopyMemory(&k, &d, n);
+    return k;
+}
+
+static pcstr da_seq_key_str(const da_seq_key& k)
+{
+    static string128 buf;
+    xr_sprintf(buf, "объект %016llx метод %016llx", (unsigned long long)k.a, (unsigned long long)k.b);
+    return buf;
+}
+
+// [DA_PORT] Итог за сессию: кто из задач сколько съел суммарно, а не в один несчастный кадр.
+//
+// Разовый выброс и ровная дороговизна лечатся по-разному, а по одному отчёту о выбросе их не
+// различить: задача, которая раз в минуту берёт 4 мс, и задача, которая берёт 0.2 мс каждый кадр,
+// в отчёте выглядят одинаково — а стоят по-разному в сто раз.
+ENGINE_API void da_seq_dump_stats(bool reset)
+{
+    if (g_da_seq_stats.empty())
+    {
+        Msg("~ [DA_SEQ] накоплено пусто: ловушка не была включена (da_seq_trap) или задач не было");
+        return;
+    }
+
+    xr_vector<std::pair<da_seq_key, da_seq_stat>> rows;
+    rows.reserve(g_da_seq_stats.size());
+    for (const auto& it : g_da_seq_stats)
+        rows.push_back(it);
+
+    std::sort(rows.begin(), rows.end(),
+        [](const auto& l, const auto& r) { return l.second.total_ms > r.second.total_ms; });
+
+    double grand = 0.0;
+    for (const auto& r : rows)
+        grand += r.second.total_ms;
+
+    Msg("~ [DA_SEQ] ---- итог за сессию: %u разных задач, суммарно %.1f мс ----",
+        (u32)rows.size(), grand);
+    Msg("~ [DA_SEQ] %-8s %10s %9s %9s %10s  %s", "вызовов", "всего мс", "среднее", "максимум",
+        "макс.кадр", "задача");
+    for (const auto& r : rows)
+    {
+        const da_seq_stat& s = r.second;
+        Msg("~ [DA_SEQ] %-8llu %10.2f %9.3f %9.2f %10u  %s", (unsigned long long)s.calls,
+            s.total_ms, s.total_ms / double(s.calls ? s.calls : 1), s.max_ms, s.max_frame,
+            da_seq_key_str(r.first));
+    }
+    Msg("~ [DA_SEQ] ---- конец итога ----");
+
+    if (reset)
+    {
+        g_da_seq_stats.clear();
+        g_da_seq_reports = 0;
+        Msg("~ [DA_SEQ] накопленное обнулено");
+    }
+}
+
+da_seq_probe::da_seq_probe(const char* n) : name(n), armed(ps_da_seq_trap > 0.f)
+{
+    if (armed)
+        timer.Start();
+}
+
+da_seq_probe::~da_seq_probe()
+{
+    if (!armed)
+        return;
+
+    const float ms = timer.GetElapsed_sec() * 1000.f;
+    if (ms >= ps_da_seq_trap)
+        Msg("~ [DA_SEQ] задача [%s] заняла %.2f мс", name, ms);
+}
+
 // [DA_PORT] Filled by the parallel task, read after the wait - see ProcessFrame.
 static float g_da_perf_seq_ms = 0.f;
+static float g_da_perf_seq_worst_ms = 0.f;
+static u32 g_da_perf_seq_worst_idx = 0;
 static float g_da_perf_mt_ms = 0.f;
 static u32 g_da_perf_seq_count = 0;
 static float g_da_perf_seq_inner_ms = 0.f;
@@ -352,8 +469,18 @@ void CRenderDevice::ProcessFrame()
         // quite different things: one entry per stalker for their object handlers, and then the sound
         // renderer and network. Timing them apart is the difference between knowing where the frame
         // goes and guessing at it.
+        // [DA_PORT] Ловушка da_seq_trap меряет и без da_perf_dump: выброс редкий, и ждать его,
+        // держа включённым дамп кадра, значит писать в лог гигабайты ради одной строки.
+        //
+        // ⚠️ Таймер цикла обязан стартовать при ЛЮБОМ из двух режимов. Первая версия оставила здесь
+        // `if (perf)`, а читала таймер ловушка — и на незапущенном CTimer получала мусор: в лог
+        // ушло 11928 строк с «циклом» в 1785846169600 мс. Инструмент, врущий молча, хуже
+        // отсутствующего, поэтому условие тут и ниже теперь одно и то же.
+        const bool trap = ps_da_seq_trap > 0.f;
+        const bool timing = perf || trap;
+
         CTimer t;
-        if (perf)
+        if (timing)
             t.Start();
 
         const u32 count = (u32)seqParallel.size();
@@ -367,24 +494,93 @@ void CRenderDevice::ProcessFrame()
         // while an entry is actually executing. So a large loop total against a small sum means the
         // work is not slow, the thread is starved; the two being equal means the work really is slow.
         double inner = 0.0;
+        float worst_ms = 0.f;
+        u32 worst_idx = 0;
         CTimer entry_timer;
+
+        // Данные кадра держим в статике: при выбросе печатается ВЕСЬ список задач, а не только
+        // худшая, — одна дорогая задача среди двадцати пяти и двадцать пять по чуть-чуть требуют
+        // разного лечения, и по одному числу их не различить. Буфер переиспользуется, чтобы замер
+        // не выделял память в кадре.
+        static xr_vector<da_seq_sample> s_samples;
+        if (timing)
+        {
+            s_samples.clear();
+            s_samples.reserve(count);
+        }
+
         for (u32 pit = 0; pit < count; pit++)
         {
-            if (perf)
-                entry_timer.Start();
+            if (!timing)
+            {
+                seqParallel[pit]();
+                continue;
+            }
+
+            const da_seq_key key = da_seq_key_of(seqParallel[pit]);
+            entry_timer.Start();
             seqParallel[pit]();
-            if (perf)
-                inner += entry_timer.GetElapsed_sec() * 1000.0;
+            const float ms = entry_timer.GetElapsed_sec() * 1000.f;
+
+            inner += ms;
+            if (ms > worst_ms)
+            {
+                worst_ms = ms;
+                worst_idx = pit;
+            }
+            s_samples.push_back({ key, ms, pit });
+
+            // Накопление за сессию — по ключу задачи, а не по номеру: номера едут, когда сталкеры
+            // появляются и исчезают, и «задача №17» в двух кадрах это разные задачи.
+            da_seq_stat& st = g_da_seq_stats[key];
+            ++st.calls;
+            st.total_ms += ms;
+            if (ms > st.max_ms)
+            {
+                st.max_ms = ms;
+                st.max_frame = Device.dwFrame;
+            }
         }
         seqParallel.clear();
-        if (perf)
-            g_da_perf_seq_inner_ms = float(inner);
 
-        if (perf)
+        if (timing)
         {
+            g_da_perf_seq_inner_ms = float(inner);
+            g_da_perf_seq_worst_ms = worst_ms;
+            g_da_perf_seq_worst_idx = worst_idx;
             g_da_perf_seq_ms = t.GetElapsed_sec() * 1000.f;
             g_da_perf_seq_count = count;
             t.Start();
+        }
+
+        // Пустой кадр не выброс: задач не было, мерить нечего. Первая версия этого не проверяла и
+        // рапортовала о «выбросе» на пустом списке.
+        if (trap && count > 0 && g_da_perf_seq_ms >= ps_da_seq_trap)
+        {
+            if (ps_da_seq_trap_max <= 0 || g_da_seq_reports < u32(ps_da_seq_trap_max))
+            {
+                ++g_da_seq_reports;
+
+                // Разница между суммой и временем цикла говорит, кто виноват: если сумма заметно
+                // меньше, работа не медленная, а поток не получал процессор.
+                Msg("~ [DA_SEQ] ВЫБРОС кадр %u: цикл %.2f мс, сумма задач %.2f мс, задач %u, "
+                    "худшая №%u на %.2f мс%s",
+                    Device.dwFrame, g_da_perf_seq_ms, float(inner), count, worst_idx, worst_ms,
+                    (inner < g_da_perf_seq_ms * 0.5) ? "  <- сумма вдвое меньше цикла: поток голодал"
+                                                     : "");
+
+                for (const da_seq_sample& s : s_samples)
+                {
+                    if (s.ms < ps_da_seq_trap * 0.05f)
+                        continue; // мелочь не печатаем, иначе список тонет в нулях
+                    Msg("~ [DA_SEQ]    №%-3u %6.2f мс  задача %s", s.idx, s.ms,
+                        da_seq_key_str(s.key));
+                }
+
+                if (ps_da_seq_trap_max > 0 && g_da_seq_reports == u32(ps_da_seq_trap_max))
+                    Msg("~ [DA_SEQ] это был отчёт номер %d, дальше молчу. Порог: da_seq_trap_max",
+                        ps_da_seq_trap_max);
+            }
         }
 
         seqFrameMT.Process();
@@ -414,6 +610,17 @@ void CRenderDevice::ProcessFrame()
 
     if (perf)
         ms_wait = perf_timer.GetElapsed_sec() * 1000.f;
+
+    // [DA_PORT] Печать накопленного по задачам — по команде da_seq_stats, разово.
+    //
+    // Опрашивается ЗДЕСЬ, а не в самой команде: таблицу наполняет параллельная задача, и печатать
+    // её из консольного потока значило бы читать чужое состояние на ходу. Тут же задача уже
+    // дождалась, и никто в таблицу не пишет.
+    if (ps_da_seq_stats != 0)
+    {
+        da_seq_dump_stats(ps_da_seq_stats >= 2);
+        ps_da_seq_stats = 0;
+    }
 
     // [DA_PORT] The same figures the statistics overlay shows, written to the log for N frames.
     //

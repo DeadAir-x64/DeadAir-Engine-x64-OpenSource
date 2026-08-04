@@ -604,6 +604,7 @@ u32 ps_lua_gc_method = 1;
 void CLevel::script_gc()
 {
     ZoneScoped;
+    da_seq_probe _probe("script_gc (сборка мусора Lua)"); // [DA_PORT] ловушка da_seq_trap
     AIStats.LuaGC.Begin();
 
     switch (ps_lua_gc_method)

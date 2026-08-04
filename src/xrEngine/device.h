@@ -323,6 +323,27 @@ extern ENGINE_API CRenderDevice Device;
 
 extern ENGINE_API bool g_bBenchmark;
 
+// [DA_PORT] Ловушка на выброс в отложенных задачах кадра. Порог в миллисекундах, 0 — выключено.
+// Команда da_seq_trap, разбор в xr_ioc_cmd.cpp.
+extern ENGINE_API float ps_da_seq_trap;
+
+// [DA_PORT] Именная проба для задачи из seqParallel.
+//
+// Сам цикл видит только безымянные делегаты: сказать «худшая задача номер семнадцать» он может, а
+// назвать её — нет. Поэтому подозреваемые представляются сами: одна строка в начале функции, и при
+// превышении порога она пишет в лог своё имя и время.
+//
+// Стоит ровно ноль, пока ловушка выключена: замер идёт только при ps_da_seq_trap > 0.
+struct ENGINE_API da_seq_probe
+{
+    const char* name;
+    CTimer timer;
+    bool armed;
+
+    explicit da_seq_probe(const char* n);
+    ~da_seq_probe();
+};
+
 typedef fastdelegate::FastDelegate0<bool> LOADING_EVENT;
 extern ENGINE_API xr_list<LOADING_EVENT> g_loading_events;
 

@@ -664,6 +664,7 @@ void CCustomMonster::eye_pp_s2()
 
 void CCustomMonster::Exec_Visibility()
 {
+    da_seq_probe _probe("Exec_Visibility (зрение существа)"); // [DA_PORT] ловушка da_seq_trap
     // if (0==Sector())				return;
     if (!g_Alive())
         return;
