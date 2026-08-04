@@ -1,0 +1,602 @@
+
+-- [DA_PORT] Keep played sounds alive until they finish.
+--
+-- Each sound below was created into a LOCAL, played, and then dropped: the variable leaves scope, Lua's
+-- collector takes the object, and CScriptSound's destructor calls destroy() on a sound that is still
+-- playing. The engine reports it itself - "Playing sound is not completed, but is destroying ..." - and
+-- audibly the sound is cut off part-way, at whatever moment the collector happens to run.
+--
+-- A ring rather than one slot: several of these overlap in practice, and a single variable would cut
+-- the previous sound the moment the next one starts. Bounded, so nothing accumulates.
+local da_snd_ring, da_snd_pos = {}, 0
+local function da_keep(snd)
+	da_snd_pos = da_snd_pos % 8 + 1
+	da_snd_ring[da_snd_pos] = snd
+	return snd
+end
+
+--------------------------------------------------------------------------------
+--Dinamic HUD from ABC Inferno and AMK
+--by Rulix aka Bak
+--------------------------------------------------------------------------------
+ui_disabled = nil
+local dh_ini = ini_file("plugins\\dinamic_hud.ltx")
+local suithud_enable = rx_utils.read_from_ini(dh_ini,"main","suithud_enable",true,0)
+local blurs_enable = rx_utils.read_from_ini(dh_ini,"main","blurs_enable",true,0)
+local blood_enable = rx_utils.read_from_ini(dh_ini,"main","blood_enable",true,0)
+local bleed_enable = rx_utils.read_from_ini(dh_ini,"main","bleed_enable",true,0)
+local hit_enable = rx_utils.read_from_ini(dh_ini,"main","hit_enable",true,0)
+local brnv_enable = rx_utils.read_from_ini(dh_ini,"main","brnv_enable",true,0)
+local helm_hidden = false
+local helm_mask = false
+
+local rain_update = 0
+local blur_time = 0
+local drops_val = 0
+-- [DA_PORT] Сколько держать клавишу перезарядки, чтобы протереть маску, мс.
+-- Крутится из консоли: run_string dinamic_hud.MASK_HOLD_MS = 2000
+MASK_HOLD_MS = 1500
+
+-- Разрыв, после которого удержание считается новым: тики идут покадрово, четверти секунды
+-- хватает с запасом, а зависнуть в "держу" после потери фокуса не даёт.
+local MASK_HOLD_GAP = 250
+
+local mask_hold_start = nil -- когда началось текущее удержание
+local mask_hold_last = 0    -- когда пришёл последний тик удержания
+
+-- Осталось ради is_mask_cleaning: там важен сам факт "маску сейчас трут", а не число.
+local clean_mask = 0
+
+local last_slot = 0
+local anm_start = 0
+local anm_state = 0
+
+--------------------------------------------------------------------------------
+helmets = 		{
+				helm_respirator		= {hud = "hud_gas",breakable = true,blurs = 2.5,respi = true},
+				helm_m40			= {hud = "hud_gas",breakable = true,blurs = 2.5,respi = true},
+				helm_hardhat			= {hud = "hud_kill",breakable = true,blurs = 2.5,respi = false},
+				helm_tactic			= {hud = "hud_mil",breakable = true,blurs = 2.5,respi = true},
+				helm_battle			= {hud = "hud_mil",breakable = true,blurs = 2.5,respi = true},
+				scientific_outfit		= {hud = "hud_sci",breakable = true,blurs = 2.5,respi = true},
+				ecolog_outfit_green		= {hud = "hud_sci",breakable = true,blurs = 2.5,respi = true},
+				ecolog_outfit_orange		= {hud = "hud_sci",breakable = true,blurs = 2.5,respi = true},
+				exo_outfit      	   	= {hud = "hud_mil",breakable = true,blurs = 2.5,respi = true},
+			}
+				
+local no_drop_items = {bolt = true,wpn_knife = true}
+--------------------------------------------------------------------------------
+local seldom_upd_time,often_upd_time
+
+function on_game_start()
+	RegisterScriptCallback("actor_on_update",update)
+	RegisterScriptCallback("actor_on_first_update",first_update)
+	RegisterScriptCallback("actor_on_before_death",clear_hud)
+	RegisterScriptCallback("on_key_hold",on_key_hold)
+end
+
+function first_update()
+	get_console():execute("r2_lensdirt_val 0")
+end
+
+function update()
+	if db.actor then
+		local tg = time_global()
+		if tg > (seldom_upd_time or 100) then
+			seldom_upd_time = tg+400
+			bleedcondition()
+		end
+		
+		init_blurs()
+		
+		if tg > (often_upd_time or 50) then
+			often_upd_time = tg+120
+			blood()
+			helmet_hud()
+		end
+			
+		-- [DA_PORT] Затухание счётчика больше не нужно: удержание меряется временем и
+		-- сбрасывается по разрыву. Здесь только страховка на случай, если тики оборвались
+		-- (потеря фокуса, меню) — иначе is_mask_cleaning залипнет навсегда.
+		if (mask_hold_start and (tg - mask_hold_last > MASK_HOLD_GAP)) then
+			mask_hold_start = nil
+			clean_mask = 0
+		end
+		
+		hit_effect()
+		broken_nv()
+		water_effect()
+		clean_animation()
+	end
+end
+
+local current_suithud
+local helmet_condition
+local pre_hud_type = ""
+local current_helmet
+local hud_blurs = 0
+
+function helmet_switch()
+	helm_hidden = not helm_hidden
+end
+
+function ismask()
+	return helm_mask
+end
+
+function ishud()
+	return current_suithud
+end
+
+function helmet_hud()
+	if (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == false) then
+		setmysuithud(false,false,false)
+		return
+	end
+	local hud_type,helmet_name
+	local helmet = db.actor:alive() and (db.actor:item_in_slot(12) or db.actor:get_current_outfit())
+	if helmet then
+		local sect = helmet:section()
+		if helmets[sect] then
+			helmet_condition = "blue"
+			if helmets[sect].breakable == true then
+				local cond = helmet:condition()
+				if cond > 0.86 then helmet_condition = "blue"
+				elseif cond > 0.67 then helmet_condition = "green"
+				elseif cond > 0.52 then helmet_condition = "yellow"
+				elseif cond > 0.40 then helmet_condition = "red"
+				elseif cond > 0.25 then helmet_condition = "red2"
+				else helmet_condition = "red3" end
+			end
+			hud_blurs = helmets[sect].blurs
+			hud_type = helmets[sect].hud.."_"..helmet_condition
+			pre_hud_type = helmets[sect].hud
+			helmet_name = helmet:name()
+			helmet_respi = helmets[sect].respi
+		end
+	end
+	
+	if not helm_hidden then
+		setmysuithud(hud_type,helmet_name,helmet_respi)
+	else
+		setmysuithud(false,false,false)
+	end
+end
+
+local suitfirstrun = true
+function setmysuithud(hudtype,helmet,respi)
+	local hud = get_hud()
+	local actor_pos = db.actor:bone_position("bip01_head")
+	if (not hudtype) or (ui_disabled) or (actor_pos:distance_to_sqr(device().cam_pos) > 4) then
+		local wchud = hud:GetCustomStatic(current_suithud)
+		if wchud then
+			hud:RemoveCustomStatic(current_suithud)
+		end
+		current_suithud = nil
+		suitfirstrun = true
+		helm_mask = false
+	elseif hudtype ~= current_suithud then
+		if current_suithud then
+			hud:RemoveCustomStatic(current_suithud)
+		end
+		hud:AddCustomStatic(hudtype)
+		if string.find(hudtype,pre_hud_type) then
+			if suitfirstrun == false and helmet_condition ~= "green" and helmet_condition ~= "blue" and helmet == current_helmet then
+				local snd_obj = da_keep(sound_object("material\\glass\\glass_fall03hl"))
+				snd_obj:play(db.actor,0,sound_object.s2d)
+			end
+			if suitfirstrun == true then
+				suitfirstrun = false
+			end
+		end
+		current_helmet = helmet
+		current_suithud = hudtype
+		helm_mask = respi
+	end
+end
+
+local nv_enabled = false
+function broken_nv()
+	if not brnv_enable then
+		return
+	end
+	
+	
+	if (db.actor:object("wpn_upd")) then
+	
+		local rnd = math.random(1000)
+		
+		local helmcond = helmet_condition or 1
+		
+		if (axr_battery.is_jammed()) then
+			helmcond = "red"
+		end
+		
+		if helmcond == "red" then
+			if rnd == 1 then
+				enable_nv(true)
+			elseif rnd < 5 then
+				enable_nv(false)
+			end
+		elseif  helmcond == "red2" then
+			if nv_enabled then
+				if rnd < 4 then
+					nv_enabled = false
+				end
+			else
+				if rnd < 3 then
+					nv_enabled = true
+				end
+			end
+			enable_nv(nv_enabled)
+		elseif  helmcond == "red3" then
+			enable_nv(false)
+		end
+	end
+	
+	---[[
+	local nv = db.actor:object("device_torch")
+	if (nv and nv:night_vision_enabled()) then
+		get_console():execute("r2_sun_lumscale_amb 1")
+	else
+		get_console():execute("r2_sun_lumscale_amb 0.2")
+	end
+	
+	if (not nv and level_weathers.bLevelUnderground) then
+		get_console():execute("r2_sun_lumscale_hemi 0")
+	else
+		get_console():execute("r2_sun_lumscale_hemi 0.6")
+	end
+	--]]
+end
+
+function enable_nv(enable)
+	local nv = db.actor:object("device_torch")
+	if nv and nv:night_vision_enabled() ~= enable then
+		nv:enable_night_vision(enable)
+	end
+end
+
+function init_blurs()
+	if not blurs_enable then
+		return
+	end
+	if current_suithud and hud_blurs > 0 and not string.find(current_suithud,"_red3") then
+		local stretchy = 0.65/(math.floor(device().height/device().width*1000)/1000)
+		if stretchy < 1 then
+			stretchy = 1
+		end
+		local rect = {x = 0,y = -(stretchy-1)*300,w = 1024,h = 768*stretchy}
+		set_blurs(true,rect)
+	else
+		set_blurs(false)
+	end
+end
+
+local zbias = Frect():set(0,0,1024,1024)
+local blurs
+local blurval = -1 -- уровень запотевания от 0 до 1
+local blur_k = 1.5
+
+function reset_blurs(blur, k)
+	blurval = blur
+	blur_k = k
+end
+
+function set_blurs(enabled,rect)
+	
+	local hud = get_hud()
+	if not blurs then
+		blurs = {}
+		for i=1,4 do
+			local pht = {}
+			for ii = 1,10 do
+				local static = "hud_blur"..i.."_"..ii
+				hud:AddCustomStatic(static)
+				pht[ii] = hud:GetCustomStatic(static):wnd()
+			end
+			blurs[i] = pht
+		end
+	end
+	
+	if not enabled then
+		for i,t in ipairs(blurs) do
+			for ii,st in ipairs(t) do
+				st:SetWndRect(Frect():set(0,0,0,0))
+			end
+		end
+		return
+	end
+	
+	local blurval2 = 0
+	if (blurval > -1) then
+		blurval = blurval-0.033
+		blurval2 = 1-math.abs(blurval)
+		blurval2 = blurval2/blur_k
+	end
+	
+	local tm = math.floor(blurval2*3)
+	local tmn = (tm+1)
+	local v = blurval2*3-math.floor(blurval2*3)
+	v = 1-v
+	local v1 = 1-v
+	local n1 = math.ceil(v*10)
+	local n2 = math.ceil(v1*10)
+	for i=1,4 do
+		for ii=1,10 do
+			if (i == tm and ii == n1) then
+				blurs[tm][n1]:SetWndRect(Frect():set(rect.x,rect.y,rect.w,rect.h))
+				blurs[tm][n1]:SetTextureRect(Frect():set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
+			elseif (i == tmn and ii == n2) then
+				blurs[tmn][n2]:SetWndRect(Frect():set(rect.x,rect.y,rect.w,rect.h))
+				blurs[tmn][n2]:SetTextureRect(Frect():set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
+			else
+				blurs[i][ii]:SetWndRect(Frect():set(0,0,0,0))
+			end
+		end
+	end
+end
+
+local prev_health = 0
+function hit_effect()
+	if not hit_enable then
+		return
+	end
+	if prev_health > db.actor.health+0.05 then
+		level.add_pp_effector("amk_shoot.ppe",2011,false)
+		level.set_pp_effector_factor(2011,(prev_health-db.actor.health)*100)
+		if prev_health > db.actor.health+0.2 then
+			local cameffs,sounds
+			if prev_health > db.actor.health+0.5 then
+				level.add_pp_effector("total_recall.ppe",2016,false)
+				level.set_pp_effector_factor(2016,(prev_health-db.actor.health)*100)
+				cameffs = {"head_shot","fusker"}
+				sounds = {"pain_4","pain_1","hit_5","hit_6"}
+			else
+				cameffs = {"shell_shock","hit_front","hit_right","hit_back","hit_left","hit_front_left","hit_back_left","hit_front_right","hit_back_right"}
+				sounds = {"pain_2","pain_3","pain_5","pain_6","pain_7","pain_8"}
+			end
+			if not shott then
+				level.add_cam_effector("camera_effects\\"..cameffs[math.random(#cameffs)]..".anm",999,false,"")
+			end
+			local snd_obj = da_keep(sound_object("actor\\"..sounds[math.random(#sounds)]))
+			snd_obj:play(db.actor,0,sound_object.s2d)
+			if math.random() < (prev_health-db.actor.health)/2.5 then
+				local active_item = db.actor:active_item()
+				if active_item and not no_drop_items[active_item:section()] then
+					db.actor:drop_item(active_item)
+				end
+			end
+		end
+	end
+	prev_health = db.actor.health
+end
+
+local actor_last_health = 0
+local bloodtime = 0
+local bloodtimeb = 0
+local isbleeding = "no"
+local countblood = 0
+function blood()
+	if not blood_enable then
+		return
+	end
+	local hud = get_hud()
+	if db.actor:alive() and not ui_disabled then
+		local current_health = math.floor(db.actor.health*100)
+		local tg = time_global()
+		if tg > bloodtime then
+			if isbleeding == "stopit" then
+				if hud:GetCustomStatic("hud_blood"..countblood) then
+					hud:RemoveCustomStatic("hud_blood"..countblood)
+				end
+				countblood = countblood-1
+				if countblood == 0 then
+					isbleeding = "no"
+				end
+				bloodtime = time_global()+110
+			else
+				if actor_last_health ~= 0 and actor_last_health > current_health+0.01 and db.actor.radiation < 0.12 then
+					--printf("BLOOD")
+					if current_health < math.random(100) then
+						isbleeding = "yes"
+					end
+					level.add_pp_effector("bloody.ppe",2010,false)
+				end
+				if isbleeding == "yes" then
+					bloodtime = time_global()+math.random(500,2000)
+				else
+					bloodtime = time_global()+math.random(2000,5000)
+				end
+				actor_last_health = current_health
+			end
+		end			
+		if tg > bloodtimeb and isbleeding == "yes" then
+			bloodtimeb = time_global()+130
+			countblood = countblood+1
+			hud:AddCustomStatic("hud_blood"..countblood)
+			if countblood == 4 then
+				isbleeding = "stopit"
+			end
+		end
+	else
+		for i=1,4 do
+			if hud:GetCustomStatic("hud_blood"..i) then
+				hud:RemoveCustomStatic("hud_blood"..i)
+			end
+		end
+	end
+end
+
+local isactcondset = false
+local radeffect = false
+local ble1 = 0
+local ble2 = false
+function bleedcondition()
+	if not bleed_enable then
+		return
+	end
+	if db.actor.health < 0.31 and isactcondset ~= true then
+		level.add_pp_effector("alcohol.ppe",2012,true)
+		isactcondset = true
+	end
+	if db.actor.health > 0.30 and isactcondset ~= false then
+		level.remove_pp_effector(2012)
+		isactcondset = false
+	end
+	if db.actor.radiation > 0.3 and radeffect ~= true then
+		level.add_pp_effector("alcohol.ppe",2013,true)
+		radeffect = true
+	end
+	if db.actor.radiation == 0 and radeffect ~= false then
+		level.remove_pp_effector(2013)
+		radeffect = false
+	end
+	if db.actor.bleeding > 0.5 and db.actor.health < 0.4 and ble1 < time_global() then
+		level.add_pp_effector("deimos1.ppe",2014,false)
+		ble1 = time_global()+math.random(4000,10000)
+	end
+	if db.actor.bleeding > 0.4 and db.actor.power < 0.35 and ble2 ~= true then
+		level.add_cam_effector("camera_effects\\pripyat_horror.anm",1001,false,"")
+		level.add_pp_effector("snd_shock.ppe",2015,true)
+		ble2 = true
+	end
+	if db.actor.bleeding < 0.2 or db.actor.power > 0.7 and ble2 ~= false then
+		level.remove_pp_effector(2015)
+		ble2 = false
+	end
+end
+
+function set_drops_val(val)
+	drops_val = val
+end
+
+function water_effect()
+
+	local rain = (level.get_rain_volume()*1.0)
+	if (level.rain_factor() == 0) then rain = 0 end
+	
+	local tg = time_global()
+	
+	local heavy_rain = false
+	if (rain > 0.5) then 
+		heavy_rain = true
+	end
+	
+	if tg < rain_update then return end
+	rain_update = time_global()+1000
+	
+	local speed = 0.03
+	
+	drops_val = drops_val - speed
+	
+	if (rain > 0.5) then
+		drops_val = drops_val + speed*2
+		
+		if (not heavy_rain) then
+			drops_val = drops_val - speed*2
+		end
+	end
+		
+	drops_val = utils.clamp(drops_val,0,1)
+	
+	--printf("rain: "..rain.." "..drops_val)
+		
+	local dir = device().cam_dir
+	if (heavy_rain) and (dir.y > 0.65) and ((tg > blur_time+1000) or (math.random(200) == 1)) then
+		--printf("--DROP")
+		blur_time = tg+1000
+	end
+	
+	if (tg > blur_time) and (tg < blur_time+100) then
+		if (dinamic_hud.ismask() or (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == false)) then
+			--tmp
+		else
+			level.add_pp_effector("raindrop.ppe", 1488)
+		end
+	else
+		level.remove_pp_effector(1488)
+	end
+
+	if (dinamic_hud.ishud() or (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == false)) then
+		get_console():execute("r2_lenswater_val "..drops_val)
+		
+		if (pre_hud_type == "hud_sci") and (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == true) then
+			get_console():execute("r2_lensdirt_val 1")
+		elseif (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == true) then
+			get_console():execute("r2_lensdirt_val 0.9")
+		end
+	else
+		get_console():execute("r2_lenswater_val 0")
+		get_console():execute("r2_lensdirt_val 0")
+		drops_val = 0
+	end
+
+end
+
+-- [DA_PORT] Протирание маски запускается ВРЕМЕНЕМ удержания, а не числом кадров.
+--
+-- Было: clean_mask рос на 2 за каждый тик удержания и падал на 1 за тик обновления, порог 60.
+-- Оба конца покадровые, поэтому порог зависел от частоты кадров: на исходных шестидесяти он
+-- набирался около секунды, а у нас при трёхстах-четырёхстах — за доли секунды. Отсюда и жалоба:
+-- игрок несколько раз подряд жмёт перезарядку, а вместо неё персонаж лезет протирать маску.
+--
+-- Стало: засекается начало удержания, и анимация играет, когда клавишу продержали MASK_HOLD_MS.
+-- Короткие нажатия не накапливаются вовсе — разрыв больше MASK_HOLD_GAP начинает отсчёт заново.
+function on_key_hold(key)
+	local bind = dik_to_bind(key)
+	if (bind ~= key_bindings.kWPN_RELOAD) then
+		return
+	end
+
+	local tg = time_global()
+	if (not mask_hold_start) or (tg - mask_hold_last > MASK_HOLD_GAP) then
+		mask_hold_start = tg
+	end
+	mask_hold_last = tg
+
+	local held = tg - mask_hold_start
+	clean_mask = held
+
+	if (held >= MASK_HOLD_MS) and (dinamic_hud.ishud() or (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == false)) then
+		if (anm_state ~= 0) then return end
+		mask_hold_start = nil
+		anm_state = 1
+		last_slot = db.actor:active_slot() or 0
+        alife():create("animation_clean_mask",db.actor:position(),db.actor:level_vertex_id(),db.actor:game_vertex_id(),db.actor:id())
+		--db.actor:hide_weapon()
+	end
+end
+
+function clean_animation()
+	
+	if (anm_state == 1) then
+		db.actor:activate_slot(13)
+		--db.actor:restore_weapon()
+		anm_state = 2
+	elseif (anm_state == 2) and (db.actor:active_slot() == 13) then
+		xr_sound.set_sound_play(db.actor:id(),"inv_mask_clean")
+		anm_start = time_global()
+		clean_mask = 0
+		drops_val = 0
+		anm_state = 3
+	elseif (anm_state == 3) and (time_global() > anm_start+800) then
+		local anm = db.actor:item_in_slot(13)
+		if (anm) then alife():release(alife_object(anm:id())) end
+		anm_state = 4
+	elseif (anm_state == 4) and (time_global() > anm_start+900) then
+		db.actor:activate_slot(last_slot)
+		anm_state = 0
+	end
+end
+
+function is_mask_cleaning()
+	return (anm_state ~= 0) or (clean_mask ~=0)
+end
+
+
+function clear_hud()
+	setmysuithud(false,false,false)
+	get_console():execute("r2_lenswater_val 0")
+	get_console():execute("r2_lensdirt_val 0")
+end
