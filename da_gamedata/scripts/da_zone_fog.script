@@ -103,9 +103,9 @@ FAMILIES = {
 		id       = "electro",
 		match    = { "electric", "zone_emi" },
 		area     = { "field_electric", "mine_electric", "zone_emi" },
-		particle = "crommcruac\\electrostatic_sparks_10",
+		particle = "zones\\effects\\zone_electra_idle_sparks",
 		vis      = 20.0,
-		height   = 0.3, -- у земли: искры вьются низко, а не висят облаком
+		height   = 1.6, -- на уровне головы, а не под ногами
 		haze     = nil,
 	},
 	{ id = "gravi",   match = { "gravitational", "gravi", "mosquito", "buzz", "mine_field" },
