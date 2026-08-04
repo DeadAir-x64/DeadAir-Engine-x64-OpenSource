@@ -67,17 +67,20 @@ FAMILIES = {
 		height   = 0.6,
 		haze     = { particle = "lanforse\\fog_green_dx10", radius = 45.0, weight = 5, height = 2.5 },
 	},
-	-- Огонь ВЫКЛЮЧЕН по решению: свой эффект над жаркой снят, аномалия показывает себя сама.
-	-- Обратно включается возвращением имени эффекта в particle (было "anomaly2\\heat_03").
-	-- Дымки тут не было и раньше: жар идёт от самой аномалии, а не облаком.
+	-- Серый дым над жаркой: тот же эффект, что у химии, но нейтральный по цвету.
+	-- Подбирается вживую, не пересобирая ничего:
+	--     run_string da_zone_fog.FAMILIES[2].particle = [[lanforse\fog_light]]
+	-- Смена имени на лету поддержана: пул со старым именем выбрасывается целиком.
+	-- Соседи по весу и текстуре: fog_heavy_dx10 и fog_green_dx10 по 200 частиц,
+	-- fog_light и fog_mist по 50, fog_dust 20 — все на pfx_smoke_n.
 	{
 		id       = "fire",
 		match    = { "thermal", "zharka", "burning_fuzz", "steam" },
 		area     = { "field", "burning_fuzz", "zharka_static" },
-		particle = nil,
+		particle = "lanforse\\fog_heavy_dx10",
 		vis      = 60.0,
-		height   = 0.4,
-		haze     = nil, -- над жаркой висеть нечему: жар идёт от самой аномалии, а не облаком
+		height   = 0.8, -- выше химического: дым поднимается, а не стелется
+		haze     = { particle = "lanforse\\fog_heavy_dx10", radius = 45.0, weight = 5, height = 2.5 },
 	},
 	-- Ниже — описано, но выключено. Включается заменой particle на существующее имя эффекта.
 	{ id = "radio",   match = { "radioactive" },                     area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
