@@ -158,6 +158,64 @@ u16 mbhMulti2Wide(xr_wide_char* WideStr, xr_wide_char* WidePos, u16 WideStrSize,
     return dpos;
 }
 
+// [DA_PORT] Перевод между UTF-8 и однобайтовой кодировкой игры делается средствами Windows,
+// а не через std::locale.
+//
+// Симптом был такой: в поле ввода имени персонажа каждая русская буква превращалась в «?».
+// Причина — в том, что исходный код полагается на именованную локаль (`std::locale("")`), а её
+// поддержка целиком на совести библиотеки. У MSVC она возвращает системную русскую локаль, и
+// narrow честно отдаёт cp1251 — поэтому ни в оригинале, ни у конкурента на MSVC ничего не ломалось.
+// У libstdc++ под MinGW именованных локалей фактически нет: "" сводится к «C», где любой символ
+// вне ASCII не представим, и narrow подставляет запасной символ — тот самый вопросительный знак.
+//
+// Целевая кодировка тут именно однобайтовая: движок хранит и рисует свой текст ПОБАЙТНО
+// (см. mbhMulti2WideDumb выше — байт расширяется в широкий символ как есть, а шрифт разложен под
+// кодовую страницу локализации). Поэтому берётся системная кодовая страница: на русской Windows
+// это 1251, ровно то, в чём лежат тексты мода, и ровно то, что делал оригинальный движок.
+//
+// Если перевод почему-то не удался, строка возвращается как есть: непереведённый текст всё же
+// лучше строки из вопросительных знаков, из которой уже ничего не восстановить.
+#ifdef XR_PLATFORM_WINDOWS
+xr_string StringFromUTF8(const char* in, const std::locale& /*locale*/)
+{
+    const int wide_chars = MultiByteToWideChar(CP_UTF8, 0, in, -1, nullptr, 0);
+    if (wide_chars > 0)
+    {
+        xr_vector<wchar_t> wide(wide_chars);
+        if (MultiByteToWideChar(CP_UTF8, 0, in, -1, wide.data(), wide_chars) > 0)
+        {
+            const int bytes = WideCharToMultiByte(CP_ACP, 0, wide.data(), -1, nullptr, 0, nullptr, nullptr);
+            if (bytes > 1)
+            {
+                xr_string result(bytes - 1, '\0');
+                if (WideCharToMultiByte(CP_ACP, 0, wide.data(), -1, &result[0], bytes, nullptr, nullptr) > 0)
+                    return result;
+            }
+        }
+    }
+    return xr_string(in);
+}
+
+xr_string StringToUTF8(const char* in, const std::locale& /*locale*/)
+{
+    const int wide_chars = MultiByteToWideChar(CP_ACP, 0, in, -1, nullptr, 0);
+    if (wide_chars > 0)
+    {
+        xr_vector<wchar_t> wide(wide_chars);
+        if (MultiByteToWideChar(CP_ACP, 0, in, -1, wide.data(), wide_chars) > 0)
+        {
+            const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, nullptr, 0, nullptr, nullptr);
+            if (bytes > 1)
+            {
+                xr_string result(bytes - 1, '\0');
+                if (WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, &result[0], bytes, nullptr, nullptr) > 0)
+                    return result;
+            }
+        }
+    }
+    return xr_string(in);
+}
+#else
 xr_string StringFromUTF8(const char* in, const std::locale& locale)
 {
     using wcvt = std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t>;
@@ -175,3 +233,4 @@ xr_string StringToUTF8(const char* in, const std::locale& locale)
     std::string result = wcvt{}.to_bytes(wstr.data(), wstr.data() + wstr.size());
     return result.data();
 }
+#endif
