@@ -959,11 +959,45 @@ void CPHElement::BonesCallBack(CBoneInstance* B)
     VERIFY_RMATRIX(B->mTransform);
     VERIFY(valid_pos(B->mTransform.c, phBoundaries));
 
+    // [DA_PORT] Заслон против NaN из физики.
+    //
+    // CalculateBoneTransform перемножает матрицу объекта и матрицу тела, и обе приходят из ODE. Когда
+    // солвер срывается (в логе это `ODE Message 3: LCP internal error`), в кость уходит нечисло, а
+    // проверку ловит уже РЕНДЕР: R_ASSERT2(_valid(bi.mTransform)) в SkeletonRigid.cpp роняет игру
+    // насмерть с текстом «callback kils bone matrix». Так закончилась сессия на болте (bolt_0).
+    //
+    // Проверки вокруг — VERIFY, их в Release нет, а вот тот R_ASSERT живой: MASTER_GOLD у нас не
+    // определён, сборка идёт как Release. То есть до правки этот срыв доставался и тестерам.
+    //
+    // Чинить сам солвер — отдельная и куда большая работа. Здесь задача скромнее: не пропускать
+    // мусор дальше. Кость остаётся в последнем годном положении, предмет замирает, игра живёт.
+    const Fmatrix previous_transform = B->mTransform;
+
     CalculateBoneTransform(B->mTransform);
 
     //	Fmatrix parent;
     //	parent.invert		( m_shell->mXFORM );
     //	B->mTransform.mul_43( parent, mXFORM );
+
+    if (!_valid(B->mTransform))
+    {
+        B->mTransform = _valid(previous_transform) ? previous_transform : Fidentity;
+
+        // Раз в триста шагов симуляции (порядка пяти секунд), иначе сорванное тело зальёт лог
+        // построчно на каждом кадре. Своего таймера у xrPhysics нет, считаем шагами мира.
+        static u64 last_report = 0;
+        const u64 now = ph_world ? ph_world->StepsNum() : 0;
+        if (now - last_report > 300)
+        {
+            last_report = now;
+            IPhysicsShellHolder* owner = PhysicsRefObject();
+            Msg("! [DA_PORT] физика вернула нечисло в кость, положение оставлено прежним: объект "
+                "'%s', визуал '%s'",
+                owner ? owner->ObjectName() : "неизвестен",
+                owner ? owner->ObjectNameVisual() : "неизвестен");
+        }
+        return;
+    }
 
     VERIFY_RMATRIX(B->mTransform);
     VERIFY(valid_pos(B->mTransform.c, phBoundaries));
