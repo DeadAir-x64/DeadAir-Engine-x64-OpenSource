@@ -1,0 +1,229 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition =  trade_generic_buy
+sell_condition = trade_generic_sell
+
+buy_supplies = {+yan_stalker_sakharov_quest_doc_given_2} supplies_3, {+yan_stalker_sakharov_quest_doc_given_1} supplies_2,  supplies_1
+buy_item_condition_factor = 0.25
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_special_9, {=actor_week_in_zone(8)} discount_special_8, {=actor_week_in_zone(7)} discount_special_7, {=actor_week_in_zone(6)} discount_special_6, {=actor_week_in_zone(5)} discount_special_5, {=actor_week_in_zone(4)} discount_special_4, {=actor_week_in_zone(3)} discount_special_3, {=actor_week_in_zone(2)} discount_special_2, {=actor_week_in_zone(1)} discount_special_1 
+
+[trade_generic_buy]:none
+
+dok_1                 = 0.1, 0.1 
+dok_2                 = 0.1, 0.1 
+dok_3                 = 0.1, 0.1 
+dok_4                 = 0.1, 0.1 
+dok_5                 = 0.1, 0.1 
+dok_6                 = 0.1, 0.1 
+dok_7                 = 0.1, 0.1 
+dok_8                 = 0.1, 0.1 
+lab_diary_1           = 0.1, 0.1
+lab_diary_2           = 0.1, 0.1
+lab_diary_3           = 0.1, 0.1
+box_lab_1             = 0.1, 0.1 
+
+af_thing_1               = 0.1, 0.1 ;100% cost
+af_thing_2               = 0.1, 0.1
+af_thing_3               = 0.1, 0.1
+af_thing_4               = 0.1, 0.1
+af_thing_5               = 0.1, 0.1
+af_medusa                = 0.1, 0.1
+af_vyvert                = 0.1, 0.1
+af_gravi                 = 0.1, 0.1
+af_cristall_flower       = 0.085, 0.085
+af_night_star            = 0.085, 0.085
+af_gold_fish             = 0.085, 0.085
+af_slime                 = 0.1, 0.1
+af_slug                  = 0.1, 0.1
+af_mica                  = 0.1, 0.1
+af_blood                 = 0.1, 0.1
+af_mincer_meat           = 0.1, 0.1
+af_pellicle              = 0.1, 0.1
+af_baloon                = 0.1, 0.1
+af_soul                  = 0.085, 0.085
+af_thorn                 = 0.1, 0.1
+af_crystal_thorn         = 0.1, 0.1
+af_sea_urchin            = 0.1, 0.1
+af_fuzz_kolobok          = 0.1, 0.1
+af_electra_sparkler      = 0.085, 0.085
+af_electra_flash         = 0.085, 0.085
+af_electra_moonlight     = 0.085, 0.085
+af_dummy_dummy           = 0.1, 0.1
+af_dummy_battery         = 0.1, 0.1
+af_ice                   = 0.085, 0.085
+af_drop                  = 0.1, 0.1
+af_cristall              = 0.085, 0.085
+af_fireball              = 0.085, 0.085
+af_eye                   = 0.1, 0.1
+af_dummy_glassbeads      = 0.1, 0.1
+af_fire                  = 0.1, 0.1
+af_compass               = 0.085, 0.085
+af_oasis_heart           = 0.085, 0.085
+jup_b1_half_artifact     = 0.1, 0.1
+af_quest_b14_twisted     = 0.1, 0.1
+
+mutant_part_flesh_meat           = 0.05, 0.05
+mutant_part_boar_chop            = 0.05, 0.05
+mutant_part_dog_meat             = 0.05, 0.05
+mutant_part_psevdodog_meat       = 0.05, 0.05
+mutant_part_krovosos_meat        = 0.05, 0.05
+mutant_part_snork_hand           = 0.05, 0.05
+mutant_part_chimera_meat         = 0.05, 0.05
+mutant_part_rat_corpse           = 0.1, 0.1
+mutant_part_tushkano_meat        = 0.05, 0.05
+mutant_part_krovosos_jaw         = 0.1, 0.1
+mutant_part_boar_leg             = 0.1, 0.1
+mutant_part_chimera_kogot        = 0.1, 0.1
+mutant_part_dog_tail             = 0.1, 0.1
+mutant_part_flesh_eye            = 0.1, 0.1
+mutant_part_psevdodog_tail       = 0.1, 0.1
+mutant_part_snork_leg            = 0.1, 0.1
+mutant_part_snork_mask           = 0.1, 0.1
+mutant_part_tushkano_head        = 0.1, 0.1
+mutant_part_pseudogigant_eye     = 0.1, 0.1
+mutant_part_pseudogigant_hand    = 0.1, 0.1
+mutant_part_chimera_claw         = 0.1, 0.1
+mutant_part_cat_tail             = 0.1, 0.1
+mutant_part_burer_hand           = 0.1, 0.1
+mutant_part_zombi_hand           = 0.1, 0.1
+mutant_part_controller_hand      = 0.1, 0.1
+mutant_part_controller_glass     = 0.1, 0.1
+mutant_part_fracture_hand        = 0.1, 0.1
+mutant_part_krovosos_heart       = 0.1, 0.1
+mutant_part_boar_tusk            = 0.1, 0.1
+mutant_part_chimera_heart        = 0.1, 0.1
+mutant_part_dog_liver            = 0.1, 0.1
+mutant_part_dog_heart            = 0.1, 0.1
+mutant_part_cat_thyroid          = 0.1, 0.1
+mutant_part_cat_claw             = 0.1, 0.1
+mutant_part_psevdodog_fang       = 0.1, 0.1
+mutant_part_burer_brain          = 0.1, 0.1
+mutant_part_psy_dog_brain        = 0.1, 0.1
+hide_chimera                     = 0.1, 0.1
+hide_pseudogiant                 = 0.1, 0.1
+hide_psy_dog                     = 0.1, 0.1
+hide_pseudodog                   = 0.1, 0.1
+hide_burer                       = 0.1, 0.1
+hide_controller                  = 0.1, 0.1
+hide_bloodsucker                 = 0.1, 0.1
+hide_boar                        = 0.1, 0.1
+hide_flesh                       = 0.1, 0.1
+
+[trade_generic_sell]:unused, trash, artefacts
+
+mutant_part_flesh_meat          
+mutant_part_boar_chop           
+mutant_part_dog_meat            
+mutant_part_psevdodog_meat      
+mutant_part_krovosos_meat       
+mutant_part_snork_hand          
+mutant_part_chimera_meat        
+mutant_part_rat_corpse          
+mutant_part_tushkano_meat       
+mutant_part_krovosos_jaw        
+mutant_part_boar_leg            
+mutant_part_chimera_kogot       
+mutant_part_dog_tail            
+mutant_part_flesh_eye           
+mutant_part_psevdodog_tail      
+mutant_part_snork_leg           
+mutant_part_snork_mask          
+mutant_part_tushkano_head       
+mutant_part_pseudogigant_eye    
+mutant_part_pseudogigant_hand   
+mutant_part_chimera_claw        
+mutant_part_cat_tail            
+mutant_part_burer_hand          
+mutant_part_zombi_hand          
+mutant_part_controller_hand     
+mutant_part_controller_glass    
+mutant_part_fracture_hand       
+mutant_part_krovosos_heart      
+mutant_part_boar_tusk           
+mutant_part_chimera_heart       
+mutant_part_dog_liver           
+mutant_part_dog_heart           
+mutant_part_cat_thyroid         
+mutant_part_cat_claw            
+mutant_part_psevdodog_fang      
+mutant_part_burer_brain         
+mutant_part_psy_dog_brain       
+hide_chimera                    
+hide_pseudogiant                
+hide_psy_dog                    
+hide_pseudodog                  
+hide_burer                      
+hide_controller                 
+hide_bloodsucker                
+hide_boar                       
+hide_flesh                      
+
+
+[supplies_1]
+
+copper_coil             = 2, 0.5
+textolite               = 2, 0.5
+transistors             = 2, 0.5
+capacitors              = 2, 0.5
+colophony               = 2, 0.5
+
+medkit					= 2, 0.9
+medkit_scientic			= 4, 0.9
+bandage					= 5, 0.9
+antirad					= 1, 0.9
+stimpack_scientic		= 2, 0.9
+survival_kit			= 1, 0.9
+salicidic_acid			= 1, 0.9
+morphine				= 1, 0.9
+tetanus					= 2, 0.9
+drug_booster			= 2, 0.9
+drug_coagulant_5		= 4, 0.9
+drug_antidot_3			= 1, 0.9
+drug_radioprotector_2	= 1, 0.9
+drug_psy_blockade_5		= 1, 1
+drug_charcoal_5	        = 4, 0.9
+
+ecolog_outfit_orange    = 1, 1
+
+af_aac					= 2, 1
+lead_box				= 4, 0.85
+
+detector_elite          = 1, 0.5
+batteries               = 2, 0.85
+batteries_ccell         = 5, 0.85
+conserva				= 1, 0.5
+ration_ru_7				= 1, 0.1
+flask_3				    = 4, 0.85
+akvatab_3				= 2, 0.85
+glucose				    = 1, 0.5
+glucose_s				= 1, 0.5
+protein				    = 1, 0.5
+
+[supplies_2]:supplies_1
+
+ecolog_outfit_green     = 1, 1
+
+af_aam					= 2, 0.85
+af_surge                = 1, 0.85
+af_frames               = 1, 0.85
+af_grid                 = 1, 0.85
+af_freon                = 1, 0.85
+af_cooler               = 1, 0.85
+af_camelbak             = 1, 0.85
+
+detector_elite          = 1, 1
+adrenalin				= 4, 0.85
+
+[supplies_3]:supplies_2
+
+scientific_outfit		= 1, 1
+
+chocolate		        = 1, 0.5
+tushonka				= 1, 0.5
+
+drug_anabiotic			= 2, 0.85
+detector_scientific		= 1, 1
