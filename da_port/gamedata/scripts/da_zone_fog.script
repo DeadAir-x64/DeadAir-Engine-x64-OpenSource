@@ -1,0 +1,375 @@
+--[==[ -------------------------------------------------------------------------------------------
+	[DA_PORT] Видимая дымка над областями аномалий — по семействам урона.
+
+	Раньше это был da_chem_fog и умел только химию. Теперь семейства заданы таблицей, и добавить
+	новое — одна строка.
+
+	Зачем вообще. В моде зелёный туман (lanforse\fog_green_dx10) прибит ровно к одному уровню —
+	Дикой территории (level_weathers.script, ветка l06_rostok), и только в погоду "veryfoggy" при
+	дожде. По данным level.spawn на Дикой территории ОДНА слабая кислотная мина, меньше, чем на
+	любом уровне с химией вообще. Привязка к уровню оказалась не там, где опасность.
+
+	Здесь привязки к уровню нет совсем. Раз в треть секунды берутся аномалии вокруг игрока, и на
+	ПЛОЩАДНЫЕ (поля, жгучий пух, статичные жарки) ставится по одному источнику дымки. Точечные мины
+	не трогаются: у них свой вид, и их слишком много.
+
+	Полный каталог повреждающих зон Dead Air (посчитано по level.spawn всех 33 уровней, числа —
+	количество объектов в игре):
+
+		химия      zone_mine_acidic_*        593   zone_witches_galantine_*  121
+		           zone_field_acidic_*       109   zone_mine_chemical_*       18
+		огонь      zone_mine_thermal_*       493   zone_burning_fuzz*         283
+		           zone_field_thermal_*       30   zone_zharka_static_*       14
+		           zone_mine_steam_*          27
+		радиация   zone_field_radioactive_*  602   zone_radioactive_*        121
+		электро    zone_mine_electric_*      433   zone_mine_static_*          7
+		           zone_emi                    2
+		гравитация zone_mine_gravitational_* 578   zone_mine_field*          122
+		           zone_gravi_zone            27   zone_mosquito_bald_*       56
+		           zone_buzz*                 55   zone_no_gravity             2
+		пси        zone_field_psychic_*       35   zone_monolith               1
+		прочее     zone_teleport               2
+
+	Включены химия и огонь. Остальные семейства ниже описаны, но выключены (particle = nil):
+	у гравитации, электры и телепорта свой яркий вид, дымка им не нужна, а радиация невидима по
+	замыслу — дозиметр и есть её индикатор.
+
+	Цена кадра. Источник ставится ОДИН раз и живёт, пока игрок рядом: площадные аномалии
+	неподвижны, поэтому в установившемся режиме скрипт не трогает движок вообще. Двигаем через
+	move_to (script_particles.cpp:142) — он только правит родительскую матрицу. play_at_pos так
+	нельзя: внутри он делает Play() и лишний шаг симуляции на 33 мс (ParticlesObject.cpp:143), и
+	первая версия скрипта дёргала его 130 раз в секунду.
+
+	Подкрутить живьём (нужен -dev):
+		run_string da_zone_fog.debug = true
+		run_string da_zone_fog.MAX_EMITTERS = 6
+		run_string da_zone_fog.FAMILIES[1].vis = 80          -- дальше видно химию
+		run_string da_zone_fog.FAMILIES[2].particle = [[anomaly2\heat_02]]
+		run_string da_zone_fog.FAMILIES[2].particle = nil    -- выключить огонь совсем
+
+	⚠️ Имя эффекта должно существовать: движок на неизвестное падает по R_ASSERT3 «Particle effect
+	or group doesn't exist», и это не ловится. Проверенные по particles.xr:
+		lanforse\fog_green_dx10 · a_ufp_particles\toxic_fog_idle · a_ufp_particles\toxic_fog_blow
+		a_ufp_particles\gas_grenade · anomaly2\heat_00 · anomaly2\heat_01 · anomaly2\heat_02
+		anomaly2\heat_03 · anomaly2\lava_idle · anomaly2\electra_idle · anomaly2\gravity_idle
+---------------------------------------------------------------------------------------------- ]==]
+
+-- Семейство: match — по каким кускам имени секции узнаём «наше»; area — какие из них площадные и
+-- заслуживают дымки; particle — чем дымим (nil = семейство выключено); haze — дымка вокруг игрока
+-- при высокой плотности (nil = не нужна).
+FAMILIES = {
+	{
+		id       = "chem",
+		match    = { "acidic", "chemical", "galantine" },
+		area     = { "field" },
+		particle = "lanforse\\fog_green_dx10",
+		vis      = 60.0,
+		height   = 0.6,
+		haze     = { particle = "lanforse\\fog_green_dx10", radius = 45.0, weight = 5, height = 2.5 },
+	},
+	{
+		id       = "fire",
+		match    = { "thermal", "zharka", "burning_fuzz", "steam" },
+		area     = { "field", "burning_fuzz", "zharka_static" },
+		particle = "anomaly2\\heat_03",
+		vis      = 60.0,
+		height   = 0.4,
+		haze     = nil, -- над жаркой висеть нечему: жар идёт от самой аномалии, а не облаком
+	},
+	-- Ниже — описано, но выключено. Включается заменой particle на существующее имя эффекта.
+	{ id = "radio",   match = { "radioactive" },                     area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
+	{ id = "electro", match = { "electric", "static", "emi" },       area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
+	{ id = "gravi",   match = { "gravitational", "gravi", "mosquito", "buzz", "mine_field" },
+	                                                                 area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
+	{ id = "psy",     match = { "psychic", "monolith" },             area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
+}
+
+PERIOD       = 333   -- как часто пересчитывать раскладку, мс
+MOVE_PERIOD  = 100   -- как часто дымка догоняет игрока, мс
+MAX_EMITTERS = 12    -- общий потолок источников на все семейства: цена кадра
+
+debug = false
+
+-- Вес аномалии для порога дымки. Поле бьёт постоянно и потому весит вдвое против мины.
+local FORCE = { weak = 1, average = 2, strong = 3 }
+
+local collected  = false
+local next_check = 0
+local next_move  = 0
+local ZERO       = nil
+
+local function match_any(section, list)
+	for i = 1, #list do
+		if section:find(list[i], 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function weight_of(section)
+	local w = 1
+	for name, value in pairs(FORCE) do
+		if section:find(name, 1, true) then
+			w = value
+			break
+		end
+	end
+	if section:find("field", 1, true) then
+		w = w * 2
+	end
+	return w
+end
+
+-- Один проход по alife за загрузку уровня: разложить аномалии по семействам. Перебор всех
+-- серверных объектов дорогой, поэтому он делается на actor_on_first_update и не повторяется;
+-- площадные аномалии за сессию не переезжают.
+local function collect()
+	for i = 1, #FAMILIES do
+		local f = FAMILIES[i]
+		f.all       = {}   -- вся химия/огонь/... семейства: { {x,y,z,w}, ... }
+		f.spots     = {}   -- только площадные: { {x,y,z}, ... }
+		f.pool      = {}
+		f.slot_key  = {}
+		f.pool_used = 0
+		f.pool_name = nil
+	end
+
+	local sim = alife()
+	if not sim then return end
+
+	local gg            = game_graph()
+	local this_level    = level.name()
+	local this_level_id = sim:level_id()
+	local total         = 0
+	local skipped       = 0
+
+	sim:iterate_objects(function(se_obj)
+		local section = se_obj:section_name()
+		if section and section:find("zone_", 1, true) then
+			for i = 1, #FAMILIES do
+				local f = FAMILIES[i]
+				if match_any(section, f.match) then
+					total = total + 1
+					-- Сравниваем НОМЕРА уровней, а не имена. Прежний вариант звал
+					-- sim:level_name(...), а тот внутри лезет в CGameGraph::level() — и на объекте с
+					-- негодной графовой вершиной падал с «there is no specified level in the game
+					-- graph : 0». Проверка вершины в vertex() стоит под VERIFY и в релизе вырезана,
+					-- поэтому чтение уходило за границы и возвращало мусорный уровень 0.
+					--
+					-- Здесь два барьера: сначала спрашиваем граф, годится ли вершина, и только потом
+					-- сравниваем числа — level() при этом не зовётся вообще.
+					local gvid = se_obj.m_game_vertex_id
+					if not gg:valid_vertex_id(gvid) then
+						skipped = skipped + 1
+					elseif gg:vertex(gvid):level_id() == this_level_id then
+						local p = se_obj.position
+						f.all[#f.all + 1] = { p.x, p.y, p.z, weight_of(section) }
+						if match_any(section, f.area) then
+							f.spots[#f.spots + 1] = { p.x, p.y, p.z }
+						end
+					end
+					break
+				end
+			end
+		end
+		return false
+	end)
+
+	local parts = ""
+	for i = 1, #FAMILIES do
+		local f = FAMILIES[i]
+		if #f.all > 0 then
+			parts = parts .. string.format(" %s %s/%s", f.id, #f.spots, #f.all)
+		end
+	end
+	printf("[DA] zone_fog: %s -- площадных/всего по семействам:%s (в игре всего %s, "
+		.. "пропущено с негодной графовой вершиной %s)", this_level, parts, total, skipped)
+	collected = true
+end
+
+local function stop_pool(f, from)
+	for i = from, f.pool_used do
+		local e = f.pool[i]
+		if e and e:playing() then
+			e:stop()
+		end
+		f.slot_key[i] = nil
+	end
+	if from <= f.pool_used then
+		f.pool_used = from - 1
+	end
+end
+
+-- Раскладка источников семейства. Вызывается редко и почти всегда ничего не делает: если за слотом
+-- закреплена та же аномалия, что и в прошлый раз, движок не трогается совсем.
+local function place(f, pos, budget)
+	if not f.particle or not f.spots or #f.spots == 0 or budget <= 0 then
+		stop_pool(f, 1)
+		return 0
+	end
+
+	-- Смена эффекта на лету: старые объекты созданы со старым именем, их надо выбросить целиком.
+	if f.pool_name ~= f.particle then
+		stop_pool(f, 1)
+		f.pool      = {}
+		f.slot_key  = {}
+		f.pool_used = 0
+		f.pool_name = f.particle
+	end
+
+	local vis2 = f.vis * f.vis
+	local n    = 0
+
+	for i = 1, #f.spots do
+		if n >= budget then break end
+
+		local s = f.spots[i]
+		local dx, dy, dz = s[1] - pos.x, s[2] - pos.y, s[3] - pos.z
+		if dx * dx + dy * dy + dz * dz <= vis2 then
+			n = n + 1
+
+			local e = f.pool[n]
+			if not e then
+				e = particles_object(f.particle)
+				f.pool[n] = e
+			end
+
+			if f.slot_key[n] ~= i then
+				f.slot_key[n] = i
+				local p = vector():set(s[1], s[2] + f.height, s[3])
+				e:move_to(p, ZERO)
+				e:play()
+				e:move_to(p, ZERO)
+			elseif not e:playing() then
+				-- эффект доиграл сам, позиция у него уже правильная
+				e:play()
+			end
+		end
+	end
+
+	if n < f.pool_used then
+		stop_pool(f, n + 1)
+	end
+	f.pool_used = n
+	return n
+end
+
+-- Дымка вокруг игрока: включается по ПЛОТНОСТИ семейства рядом, а не по факту одной аномалии.
+local function haze_update(f, pos)
+	local h = f.haze
+	if not h then return false end
+
+	local r2     = h.radius * h.radius
+	local weight = 0
+
+	for i = 1, #f.all do
+		local a = f.all[i]
+		local dx, dy, dz = a[1] - pos.x, a[2] - pos.y, a[3] - pos.z
+		if dx * dx + dy * dy + dz * dz <= r2 then
+			weight = weight + a[4]
+		end
+	end
+
+	f.haze_weight = weight
+	local want = weight >= h.weight
+
+	if not want and f.haze_pfx and f.haze_pfx:playing() then
+		f.haze_pfx:stop()
+	end
+	return want
+end
+
+function update()
+	if not collected then return end
+	if not ZERO then ZERO = vector():set(0, 0, 0) end
+
+	local tg = time_global()
+
+	-- Дорогая часть: плотность и раскладка источников.
+	if tg >= next_check then
+		next_check = tg + PERIOD
+
+		local pos    = db.actor:position()
+		local budget = MAX_EMITTERS
+		local report = ""
+
+		for i = 1, #FAMILIES do
+			local f = FAMILIES[i]
+			if f.all then
+				local n = place(f, pos, budget)
+				budget = budget - n
+				f.haze_on = haze_update(f, pos)
+				if debug and (#f.all > 0) then
+					report = report .. string.format(" %s: вес %s, источников %s;",
+						f.id, f.haze_weight or 0, n)
+				end
+			end
+		end
+
+		if debug then
+			printf("[DA] zone_fog:%s потолок %s", report, MAX_EMITTERS)
+		end
+	end
+
+	-- Дешёвая часть: дымка догоняет игрока. Только move_to, без Play и без шага симуляции.
+	if tg < next_move then return end
+	next_move = tg + MOVE_PERIOD
+
+	local pos = nil
+	for i = 1, #FAMILIES do
+		local f = FAMILIES[i]
+		if f.haze_on and f.haze then
+			if f.haze_name ~= f.haze.particle then
+				if f.haze_pfx and f.haze_pfx:playing() then
+					f.haze_pfx:stop()
+				end
+				f.haze_pfx  = nil
+				f.haze_name = f.haze.particle
+			end
+			if not f.haze_pfx then
+				f.haze_pfx = particles_object(f.haze.particle)
+			end
+
+			pos = pos or db.actor:position()
+			local p = vector():set(pos.x, pos.y + f.haze.height, pos.z)
+			f.haze_pfx:move_to(p, ZERO)
+			if not f.haze_pfx:playing() then
+				f.haze_pfx:play()
+				f.haze_pfx:move_to(p, ZERO)
+			end
+		end
+	end
+end
+
+function actor_on_first_update()
+	collect()
+end
+
+function actor_on_net_destroy()
+	for i = 1, #FAMILIES do
+		local f = FAMILIES[i]
+		if f.pool then
+			stop_pool(f, 1)
+		end
+		if f.haze_pfx and f.haze_pfx:playing() then
+			f.haze_pfx:stop()
+		end
+		f.all       = nil
+		f.spots     = nil
+		f.pool      = {}
+		f.slot_key  = {}
+		f.pool_used = 0
+		f.pool_name = nil
+		f.haze_pfx  = nil
+		f.haze_name = nil
+		f.haze_on   = false
+	end
+	collected = false
+end
+
+function on_game_start()
+	RegisterScriptCallback("actor_on_first_update", actor_on_first_update)
+	RegisterScriptCallback("actor_on_update",       update)
+	RegisterScriptCallback("actor_on_net_destroy",  actor_on_net_destroy)
+end
