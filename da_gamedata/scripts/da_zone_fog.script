@@ -63,7 +63,7 @@ FAMILIES = {
 		match    = { "acidic", "chemical", "galantine" },
 		area     = { "field" },
 		particle = "lanforse\\fog_green_dx10",
-		vis      = 60.0,
+		vis      = 30.0,
 		height   = 0.6,
 		haze     = { particle = "lanforse\\fog_green_dx10", radius = 45.0, weight = 5, height = 2.5 },
 	},
@@ -78,7 +78,7 @@ FAMILIES = {
 		match    = { "thermal", "zharka", "burning_fuzz", "steam" },
 		area     = { "field", "burning_fuzz", "zharka_static" },
 		particle = "lanforse\\fog_heavy_dx10",
-		vis      = 60.0,
+		vis      = 30.0,
 		height   = 0.8, -- выше химического: дым поднимается, а не стелется
 		haze     = { particle = "lanforse\\fog_heavy_dx10", radius = 45.0, weight = 5, height = 2.5 },
 	},
