@@ -43,6 +43,8 @@ void CSE_ALifeHumanAbstract::on_register()
 {
     inherited2::on_register();
     // because we need to load profile to setup graph vertex masks
+    // [DA_PORT] Подбор персонажа по шаблону перебирает всех и грузит каждого из XML. Кеш прогрет
+    // заранее (da_warmup_character_cache в xrgame_dll_detach.cpp), поэтому тут остаётся чтение.
     specific_character();
 }
 
