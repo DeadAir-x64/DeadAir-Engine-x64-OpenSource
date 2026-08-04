@@ -224,6 +224,7 @@ void CLevelSoundManager::Unload()
 
 void CLevelSoundManager::Update()
 {
+    da_seq_probe _probe("звуки уровня"); // [DA_PORT] ловушка da_seq_trap
     ZoneScoped;
 
     if (Device.Paused())

@@ -424,7 +424,11 @@ void CCustomMonster::net_update::lerp(CCustomMonster::net_update& A, CCustomMons
     fHealth = A.fHealth * (1.f - f) + B.fHealth * f;
 }
 
-void CCustomMonster::update_sound_player() { sound().update(client_update_fdelta()); }
+void CCustomMonster::update_sound_player()
+{
+    da_seq_probe _probe("существо: звук"); // [DA_PORT] ловушка da_seq_trap
+    sound().update(client_update_fdelta());
+}
 void CCustomMonster::UpdateCL()
 {
     START_PROFILE("CustomMonster/client_update")

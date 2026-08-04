@@ -203,6 +203,7 @@ void CBulletManager::AddBullet(const Fvector& position, const Fvector& direction
 
 void CBulletManager::UpdateWorkload()
 {
+    da_seq_probe _probe("пули"); // [DA_PORT] ловушка da_seq_trap
     ZoneScoped;
 
     VERIFY(g_mt_config.test(mtBullets) || m_thread_id == std::this_thread::get_id());

@@ -756,6 +756,7 @@ void CAI_Stalker::net_Import(NET_Packet& P)
 
 void CAI_Stalker::update_object_handler()
 {
+    da_seq_probe _probe("сталкер: разбор задач"); // [DA_PORT] ловушка da_seq_trap
     // [DA_PORT] Counted at the door, because the numbers stopped adding up: sixteen of these run per
     // frame for eight milliseconds between them, yet the planner inside is entered three times and
     // costs nothing. Either most of them turn back at the line below - dead stalkers cost nothing - or
