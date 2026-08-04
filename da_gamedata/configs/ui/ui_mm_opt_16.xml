@@ -1042,12 +1042,19 @@
 		    </text_color>
         </list_axr>
 		
+		<!-- [DA_PORT] Перволичное тело. Подпись берёт скрипт вкладки по строке ui_mm_da_fp_body,
+		     поэтому здесь нужен только сам контрол. Галка привязана прямо к консольной команде:
+		     CUIOptionsItem пишет "da_fp_body 1|0", а Console->GetBool умеет CCC_Integer. -->
+		<check_da_fp_body x="162" y="0" width="30" height="21">
+			<options_item entry="da_fp_body" group="mm_opt_gameplay"/>
+		</check_da_fp_body>
+
 		<templ_item width="305" height="38"/>
-		<scroll_v	x="215" y="42" width="305" height="515" 
-					right_ident="0" left_ident="0" top_indent="0" bottom_indent="0" 
-					vert_interval="0" always_show_scroll="0"/>    
-	
-	
+		<scroll_v	x="215" y="42" width="305" height="515"
+					right_ident="0" left_ident="0" top_indent="0" bottom_indent="0"
+					vert_interval="0" always_show_scroll="0"/>
+
+
 	</tab_gameplay>
 	
     <tab_controls>

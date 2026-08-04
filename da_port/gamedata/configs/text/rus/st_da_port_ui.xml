@@ -405,4 +405,8 @@
 	<string id="ui_da_wpn_breakage_none">
 		<text>нет</text>
 	</string>
+	<!-- [DA_PORT] added by the x64 port: first-person body, no such option in Dead Air -->
+	<string id="ui_mm_da_fp_body">
+		<text>Своё тело от первого лица</text>
+	</string>
 </string_table>

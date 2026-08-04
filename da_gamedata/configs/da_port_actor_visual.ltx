@@ -33,3 +33,16 @@ cs_light_outfit          = actors\stalker_nebo\stalker_nebo_1
 cs_heavy3a_outfit        = actors\stalker_nebo\stalker_nebo_2
 cs_outfit                = actors\stalker_nebo\stalker_nebo_3
 cs_heavy3b_outfit        = actors\stalker_nebo\stalker_nebo_3
+
+; [DA_PORT] Перволичное тело — модель БЕЗ ГОЛОВЫ, которую видит сам игрок.
+;
+; Основной источник — авторский `actor_visual` секции костюма (actors\legs\*.ogf, туловище без
+; головы и рук). Эта таблица нужна там, где его нет: у мода `legs`-модели заведены только под
+; костюмы, а без костюма откат уходил на базовую модель героя — с головой, и она лезла в кадр при
+; широком угле обзора.
+;
+; Ключ — секция костюма, `default` — когда костюма нет или он не сопоставлен.
+; Тень при этом рисуется ДРУГОЙ моделью, целой и с головой, из секции выше.
+
+[da_actor_legs_3d]
+default = actors\legs\novice_outfit
