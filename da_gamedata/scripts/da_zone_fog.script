@@ -67,11 +67,14 @@ FAMILIES = {
 		height   = 0.6,
 		haze     = { particle = "lanforse\\fog_green_dx10", radius = 45.0, weight = 5, height = 2.5 },
 	},
+	-- Огонь ВЫКЛЮЧЕН по решению: свой эффект над жаркой снят, аномалия показывает себя сама.
+	-- Обратно включается возвращением имени эффекта в particle (было "anomaly2\\heat_03").
+	-- Дымки тут не было и раньше: жар идёт от самой аномалии, а не облаком.
 	{
 		id       = "fire",
 		match    = { "thermal", "zharka", "burning_fuzz", "steam" },
 		area     = { "field", "burning_fuzz", "zharka_static" },
-		particle = "anomaly2\\heat_03",
+		particle = nil,
 		vis      = 60.0,
 		height   = 0.4,
 		haze     = nil, -- над жаркой висеть нечему: жар идёт от самой аномалии, а не облаком
