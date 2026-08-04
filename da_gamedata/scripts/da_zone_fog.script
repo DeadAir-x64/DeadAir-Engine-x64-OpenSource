@@ -84,7 +84,30 @@ FAMILIES = {
 	},
 	-- Ниже — описано, но выключено. Включается заменой particle на существующее имя эффекта.
 	{ id = "radio",   match = { "radioactive" },                     area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
-	{ id = "electro", match = { "electric", "static", "emi" },       area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
+	-- Электра: мелкие искры вокруг электрических аномалий.
+	--
+	-- Здесь не туман, а точечная искра: у самих аномалий визуал есть (zone_electric_mine_idle —
+	-- ровно ОДНА частица pfx_ligth_6), и добавлять им облако незачем. Смысл в другом: показать,
+	-- что «фонит» вокруг, не пряча саму аномалию.
+	--
+	-- Подбирается вживую, не пересобирая ничего:
+	--     run_string da_zone_fog.FAMILIES[4].particle = [[zones\effects\zone_electra_idle_sparks]]
+	-- Соседи: crommcruac\electrostatic_sparks_10/50/100 (по 100 частиц, pfx_electrostatic),
+	-- zones\effects\zone_electra_idle_sparks (20, pfx_ligth_6 — родная искра электры),
+	-- anomaly2\effects\heat_sparks_collision_electra (25, тот же pfx_ligth_6).
+	--
+	-- ⚠️ В match и area подстроки СРАВНИВАЮТСЯ ПО ВХОЖДЕНИЮ, поэтому короткое "emi" ловило бы
+	-- химию: в "chemical" эти три буквы есть. Спасал только порядок семейств — химия проверяется
+	-- раньше и забирает совпадение себе. Пишем полными именами, чтобы не зависеть от порядка.
+	{
+		id       = "electro",
+		match    = { "electric", "zone_emi" },
+		area     = { "field_electric", "mine_electric", "zone_emi" },
+		particle = "crommcruac\\electrostatic_sparks_10",
+		vis      = 20.0,
+		height   = 0.3, -- у земли: искры вьются низко, а не висят облаком
+		haze     = nil,
+	},
 	{ id = "gravi",   match = { "gravitational", "gravi", "mosquito", "buzz", "mine_field" },
 	                                                                 area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
 	{ id = "psy",     match = { "psychic", "monolith" },             area = { "field" }, particle = nil, vis = 60.0, height = 0.6 },
