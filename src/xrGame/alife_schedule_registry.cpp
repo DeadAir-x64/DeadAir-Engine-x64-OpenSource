@@ -8,6 +8,82 @@
 
 #include "StdAfx.h"
 #include "alife_schedule_registry.h"
+#include "xrEngine/Device.h" // [DA_PORT] ps_da_seq_trap - общий выключатель диагностики задач кадра
+
+// [DA_PORT] Накопление по секциям объектов ALife, разбор в alife_schedule_registry.h.
+namespace
+{
+struct da_alife_stat
+{
+    u64 calls{};
+    double total_ms{};
+    float max_ms{};
+};
+
+xr_map<shared_str, da_alife_stat> g_da_alife_stats;
+} // namespace
+
+da_alife_update_probe::da_alife_update_probe(CSE_ALifeSchedulable* o)
+    : obj(o), armed(ps_da_seq_trap > 0.f)
+{
+    if (armed)
+        timer.Start();
+}
+
+da_alife_update_probe::~da_alife_update_probe()
+{
+    if (!armed || !obj)
+        return;
+
+    const CSE_Abstract* base = obj->base();
+    if (!base)
+        return;
+
+    const float ms = timer.GetElapsed_sec() * 1000.f;
+    da_alife_stat& st = g_da_alife_stats[base->s_name];
+    ++st.calls;
+    st.total_ms += ms;
+    if (ms > st.max_ms)
+        st.max_ms = ms;
+}
+
+void da_alife_dump_update_stats()
+{
+    if (g_da_alife_stats.empty())
+        return;
+
+    xr_vector<std::pair<shared_str, da_alife_stat>> rows;
+    rows.reserve(g_da_alife_stats.size());
+    for (const auto& it : g_da_alife_stats)
+        rows.push_back(it);
+
+    std::sort(rows.begin(), rows.end(),
+        [](const auto& l, const auto& r) { return l.second.total_ms > r.second.total_ms; });
+
+    double grand = 0.0;
+    u64 calls = 0;
+    for (const auto& r : rows)
+    {
+        grand += r.second.total_ms;
+        calls += r.second.calls;
+    }
+
+    Msg("~ [DA_ALIFE] ---- обновление ALife по секциям: %u секций, %llu обновлений, %.1f мс ----",
+        (u32)rows.size(), (unsigned long long)calls, grand);
+    Msg("~ [DA_ALIFE] %-10s %10s %9s %9s  %s", "обновлений", "всего мс", "среднее", "максимум",
+        "секция");
+    for (const auto& r : rows)
+    {
+        const da_alife_stat& st = r.second;
+        if (st.total_ms < 0.5)
+            continue; // мелочь не печатаем: секций сотни, а интересны единицы
+        Msg("~ [DA_ALIFE] %-10llu %10.2f %9.4f %9.3f  %s", (unsigned long long)st.calls,
+            st.total_ms, st.total_ms / double(st.calls ? st.calls : 1), st.max_ms,
+            r.first.c_str());
+    }
+    Msg("~ [DA_ALIFE] ---- конец ----");
+    g_da_alife_stats.clear();
+}
 
 CALifeScheduleRegistry::~CALifeScheduleRegistry() {}
 void CALifeScheduleRegistry::add(CSE_ALifeDynamicObject* object)

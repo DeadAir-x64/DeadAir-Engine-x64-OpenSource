@@ -66,6 +66,9 @@ CALifeUpdateManager::CALifeUpdateManager(IPureServer* server, LPCSTR section)
 
 CALifeUpdateManager::~CALifeUpdateManager()
 {
+    // [DA_PORT] Итог пообъектного замера печатается здесь: менеджер разрушается на выгрузке уровня,
+    // когда параллельная задача уже не бежит и в накопитель никто не пишет.
+    da_alife_dump_update_stats();
     shedule_unregister();
     Device.remove_from_seq_parallel(fastdelegate::FastDelegate0<>(this, &CALifeUpdateManager::update));
 }

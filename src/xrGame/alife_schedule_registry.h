@@ -13,6 +13,29 @@
 #include "ai_debug.h"
 #include "xrEngine/profiler.h"
 
+// [DA_PORT] Пообъектный замер обновления ALife — включается той же ловушкой da_seq_trap.
+//
+// Зачем: `alife scheduled` берёт по 4-15 мс, и это не превышение бюджета, а его отсутствие —
+// реестр расписания инстанцирован с use_time_limit = false, то есть проверка времени у него
+// вырезана на этапе компиляции (см. CSafeMapIterator::time_over). Ограничение одно:
+// objects_per_update = 20 объектов за проход, а сколько стоит каждый — не спрашивает никто.
+//
+// Значит вопрос не «почему не соблюдается бюджет», а «какие объекты столько стоят». Проба
+// складывает время по СЕКЦИИ объекта: имена конкретных экземпляров ничего не скажут, а секция
+// сразу называет виновный тип.
+struct da_alife_update_probe
+{
+    class CSE_ALifeSchedulable* obj;
+    CTimer timer;
+    bool armed;
+
+    explicit da_alife_update_probe(class CSE_ALifeSchedulable* o);
+    ~da_alife_update_probe();
+};
+
+// Печать накопленного: зовётся при разрушении менеджера обновления, то есть на выгрузке уровня.
+void da_alife_dump_update_stats();
+
 class CALifeScheduleRegistry
     : public CSafeMapIterator<ALife::_OBJECT_ID, CSE_ALifeSchedulable, std::less<ALife::_OBJECT_ID>, false>
 {
@@ -45,7 +68,10 @@ private:
         IC void operator()(_iterator& i, u64 cycle_count) const
         {
             START_PROFILE("ALife/scheduled/update")
-            (*i).second->update();
+            {
+                da_alife_update_probe _probe((*i).second); // [DA_PORT] см. da_seq_trap
+                (*i).second->update();
+            }
             STOP_PROFILE
         }
     };
