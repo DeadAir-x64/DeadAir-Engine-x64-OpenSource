@@ -1940,8 +1940,7 @@ void CActor::renderable_RenderLegs(u32 context_id, IRenderable* root)
 
     ApplyLegsBoneMask(); // ручку могли покрутить между кадрами
 
-    const u64 visible_bones = source->LL_GetBonesVisible();
-    source->LL_SetBonesVisible(u64(-1));
+    // [DA_PORT] Тот же разбор, что и у теневой модели: без сброса кэша костей актёра.
     source->CalculateBones(TRUE);
 
     for (ShadowBoneBinding& binding : m_legs_bones)
@@ -1949,9 +1948,6 @@ void CActor::renderable_RenderLegs(u32 context_id, IRenderable* root)
         if (binding.source_id != u16(-1))
             binding.transform = source->LL_GetTransform(binding.source_id);
     }
-
-    source->LL_SetBonesVisible(visible_bones);
-    source->CalculateBones_Invalidate();
 
     m_legs_kinematics->CalculateBones_Invalidate();
     m_legs_kinematics->CalculateBones(TRUE);
@@ -1992,23 +1988,43 @@ void CActor::renderable_RenderShadow(u32 context_id, IRenderable* root)
     IKinematics* source = smart_cast<IKinematics*>(Visual());
     if (source && m_shadow_visual && m_shadow_kinematics)
     {
-        // Снять позу с настоящего скелета целиком: часть костей может быть скрыта под текущий
-        // костюм, а теневой модели нужны все.
-        const u64 visible_bones = source->LL_GetBonesVisible();
-        source->LL_SetBonesVisible(u64(-1));
-        source->CalculateBones(TRUE);
-
-        for (ShadowBoneBinding& binding : m_shadow_bones)
+        // [DA_PORT] Поза снимается ОДИН раз за кадр, а не на каждый теневой проход.
+        //
+        // Этот метод зовётся из build_subspace под PHASE_SMAP, а фаза ставится в пяти местах, и
+        // одно из них — цикл по теневым источникам света. То есть проходов за кадр столько,
+        // сколько каскадов солнца плюс теневых ламп: в баре их было 61. Без этой проверки на
+        // каждый такой проход шло ДВА полных пересчёта скелета — актёра и теневой модели, — плюс
+        // сброс кэша костей актёра, из-за которого он потом считался заново и для своих нужд.
+        //
+        // Симптом был ровно такой, каким его и увидели: просадка появляется там, где есть NPC,
+        // потому что они приносят с собой фонари и лампы, то есть новые теневые проходы. Поза при
+        // этом за кадр не меняется — снимать её повторно незачем.
+        if (m_shadow_pose_frame != Device.dwFrame)
         {
-            if (binding.source_id != u16(-1))
-                binding.transform = source->LL_GetTransform(binding.source_id);
+            m_shadow_pose_frame = Device.dwFrame;
+
+            // [DA_PORT] Скелет актёра берётся КАК ЕСТЬ, без возни с маской видимости.
+            //
+            // Здесь стояло: показать все кости, пересчитать, снять позу, вернуть маску и сбросить
+            // кэш. Последнее и было дорого — сброс обесценивает только что посчитанный скелет, и
+            // движок считает его заново уже для своих нужд. Замером r__actor_shadow: этот второй
+            // проход давал около 0.6 мс в `move` плюс 0.4 мс в рендере, то есть треть кадра.
+            //
+            // Возня нужна была на случай костей, скрытых под костюм. У нас таких нет: маску никто
+            // не трогает (da_legs_hide по умолчанию 0). Если когда-нибудь начнут — тень унаследует
+            // скрытие, и это скорее правильно, чем нет: тени незачем показывать то, чего не видно.
+            source->CalculateBones(TRUE);
+
+            for (ShadowBoneBinding& binding : m_shadow_bones)
+            {
+                if (binding.source_id != u16(-1))
+                    binding.transform = source->LL_GetTransform(binding.source_id);
+            }
+
+            m_shadow_kinematics->CalculateBones_Invalidate();
+            m_shadow_kinematics->CalculateBones(TRUE);
         }
 
-        source->LL_SetBonesVisible(visible_bones);
-        source->CalculateBones_Invalidate();
-
-        m_shadow_kinematics->CalculateBones_Invalidate();
-        m_shadow_kinematics->CalculateBones(TRUE);
         GEnv.Render->add_Visual(context_id, root, m_shadow_visual, XFORM());
     }
     else

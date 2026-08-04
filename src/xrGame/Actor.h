@@ -734,6 +734,7 @@ protected:
     IRenderVisual* m_shadow_visual{};
     IKinematics* m_shadow_kinematics{};
     xr_vector<ShadowBoneBinding> m_shadow_bones;
+    u32 m_shadow_pose_frame{ u32(-1) }; // в каком кадре поза теневой модели уже снята
 
     static void ShadowBoneCallback(CBoneInstance* bone);
 
