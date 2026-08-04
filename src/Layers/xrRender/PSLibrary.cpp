@@ -27,7 +27,116 @@ void CPSLibrary::OnCreate()
         string_path fn;
         FS.update_path(fn, _game_data_, "particles.xr");
         Load(fn);
+        LoadLooseOverrides();
     }
+}
+
+// [DA_PORT] Подмена эффектов россыпью файлов, без пересборки particles.xr.
+//
+// Зачем: все 1520 эффектов и 611 групп лежат ОДНИМ архивом particles.xr, и правка любой мелочи
+// требует пересобирать его целиком. Инструмента для этого у мододела нет, поэтому внешний вид
+// аномалий и эффектов до сих пор считался неприкасаемым.
+//
+// Чтение по одному файлу в движке уже написано (CPEDef::Load2 / CPGDef::Load2 читают ini-подобный
+// формат .pe и .pg), но вызывалось только из редакторской сборки. Здесь тот же код работает и в
+// игре: после разбора архива каталог gamedata\particles просматривается на *.pe и *.pg, и каждый
+// найденный эффект ЗАМЕЩАЕТ одноимённый из архива либо добавляется как новый.
+//
+// Имя эффекта — путь файла без расширения относительно каталога: gamedata\particles\anomaly2\
+// effects\studen_idle_bottom.pe задаёт эффект "anomaly2\effects\studen_idle_bottom". Поэтому
+// раскладка на диске обязана повторять имена из архива.
+//
+// Порядок важен: FindPEDIt в игровой сборке ищет ДВОИЧНЫМ поиском, а значит массив должен быть
+// упорядочен. Замены порядок сохраняют, а новые записи добавляются в конец, поэтому пересортировка
+// делается один раз, после всех добавлений.
+void CPSLibrary::LoadLooseOverrides()
+{
+    ZoneScoped;
+
+    string_path path;
+    FS.update_path(path, _game_data_, "particles" DELIMITER);
+
+    FS_FileSet files;
+    if (0 == FS.file_list(files, path, FS_ListFiles, "*.pe,*.pg"))
+        return;
+
+    u32 replaced_ped = 0, added_ped = 0, replaced_pgd = 0, added_pgd = 0, failed = 0;
+    bool appended = false;
+
+    string_path fn, p_dir, p_name, p_ext, name;
+    for (const auto& f : files)
+    {
+        xr_sprintf(fn, sizeof(fn), "%s%s", path, f.name.c_str());
+        _splitpath(f.name.c_str(), nullptr, p_dir, p_name, p_ext);
+        xr_sprintf(name, sizeof(name), "%s%s", p_dir, p_name);
+
+        CInifile ini(fn, TRUE, TRUE, FALSE);
+
+        if (0 == xr_stricmp(p_ext, ".pe"))
+        {
+            PS::CPEDef* def = xr_new<PS::CPEDef>();
+            def->m_Name = name;
+            if (!def->Load2(ini))
+            {
+                Msg("! [DA_PORT] частицы: не разобран '%s'", fn);
+                xr_delete(def);
+                ++failed;
+                continue;
+            }
+
+            const PS::PEDIt it = FindPEDIt(name);
+            if (it != m_PEDs.end())
+            {
+                (*it)->DestroyShader();
+                xr_delete(*it);
+                *it = def;
+                ++replaced_ped;
+            }
+            else
+            {
+                m_PEDs.push_back(def);
+                appended = true;
+                ++added_ped;
+            }
+            def->CreateShader();
+        }
+        else if (0 == xr_stricmp(p_ext, ".pg"))
+        {
+            PS::CPGDef* def = xr_new<PS::CPGDef>();
+            def->m_Name = name;
+            if (!def->Load2(ini))
+            {
+                Msg("! [DA_PORT] частицы: не разобрана группа '%s'", fn);
+                xr_delete(def);
+                ++failed;
+                continue;
+            }
+
+            const PS::PGDIt it = FindPGDIt(name);
+            if (it != m_PGDs.end())
+            {
+                xr_delete(*it);
+                *it = def;
+                ++replaced_pgd;
+            }
+            else
+            {
+                m_PGDs.push_back(def);
+                appended = true;
+                ++added_pgd;
+            }
+        }
+    }
+
+    if (appended)
+    {
+        std::sort(m_PEDs.begin(), m_PEDs.end(), ped_sort_pred);
+        std::sort(m_PGDs.begin(), m_PGDs.end(), pgd_sort_pred);
+    }
+
+    Msg("* [DA_PORT] Частицы россыпью: эффектов заменено %u, добавлено %u; групп заменено %u, "
+        "добавлено %u; не разобрано %u",
+        replaced_ped, added_ped, replaced_pgd, added_pgd, failed);
 }
 
 void CPSLibrary::OnDestroy()

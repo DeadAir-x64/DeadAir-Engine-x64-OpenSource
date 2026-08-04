@@ -35,6 +35,9 @@ public:
     bool Load2();
     bool Save2();
 
+    // [DA_PORT] Подмена эффектов россыпью файлов из gamedata\particles. Разбор в PSLibrary.cpp.
+    void LoadLooseOverrides();
+
 public:
     CPSLibrary() { ; }
     ~CPSLibrary() { ; }
