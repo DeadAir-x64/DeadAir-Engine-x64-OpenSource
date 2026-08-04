@@ -94,7 +94,11 @@ function setup_buy_sell_conditions(npc,id)
 		printf("CTime update: "..npc:name().." TIME: "..utils.CTimeToSec(trade_update))
 	end
 
-	utils.save_var(db.actor, id.."_buy_supplies", str)
+	-- Пишем только когда есть что писать: setup_buy_sell_conditions зовётся на каждом тике
+	-- обновления торговца, и складывать одно и то же в хранилище актёра незачем.
+	if (last_supplies ~= str) then
+		utils.save_var(db.actor, id.."_buy_supplies", str)
+	end
 end 
 
 function update(npc)
