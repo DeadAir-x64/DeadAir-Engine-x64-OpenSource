@@ -213,9 +213,6 @@ git clone --depth 1 https://github.com/intel/xess.git Externals/xess
 
 ## Благодарности
 
-Команде **[OpenXRay](https://github.com/OpenXRay/xray-16)** — за движок, на котором всё это стоит;
-исходный README сохранён рядом как [README-OpenXRay.md](README-OpenXRay.md).
-
 Автору **Dead Air** — за мод, за разрешение опубликовать порт и за помощь, без которой эта работа
 выглядела бы совсем иначе:
 
@@ -235,9 +232,6 @@ git clone --depth 1 https://github.com/intel/xess.git Externals/xess
 дефекты, которые видны только на другом железе, другом драйвере и в обычной игре, а не в отладочном
 прогоне, находятся исключительно так — руками тех, кто взялся проверять.
 
-Проекту **[IX-Ray](https://github.com/ixray-team/ixray-1.6-stcop)** — за работающий образец
-интеграции DLSS, по которому сверялся порядок вызовов NGX.
-
 ### Dead Air Refined
 
 Отдельная благодарность — **[Dead Air Refined](https://github.com/MMadmer/Dead-Air-Refined)**,
@@ -255,3 +249,11 @@ git clone --depth 1 https://github.com/intel/xess.git Externals/xess
 представлений текстур и утечке узлов графа уровня. Совпадение дошло до самого неочевидного места:
 `m_pSRView` бывает алиасом другого представления, и освобождать его тогда нельзя — это учтено с
 обеих сторон. Лучшего подтверждения правильности правки без формального доказательства не бывает.
+
+### Проекты, на которых это стоит
+
+Проекту **[IX-Ray](https://github.com/ixray-team/ixray-1.6-stcop)** — за работающий образец
+интеграции DLSS, по которому сверялся порядок вызовов NGX.
+
+Команде **[OpenXRay](https://github.com/OpenXRay/xray-16)** — за движок, на котором всё это стоит;
+исходный README сохранён рядом как [README-OpenXRay.md](README-OpenXRay.md).
