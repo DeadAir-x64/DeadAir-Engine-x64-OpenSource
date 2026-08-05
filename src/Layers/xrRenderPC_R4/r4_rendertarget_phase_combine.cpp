@@ -7,6 +7,7 @@
 // xray::render искал бы символ в нём же — та самая грабля, что уже описана у соседних глобалов.
 extern ENGINE_API int ps_r__gbuffer_probe;
 extern ENGINE_API int ps_r__light_watch; // [DA_PORT] сколько кадров подряд писать свет под перекрестьем
+extern ENGINE_API int ps_r__shift_watch; // [DA_PORT] сколько кадров подряд мерить съезд готового кадра
 extern ENGINE_API int ps_r__shadow_test;  // [DA_PORT] замер кэша теневых карт, см. da_shadow_test_frame
 
 #define STENCIL_CULL 0
@@ -630,6 +631,15 @@ void CRenderTarget::phase_combine()
         phase_fsr3(); // [DA_PORT]
         phase_xess();
         phase_dlss(); // [DA_PORT] NVIDIA DLSS, тот же слот кадра; включён всегда только один
+        // [DA_PORT] Ездит ли готовый кадр — сразу после апскейлера и ДО постобработки: дальше по
+        // кадру картинку трогают зерно и цветокоррекция, а они сами по себе меняются каждый кадр и
+        // замер бы зашумили. См. CRenderTarget::da_shift_watch.
+        if (::ps_r__shift_watch)
+        {
+            --::ps_r__shift_watch;
+            da_shift_watch();
+        }
+
         da_d3d_debug_drain(); // [DA_PORT] validation layer output, see dx11HW.cpp // [DA_PORT] the other upscaler; only one is ever enabled
 
         PIX_EVENT(phase_pp);

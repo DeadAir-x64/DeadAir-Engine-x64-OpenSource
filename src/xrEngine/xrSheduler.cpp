@@ -315,8 +315,83 @@ void CSheduler::Pop()
     Items.pop_back();
 }
 
+extern ENGINE_API int ps_da_sched_dump; // [DA_PORT] см. xr_ioc_cmd.cpp
+
+// [DA_PORT] ---- Разбор планировщика по объектам: da_sched_dump <кадров> -------------------------
+//
+// Зачем. Разбор кадра показал: планировщик — 2.29 мс, 31% кадра, второй блок после обновления
+// объектов. Внутри 2055 запланированных объектов, и «планировщик дорогой» — это направление, а не
+// адрес. Здесь он раскладывается поимённо.
+//
+// Ключ — имя, под которым объект зарегистрирован (shedule_Name), оно уже лежит в записи. Счёт за
+// весь прогон, а не по кадрам: планировщик тем и отличается от покадрового обновления, что в
+// конкретном кадре почти все его объекты молчат, а дорогим может оказаться тот, кто просыпается
+// раз в секунду.
+namespace
+{
+struct da_sched_stat
+{
+    double total_ms = 0.0;
+    double max_ms = 0.0;
+    u32 calls = 0;
+};
+
+xr_map<shared_str, da_sched_stat> g_da_sched_stats;
+u32 g_da_sched_frame = 0;
+u32 g_da_sched_frames = 0;
+
+void da_sched_account(const shared_str& name, double ms)
+{
+    shared_str key = name;
+    if (!key.size())
+        key = "(без имени)";
+    da_sched_stat& st = g_da_sched_stats[key];
+    st.total_ms += ms;
+    ++st.calls;
+    if (ms > st.max_ms)
+        st.max_ms = ms;
+}
+
+void da_sched_report()
+{
+    xr_vector<std::pair<shared_str, da_sched_stat>> rows(g_da_sched_stats.begin(), g_da_sched_stats.end());
+    std::sort(rows.begin(), rows.end(),
+        [](const auto& a, const auto& b) { return a.second.total_ms > b.second.total_ms; });
+
+    double all = 0.0;
+    for (const auto& r : rows)
+        all += r.second.total_ms;
+
+    const u32 frames = _max(g_da_sched_frames, 1u);
+    Msg("~ [DA_SCHED] ---- итог за %u кадров ----", g_da_sched_frames);
+    Msg("~ [DA_SCHED] планировщик всего %.2f мс на кадр, разных объектов %u", float(all / frames),
+        u32(rows.size()));
+
+    u32 shown = 0;
+    for (const auto& r : rows)
+    {
+        if (shown++ >= 20)
+            break;
+        Msg("~ [DA_SCHED]   %-34s %6.3f мс на кадр (%4.1f%%), вызовов %6u, худший %6.2f мс",
+            r.first.c_str(), float(r.second.total_ms / frames),
+            float(all > 0.0 ? 100.0 * r.second.total_ms / all : 0.0), r.second.calls,
+            float(r.second.max_ms));
+    }
+
+    g_da_sched_stats.clear();
+    g_da_sched_frames = 0;
+}
+} // namespace
+
 void CSheduler::ProcessStep()
 {
+    if (::ps_da_sched_dump > 0 && g_da_sched_frame != Device.dwFrame)
+    {
+        g_da_sched_frame = Device.dwFrame;
+        ++g_da_sched_frames;
+        if (--::ps_da_sched_dump == 0)
+            da_sched_report();
+    }
     ZoneScoped;
 
     // Normal priority
@@ -368,8 +443,20 @@ void CSheduler::ProcessStep()
 
         m_current_step_obj = item.Object;
 
-        item.Object->shedule_Update(
-            clampr(Elapsed, u32(1), u32(_max(u32(schedulerData.t_max), u32(1000)))));
+        // [DA_PORT] Разбор планировщика по объектам: da_sched_dump <кадров>. См. пояснение выше.
+        if (::ps_da_sched_dump > 0)
+        {
+            CTimer da_t;
+            da_t.Start();
+            item.Object->shedule_Update(
+                clampr(Elapsed, u32(1), u32(_max(u32(schedulerData.t_max), u32(1000)))));
+            da_sched_account(item.scheduled_name, da_t.GetElapsed_sec() * 1000.0);
+        }
+        else
+        {
+            item.Object->shedule_Update(
+                clampr(Elapsed, u32(1), u32(_max(u32(schedulerData.t_max), u32(1000)))));
+        }
         if (!m_current_step_obj)
         {
 #ifdef DEBUG_SCHEDULER

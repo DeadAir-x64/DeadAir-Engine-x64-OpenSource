@@ -480,6 +480,17 @@ extern CUISequencer* g_tutorial2;
 void CGamePersistent::OnFrame()
 {
     ZoneScoped;
+    // [DA_PORT] Погода, окружение, интерфейс — ещё один подписчик кадра. Счётчик читает Device.cpp:
+    // без него всё это попадало в общий остаток вместе со скриптами и звуком.
+    extern ENGINE_API float g_da_ms_persist;
+    CTimer da_persist_timer;
+    da_persist_timer.Start();
+    struct da_persist_scope
+    {
+        CTimer& t;
+        ~da_persist_scope() { g_da_ms_persist += t.GetElapsed_sec() * 1000.f; }
+    } da_persist_scope_inst{ da_persist_timer };
+
 
     // [DA_PORT] Отложенная команда — ИМЕННО ЗДЕСЬ, а не в CLevel::OnFrame.
     //
@@ -625,12 +636,27 @@ void CGamePersistent::OnFrame()
 
     if (!Device.Paused())
     {
-        Engine.Sheduler.Update();
+        {
+            // [DA_PORT] Планировщик — внутри обновления окружения, и это неочевидно: здесь идут
+            // shedule_Update всех запланированных объектов, то есть ALife и «мозги» NPC. Без
+            // отдельного счётчика всё это приписывалось погоде и интерфейсу.
+            extern ENGINE_API float g_da_ms_sched;
+            CTimer da_sched_timer;
+            da_sched_timer.Start();
+            Engine.Sheduler.Update();
+            g_da_ms_sched += da_sched_timer.GetElapsed_sec() * 1000.f;
+        }
     }
 
     // update weathers ambient
     if (!Device.Paused())
-        WeathersUpdate();
+        {
+            extern ENGINE_API float g_da_ms_weather; // [DA_PORT] см. Device.cpp
+            CTimer da_weather_timer;
+            da_weather_timer.Start();
+            WeathersUpdate();
+            g_da_ms_weather += da_weather_timer.GetElapsed_sec() * 1000.f;
+        }
 
     if (0 != pDemoFile)
     {

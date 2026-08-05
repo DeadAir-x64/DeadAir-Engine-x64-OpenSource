@@ -193,7 +193,15 @@ void IGame_Level::OnFrame()
 
     // Update all objects
     VERIFY(bReady);
-    Objects.Update(false);
+
+    // [DA_PORT] Обновление объектов — счётчик читает Device.cpp, разбор по секциям — da_move_dump.
+    {
+        extern ENGINE_API float g_da_ms_objects;
+        CTimer da_obj_timer;
+        da_obj_timer.Start();
+        Objects.Update(false);
+        g_da_ms_objects += da_obj_timer.GetElapsed_sec() * 1000.f;
+    }
     pHUD->OnFrame();
 
     // Ambience

@@ -412,6 +412,17 @@ void CLevel::MakeReconnect()
 void CLevel::OnFrame()
 {
     ZoneScoped;
+    // [DA_PORT] Обновление уровня целиком. Вместе со счётчиками физики и объектов даёт остаток —
+    // то, что не объясняется ни тем, ни другим. Читает Device.cpp.
+    extern ENGINE_API float g_da_ms_level;
+    CTimer da_lvl_timer;
+    da_lvl_timer.Start();
+    struct da_lvl_scope
+    {
+        CTimer& t;
+        ~da_lvl_scope() { g_da_ms_level += t.GetElapsed_sec() * 1000.f; }
+    } da_lvl_scope_inst{ da_lvl_timer };
+
 
     DA_MemTick(); // [DA_PORT] досчитать объекты после спавна, см. da_memory_probe.h
 

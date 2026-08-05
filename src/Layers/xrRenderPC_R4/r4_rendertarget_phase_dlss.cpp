@@ -9,6 +9,7 @@ extern ENGINE_API int ps_r__dlss;
 extern ENGINE_API Fvector2 g_da_fsr2_jitter_px;
 
 extern ENGINE_API bool da_upscaler_history_reset(); // [DA_PORT]
+extern ENGINE_API void da_upscaler_report_failure(pcstr who, bool failed); // [DA_PORT]
 extern ENGINE_API int ps_r__dlss_reactive; // [DA_PORT] см. xr_ioc_cmd.cpp
 
 extern ENGINE_API int ps_r__dlss_selftest; // [DA_PORT]
@@ -375,6 +376,19 @@ bool CRenderTarget::phase_dlss()
         if (ok)
             g_da_fsr2_frame = Device.dwFrame;
     }
+
+    // [DA_PORT] Сторож, которого здесь не было ни одного.
+    //
+    // У FSR 2, FSR 3 и XeSS этот вызов стоит сразу за диспетчем, у DLSS его не было вовсе — тот же
+    // недосмотр «добавили бэкенд, не добавили в список», что уже дважды ломал маску реактивности и
+    // джиттер. Цена пропуска именно здесь наибольшая: без штампа кадра постобработка растягивает
+    // сырую сцену (см. fsr2_active в r2_rendertarget_phase_PP.cpp), а сцена смещена джиттером,
+    // который никто не выключил. То есть отказ DLSS выглядел как дрожание мира и не оставлял в
+    // логе ни строки.
+    //
+    // Вызов стоит ЗА блоком, а не внутри: если не нашлось хотя бы одной цели, диспетча не было
+    // вовсе, и это ровно такой же несобранный кадр, о котором надо сказать.
+    ::da_upscaler_report_failure("DLSS", !ok);
 
     _RELEASE(colour);
     _RELEASE(depth);

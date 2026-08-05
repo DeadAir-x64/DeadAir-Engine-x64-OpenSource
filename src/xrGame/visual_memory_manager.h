@@ -53,6 +53,12 @@ private:
     VISIBLES* m_objects;
     NOT_YET_VISIBLES m_not_yet_visible_objects;
 
+    // [DA_PORT] Когда мёртвому объекту в следующий раз считать видимость по-настоящему.
+    //
+    // Ключ — идентификатор объекта. Не сохраняется в игру и не переживает уровень: это чистый
+    // ускоритель, восстанавливается сам. Разбор — в add_visible_object.
+    xr_map<u16, u32> m_da_dead_next_check;
+
 private:
     DELAYED_VISIBLE_OBJECTS m_delayed_objects;
 

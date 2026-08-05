@@ -12,6 +12,8 @@
 #include "GameFont.h"
 #include "PerformanceAlert.hpp"
 
+extern ENGINE_API int ps_da_move_dump; // [DA_PORT] см. xr_ioc_cmd.cpp и da_move_probe ниже
+
 #include <xrCore/Threading/TaskManager.hpp>
 
 class fClassEQ
@@ -211,6 +213,110 @@ void CObjectList::clear_crow_vec(Objects& o)
     o.clear();
 }
 
+// [DA_PORT] ---- Разбор обновления объектов по секциям: da_move_dump <кадров> ---------------------
+//
+// Зачем понадобился. Разбор кадра (da_perf_dump) показал: игровая логика съедает 64% кадра, а
+// отрисовка стоит ровно и втрое меньше — то есть узкое место процессорное. Но ВНУТРИ логики
+// счётчиков не было: GOAP занимает 14%, поиск пути ноль, а оставшиеся 81% не разложены ни на что.
+// Оптимизировать то, чего не видно, нельзя: попытки чинить по прогнозу в этом проекте промахивались
+// подряд, и каждый промах стоил захода в игру.
+//
+// Группировка по СЕКЦИИ КОНФИГА, а не по имени объекта. Имя у каждого сталкера своё, и сумма по
+// именам рассыпалась бы на сотню строк по одной; секция отвечает на нужный вопрос — сколько стоит
+// КЛАСС объектов, то есть все сталкеры вместе.
+//
+// Счёт ведётся за всё время работы пробы, а не по кадрам: дорогой объект, обновляемый раз в
+// десять кадров, в отдельном кадре незаметен, а в сумме может оказаться главным.
+namespace
+{
+struct da_move_stat
+{
+    double total_ms = 0.0;
+    double max_ms = 0.0;
+    u32 calls = 0;
+};
+
+xr_map<shared_str, da_move_stat> g_da_move_stats;
+double g_da_move_post_ms = 0.0;
+u32 g_da_move_frames = 0;
+} // namespace
+
+void CObjectList::da_move_probe(IGameObject** b, IGameObject** e, Objects& active, Objects& sleeping)
+{
+    CTimer t;
+    double frame_ms = 0.0;
+
+    for (IGameObject** i = b; i != e; ++i)
+    {
+        t.Start();
+        (*i)->PreUpdateCL();
+        SingleUpdate(*i);
+        const double ms = t.GetElapsed_sec() * 1000.0;
+        frame_ms += ms;
+
+        // Секция может быть пустой у служебных объектов — тогда группируем по имени, иначе они
+        // сольются в одну безымянную строку и разобрать её будет нечем.
+        shared_str key = (*i)->cNameSect();
+        if (!key.size())
+            key = (*i)->cName();
+        if (!key.size())
+            key = "(без имени)";
+
+        da_move_stat& st = g_da_move_stats[key];
+        st.total_ms += ms;
+        ++st.calls;
+        if (ms > st.max_ms)
+            st.max_ms = ms;
+    }
+
+    t.Start();
+    for (auto& object : active)
+        object->PostUpdateCL(false);
+    for (auto& object : sleeping)
+        object->PostUpdateCL(true);
+    const double post_ms = t.GetElapsed_sec() * 1000.0;
+
+    g_da_move_post_ms += post_ms;
+    ++g_da_move_frames;
+
+    Msg("~ [DA_MOVE] кадр %u | объектов %u | обновление %5.2f мс | пост-обновление %5.2f мс",
+        Device.dwFrame, u32(e - b), float(frame_ms), float(post_ms));
+
+    if (--::ps_da_move_dump > 0)
+        return;
+
+    // Итог: кто съел время за весь прогон пробы. Сортировка по сумме, а не по худшему вызову —
+    // одиночный выброс лечится не там, где постоянная нагрузка.
+    xr_vector<std::pair<shared_str, da_move_stat>> rows(g_da_move_stats.begin(), g_da_move_stats.end());
+    std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b2) { return a.second.total_ms > b2.second.total_ms; });
+
+    double all = 0.0;
+    for (const auto& r : rows)
+        all += r.second.total_ms;
+
+    Msg("~ [DA_MOVE] ---- итог за %u кадров ----", g_da_move_frames);
+    Msg("~ [DA_MOVE] обновление объектов всего %.1f мс (%.2f мс на кадр), пост-обновление %.1f мс "
+        "(%.2f мс на кадр)",
+        float(all), float(all / _max(g_da_move_frames, 1u)), float(g_da_move_post_ms),
+        float(g_da_move_post_ms / _max(g_da_move_frames, 1u)));
+
+    u32 shown = 0;
+    for (const auto& r : rows)
+    {
+        if (shown++ >= 20)
+            break;
+        Msg("~ [DA_MOVE]   %-34s %6.2f мс на кадр (%4.1f%% обновления), вызовов %6u, худший %5.2f мс",
+            r.first.c_str(), float(r.second.total_ms / _max(g_da_move_frames, 1u)),
+            float(all > 0.0 ? 100.0 * r.second.total_ms / all : 0.0), r.second.calls,
+            float(r.second.max_ms));
+    }
+    Msg("~ [DA_MOVE] ---- всего секций %u ----", u32(rows.size()));
+
+    g_da_move_stats.clear();
+    g_da_move_post_ms = 0.0;
+    g_da_move_frames = 0;
+}
+
 void CObjectList::Update(bool bForce)
 {
     ZoneScoped;
@@ -281,18 +387,27 @@ void CObjectList::Update(bool bForce)
                 (*i)->SetCrowUpdateFrame(u32(-1));
             }
 
-            for (IGameObject** i = b; i != e; ++i)
+            // [DA_PORT] Разбор обновления объектов по секциям: da_move_dump <кадров>. См. da_move_probe
+            // ниже — там же объяснение, зачем он понадобился и почему группировка именно по секции.
+            //
+            // Выключенная проба стоит одной проверки целого числа за кадр.
+            if (::ps_da_move_dump > 0)
+                da_move_probe(b, e, objects_active, objects_sleeping);
+            else
             {
-                (*i)->PreUpdateCL();
-                SingleUpdate(*i);
+                for (IGameObject** i = b; i != e; ++i)
+                {
+                    (*i)->PreUpdateCL();
+                    SingleUpdate(*i);
+                }
+
+                //--#SM+#-- PostUpdateCL для всех клиентских объектов [for crowed and non-crowed]
+                for (auto& object : objects_active)
+                    object->PostUpdateCL(false);
+
+                for (auto& object : objects_sleeping)
+                    object->PostUpdateCL(true);
             }
-
-            //--#SM+#-- PostUpdateCL для всех клиентских объектов [for crowed and non-crowed]
-            for (auto& object : objects_active)
-                object->PostUpdateCL(false);
-
-            for (auto& object : objects_sleeping)
-                object->PostUpdateCL(true);
 
             stats.Update.End();
         }

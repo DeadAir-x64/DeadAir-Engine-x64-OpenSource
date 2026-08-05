@@ -216,6 +216,17 @@ void CPHWorld::SetGravity(float g)
 void CPHWorld::OnFrame()
 {
     ZoneScoped;
+    // [DA_PORT] Шаг физики — отдельный подписчик кадра, а значит в разбор кадра он попадал внутрь
+    // общей строки "move" и был неотличим от всего остального. Счётчик читает Device.cpp.
+    extern ENGINE_API float g_da_ms_phys;
+    CTimer da_phys_timer;
+    da_phys_timer.Start();
+    struct da_phys_scope
+    {
+        CTimer& t;
+        ~da_phys_scope() { g_da_ms_phys += t.GetElapsed_sec() * 1000.f; }
+    } da_phys_scope_inst{ da_phys_timer };
+
     stats.FrameStart();
 // Msg									("------------- physics: %d / %d",u32(Device.dwFrame),u32(m_steps_num));
 //calculate the flight of bullets

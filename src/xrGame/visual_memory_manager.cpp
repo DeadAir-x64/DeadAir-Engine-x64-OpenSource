@@ -7,6 +7,8 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "pch_script.h"
+
+extern int ps_da_dead_vision_ms; // [DA_PORT] см. console_commands.cpp
 #include "visual_memory_manager.h"
 #include "ai/stalker/ai_stalker.h"
 #include "ai/stalker/ai_stalker_impl.h"
@@ -140,9 +142,17 @@ void CVisualMemoryManager::reinit()
 
 void CVisualMemoryManager::reload(LPCSTR section)
 {
+    // [DA_PORT] Значение из конфига берётся КАК ЕСТЬ, а не только на повышение.
+    //
+    // Было `std::max(значение_из_конфига, 128)`, то есть конфиг мог потолок только поднять. А мод
+    // просит меньше: в m_stalker.ltx стоит DynamicObjectsCount = 32, и эта просьба игнорировалась —
+    // каждый NPC держал в памяти 128 объектов вместо заказанных тридцати двух.
+    //
+    // Код upstream OpenXRay, не наша правка; здесь он приведён к тому, что заказывают данные.
+    // Заводское значение 128 остаётся для секций, где ключа нет вовсе.
     const s32 maxObjectCount = pSettings->read_if_exists<s32>(section, "DynamicObjectsCount", -1);
-    if (maxObjectCount > -1)
-        m_max_object_count = std::max<u32>(maxObjectCount, m_max_object_count);
+    if (maxObjectCount > 0)
+        m_max_object_count = u32(maxObjectCount);
 
     if (m_stalker)
     {
@@ -450,6 +460,49 @@ void CVisualMemoryManager::add_visible_object(const IGameObject* object, float t
     if (!fictitious && should_ignore_object(object))
     {
         return;
+    }
+
+    // [DA_PORT] Мёртвым видимость пересчитываем не чаще раза в ai_dead_vision_ms.
+    //
+    // Почему это главный выигрыш. Замер da_stalker_dump после боя: фаза «память» съедала 34.93 мс
+    // на кадр — 83% всего обновления сталкеров, при том что зрение, мышление и физика остались на
+    // месте. Один вызов подорожал с 0.12 до 2.66 мс. Причина видна из устройства: тело сохраняет
+    // форму столкновений, из набора видимого не выбывает, и КАЖДЫЙ сталкер пересчитывает линию
+    // взгляда до КАЖДОГО трупа каждый цикл. Цена растёт произведением: полсотни NPC на полсотни
+    // тел — вот и тридцать пять миллисекунд.
+    //
+    // Труп не двигается и не угрожает, поэтому дорогой расчёт ему не нужен. Но выкидывать его из
+    // памяти НЕЛЬЗЯ: схема обыска (xr_corpse_detection) читает memory_visible_objects, и без
+    // записи сталкеры перестанут находить тела. Поэтому запись обновляется дешёвым fill — ровно
+    // тем же, что делает обычный путь для уже знакомого объекта, — а пропускается только сам
+    // расчёт видимости.
+    //
+    // Цена: труп, ушедший из поля зрения, числится видимым ещё до секунды. На поведение не влияет:
+    // он и так остаётся в памяти дольше по m_still_visible_time.
+    //
+    // ai_dead_vision_ms 0 возвращает прежнее поведение точь-в-точь.
+    if (!fictitious && ::ps_da_dead_vision_ms > 0 && m_objects)
+    {
+        const CEntityAlive* const alive_object = smart_cast<const CEntityAlive*>(object);
+        if (alive_object && !alive_object->g_Alive())
+        {
+            const CGameObject* const dead_object = smart_cast<const CGameObject*>(object);
+            if (dead_object)
+            {
+                const auto known = std::find(m_objects->begin(), m_objects->end(), object_id(dead_object));
+                if (known != m_objects->end())
+                {
+                    u32& next_check = m_da_dead_next_check[dead_object->ID()];
+                    if (Device.dwTimeGlobal < next_check)
+                    {
+                        (*known).fill(dead_object, m_object, (*known).m_squad_mask.get() | mask(),
+                            (*known).m_visible.get() | mask());
+                        return;
+                    }
+                    next_check = Device.dwTimeGlobal + u32(::ps_da_dead_vision_ms);
+                }
+            }
+        }
     }
 
     xr_vector<CVisibleObject>::iterator J;

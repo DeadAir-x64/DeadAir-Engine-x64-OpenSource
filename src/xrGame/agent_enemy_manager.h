@@ -26,6 +26,10 @@ public:
 
 private:
     CAgentManager* m_object;
+
+    // [DA_PORT] В каком кадре отряд последний раз раздавал врагов. См. distribute_enemies.
+    u32 m_da_distribute_frame = u32(-1);
+
     ENEMIES m_enemies;
     WOUNDED_ENEMIES m_wounded;
     bool m_only_wounded_left;

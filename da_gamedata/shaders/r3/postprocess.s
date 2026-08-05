@@ -38,6 +38,21 @@ function l_special        (shader, t_base, t_second, t_detail)
 	shader:dx10texture	("s_base1", "$user$albedo")
 	shader:dx10texture	("s_noise", "fx\\fx_noise2")
 
+	-- [DA_PORT] Те же привязки, что у normal выше, и это не украшение.
+	--
+	-- Постобработка выбирает между этими двумя вариантами по одному признаку: включена ли
+	-- цветокоррекция. Наш порт добавил цели только в normal, поэтому стоило зоне включить свою
+	-- цветокоррекцию, кадр уходил сюда - а здесь выход апскейлера не был привязан вовсе. DLSS
+	-- собирал кадр, его выбрасывали, и на экран растягивалась сырая сцена вместе с субпиксельным
+	-- сдвигом. Выглядело как дрожание мира внутри аномальной зоны.
+	--
+	-- Признак, по которому это нашлось: r__motion_vectors 2 внутри зоны не работал, снаружи
+	-- работал. Отладочный показ читает s_velocity - непривязанную здесь.
+	shader:dx10texture	("s_velocity", "$user$velocity")
+	shader:dx10texture	("s_reactive", "$user$reactive")
+	shader:dx10texture	("s_position", "$user$position")
+	shader:dx10texture	("s_fsr2", "$user$fsr2_out")
+
 	shader:dx10sampler	("smp_rtlinear")
 	shader:dx10sampler	("smp_linear")
 

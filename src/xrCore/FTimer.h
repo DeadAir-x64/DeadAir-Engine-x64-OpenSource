@@ -167,6 +167,36 @@ extern XRCORE_API u32 g_da_goap_calls;
 extern XRCORE_API u32 g_da_goap_searches;
 extern XRCORE_API double g_da_goap_exec_ms;
 extern XRCORE_API u32 g_da_goap_execs;
+
+// [DA_PORT] См. FTimer.cpp — разбор проверки свойств мира GOAP по номеру свойства.
+// 4096, а не 512: у скриптовых свойств номера крупные, и при малом массиве они сворачивались в
+// нулевой слот. Тот превращался в свалку — 134 тысячи вызовов против тысячи у настоящих свойств —
+// и выглядел как главный виновник. Переполнение теперь считается ОТДЕЛЬНО и печатается своей
+// строкой: молча терять данные прибор не должен.
+#define DA_GOAP_PROPS 4096
+extern XRCORE_API double g_da_goap_prop_ms[DA_GOAP_PROPS];
+extern XRCORE_API double g_da_goap_prop_max[DA_GOAP_PROPS];
+extern XRCORE_API u32 g_da_goap_prop_calls[DA_GOAP_PROPS];
+extern XRCORE_API int ps_da_goap_dump;
+extern XRCORE_API u32 g_da_goap_prop_frames;
+extern XRCORE_API double g_da_goap_prop_over_ms;
+extern XRCORE_API u32 g_da_goap_prop_over_calls;
+
+// [DA_PORT] Разбор по КЛАССУ вычислителя, а не по номеру свойства.
+//
+// Номера у каждого планировщика свои и накладываются: 124 у сталкера и 124 у обработчика предметов —
+// разные вещи, и по числу имя не восстановить. Имя класса однозначно. Ключ — указатель на строку
+// typeid, он постоянен для типа, поэтому сравнение указателей, а не строк.
+struct da_goap_kind
+{
+    const char* name;
+    double total_ms;
+    double max_ms;
+    u32 calls;
+};
+#define DA_GOAP_KINDS 128
+extern XRCORE_API da_goap_kind g_da_goap_kinds[DA_GOAP_KINDS];
+extern XRCORE_API u32 g_da_goap_kinds_used;
 extern XRCORE_API double g_da_oh_ms;
 extern XRCORE_API u32 g_da_oh_entries;
 extern XRCORE_API u32 g_da_oh_alive;

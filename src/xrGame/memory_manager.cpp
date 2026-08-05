@@ -86,24 +86,115 @@ void CMemoryManager::reload(LPCSTR section)
 extern bool g_enemy_manager_second_update;
 #endif // _DEBUG
 
+extern int ps_da_memory_dump; // [DA_PORT] см. console_commands.cpp
+
+// [DA_PORT] ---- Разбор ПАМЯТИ NPC по частям: da_memory_dump <кадров> --------------------------
+//
+// Зачем. da_stalker_dump показал: после боя фаза «память» съедает 75% обновления сталкеров даже
+// после того, как мёртвым перестали пересчитывать видимость каждый цикл (34.93 -> 10.93 мс на
+// кадр). Один вызов всё ещё стоит 1.51 мс против здоровых 0.12 -- значит внутри есть что-то ещё,
+// и «память дорогая» снова оказывается направлением, а не адресом.
+//
+// Части взяты по границам самой update: зрительная, слуховая, память о попаданиях, разбор
+// запомненного, работа с врагами, предметы с опасностями.
+namespace
+{
+struct da_mem_phase
+{
+    double total_ms = 0.0;
+    double max_ms = 0.0;
+    u32 calls = 0;
+};
+
+enum
+{
+    da_mem_visual = 0,
+    da_mem_sound,
+    da_mem_hit,
+    da_mem_scan,
+    da_mem_enemies,
+    da_mem_items,
+    da_mem_enemy_sel,
+    da_mem_distribute,
+    da_mem_rescan,
+    da_mem_count
+};
+
+pcstr const g_da_mem_name[da_mem_count] = {
+    "зрительная память", "слуховая память", "память о попаданиях",
+    "разбор запомненного", "враги", "предметы и опасности",
+    "  враги: выбор цели", "  враги: раздача по отряду", "  враги: повторный разбор",
+};
+
+da_mem_phase g_da_mem[da_mem_count];
+u32 g_da_mem_frame = 0;
+u32 g_da_mem_frames = 0;
+
+struct da_mem_timer
+{
+    CTimer t;
+    int idx;
+    bool on;
+    da_mem_timer(int i, bool active) : idx(i), on(active)
+    {
+        if (on)
+            t.Start();
+    }
+    ~da_mem_timer()
+    {
+        if (!on)
+            return;
+        const double ms = t.GetElapsed_sec() * 1000.0;
+        g_da_mem[idx].total_ms += ms;
+        ++g_da_mem[idx].calls;
+        if (ms > g_da_mem[idx].max_ms)
+            g_da_mem[idx].max_ms = ms;
+    }
+};
+
+void da_mem_report()
+{
+    double all = 0.0;
+    for (const auto& ph : g_da_mem)
+        all += ph.total_ms;
+    const u32 frames = _max(g_da_mem_frames, 1u);
+    Msg("~ [DA_MEM] ---- итог за %u кадров ----", g_da_mem_frames);
+    Msg("~ [DA_MEM] память всех NPC: %.2f мс на кадр", float(all / frames));
+    for (int i = 0; i < da_mem_count; ++i)
+        Msg("~ [DA_MEM]   %-24s %6.2f мс на кадр (%4.1f%%), вызовов %6u, худший %5.2f мс",
+            g_da_mem_name[i], float(g_da_mem[i].total_ms / frames),
+            float(all > 0.0 ? 100.0 * g_da_mem[i].total_ms / all : 0.0), g_da_mem[i].calls,
+            float(g_da_mem[i].max_ms));
+    for (auto& ph : g_da_mem)
+        ph = da_mem_phase();
+    g_da_mem_frames = 0;
+}
+} // namespace
+
 void CMemoryManager::update_enemies(const bool& registered_in_combat)
 {
+    // [DA_PORT] Три части внутри работы с врагами -- см. da_memory_dump. Считаются отдельно от
+    // общего счётчика "враги", поэтому в отчёте идут с отступом и в сумму не входят.
+    const bool da_probe = ::ps_da_memory_dump > 0;
 #ifdef _DEBUG
     g_enemy_manager_second_update = false;
 #endif // _DEBUG
-    enemy().update();
+    { da_mem_timer __da(da_mem_enemy_sel, da_probe); enemy().update(); }
 
     if (m_stalker && (!enemy().selected() || (smart_cast<const CAI_Stalker*>(enemy().selected()) &&
                                                  smart_cast<const CAI_Stalker*>(enemy().selected())->wounded())) &&
         registered_in_combat)
     {
-        m_stalker->agent_manager().enemy().distribute_enemies();
+        { da_mem_timer __da(da_mem_distribute, da_probe); m_stalker->agent_manager().enemy().distribute_enemies(); }
 
-        if (visual().enabled())
-            update(visual().objects(), true);
+        {
+            da_mem_timer __da(da_mem_rescan, da_probe);
+            if (visual().enabled())
+                update(visual().objects(), true);
 
-        update(sound().objects(), true);
-        update(hit().objects(), true);
+            update(sound().objects(), true);
+            update(hit().objects(), true);
+        }
 
 #ifdef _DEBUG
         g_enemy_manager_second_update = true;
@@ -114,11 +205,20 @@ void CMemoryManager::update_enemies(const bool& registered_in_combat)
 
 void CMemoryManager::update(float time_delta)
 {
+    const bool da_probe = ::ps_da_memory_dump > 0;
+    if (da_probe && g_da_mem_frame != Device.dwFrame)
+    {
+        g_da_mem_frame = Device.dwFrame;
+        ++g_da_mem_frames;
+        if (--::ps_da_memory_dump == 0)
+            da_mem_report();
+    }
+
     START_PROFILE("Memory Manager")
 
-    visual().update(time_delta);
-    sound().update();
-    hit().update();
+    { da_mem_timer __da(da_mem_visual, da_probe); visual().update(time_delta); }
+    { da_mem_timer __da(da_mem_sound, da_probe); sound().update(); }
+    { da_mem_timer __da(da_mem_hit, da_probe); hit().update(); }
 
     bool registered_in_combat = false;
     if (m_stalker)
@@ -128,15 +228,21 @@ void CMemoryManager::update(float time_delta)
     enemy().reset();
     item().reset();
 
-    if (visual().enabled())
-        update(visual().objects(), true);
+    {
+        da_mem_timer __da(da_mem_scan, da_probe);
+        if (visual().enabled())
+            update(visual().objects(), true);
 
-    update(sound().objects(), registered_in_combat ? true : false);
-    update(hit().objects(), registered_in_combat ? true : false);
+        update(sound().objects(), registered_in_combat ? true : false);
+        update(hit().objects(), registered_in_combat ? true : false);
+    }
 
-    update_enemies(registered_in_combat);
-    item().update();
-    danger().update();
+    { da_mem_timer __da(da_mem_enemies, da_probe); update_enemies(registered_in_combat); }
+    {
+        da_mem_timer __da(da_mem_items, da_probe);
+        item().update();
+        danger().update();
+    }
 
     STOP_PROFILE
 }

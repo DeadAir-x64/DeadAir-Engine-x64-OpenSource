@@ -86,6 +86,10 @@ public:
 private:
     void SingleUpdate(IGameObject* O);
 
+    // [DA_PORT] Разбор обновления объектов по секциям конфига: da_move_dump <кадров>. Тот же цикл,
+    // что в Update, но с секундомером на каждом объекте. См. пояснение в .cpp.
+    void da_move_probe(IGameObject** b, IGameObject** e, Objects& active, Objects& sleeping);
+
 public:
     void Update(bool bForce);
 

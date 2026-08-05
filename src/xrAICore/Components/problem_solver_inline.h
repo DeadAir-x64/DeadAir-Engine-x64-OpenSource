@@ -68,7 +68,61 @@ IC bool CProblemSolverAbstract::actual() const
             i = std::lower_bound(i, e, (*I).condition(), evaluators().value_comp());
         VERIFY(i != e);
         VERIFY((*i).first == (*I).condition());
-        if ((*i).second->evaluate() != (*I).value())
+        // [DA_PORT] Разбор проверки по номеру свойства: da_goap_dump. Выключенная проба — одна
+        // проверка целого числа на свойство. См. FTimer.cpp, там же зачем это понадобилось.
+        if (ps_da_goap_dump > 0)
+        {
+            CTimer da_t;
+            da_t.Start();
+            const bool val = (*i).second->evaluate();
+            const double ms = da_t.GetElapsed_sec() * 1000.0;
+            // Класс вычислителя — однозначное имя, в отличие от номера свойства.
+            {
+                // Имя вычислителя, а не имя класса: у скриптовых класс один на всех
+                // (CScriptPropertyEvaluatorWrapper), а различает их именно имя, под которым его
+                // завёл мод. Поле есть у всех вычислителей игры; шаблон разворачивается в xrGame,
+                // поэтому оно здесь видно.
+                const char* kind = (*i).second->m_evaluator_name;
+                if (!kind || !*kind)
+                    kind = typeid(*(*i).second).name();
+                u32 k = 0;
+                for (; k < g_da_goap_kinds_used; ++k)
+                    if (g_da_goap_kinds[k].name == kind ||
+                        (g_da_goap_kinds[k].name && !xr_strcmp(g_da_goap_kinds[k].name, kind)))
+                        break;
+                if (k == g_da_goap_kinds_used && k < u32(DA_GOAP_KINDS))
+                {
+                    g_da_goap_kinds[k].name = kind;
+                    ++g_da_goap_kinds_used;
+                }
+                if (k < u32(DA_GOAP_KINDS))
+                {
+                    g_da_goap_kinds[k].total_ms += ms;
+                    ++g_da_goap_kinds[k].calls;
+                    if (ms > g_da_goap_kinds[k].max_ms)
+                        g_da_goap_kinds[k].max_ms = ms;
+                }
+            }
+
+            const u32 idx = u32((*I).condition());
+            if (idx < u32(DA_GOAP_PROPS))
+            {
+                g_da_goap_prop_ms[idx] += ms;
+                ++g_da_goap_prop_calls[idx];
+                if (ms > g_da_goap_prop_max[idx])
+                    g_da_goap_prop_max[idx] = ms;
+            }
+            else
+            {
+                // Не сваливаем в нулевой слот: так прибор один раз уже соврал, назначив виновником
+                // свалку из чужих номеров.
+                g_da_goap_prop_over_ms += ms;
+                ++g_da_goap_prop_over_calls;
+            }
+            if (val != (*I).value())
+                return (false);
+        }
+        else if ((*i).second->evaluate() != (*I).value())
             return (false);
     }
     return (true);

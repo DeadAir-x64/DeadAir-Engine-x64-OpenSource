@@ -28,6 +28,19 @@ u32 ps_fps_limit = 1000; // [DA_PORT] token cvar now; 1000 == unlimited
 // [DA_PORT] Frames still to write into the log, see ProcessFrame. Counts itself down.
 ENGINE_API int ps_da_perf_dump = 0;
 
+// [DA_PORT] Три крупных блока игровой логики, каждый копится своим модулем за кадр.
+//
+// Понадобились потому, что da_perf_dump показал: логика съедает две трети кадра, обновление
+// объектов объясняет из них только половину, а вторая половина не измерена ни разу. Здесь она и
+// раскладывается: шаг физики (CPHWorld::OnFrame), обновление уровня целиком (CLevel::OnFrame) и
+// обновление объектов внутри него (CObjectList::Update).
+ENGINE_API float g_da_ms_phys = 0.f;
+ENGINE_API float g_da_ms_objects = 0.f;
+ENGINE_API float g_da_ms_level = 0.f;
+ENGINE_API float g_da_ms_persist = 0.f; // [DA_PORT] CGamePersistent::OnFrame целиком
+ENGINE_API float g_da_ms_sched = 0.f;   // [DA_PORT] Engine.Sheduler.Update() внутри него — ALife и «мозги» NPC
+ENGINE_API float g_da_ms_weather = 0.f; // [DA_PORT] WeathersUpdate() там же
+
 // [DA_PORT] Frame-time watchdog: milliseconds above which a frame is worth a line in the log. Zero is
 // off. Unlike the dump this is meant to be left running while playing - it says nothing until a frame
 // actually misbehaves, then reports what it was doing, so the log names the interaction rather than
@@ -664,11 +677,13 @@ void CRenderDevice::ProcessFrame()
             // Object counts alongside the times: if the active count moves with the frame time, ALife
             // bringing squads online is the answer, written in the same line.
             const u32 objects = g_pGameLevel ? g_pGameLevel->Objects.o_count() : 0;
-            Msg("~ [DA_PERF]%s frame %5.2f | move %5.2f | render %5.2f | wait %5.2f | seq %5.2f (inner "
+            Msg("~ [DA_PERF]%s frame %5.2f | move %5.2f (физика %5.2f, уровень %5.2f, объекты "
+                "%5.2f, окружение %5.2f [планировщик %5.2f, погода %5.2f]) | render %5.2f | wait %5.2f | seq %5.2f (inner "
                 "%5.2f) x%u | mt %5.2f | goap: actual %5.2f x%u, search %5.2f x%u, exec %5.2f x%u | "
                 "oh: %5.2f in%u alive%u throw%u | path %5.2f x%u | obj %u | sleep %5.2f | total %5.2f | "
                 "worst: %s",
-                watch_fires ? " SPIKE" : "", ms_frame, ms_move, ms_render, ms_wait, g_da_perf_seq_ms,
+                watch_fires ? " SPIKE" : "", ms_frame, ms_move, g_da_ms_phys, g_da_ms_level,
+                g_da_ms_objects, g_da_ms_persist, g_da_ms_sched, g_da_ms_weather, ms_render, ms_wait, g_da_perf_seq_ms,
                 g_da_perf_seq_inner_ms, g_da_perf_seq_count, g_da_perf_mt_ms, float(g_da_goap_actual_ms),
                 g_da_goap_calls, float(g_da_goap_search_ms), g_da_goap_searches, float(g_da_goap_exec_ms),
                 g_da_goap_execs, float(g_da_oh_ms), g_da_oh_entries, g_da_oh_alive, g_da_oh_throws,
@@ -937,6 +952,75 @@ void CRenderDevice::FrameMove()
     // TODO: HACK to test loading screen.
     // if(!g_bLoaded)
 
+    g_da_ms_phys = g_da_ms_objects = g_da_ms_level = g_da_ms_persist = g_da_ms_sched = g_da_ms_weather = 0.f;
+
+    // [DA_PORT] Разбор проверки свойств мира GOAP: da_goap_dump <кадров>. Счёт идёт за весь прогон
+    // (свойства проверяются пачками и редко), поэтому здесь только счёт кадров и вывод итога.
+    if (ps_da_goap_dump > 0)
+    {
+        ++g_da_goap_prop_frames;
+        if (--ps_da_goap_dump == 0)
+        {
+            const u32 frames = g_da_goap_prop_frames ? g_da_goap_prop_frames : 1;
+            double all = 0.0;
+            for (int i = 0; i < DA_GOAP_PROPS; ++i)
+                all += g_da_goap_prop_ms[i];
+
+            Msg("~ [DA_GOAP] ---- итог за %u кадров ----", g_da_goap_prop_frames);
+            Msg("~ [DA_GOAP] проверка свойств мира всего %.2f мс на кадр", float(all / frames));
+            if (g_da_goap_prop_over_calls)
+                Msg("~ [DA_GOAP] ⚠ свойств с номером ≥ %d: %.3f мс на кадр, вызовов %u — их разбор "
+                    "здесь не виден, поднимите DA_GOAP_PROPS",
+                    int(DA_GOAP_PROPS), float(g_da_goap_prop_over_ms / frames), g_da_goap_prop_over_calls);
+
+            for (int shown = 0; shown < 20; ++shown)
+            {
+                int best = -1;
+                for (int i = 0; i < DA_GOAP_PROPS; ++i)
+                    if (g_da_goap_prop_calls[i] && (best < 0 || g_da_goap_prop_ms[i] > g_da_goap_prop_ms[best]))
+                        best = i;
+                if (best < 0 || g_da_goap_prop_ms[best] <= 0.0)
+                    break;
+                Msg("~ [DA_GOAP]   свойство %3d: %6.3f мс на кадр (%4.1f%%), вызовов %7u, худший %6.2f мс",
+                    best, float(g_da_goap_prop_ms[best] / frames),
+                    float(all > 0.0 ? 100.0 * g_da_goap_prop_ms[best] / all : 0.0),
+                    g_da_goap_prop_calls[best], float(g_da_goap_prop_max[best]));
+                g_da_goap_prop_ms[best] = 0.0; // вывели — убираем из поиска следующего
+                g_da_goap_prop_calls[best] = 0;
+            }
+
+            for (int i = 0; i < DA_GOAP_PROPS; ++i)
+            {
+                g_da_goap_prop_ms[i] = 0.0;
+                g_da_goap_prop_max[i] = 0.0;
+                g_da_goap_prop_calls[i] = 0;
+            }
+            // Та же выборка, но по классам вычислителей — читаемая половина отчёта.
+            Msg("~ [DA_GOAP] ---- по классам вычислителей ----");
+            for (u32 shown = 0; shown < 15; ++shown)
+            {
+                int best = -1;
+                for (u32 i = 0; i < g_da_goap_kinds_used; ++i)
+                    if (g_da_goap_kinds[i].calls &&
+                        (best < 0 || g_da_goap_kinds[i].total_ms > g_da_goap_kinds[best].total_ms))
+                        best = int(i);
+                if (best < 0 || g_da_goap_kinds[best].total_ms <= 0.0)
+                    break;
+                Msg("~ [DA_GOAP]   %-52s %6.3f мс на кадр, вызовов %7u, худший %6.2f мс",
+                    g_da_goap_kinds[best].name, float(g_da_goap_kinds[best].total_ms / frames),
+                    g_da_goap_kinds[best].calls, float(g_da_goap_kinds[best].max_ms));
+                g_da_goap_kinds[best].total_ms = 0.0;
+                g_da_goap_kinds[best].calls = 0;
+            }
+            for (u32 i = 0; i < u32(DA_GOAP_KINDS); ++i)
+                g_da_goap_kinds[i] = da_goap_kind();
+            g_da_goap_kinds_used = 0;
+
+            g_da_goap_prop_frames = 0;
+            g_da_goap_prop_over_ms = 0.0;
+            g_da_goap_prop_over_calls = 0;
+        }
+    } // [DA_PORT] счётчики блоков — за кадр
     seqFrame.Process();
 
     g_bLoaded = true;

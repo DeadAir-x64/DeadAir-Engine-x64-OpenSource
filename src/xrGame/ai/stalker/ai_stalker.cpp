@@ -847,8 +847,126 @@ void CAI_Stalker::destroy_anim_mov_ctrl()
     movement().update(0);
 }
 
+extern ENGINE_API int ps_da_stalker_dump; // [DA_PORT] см. xr_ioc_cmd.cpp
+
+// [DA_PORT] ---- Разбор обновления сталкера по фазам: da_stalker_dump <кадров> --------------------
+//
+// Зачем. da_move_dump показал, что 55 сталкеров съедают 1.63 мс на кадр — четверть кадра, больше
+// всех остальных объектов вместе взятых. Но «сталкер дорогой» — это не адрес, а направление: внутри
+// его обновления с полдюжины независимых частей, и чинить надо ту, что стоит.
+//
+// Фазы взяты те же, что размечены авторскими START_PROFILE — они и так расставлены по смысловым
+// границам, а компилируются в пустоту без профилировщика (см. profiler.h). То есть разметка была,
+// а чисел не было.
+//
+// Счёт по всем сталкерам сразу, а не по одному: вопрос стоит «сколько стоит класс», ровно как в
+// da_move_dump. Кадры считаются по смене Device.dwFrame — обновление вызывается на каждого.
+namespace
+{
+struct da_stalker_phase
+{
+    double total_ms = 0.0;
+    double max_ms = 0.0;
+    u32 calls = 0;
+};
+
+enum
+{
+    da_ph_handler = 0,
+    da_ph_inherited,
+    da_ph_physics,
+    da_ph_sight,
+    da_ph_steps,
+    da_ph_shot,
+    // Ниже — фазы РЕДКОГО обновления (shedule_Update, «мозги»): оно идёт через планировщик, раз в
+    // десяток кадров на сталкера, и стоит на порядок дороже покадрового. Считается в тех же
+    // миллисекундах НА КАДР, поэтому обе половины прямо сравнимы.
+    da_ph_vision,
+    da_ph_enemies,
+    da_ph_memory,
+    da_ph_entity,
+    da_ph_think,
+    da_ph_count
+};
+
+pcstr const g_da_ph_name[da_ph_count] = {
+    "обработчик действий",
+    "наследуемое обновление (зрение, память, движение, анимация)",
+    "физика",
+    "прицеливание и взгляд",
+    "шаги",
+    "отдача оружия",
+    "[мозги] зрение",
+    "[мозги] разбор врагов",
+    "[мозги] память",
+    "[мозги] наследуемое (существо)",
+    "[мозги] мышление GOAP",
+};
+
+da_stalker_phase g_da_ph[da_ph_count];
+u32 g_da_ph_frame = 0;
+u32 g_da_ph_frames = 0;
+
+// Секундомер на область видимости: ставится сразу за START_PROFILE и снимает ровно ту же фазу.
+struct da_phase_timer
+{
+    CTimer t;
+    int idx;
+    bool on;
+
+    da_phase_timer(int i, bool active) : idx(i), on(active)
+    {
+        if (on)
+            t.Start();
+    }
+
+    ~da_phase_timer()
+    {
+        if (!on)
+            return;
+        const double ms = t.GetElapsed_sec() * 1000.0;
+        g_da_ph[idx].total_ms += ms;
+        ++g_da_ph[idx].calls;
+        if (ms > g_da_ph[idx].max_ms)
+            g_da_ph[idx].max_ms = ms;
+    }
+};
+
+void da_stalker_report()
+{
+    double all = 0.0;
+    for (const auto& p : g_da_ph)
+        all += p.total_ms;
+
+    const u32 frames = _max(g_da_ph_frames, 1u);
+    Msg("~ [DA_STALKER] ---- итог за %u кадров ----", g_da_ph_frames);
+    Msg("~ [DA_STALKER] обновление всех сталкеров: %.2f мс на кадр", float(all / frames));
+    for (int i = 0; i < da_ph_count; ++i)
+    {
+        Msg("~ [DA_STALKER]   %-58s %5.2f мс на кадр (%4.1f%%), вызовов %6u, худший %5.2f мс",
+            g_da_ph_name[i], float(g_da_ph[i].total_ms / frames),
+            float(all > 0.0 ? 100.0 * g_da_ph[i].total_ms / all : 0.0), g_da_ph[i].calls,
+            float(g_da_ph[i].max_ms));
+    }
+
+    for (auto& p : g_da_ph)
+        p = da_stalker_phase();
+    g_da_ph_frames = 0;
+}
+} // namespace
+
 void CAI_Stalker::UpdateCL()
 {
+    // [DA_PORT] Выключенная проба стоит одной проверки целого числа на сталкера за кадр.
+    const bool da_probe = ::ps_da_stalker_dump > 0;
+    if (da_probe && g_da_ph_frame != Device.dwFrame)
+    {
+        g_da_ph_frame = Device.dwFrame;
+        ++g_da_ph_frames;
+        if (--::ps_da_stalker_dump == 0)
+            da_stalker_report();
+    }
+
     START_PROFILE("stalker")
     START_PROFILE("stalker/client_update")
     VERIFY2(PPhysicsShell() || getEnabled(), cName().c_str());
@@ -873,6 +991,7 @@ void CAI_Stalker::UpdateCL()
         else
         {
             START_PROFILE("stalker/client_update/object_handler")
+            da_phase_timer __da_ph(da_ph_handler, da_probe);
             update_object_handler();
             STOP_PROFILE
         }
@@ -892,16 +1011,19 @@ void CAI_Stalker::UpdateCL()
     }
 
     START_PROFILE("stalker/client_update/inherited")
+    da_phase_timer __da_ph(da_ph_inherited, da_probe);
     inherited::UpdateCL();
     STOP_PROFILE
 
     START_PROFILE("stalker/client_update/physics")
+    da_phase_timer __da_ph(da_ph_physics, da_probe);
     m_pPhysics_support->in_UpdateCL();
     STOP_PROFILE
 
     if (g_Alive())
     {
         START_PROFILE("stalker/client_update/sight_manager")
+        da_phase_timer __da_ph(da_ph_sight, da_probe);
         VERIFY(!m_pPhysicsShell);
         try
         {
@@ -917,10 +1039,12 @@ void CAI_Stalker::UpdateCL()
         STOP_PROFILE
 
         START_PROFILE("stalker/client_update/step_manager")
+        da_phase_timer __da_ph(da_ph_steps, da_probe);
         CStepManager::update(false);
         STOP_PROFILE
 
         START_PROFILE("stalker/client_update/weapon_shot_effector")
+        da_phase_timer __da_ph(da_ph_shot, da_probe);
         if (weapon_shot_effector().IsActive())
             weapon_shot_effector().Update();
         STOP_PROFILE
@@ -938,6 +1062,17 @@ CPHDestroyable* CAI_Stalker::ph_destroyable() { return smart_cast<CPHDestroyable
 
 void CAI_Stalker::shedule_Update(u32 DT)
 {
+    // [DA_PORT] Та же проба, что в UpdateCL: da_stalker_dump. Кадр считается по смене Device.dwFrame,
+    // поэтому неважно, кто из двух обновлений его первым увидит.
+    const bool da_probe = ::ps_da_stalker_dump > 0;
+    if (da_probe && g_da_ph_frame != Device.dwFrame)
+    {
+        g_da_ph_frame = Device.dwFrame;
+        ++g_da_ph_frames;
+        if (--::ps_da_stalker_dump == 0)
+            da_stalker_report();
+    }
+
     START_PROFILE("stalker")
     START_PROFILE("stalker/schedule_update")
     VERIFY2(getEnabled() || PPhysicsShell(), cName().c_str());
@@ -979,6 +1114,7 @@ void CAI_Stalker::shedule_Update(u32 DT)
         else
         {
             START_PROFILE("stalker/schedule_update/vision")
+            da_phase_timer __da_ph(da_ph_vision, da_probe);
             Exec_Visibility();
             STOP_PROFILE
         }
@@ -986,10 +1122,12 @@ void CAI_Stalker::shedule_Update(u32 DT)
         START_PROFILE("stalker/schedule_update/memory")
 
         START_PROFILE("stalker/schedule_update/memory/process")
+        da_phase_timer __da_ph(da_ph_enemies, da_probe);
         process_enemies();
         STOP_PROFILE
 
         START_PROFILE("stalker/schedule_update/memory/update")
+        da_phase_timer __da_ph(da_ph_memory, da_probe);
         memory().update(dt);
         STOP_PROFILE
 
@@ -997,6 +1135,7 @@ void CAI_Stalker::shedule_Update(u32 DT)
     }
 
     START_PROFILE("stalker/schedule_update/inherited")
+    da_phase_timer __da_ph(da_ph_entity, da_probe);
     CEntityAlive::shedule_Update(DT);
     STOP_PROFILE
 
@@ -1093,7 +1232,10 @@ void CAI_Stalker::spawn_supplies()
 
 void CAI_Stalker::Think()
 {
+    // [DA_PORT] Своя проверка: Think — отдельная функция, флага из shedule_Update здесь не видно.
+    const bool da_probe = ::ps_da_stalker_dump > 0;
     START_PROFILE("stalker/schedule_update/think")
+    da_phase_timer __da_ph(da_ph_think, da_probe);
     u32 update_delta = Device.dwTimeGlobal - m_dwLastUpdateTime;
 
     START_PROFILE("stalker/schedule_update/think/brain")
