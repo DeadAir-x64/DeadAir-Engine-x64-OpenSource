@@ -88,6 +88,9 @@ void CALifeUpdateManager::update_switch()
 
     START_PROFILE("ALife/switch");
     graph().level().update(CSwitchPredicate(this), Device.dwPrecacheFrame > 0);
+
+    // [DA_PORT] Только теперь — удаление. Внутри обхода оно рушило сам обход, см. switch_object.
+    da_flush_pending_release();
     STOP_PROFILE
 }
 

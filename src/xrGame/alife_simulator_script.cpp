@@ -297,12 +297,31 @@ void CALifeSimulator__release(CALifeSimulator* self, CSE_Abstract* object, bool)
     VERIFY(self);
     //	self->release						(object,true);
 
-    THROW(object);
+    // [DA_PORT] Просьба удалить то, чего уже нет, — это не ошибка, а гонка скрипта с движком.
+    //
+    // Скрипты мода удаляют объекты сами (вороны, например, снимаются пачками), а движок к этому
+    // моменту мог убрать тот же объект по своей причине: тело отлежало срок уборки, родитель унёс
+    // ребёнка за собой. Скрипт получает пустую ссылку и приходит сюда с нулём.
+    //
+    // Было: THROW(object), а строкой ниже -- `if (!object) return;`, до которого исполнение не
+    // доходит НИКОГДА. THROW бросает исключение, которого здесь никто не ловит, и игра валится с
+    // «Unexpected application termination». Две проверки, которые вместе не проверяют ничего.
+    //
+    // Стало: тихий выход с записью в лог. Если это начнёт случаться часто, значит скрипты и движок
+    // спорят за удаление по другой причине, и знать об этом надо.
     if (!object)
+    {
+        Msg("~ [DA_PORT] ALife: скрипт просит освободить объект, которого уже нет — пропущено");
         return;
+    }
 
     CSE_ALifeObject* alife_object = smart_cast<CSE_ALifeObject*>(object);
-    THROW(alife_object);
+    if (!alife_object)
+    {
+        Msg("~ [DA_PORT] ALife: скрипт просит освободить [%s] — это не объект ALife, пропущено",
+            object->name_replace());
+        return;
+    }
     if (!alife_object->m_bOnline)
     {
         self->release(object, true);

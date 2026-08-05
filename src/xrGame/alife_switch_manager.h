@@ -36,10 +36,16 @@ public:
     void remove_online(CSE_ALifeDynamicObject* object, bool update_registries = true);
     void add_online(CSE_ALifeDynamicObject* object, bool update_registries = true);
 
+private:
+    // [DA_PORT] Объекты, которые пора убрать, копятся здесь и удаляются ПОСЛЕ обхода реестра.
+    // Разбор — в alife_switch_manager.cpp, у da_flush_pending_release.
+    xr_vector<ALife::_OBJECT_ID> m_da_pending_release;
+
 public:
     IC CALifeSwitchManager(IPureServer* server, LPCSTR section);
     virtual ~CALifeSwitchManager();
     void switch_object(CSE_ALifeDynamicObject* object);
+    void da_flush_pending_release(); // [DA_PORT] см. switch_object
     IC float online_distance() const noexcept;
     IC float offline_distance() const noexcept;
     IC float switch_distance() const noexcept;
