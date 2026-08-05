@@ -1,9 +1,16 @@
+# [DA_PORT] Автоматический запуск отключён, остался ручной (workflow_dispatch).
+#
+# Это наследство OpenXRay, и в форке оно падало бы на каждом pull request: сборка требует SDK
+# NVIDIA DLSS и Intel XeSS, которых в репозитории нет по условиям их лицензий (см. README, раздел
+# «Сборка»), а проверка стиля ругается на код порта. Красные крестики у каждого предложения
+# отпугивают сильнее, чем отсутствие проверок.
+#
+# Свой CI под этот форк — отдельная задача. До тех пор запускать вручную со вкладки Actions.
+
 name: "Pull Request Labeler"
 
 on:
-  pull_request_target:
-  pull_request_review:
-    types: submitted
+  workflow_dispatch:
 
 permissions:
   contents: read

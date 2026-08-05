@@ -1,0 +1,17 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Дефект чистого движка OpenXRay
+    url: https://github.com/OpenXRay/xray-16/issues
+    about: >
+      Если то же самое воспроизводится на обычном OpenXRay без этого порта — сообщать стоит туда,
+      там это починят для всех.
+
+  - name: Документация порта
+    url: https://github.com/DeadAir-x64/DeadAir-Engine-x64-OpenSource/blob/master/da_port/docs/README.md
+    about: >
+      Архитектура, список правок, карта Lua, производительность, отладочные команды и разбор
+      частых вопросов. Ответ может уже быть там.
+
+  - name: Настройки и решение проблем у тестеров
+    url: https://github.com/DeadAir-x64/DeadAir-Engine-x64-OpenSource/blob/master/da_port/docs/07_TROUBLESHOOTING.md
+    about: Не запускается, чёрный экран, низкий FPS — сначала сюда.

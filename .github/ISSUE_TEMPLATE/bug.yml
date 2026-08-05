@@ -1,0 +1,84 @@
+name: Дефект / Bug report
+description: Что-то работает не так — вылет, графика, звук, поведение NPC
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Лог обязателен. Без него разбор превращается в гадание: в логе есть карта модулей,
+        настройки рендера и стек падения.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: Что происходит
+      description: Опишите, что видите, и что ожидали увидеть.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как воспроизвести
+      description: Локация, действия, настройки. Чем точнее, тем быстрее найдётся причина.
+      placeholder: |
+        1. Загрузить сейв на Юпитере
+        2. Подойти к воде у карьера
+        3. Смотреть на дальний берег
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Лог
+      description: >
+        Приложите файл `appdata/logs/openxray_<имя>_NNN.log` — перетащите его в это поле.
+        Берите тот, что соответствует запуску с проблемой.
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: Видеокарта и версия драйвера
+      placeholder: RTX 4070, драйвер 566.36
+    validations:
+      required: true
+
+  - type: dropdown
+    id: upscaler
+    attributes:
+      label: Апскейлер
+      options:
+        - Выключен
+        - TAA
+        - DLSS
+        - FSR 2
+        - FSR 3
+        - XeSS
+        - FSR 1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: without_upscaler
+    attributes:
+      label: Воспроизводится ли с выключенным апскейлером?
+      description: >
+        Для дефектов изображения это половина ответа: мерцание, шлейфы и дрожание часто живут
+        в темпоральной реконструкции, а не там, где выглядят. Проверяется командой
+        `r__upscaler ui_mm_upscaler_off`.
+      options:
+        - Да, воспроизводится и без него
+        - Нет, только с апскейлером
+        - Не проверял
+        - Дефект не про изображение
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Скриншоты и прочее
+      description: Для дефектов изображения — снимок с проблемой; если мерцает, лучше два кадра подряд.

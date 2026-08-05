@@ -1,0 +1,68 @@
+name: Предложение / Proposal
+description: Идея правки, оптимизации или новой возможности
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Крупные изменения стоит обсудить до того, как писать код. У многих очевидных идей здесь уже
+        есть история отвергнутых версий — загляните в
+        [05_ROADMAP](../blob/master/da_port/docs/05_ROADMAP.md) и
+        [06_QUESTIONS](../blob/master/da_port/docs/06_QUESTIONS.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу это решает
+      description: >
+        Сначала задача, потом решение. «Хочу такую-то технологию» разбирать трудно;
+        «в таком-то месте вот что плохо» — легко.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Предлагаемое решение
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      options:
+        - Рендер и апскейлеры
+        - Производительность
+        - Игровая логика и мод
+        - Интерфейс
+        - Сборка и инструменты
+        - Документация
+        - Другое
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Замеры или ссылки
+      description: >
+        Если предложение про скорость — приложите числа и чем мерили (`da_perf_dump`, `da_gpu_log`,
+        `da_render_log`). Если про то, как сделано в других движках — дайте ссылку на код,
+        а не на обсуждение.
+
+  - type: checkboxes
+    id: gameplay
+    attributes:
+      label: Затрагивает ли это баланс или поведение мода
+      options:
+        - label: >
+            Да, предложение меняет игровой процесс. Понимаю, что порт переносит мод как есть,
+            и расхождение с оригиналом считается дефектом, а не улучшением.
+
+  - type: checkboxes
+    id: self
+    attributes:
+      label: Готовность делать
+      options:
+        - label: Готов взяться за реализацию сам
