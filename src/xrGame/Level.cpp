@@ -11,6 +11,10 @@
 #include "game_cl_base.h"
 #include "entity_alive.h"
 #include "ai_space.h"
+// [DA_PORT] Для прогрева визуалов: реестр объектов ALife и серверные сущности с именем модели.
+#include "alife_simulator.h"
+#include "alife_object_registry.h"
+#include "xrServer_Objects_ALife.h"
 #include "ai_debug.h"
 #include "ShootingObject.h"
 #include "GametaskManager.h"
@@ -316,6 +320,23 @@ void CLevel::ProcessGameEvents()
     {
         NET_Packet P;
         u32 svT = timeServer() - NET_Latency;
+
+        // [DA_PORT] Бюджет на разбор очереди событий: остаток уходит в следующий кадр.
+        //
+        // Цикл вычерпывал ВСЮ накопившуюся очередь за один заход. При массовом спавне -- игрок вошёл
+        // в новый район, ALife разом перевела десятки объектов в онлайн -- это давало выброс: замер
+        // da_perf_watch поймал 9.71 мс в одном кадре, при обычных нулях.
+        //
+        // События помечены серверным временем и разбираются по готовности, поэтому перенос остатка на
+        // следующий кадр их не теряет: они просто дождутся своей очереди. Проверка стоит В КОНЦЕ тела
+        // цикла, чтобы каждый заход обрабатывал хотя бы одно событие и очередь не могла застрять.
+        //
+        // da_events_budget_ms 0 возвращает прежнее поведение -- разбирать всё разом.
+        extern ENGINE_API float ps_da_events_budget_ms;
+        CTimer da_events_timer;
+        da_events_timer.Start();
+        bool da_was_spawn = false;
+
         while (game_events->available(svT))
         {
             u16 ID, dest, type;
@@ -327,6 +348,7 @@ void CLevel::ProcessGameEvents()
                 u16 dummy16;
                 P.r_begin(dummy16);
                 cl_Process_Spawn(P);
+                da_was_spawn = true; // [DA_PORT] см. бюджет в конце цикла
                 break;
             }
             case M_EVENT:
@@ -376,6 +398,22 @@ void CLevel::ProcessGameEvents()
                 break;
             }
             }
+
+            // [DA_PORT] Бюджет действует ТОЛЬКО в игре, не под загрузкой.
+            //
+            // Под экраном загрузки очередь спавна обязана вычерпаться целиком: следом идёт прогрев
+            // планировщика, и он проходит по всем объектам уровня. Оборванная очередь оставляет часть
+            // объектов несозданными, и прогрев падает на них -- чтение по нулевому адресу со стеком,
+            // упирающимся в CSheduler::ProcessStep. Именно так я и уронил игру, поставив бюджет без
+            // этой проверки.
+            //
+            // Признак -- dwPrecacheFrame: пока он не ноль, идёт предзагрузка, и торопиться некуда.
+            // Обрываем ТОЛЬКО если время съел спавн -- взято у движка Anomaly (SPAWN_ANTIFREEZE),
+            // там откладывается именно он. Прочие события (движение, попадания, сетевые ответы)
+            // задерживать нельзя: они дешёвые, а опоздание у них видно сразу.
+            if (da_was_spawn && ps_da_events_budget_ms > 0.f && Device.dwPrecacheFrame == 0 &&
+                da_events_timer.GetElapsed_sec() * 1000.f > ps_da_events_budget_ms)
+                break;
         }
     }
     if (OnServer() && GameID() != eGameIDSingle)
@@ -409,8 +447,139 @@ void CLevel::MakeReconnect()
     }
 }
 
+
+// [DA_PORT] Части обновления уровня. Замер da_perf_watch: в выбросах "уровень" доходил до 379 мс, а
+// обновление объектов внутри него оставалось мелким -- значит время в остальных частях, которых
+// никто не мерил. Читает разбор кадра (Device.cpp).
+extern ENGINE_API float g_da_ms_bullets;
+extern ENGINE_API float g_da_ms_gameevents;
+extern ENGINE_API float g_da_ms_map;
+extern ENGINE_API float g_da_ms_tasks;
+
+namespace
+{
+struct da_lvl_part
+{
+    CTimer t;
+    float& dst;
+    explicit da_lvl_part(float& d) : dst(d) { t.Start(); }
+    ~da_lvl_part() { dst += t.GetElapsed_sec() * 1000.f; }
+};
+} // namespace
+
+
+// [DA_PORT] ---- Прогрев визуалов: модели готовятся под экраном загрузки ---------------------------
+//
+// Зачем. Замер da_perf_watch поймал кадры, где разбор игровых событий стоил 9.4 мс. Бюджет их не
+// вылечил, и это само по себе оказалось ответом: бюджет проверяется ПОСЛЕ события, значит суммарное
+// время не может превысить порог плюс стоимость последнего спавна. Раз вышло 9.4 при пороге 3 --
+// один спавн стоил около семи миллисекунд сам по себе. Такой неделим, резать его снаружи нечем.
+//
+// Дорог он ровно один раз: при первом появлении объекта данного вида грузятся модель, текстуры и
+// анимации. Второй такой же объект появляется дёшево -- модель уже в пуле. Значит лечится не
+// бюджетом, а прогревом: пройти по списку объектов уровня, создать каждый визуал заранее и вернуть
+// в пул. Тот же приём, что у нас уже работает для шейдеров и описаний персонажей.
+//
+// Делается ВО ВРЕМЯ предзагрузки, порциями по времени: CLevel::OnFrame работает и там, пока висит
+// экран загрузки. Поэтому прогрев не удлиняет ни один кадр -- он растворяется в загрузке.
+//
+// da_visual_warmup_ms отрицательным выключает; 0 -- весь список за один заход.
+namespace
+{
+xr_vector<shared_str> g_da_warm_list;
+u32 g_da_warm_index = 0;
+bool g_da_warm_built = false;
+u32 g_da_warm_done = 0;
+float g_da_warm_ms = 0.f;
+
+void da_collect_visuals()
+{
+    g_da_warm_built = true;
+    g_da_warm_ms = 0.f;
+
+    if (!ai().get_alife())
+        return;
+
+    // Только текущий уровень: у объекта есть вершина игрового графа, у вершины -- номер уровня.
+    // Без этого фильтра пришлось бы готовить визуалы всей Зоны, а это тысячи лишних моделей.
+    const GameGraph::_LEVEL_ID level = ai().level_graph().level_id();
+
+    xr_set<shared_str> unique;
+    for (const auto& it : ai().alife().objects().objects())
+    {
+        const CSE_ALifeDynamicObject* const obj = it.second;
+        if (!obj)
+            continue;
+        if (!ai().game_graph().valid_vertex_id(obj->m_tGraphID))
+            continue;
+        if (ai().game_graph().vertex(obj->m_tGraphID)->level_id() != level)
+            continue;
+
+        const CSE_Visual* const visual = smart_cast<const CSE_Visual*>(obj);
+        if (!visual || !visual->visual_name.size())
+            continue;
+
+        unique.insert(visual->visual_name);
+    }
+
+    g_da_warm_list.assign(unique.begin(), unique.end());
+    Msg("* [DA_PORT] прогрев визуалов: к загрузке готовится %u разных моделей", u32(g_da_warm_list.size()));
+}
+} // namespace
+
+void CLevel::da_warmup_visuals()
+{
+    extern ENGINE_API float ps_da_visual_warmup_ms;
+    if (ps_da_visual_warmup_ms < 0.f) // отрицательное -- прогрев выключен
+        return;
+    if (Device.dwPrecacheFrame == 0) // предзагрузка кончилась -- поздно и уже незачем
+        return;
+
+    if (!g_da_warm_built)
+        da_collect_visuals();
+
+    if (g_da_warm_index >= g_da_warm_list.size())
+        return;
+
+    CTimer t;
+    t.Start();
+    while (g_da_warm_index < g_da_warm_list.size())
+    {
+        // Создаём и сразу возвращаем в пул: модель остаётся готовой, а ссылку никто не держит.
+        // Именно так пул и рассчитан -- model_Delete кладёт модель обратно, а не уничтожает.
+        IRenderVisual* v = GEnv.Render->model_Create(g_da_warm_list[g_da_warm_index].c_str());
+        if (v)
+        {
+            GEnv.Render->model_Delete(v, false);
+            ++g_da_warm_done;
+        }
+        ++g_da_warm_index;
+
+        // Ноль -- значит без потолка: догнать спавн важнее, чем сгладить кадр загрузочного экрана.
+        if (ps_da_visual_warmup_ms > 0.f && t.GetElapsed_sec() * 1000.f > ps_da_visual_warmup_ms)
+            break;
+    }
+
+    g_da_warm_ms += t.GetElapsed_sec() * 1000.f;
+
+    if (g_da_warm_index >= g_da_warm_list.size())
+        Msg("* [DA_PORT] прогрев визуалов: готово %u из %u за %.0f мс", g_da_warm_done,
+            u32(g_da_warm_list.size()), g_da_warm_ms);
+}
+
 void CLevel::OnFrame()
 {
+    da_warmup_visuals(); // [DA_PORT] см. выше
+    // Счётчики частей обнуляются здесь же, раз в кадр.
+    g_da_ms_bullets = g_da_ms_gameevents = g_da_ms_map = g_da_ms_tasks = 0.f;
+    {
+        extern ENGINE_API float g_da_ms_spawn_prep;
+        extern ENGINE_API float g_da_ms_spawn_create;
+        extern ENGINE_API float g_da_ms_spawn_net;
+        extern ENGINE_API u32 g_da_spawn_count;
+        g_da_ms_spawn_prep = g_da_ms_spawn_create = g_da_ms_spawn_net = 0.f;
+        g_da_spawn_count = 0;
+    }
     ZoneScoped;
     // [DA_PORT] Обновление уровня целиком. Вместе со счётчиками физики и объектов даёт остаток —
     // то, что не объясняется ни тем, ни другим. Читает Device.cpp.
@@ -436,9 +605,12 @@ void CLevel::OnFrame()
     else
         psDeviceFlags.set(rsDisableObjectsAsCrows, false);
     // commit events from bullet manager from prev-frame
-    stats.BulletManagerCommit.Begin();
-    BulletManager().CommitEvents();
-    stats.BulletManagerCommit.End();
+    {
+        da_lvl_part __da(g_da_ms_bullets);
+        stats.BulletManagerCommit.Begin();
+        BulletManager().CommitEvents();
+        stats.BulletManagerCommit.End();
+    }
     // Client receive
     if (net_isDisconnected())
     {
@@ -458,7 +630,7 @@ void CLevel::OnFrame()
         ClientReceive();
         stats.ClientRecv.End();
     }
-    ProcessGameEvents();
+    { da_lvl_part __da(g_da_ms_gameevents); ProcessGameEvents(); }
     if (m_bNeed_CrPr)
         make_NetCorrectionPrediction();
     if (!GEnv.isDedicatedServer)
@@ -470,7 +642,7 @@ void CLevel::OnFrame()
                 fastdelegate::FastDelegate0<>(m_map_manager, &CMapManager::Update));
         }
         else
-            MapManager().Update();
+    { da_lvl_part __da(g_da_ms_map); MapManager().Update(); }
         if (IsGameTypeSingle() && Device.dwPrecacheFrame == 0)
         {
             // XXX nitrocaster: was enabled in x-ray 1.5; to be restored or removed
@@ -480,7 +652,7 @@ void CLevel::OnFrame()
             //    m_game_task_manager,&CGameTaskManager::UpdateTasks));
             //}
             // else
-            GameTaskManager().UpdateTasks();
+    { da_lvl_part __da(g_da_ms_tasks); GameTaskManager().UpdateTasks(); }
         }
     }
     // Inherited update

@@ -7,6 +7,8 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "StdAfx.h"
+
+#include <mutex>
 #include "space_restriction_shape.h"
 #include "ai_space.h"
 #include "xrAICore/Navigation/level_graph.h"
@@ -84,6 +86,38 @@ void CSpaceRestrictionShape::fill_shape(const CCF_Shape::shape_def& shape)
 #ifdef DEBUG
     ai().level_graph().iterate_vertices(start, dest, CShapeTestPredicate(this));
 #endif
+}
+
+// [DA_PORT] Построение границы по первому требованию — и почему оно под замком.
+//
+// Границу строит тот, кто первым её спросил, а спрашивает её поиск пути, который идёт на рабочих
+// потоках (и на главном тоже: он исполняет задачи через TaskManager::Wait). Два потока, одновременно
+// пришедшие к одной непостроенной границе, писали бы в один и тот же вектор — это порча кучи,
+// C0000374, с падением где-то далеко от места ошибки.
+//
+// Замок один на все формы: он берётся только когда граница ещё не построена, то есть один раз на
+// ограничитель за уровень. Готовую границу читают без замка, по атомарному флагу.
+//
+// da_spawn_dump печатает, сколько раз второй поток реально ждал на этом замке. Ноль означает, что
+// гонки не случалось — но не то, что её не могло быть.
+static std::mutex s_da_border_mutex;
+u32 g_da_border_waits = 0;
+
+void CSpaceRestrictionShape::initialize()
+{
+    if (m_initialized)
+        return;
+
+    std::lock_guard<std::mutex> lock(s_da_border_mutex);
+
+    if (m_initialized) // пока ждали замок, границу построил другой поток
+    {
+        ++g_da_border_waits;
+        return;
+    }
+
+    build_border();
+    m_initialized = true;
 }
 
 void CSpaceRestrictionShape::build_border()

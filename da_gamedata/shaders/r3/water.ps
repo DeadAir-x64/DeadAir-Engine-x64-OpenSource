@@ -56,7 +56,13 @@ float4 main( vf I ) : SV_Target
 	float4	base= s_base.Sample( smp_base, I.tbase);
 	float3	n0	= s_nmap.Sample( smp_base, I.tnorm0.xy);
 	float3	n1	= s_nmap.Sample( smp_base, I.tnorm0.zw);
-	float3	Navg	= (n0 + n1 - 1) * float3(WATER_WAVE_AMP, WATER_WAVE_AMP, 1.0h);
+	// [DA_PORT] Дальняя вода успокаивается: см. WATER_FAR_* в settings_da_water.h. v2point здесь ещё
+	// не нормализован — это вектор от камеры к точке в мире, его длина и есть дистанция в метрах.
+	float	da_water_dist	= length(I.v2point);
+	float	da_water_far	= saturate((da_water_dist - WATER_FAR_START) / max(WATER_FAR_END - WATER_FAR_START, 0.001h));
+	float	da_water_amp	= WATER_WAVE_AMP * lerp(1.0h, WATER_FAR_AMP, da_water_far);
+
+	float3	Navg	= (n0 + n1 - 1) * float3(da_water_amp, da_water_amp, 1.0h);
 
 	float3	Nw	= mul (float3x3(I.M1, I.M2, I.M3), Navg);
 			Nw	= normalize (Nw);
@@ -91,9 +97,23 @@ float4 main( vf I ) : SV_Target
 	// [DA_PORT] Real screen-space reflections: get_reflection() now samples the scene copy (rt_SSR,
 	// bound to s_image by loose r3\effects_water.s). refl.w is the screen-edge fade -> near the screen
 	// centre the ray-marched scene colour wins, towards the borders it falls back to the sky cubemap.
-	float4 refl = calc_reflections(I.position_w, vreflect);
-	float3 c_reflection = lerp(refl.xyz, env.xyz, refl.www);
-	c_reflection = lerp(c_reflection,env,0.18);	// [DA_PORT] was 0.75 (SSR diluted to 25%), now ~82% SSR
+	// [DA_PORT] Дальняя вода отражает кубмапой, а не лучом — см. WATER_SSR_* в settings_da_water.h.
+	// Ветка настоящая, а не смешивание с нулевым весом: смысл в том, чтобы марш на дальних
+	// пикселях НЕ выполнялся вовсе.
+	float	da_ssr_fade	= saturate((da_water_dist - WATER_SSR_START) / max(WATER_SSR_END - WATER_SSR_START, 0.001h));
+	float3 c_reflection;
+
+	if (da_ssr_fade >= 0.999h)
+	{
+		c_reflection = env;
+	}
+	else
+	{
+		float4 refl = calc_reflections(I.position_w, vreflect);
+		c_reflection = lerp(refl.xyz, env.xyz, refl.www);
+		c_reflection = lerp(c_reflection,env,0.18);
+		c_reflection = lerp(c_reflection, env, da_ssr_fade);	// плавный переход к кубмапе
+	}	// [DA_PORT] was 0.75 (SSR diluted to 25%), now ~82% SSR
 #else
 	float3	c_reflection       = env;
 #endif
@@ -229,7 +249,7 @@ float4 main( vf I ) : SV_Target
 	final		= lerp(final, da_leaf_rgb, da_leaf_w);
 	alpha		= max(alpha, da_leaf_w);
 
-	clip(alpha - WATER_ALPHA_CLIP);
+	clip(alpha - WATER_ALPHA_CLIP);	// при нулевом пороге ничего не отбрасывает
 	return  float4   (final, alpha )                ;
 
 #else	//	NEED_SOFT_WATER

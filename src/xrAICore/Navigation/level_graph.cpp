@@ -59,10 +59,24 @@ CLevelGraph::~CLevelGraph()
     xr_delete(m_nodes);
     FS.r_close(m_reader);
 }
-u32 CLevelGraph::vertex(const Fvector& position) const
+// [DA_PORT] Поиск ближайшей вершины столбцами вместо перебора всего графа.
+//
+// Сам движок называл прежний вариант "performing very slow full search": он считал расстояние до
+// КАЖДОЙ из 1.48 млн вершин. Замер: 11.5 мс на вызов. Путей сюда три, и один из них игровой --
+// сталкер, заходящий в укрытие (stalker_movement_manager_smart_cover); остальные два дают 172 мс на
+// загрузку уровня (переходы между локациями).
+//
+// Вершины лежат отсортированными по упакованной координате xz = x * row_length + z, то есть массив
+// разбит на столбцы сетки по x, и границы столбца находятся двоичным поиском. Идём от столбца
+// искомой точки наружу и останавливаемся, когда следующий столбец заведомо дальше уже найденного:
+// любая вершина столбца x отстоит по оси x не меньше чем на (|dx| - 1) * cell_size.
+//
+// Результат обязан совпадать с прежним. Ручка da_vertex_search_verify включает сверку: оба поиска
+// считаются и расхождение печатается в лог.
+XRAICORE_API int ps_da_vertex_search_verify = 0;
+
+u32 CLevelGraph::da_vertex_slow(const Fvector& position) const
 {
-    CLevelGraph::CPosition _node_position;
-    vertex_position(_node_position, position);
     float min_dist = flt_max;
     u32 selected;
     set_invalid_vertex(selected);
@@ -74,6 +88,86 @@ u32 CLevelGraph::vertex(const Fvector& position) const
             min_dist = dist;
             selected = i;
         }
+    }
+    return (selected);
+}
+
+u32 CLevelGraph::vertex(const Fvector& position) const
+{
+    const u32 count = header().vertex_count();
+    if (!count)
+    {
+        u32 selected;
+        set_invalid_vertex(selected);
+        return (selected);
+    }
+
+    const float cell = header().cell_size();
+    const CLevelVertex* const B = m_nodes->begin();
+    const CLevelVertex* const E = m_nodes->end();
+
+    // Столбец искомой точки. Значение может выйти за пределы графа -- это нормально, поиск всё равно
+    // пойдёт наружу и первым же шагом упрётся в существующие столбцы.
+    const int target_x = iFloor((position.x - header().box().vMin.x) / cell);
+    const int max_x = int(m_max_x);
+
+    float min_dist = flt_max;
+    u32 selected;
+    set_invalid_vertex(selected);
+
+    for (int radius = 0;; ++radius)
+    {
+        // Столбцы на удалении radius не могут дать выигрыш, если предыдущее кольцо уже ближе.
+        if (valid_vertex_id(selected))
+        {
+            const float lower_bound_dist = float(radius - 1) * cell;
+            if (lower_bound_dist > 0.f && lower_bound_dist * lower_bound_dist > min_dist)
+                break;
+        }
+
+        bool any_column_in_range = false;
+
+        for (int side = 0; side < 2; ++side)
+        {
+            if (radius == 0 && side == 1)
+                continue;
+
+            const int x = (side == 0) ? (target_x - radius) : (target_x + radius);
+            if (x < 0 || x > max_x)
+                continue;
+
+            any_column_in_range = true;
+
+            const u32 lo = u32(x) * m_row_length;
+            const u32 hi = lo + m_row_length;
+
+            const CLevelVertex* I = std::lower_bound(B, E, lo, CLevelGraph::vertex::predicate2);
+            for (; I != E; ++I)
+            {
+                if (I->position().xz() >= hi)
+                    break;
+
+                const u32 vertex_id = u32(I - B);
+                const float dist = distance(vertex_id, position);
+                if (dist < min_dist)
+                {
+                    min_dist = dist;
+                    selected = vertex_id;
+                }
+            }
+        }
+
+        // Оба направления вышли за пределы графа -- дальше искать негде.
+        if (!any_column_in_range && radius > max_x)
+            break;
+    }
+
+    if (ps_da_vertex_search_verify)
+    {
+        const u32 slow = da_vertex_slow(position);
+        if (slow != selected)
+            Msg("! [DA_PORT] поиск вершины разошёлся: быстрый [%u], полный [%u], точка [%f][%f][%f]",
+                selected, slow, VPUSH(position));
     }
 
     VERIFY(valid_vertex_id(selected));

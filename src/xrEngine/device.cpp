@@ -41,11 +41,47 @@ ENGINE_API float g_da_ms_persist = 0.f; // [DA_PORT] CGamePersistent::OnFrame ц
 ENGINE_API float g_da_ms_sched = 0.f;   // [DA_PORT] Engine.Sheduler.Update() внутри него — ALife и «мозги» NPC
 ENGINE_API float g_da_ms_weather = 0.f; // [DA_PORT] WeathersUpdate() там же
 
+// [DA_PORT] Части обновления уровня. Пишет xrGame (Level.cpp), читает разбор кадра ниже.
+// Живут здесь, а не в игре: ENGINE_API в xrGame означает импорт, определить там нельзя.
+ENGINE_API float g_da_ms_bullets = 0.f;
+ENGINE_API float g_da_ms_gameevents = 0.f;
+ENGINE_API float g_da_ms_map = 0.f;
+ENGINE_API float g_da_ms_tasks = 0.f;
+
+// [DA_PORT] Ещё два неизмеренных места, вскрытых сторожем.
+//
+// В одном выбросе: move 13.66 при уровне 0.51, объектах 0.43, окружении 0.83 и физике 0 -- то есть
+// двенадцать миллисекунд внутри FrameMove мимо всех счётчиков. В другом: окружение 8.24, а
+// планировщик в нём 0.24 -- восемь миллисекунд мимо планировщика и погоды.
+//
+// seqframe -- вся рассылка подписчиков кадра (уровень, физика, окружение и все прочие вместе).
+// Разница между move и seqframe покажет, есть ли что-то в FrameMove помимо рассылки.
+// env -- IGame_Persistent::OnFrame, то есть система погоды и окружения внутри CGamePersistent.
+ENGINE_API float g_da_ms_seqframe = 0.f;
+ENGINE_API float g_da_ms_env = 0.f;
+
+// [DA_PORT] Из чего состоит спавн. Прогрев визуалов срезал выброс с 9.4 до 6.6 мс -- значит модель
+// была лишь четвертью цены, а остальное лежит внутри создания объекта. Граница проведена там, где
+// она есть в коде: подготовка сущности и Objects.Create -- отдельно, net_Spawn -- отдельно.
+ENGINE_API float g_da_ms_spawn_prep = 0.f;
+ENGINE_API float g_da_ms_spawn_create = 0.f;
+ENGINE_API float g_da_ms_spawn_net = 0.f;
+ENGINE_API u32 g_da_spawn_count = 0;
+
 // [DA_PORT] Frame-time watchdog: milliseconds above which a frame is worth a line in the log. Zero is
 // off. Unlike the dump this is meant to be left running while playing - it says nothing until a frame
 // actually misbehaves, then reports what it was doing, so the log names the interaction rather than
 // the clock. See ProcessFrame.
 ENGINE_API int ps_da_perf_watch = 0;
+
+// [DA_PORT] Прогрев планировщика в конце загрузки уровня, миллисекунды. Определён в xr_ioc_cmd.cpp,
+// применяется ниже — в RenderEnd, там же и разбор.
+extern ENGINE_API int ps_da_sched_warmup_ms;
+
+// [DA_PORT] Длительность последнего обмена с Discord — см. x_ray.cpp.
+extern ENGINE_API float g_da_ms_discord;
+extern ENGINE_API float g_da_ms_events;
+extern ENGINE_API float g_da_ms_proc_full;
 
 // [DA_PORT] Ловушка на выброс в отложенных задачах кадра, см. Device.h и xr_ioc_cmd.cpp.
 ENGINE_API float ps_da_seq_trap = 0.f;
@@ -171,6 +207,8 @@ static u32 g_da_perf_seq_count = 0;
 static float g_da_perf_seq_inner_ms = 0.f;
 static float g_da_perf_sleep_ms = 0.f;
 static float g_da_perf_total_ms = 0.f;
+static CTimer g_da_tail_timer;   // [DA_PORT] хвост кадра, см. ProcessFrame
+static bool g_da_tail_report = false;
 u32 ps_fps_limit_in_menu = 60;
 
 bool g_bLoaded = false;
@@ -228,6 +266,43 @@ void CRenderDevice::RenderEnd(void)
             }
             GEnv.Sound->set_master_volume(1.f);
             GEnv.Render->ResourcesDestroyNecessaryTextures();
+            // [DA_PORT] Прогрев планировщика: первые обновления всех объектов -- здесь, а не в игре.
+            //
+            // Замер da_perf_watch на Юпитере: сразу после загрузки один кадр стоил 2765 мс, и 367 из
+            // них -- планировщик. При обычных 0.19 мс это в две тысячи раз больше. Причина простая:
+            // объекты уровня зарегистрировались, срок первого обновления у всех наступил разом, и
+            // весь ком достался первому же игровому кадру.
+            //
+            // Здесь предзагрузка только что кончилась: объекты созданы, а кадр игроку ещё не показан.
+            // Работа не исчезает -- она переносится под экран загрузки, где её никто не чувствует.
+            //
+            // Бюджет планировщика на время прогрева снимаем: обычно он режет проход десятью
+            // миллисекундами (psShedulerCurrent), и с ним ком за один заход не разошёлся бы.
+            //
+            // Проходов немного и они самоограничены: время игры внутри цикла не идёт, поэтому уже
+            // после первого прохода объекты переносят свой срок в будущее, и следующий заход просто
+            // не находит работы. Потолок в четыре прохода -- страховка от объекта, который сам себя
+            // переназначает на "сейчас".
+            if (ps_da_sched_warmup_ms > 0)
+            {
+                extern float psShedulerCurrent;
+                const float saved_budget = psShedulerCurrent;
+                psShedulerCurrent = float(ps_da_sched_warmup_ms);
+
+                CTimer warmup;
+                warmup.Start();
+                u32 passes = 0;
+                do
+                {
+                    Engine.Sheduler.Update();
+                    ++passes;
+                } while (passes < 4 && warmup.GetElapsed_sec() * 1000.f < float(ps_da_sched_warmup_ms));
+
+                psShedulerCurrent = saved_budget;
+                Msg("* [DA_PORT] прогрев планировщика: %u проходов за %.0f мс", passes,
+                    warmup.GetElapsed_sec() * 1000.f);
+            }
+
             Memory.mem_compact();
             Msg("* MEMORY USAGE: %d K", Memory.mem_usage() / 1024);
             Msg("* End of synchronization A[%d] R[%d]", b_is_Active, b_is_Ready);
@@ -463,6 +538,20 @@ void CRenderDevice::ProcessFrame()
     const bool perf = ps_da_perf_dump > 0 || ps_da_perf_watch > 0;
     CTimer perf_timer;
     float ms_move = 0.f, ms_render = 0.f, ms_wait = 0.f;
+
+    // [DA_PORT] Отдельно -- ВЕСЬ ProcessFrame, чтобы отделить его от остального кадра.
+    //
+    // Длина кадра берётся из времени МЕЖДУ кадрами (fTimeDeltaReal), то есть включает и то, что
+    // происходит вне измеряемой части: разбор сообщений окна, ожидания драйвера, подгрузку ресурсов
+    // по первому обращению. Замер после загрузки Юпитера: кадр 462 мс, из них логика 8 и рендер 11 --
+    // остальные 443 не видел ни один счётчик, и было непонятно даже, внутри они или снаружи.
+    //
+    // Теперь в отчёте есть "проц" (весь ProcessFrame). Разница между кадром и им -- это ровно то,
+    // что происходит ВНЕ его, и дальше искать надо уже там, а не гадать.
+    CTimer proc_timer;
+    if (perf)
+        proc_timer.Start();
+
     if (perf)
         perf_timer.Start();
 
@@ -643,7 +732,20 @@ void CRenderDevice::ProcessFrame()
     // which is what gave it away. This costs one line per frame and nothing is open while it writes.
     if (perf)
     {
-        const float ms_frame = fTimeDeltaReal * 1000.f;
+        // [DA_PORT] РАБОТА текущего кадра, а не длительность предыдущего.
+        //
+        // Раньше здесь стояло fTimeDeltaReal -- время МЕЖДУ кадрами, то есть длительность
+        // ПРЕДЫДУЩЕГО. В одной строке отчёта соседствовали два разных кадра: "frame" и "полный" от
+        // прошлого, "проц", "move", "render" от текущего. На ровном ходу разницы не видно, а на
+        // выбросе строка становится бессмысленной -- ровно на этом я потерял два захода, читая
+        // "кадр 520 мс при проц 18" как загадку, тогда как это просто два разных кадра.
+        //
+        // Считаем от начала ЭТОГО кадра. Сон ограничителя сюда не входит по построению: он идёт
+        // ниже по функции, и это правильно -- намеренное ожидание работой не является. Заодно
+        // отпала нужда отсеивать менюшные кадры вручную.
+        const float ms_work = float(TimerGlobal.GetElapsed_ns() - frameStartTime) / 1000000.f;
+        const float ms_frame = fTimeDeltaReal * 1000.f; // предыдущий кадр целиком, для сравнения
+        const float ms_proc = perf ? proc_timer.GetElapsed_sec() * 1000.f : 0.f;
 
         // [DA_PORT] Watchdog: silent until a frame actually misbehaves.
         //
@@ -655,8 +757,27 @@ void CRenderDevice::ProcessFrame()
         //
         // Rate-limited, because a real stall lasts many frames and one line per frame would bury the
         // first one, which is the only interesting one.
+        // [DA_PORT] Кадр, который ПРОСПАЛИ, провалом не считается.
+        //
+        // Ограничитель частоты (в меню он 60) досыпает кадр до нужной длины, и такой кадр честно
+        // длинный: 16.67 мс при пороге 8. Сторож на них срабатывал подряд, в лог шли строки с
+        // obj 0 и нулями во всех счётчиках, а выглядело это как найденная просадка. Один разбор
+        // так и ушёл впустую: сорок пять «выбросов», все до единого — меню.
+        //
+        // Признак прямой: sleep занимает большую часть кадра, значит время потрачено на ожидание
+        // по нашей же воле, а не на работу.
+        //
+        // ⚠️ Счётчик сна выставляется НИЖЕ по кадру, поэтому здесь читается значение предыдущего.
+        // Для ограничителя частоты это верно — он спит кадр за кадром, — но на первом кадре после
+        // включения ограничителя сторож ещё сработает один раз. Печатаемое рядом значение sleep
+        // берётся оттуда же, так что отчёт и признак согласованы между собой.
+        // [DA_PORT] Второй повод сработать: в кадре был дорогой спавн. По одному лишь времени кадра
+        // такие кадры теряются — спавн приходит редко, и попасть в него коротким da_frame почти
+        // невозможно. Порог низкий (1 мс), потому что интересна как раз редкая дорогая штука.
+        const float da_spawn_ms = g_da_ms_spawn_prep + g_da_ms_spawn_create + g_da_ms_spawn_net;
+
         bool watch_fires = false;
-        if (ps_da_perf_watch > 0 && ms_frame > float(ps_da_perf_watch))
+        if (ps_da_perf_watch > 0 && (ms_work > float(ps_da_perf_watch) || da_spawn_ms > 1.f))
         {
             static u32 last_report = 0;
             if (dwTimeGlobal - last_report > 200)
@@ -677,19 +798,32 @@ void CRenderDevice::ProcessFrame()
             // Object counts alongside the times: if the active count moves with the frame time, ALife
             // bringing squads online is the answer, written in the same line.
             const u32 objects = g_pGameLevel ? g_pGameLevel->Objects.o_count() : 0;
-            Msg("~ [DA_PERF]%s frame %5.2f | move %5.2f (физика %5.2f, уровень %5.2f, объекты "
-                "%5.2f, окружение %5.2f [планировщик %5.2f, погода %5.2f]) | render %5.2f | wait %5.2f | seq %5.2f (inner "
+            Msg("~ [DA_PERF]%s работа %5.2f | проц %5.2f | пред.кадр %5.2f (полный %5.2f, события %5.2f, discord %5.2f) | move %5.2f (физика %5.2f, уровень %5.2f [пули %5.2f, события %5.2f (спавн: подгот %5.2f, объект %5.2f, net %6.2f, x%u), карта %5.2f, задания %5.2f], объекты "
+                "%5.2f, рассылка %5.2f, окружение %5.2f [планировщик %5.2f, погода %5.2f, среда %5.2f]) | render %5.2f | wait %5.2f | seq %5.2f (inner "
                 "%5.2f) x%u | mt %5.2f | goap: actual %5.2f x%u, search %5.2f x%u, exec %5.2f x%u | "
                 "oh: %5.2f in%u alive%u throw%u | path %5.2f x%u | obj %u | sleep %5.2f | total %5.2f | "
                 "worst: %s",
-                watch_fires ? " SPIKE" : "", ms_frame, ms_move, g_da_ms_phys, g_da_ms_level,
-                g_da_ms_objects, g_da_ms_persist, g_da_ms_sched, g_da_ms_weather, ms_render, ms_wait, g_da_perf_seq_ms,
+                watch_fires ? " SPIKE" : "", ms_work, ms_proc, ms_frame, g_da_ms_proc_full,
+                g_da_ms_events, g_da_ms_discord, ms_move, g_da_ms_phys, g_da_ms_level, g_da_ms_bullets, g_da_ms_gameevents,
+                g_da_ms_spawn_prep, g_da_ms_spawn_create, g_da_ms_spawn_net, g_da_spawn_count, g_da_ms_map, g_da_ms_tasks,
+                g_da_ms_objects, g_da_ms_seqframe, g_da_ms_persist, g_da_ms_sched, g_da_ms_weather,
+                g_da_ms_env, ms_render, ms_wait, g_da_perf_seq_ms,
                 g_da_perf_seq_inner_ms, g_da_perf_seq_count, g_da_perf_mt_ms, float(g_da_goap_actual_ms),
                 g_da_goap_calls, float(g_da_goap_search_ms), g_da_goap_searches, float(g_da_goap_exec_ms),
                 g_da_goap_execs, float(g_da_oh_ms), g_da_oh_entries, g_da_oh_alive, g_da_oh_throws,
                 float(g_da_lpb_ms), g_da_lpb_calls, objects, g_da_perf_sleep_ms, g_da_perf_total_ms,
                 worst);
         }
+
+        // [DA_PORT] Отсюда начинается ХВОСТ кадра -- всё, что идёт после отчёта.
+        //
+        // Замер показал: при кадре 520 мс до отчёта проходит 18, а весь ProcessFrame занимает 520.79.
+        // Значит полтысячи миллисекунд лежат здесь, между печатью и концом функции. Что именно --
+        // печатается отдельной строкой ниже, уже после ограничителя частоты: сон и всё остальное
+        // порознь, потому что сон в основном отчёте показывает ПРЕДЫДУЩИЙ кадр и на выбросе врёт.
+        g_da_tail_report = watch_fires || ps_da_perf_dump > 0;
+        if (g_da_tail_report)
+            g_da_tail_timer.Start();
 
         if (ps_da_perf_dump > 0)
         {
@@ -770,6 +904,15 @@ void CRenderDevice::ProcessFrame()
     {
         g_da_perf_sleep_ms = sleep_timer.GetElapsed_sec() * 1000.f;
         g_da_perf_total_ms = float(TimerGlobal.GetElapsed_ns() - frameStartTime) / 1000000.f;
+    }
+
+    // [DA_PORT] Хвост кадра — своей строкой, здесь и только здесь его видно целиком.
+    if (g_da_tail_report)
+    {
+        const float tail = g_da_tail_timer.GetElapsed_sec() * 1000.f;
+        Msg("~ [DA_PERF] хвост кадра %u: всего %5.2f мс, из них сон %5.2f, прочее %5.2f",
+            dwFrame, tail, g_da_perf_sleep_ms, tail - g_da_perf_sleep_ms);
+        g_da_tail_report = false;
     }
 }
 
@@ -952,7 +1095,7 @@ void CRenderDevice::FrameMove()
     // TODO: HACK to test loading screen.
     // if(!g_bLoaded)
 
-    g_da_ms_phys = g_da_ms_objects = g_da_ms_level = g_da_ms_persist = g_da_ms_sched = g_da_ms_weather = 0.f;
+    g_da_ms_phys = g_da_ms_objects = g_da_ms_level = g_da_ms_persist = g_da_ms_sched = g_da_ms_weather = g_da_ms_seqframe = g_da_ms_env = 0.f;
 
     // [DA_PORT] Разбор проверки свойств мира GOAP: da_goap_dump <кадров>. Счёт идёт за весь прогон
     // (свойства проверяются пачками и редко), поэтому здесь только счёт кадров и вывод итога.
@@ -1021,7 +1164,13 @@ void CRenderDevice::FrameMove()
             g_da_goap_prop_over_calls = 0;
         }
     } // [DA_PORT] счётчики блоков — за кадр
-    seqFrame.Process();
+    {
+        // [DA_PORT] Вся рассылка подписчиков кадра -- см. пояснение у g_da_ms_seqframe.
+        CTimer da_sf;
+        da_sf.Start();
+        seqFrame.Process();
+        g_da_ms_seqframe = da_sf.GetElapsed_sec() * 1000.f;
+    }
 
     g_bLoaded = true;
     // else

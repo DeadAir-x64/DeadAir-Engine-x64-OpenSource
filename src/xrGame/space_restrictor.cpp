@@ -30,8 +30,18 @@ BOOL g_ai_die_in_anomaly = 0;
 CSpaceRestrictor::~CSpaceRestrictor() {}
 void CSpaceRestrictor::Center(Fvector& C) const { XFORM().transform_tiny(C, GetCForm()->getSphere().P); }
 float CSpaceRestrictor::Radius() const { return (GetCForm()->getRadius()); }
+// [DA_PORT] Ограничитель -- лидер поимённого дампа спавна: 360 мс на 257 штук, по 1.4 мс за
+// НЕВИДИМЫЙ объект, тогда как smart_cover через тот же общий путь стоит 0.02. Разница где-то в трёх
+// местах ниже, и гадать про них бесполезно -- считаем порознь. Печатает da_spawn_dump.
+float g_da_ms_sr_shape = 0.f;
+float g_da_ms_sr_base = 0.f;
+float g_da_ms_sr_reg = 0.f;
+u32 g_da_sr_count = 0;
+
 bool CSpaceRestrictor::net_Spawn(CSE_Abstract* data)
 {
+    CTimer da_sr;
+    da_sr.Start();
     actual(false);
 
     CSE_Abstract* abstract = (CSE_Abstract*)data;
@@ -63,7 +73,14 @@ bool CSpaceRestrictor::net_Spawn(CSE_Abstract* data)
 
     shape->ComputeBounds();
 
+    g_da_ms_sr_shape += da_sr.GetElapsed_sec() * 1000.f;
+    ++g_da_sr_count;
+    da_sr.Start();
+
     BOOL result = inherited::net_Spawn(data);
+
+    g_da_ms_sr_base += da_sr.GetElapsed_sec() * 1000.f;
+    da_sr.Start();
 
     if (!result)
         return (FALSE);
@@ -82,6 +99,8 @@ bool CSpaceRestrictor::net_Spawn(CSE_Abstract* data)
 
     Level().space_restriction_manager().register_restrictor(
         this, RestrictionSpace::ERestrictorTypes(se_shape->m_space_restrictor_type));
+
+    g_da_ms_sr_reg += da_sr.GetElapsed_sec() * 1000.f;
 
     return (TRUE);
 }

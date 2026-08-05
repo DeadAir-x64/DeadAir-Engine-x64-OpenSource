@@ -8,11 +8,16 @@
 
 #pragma once
 
+#include <atomic>
+
 class CSpaceRestrictionAbstract
 {
 protected:
     xr_vector<u32> m_border;
-    bool m_initialized;
+
+    // [DA_PORT] Читается из нескольких потоков: границу теперь строит тот, кто первым её спросил, а
+    // поиск пути идёт на рабочих потоках. Подробности — в space_restriction_shape.cpp.
+    std::atomic<bool> m_initialized;
     xr_vector<u32> m_accessible_neighbour_border;
     bool m_accessible_neighbour_border_actual;
 

@@ -229,6 +229,11 @@ public:
     bool m_bGameConfigStarted = false;
     bool game_configured = false;
     NET_Queue_Event* game_events = nullptr;
+
+public:
+    // [DA_PORT] Прогрев визуалов под экраном загрузки, см. Level.cpp
+    void da_warmup_visuals();
+
     xr_deque<CSE_Abstract*> game_spawn_queue;
     xrServer* Server = nullptr;
     GlobalFeelTouch m_feel_deny;

@@ -11,8 +11,89 @@
 #include "xrEngine/IGame_Persistent.h"
 #include "xrNetServer/NET_Messages.h"
 
+// [DA_PORT] Счётчики частей спавна — определены в движке (Device.cpp), читает разбор кадра.
+extern ENGINE_API float g_da_ms_spawn_prep;
+extern ENGINE_API float g_da_ms_spawn_create;
+extern ENGINE_API float g_da_ms_spawn_net;
+extern ENGINE_API u32 g_da_spawn_count;
+
+// [DA_PORT] Кто именно дорог. Общая цифра называет направление, а не адрес: 2306 спавнов дают 2.2
+// секунды, но какие из них — по одной сумме не видно. Копим по секции конфига, печатает da_spawn_dump.
+namespace
+{
+struct da_spawn_stat
+{
+    float ms = 0.f;
+    float max_ms = 0.f; // самый дорогой экземпляр: отделяет разовую загрузку ресурсов от цены штуки
+    u32 count = 0;
+};
+xr_map<shared_str, da_spawn_stat> g_da_spawn_by_section;
+}
+
+void da_spawn_dump_print()
+{
+    xr_vector<std::pair<shared_str, da_spawn_stat>> rows(
+        g_da_spawn_by_section.begin(), g_da_spawn_by_section.end());
+    std::sort(rows.begin(), rows.end(),
+        [](const std::pair<shared_str, da_spawn_stat>& a, const std::pair<shared_str, da_spawn_stat>& b)
+        { return a.second.ms > b.second.ms; });
+
+    float total = 0.f;
+    u32 total_n = 0;
+    for (const auto& r : rows)
+    {
+        total += r.second.ms;
+        total_n += r.second.count;
+    }
+
+    Msg("~ [DA_SPAWN] всего %.0f мс на %u спавнов, разных секций %u", total, total_n, u32(rows.size()));
+
+    // Разбор лидера дампа — ограничителя пространства, см. space_restrictor.cpp.
+    {
+        extern float g_da_ms_sr_shape;
+        extern float g_da_ms_sr_base;
+        extern float g_da_ms_sr_reg;
+        extern u32 g_da_sr_count;
+        Msg("~ [DA_SPAWN] ограничители x%u: форма %.1f, общий net_Spawn %.1f, регистрация %.1f мс",
+            g_da_sr_count, g_da_ms_sr_shape, g_da_ms_sr_base, g_da_ms_sr_reg);
+
+        extern float g_da_ms_reg_default;
+        extern float g_da_ms_reg_shape;
+        extern float g_da_ms_reg_insert;
+        extern u32 g_da_reg_default_count;
+        extern u32 g_da_reg_names_max;
+        Msg("~ [DA_SPAWN] регистрация: список %.1f (x%u, имён до %u из 128), форма %.1f, вставка %.1f мс",
+            g_da_ms_reg_default, g_da_reg_default_count, g_da_reg_names_max, g_da_ms_reg_shape,
+            g_da_ms_reg_insert);
+        g_da_ms_reg_default = g_da_ms_reg_shape = g_da_ms_reg_insert = 0.f;
+        g_da_reg_default_count = g_da_reg_names_max = 0;
+
+        extern u32 g_da_border_waits;
+        Msg("~ [DA_SPAWN] границ строилось параллельно (ждали на замке): %u", g_da_border_waits);
+        g_da_border_waits = 0;
+        g_da_ms_sr_shape = g_da_ms_sr_base = g_da_ms_sr_reg = 0.f;
+        g_da_sr_count = 0;
+    }
+    u32 shown = 0;
+    for (const auto& r : rows)
+    {
+        // «макс» рядом со средним читается сразу: если максимум почти равен сумме, платил первый
+        // экземпляр (загрузка модели, анимаций, звуков), и чинить в спавне нечего.
+        Msg("~ [DA_SPAWN] %8.1f мс  x%-5u  сред %6.2f  макс %6.2f  %s", r.second.ms, r.second.count,
+            r.second.count ? r.second.ms / float(r.second.count) : 0.f, r.second.max_ms,
+            r.first.c_str());
+        if (++shown >= 30)
+            break;
+    }
+    g_da_spawn_by_section.clear();
+}
+
+
 void CLevel::cl_Process_Spawn(NET_Packet& P)
 {
+    // [DA_PORT] Подготовка сущности и чтение пакета — до создания объекта.
+    CTimer da_spawn_prep;
+    da_spawn_prep.Start();
     // Begin analysis
     shared_str s_name;
     P.r_stringZ(s_name);
@@ -43,6 +124,9 @@ void CLevel::cl_Process_Spawn(NET_Packet& P)
     game_spawn_queue.push_back(E);
     if (g_bDebugEvents)		ProcessGameSpawns();
     /*/
+    g_da_ms_spawn_prep += da_spawn_prep.GetElapsed_sec() * 1000.f;
+    ++g_da_spawn_count;
+
     g_sv_Spawn(E);
 
     F_entity_Destroy(E);
@@ -102,11 +186,36 @@ void CLevel::g_sv_Spawn(CSE_Abstract* E)
 
     // Client spawn
     //	T.Start		();
+    // [DA_PORT] Создание объекта фабрикой и net_Spawn — порознь: первое строит класс и привязку к
+    // скриптам, второе грузит визуал, форму столкновений и ставит объект в схемы.
+    CTimer da_spawn_create;
+    da_spawn_create.Start();
+
     IGameObject* O = Objects.Create(E->s_name.c_str());
+
+    const float da_create_ms = da_spawn_create.GetElapsed_sec() * 1000.f;
+    g_da_ms_spawn_create += da_create_ms;
+
+    CTimer da_spawn_net;
+    da_spawn_net.Start();
 // Msg				("--spawn--CREATE: %f ms",1000.f*T.GetAsync());
 
 //	T.Start		();
-    if (0 == O || (!O->net_Spawn(E)))
+    const bool da_spawn_failed = (0 == O || (!O->net_Spawn(E)));
+
+    const float da_net_ms = da_spawn_net.GetElapsed_sec() * 1000.f;
+    g_da_ms_spawn_net += da_net_ms;
+
+    {
+        da_spawn_stat& s = g_da_spawn_by_section[E->s_name];
+        const float da_one_ms = da_create_ms + da_net_ms;
+        s.ms += da_one_ms;
+        if (da_one_ms > s.max_ms)
+            s.max_ms = da_one_ms;
+        ++s.count;
+    }
+
+    if (da_spawn_failed)
     {
         O->net_Destroy();
         if (!GEnv.isDedicatedServer)

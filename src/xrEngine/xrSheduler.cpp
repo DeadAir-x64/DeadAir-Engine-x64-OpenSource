@@ -7,6 +7,18 @@
 //#define DEBUG_SCHEDULER
 //#define DEBUG_SCHEDULERMT
 
+// [DA_PORT] Потолок бюджета планировщика на кадр, миллисекунды. Ручка da_sched_budget_ms.
+//
+// Этот бюджет и есть высота ряби. Замер da_sched_dump за 2000 кадров: планировщик стоит 0.20 мс в
+// среднем, размазанных по 1790 объектам, а худший ОДИНОЧНЫЙ вызов -- 1.26 мс. Виновника нет: 6 мс
+// набираются, когда десяток объектов просыпается в одном кадре, и планировщик честно работает до
+// своего потолка.
+//
+// Значит рябь режется потолком: при 4 мс тот же ком растянется на большее число кадров. Плата --
+// объекты обновляются чуть реже, то есть ИИ и офлайновый мир становятся немного медлительнее.
+// Ноль оставляет прежнее поведение (потолок 10 и саморегулировка).
+ENGINE_API float ps_da_sched_budget_ms = 0.f;
+
 float psShedulerCurrent = 10.f;
 float psShedulerTarget = 10.f;
 const float psShedulerReaction = 0.1f;
@@ -558,6 +570,14 @@ void CSheduler::Update()
 #endif
     clamp(psShedulerTarget, 3.f, 66.f);
     psShedulerCurrent = 0.9f * psShedulerCurrent + 0.1f * psShedulerTarget;
+    // [DA_PORT] Потолок поверх саморегулировки: она умеет только расти под нагрузкой.
+    if (ps_da_sched_budget_ms > 0.f)
+    {
+        if (psShedulerTarget > ps_da_sched_budget_ms)
+            psShedulerTarget = ps_da_sched_budget_ms;
+        if (psShedulerCurrent > ps_da_sched_budget_ms)
+            psShedulerCurrent = ps_da_sched_budget_ms;
+    }
     stats.Load = psShedulerCurrent;
 
     // Finalize

@@ -387,6 +387,10 @@ CApplication::~CApplication()
     FrameMarkEnd(FRAME_MARK_APPLICATION_SHUTDOWN);
 }
 
+// [DA_PORT] Определены ниже, рядом с UpdateDiscordStatus: там же и пояснение, зачем они.
+extern ENGINE_API float g_da_ms_events;
+extern ENGINE_API float g_da_ms_proc_full;
+
 int CApplication::Run()
 {
     Msg("* [DA_PORT] Run: before HideSplash"); FlushLog();
@@ -398,6 +402,17 @@ int CApplication::Run()
     while (!SDL_QuitRequested()) // SDL_PumpEvents is here
     {
         FrameMarkStart(FRAME_MARK_APPLICATION_RUN);
+
+        // [DA_PORT] Замер главного цикла целиком: события окна и ВЕСЬ ProcessFrame.
+        //
+        // Длина кадра берётся из времени между кадрами, а счётчик "проц" останавливается на печати
+        // отчёта -- то есть хвост ProcessFrame и разбор событий не мерил никто. Там время и пряталось:
+        // в провальных кадрах разрыв доходил до 364 мс при "проц" 17.
+        //
+        // ВАЖНО: в отчёт эти два числа попадают от ПРЕДЫДУЩЕГО кадра -- печать идёт внутри
+        // ProcessFrame, раньше, чем цикл успеет их обновить. Так же ведут себя sleep и discord рядом.
+        CTimer da_loop;
+        da_loop.Start();
         bool canCallActivate = false;
         bool shouldActivate = false;
 
@@ -456,7 +471,11 @@ int CApplication::Run()
             Device.OnWindowActivate(Device.m_sdlWnd, shouldActivate);
         }
 
+        g_da_ms_events = da_loop.GetElapsed_sec() * 1000.f;
+
+        da_loop.Start();
         Device.ProcessFrame();
+        g_da_ms_proc_full = da_loop.GetElapsed_sec() * 1000.f;
 
         UpdateDiscordStatus();
         FrameMarkEnd(FRAME_MARK_APPLICATION_RUN);
@@ -567,14 +586,43 @@ void CApplication::InitializeDiscord()
 #endif
 }
 
+// [DA_PORT] Обмен с Discord -- не каждый кадр.
+//
+// Вызывался из главного цикла КАЖДЫЙ кадр, то есть при 280 к/с -- 280 раз в секунду. Внутри обмен
+// с чужим процессом через канал, и он умеет блокироваться на миллисекунды: замер после загрузки
+// показал, что половина и больше провального кадра проходит ВНЕ ProcessFrame, а в цикле снаружи
+// только разбор событий окна и этот вызов.
+//
+// Раз в 100 мс достаточно: Discord ждёт регулярного опроса, а не ежекадрового -- на статус в его
+// окне десятая доля секунды не влияет.
+//
+// da_discord_interval_ms 0 возвращает прежнее поведение, ежекадровое.
+ENGINE_API float g_da_ms_events = 0.f;    // [DA_PORT] разбор событий окна за кадр
+ENGINE_API float g_da_ms_proc_full = 0.f; // [DA_PORT] ProcessFrame ЦЕЛИКОМ, включая хвост после отчёта
+ENGINE_API float g_da_ms_discord = 0.f; // длительность последнего вызова -- читает разбор кадра
+ENGINE_API int ps_da_discord_interval_ms = 100;
+
 void CApplication::UpdateDiscordStatus()
 {
 #ifdef USE_DISCORD_INTEGRATION
     if (!m_discord_core)
         return;
 
+    if (ps_da_discord_interval_ms > 0)
+    {
+        static u32 last = 0;
+        if (Device.dwTimeGlobal - last < u32(ps_da_discord_interval_ms))
+            return;
+        last = Device.dwTimeGlobal;
+    }
+
     ZoneScoped;
-    std::lock_guard guard{ m_discord_lock };
-    m_discord_core->RunCallbacks();
+    CTimer da_t;
+    da_t.Start();
+    {
+        std::lock_guard guard{ m_discord_lock };
+        m_discord_core->RunCallbacks();
+    }
+    g_da_ms_discord = da_t.GetElapsed_sec() * 1000.f;
 #endif
 }

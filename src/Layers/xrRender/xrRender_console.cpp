@@ -30,6 +30,11 @@
 // engine externs at the top of r2.cpp sit outside the namespace.
 extern ENGINE_API u32 ps_r__upscaler;
 
+// [DA_PORT] Объявления на ГЛОБАЛЬНОМ уровне, а не внутри пространства имён рендера: иначе имя
+// разворачивается в xray::render::render_r4::ps_da_perf_dump, компилятор молчит, а линковщик потом
+// не находит символ. Ровно на это я и наступил.
+extern ENGINE_API int ps_da_perf_dump;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 u32 ps_Preset = 2;
@@ -1369,6 +1374,43 @@ public:
 #endif // (RENDER == R_R3) || (RENDER == R_R4)
 
 //-----------------------------------------------------------------------
+
+// [DA_PORT] Один замер вместо трёх: da_frame <кадров>.
+//
+// Разбор кадра приходилось собирать руками из da_perf_dump, da_gpu_log и da_render_log, помнить,
+// что второму нужен ещё и rs_stats, и потом сводить три набора строк за разные отрезки времени.
+// Отрезки не совпадали, и сравнивать их было нельзя.
+//
+// Здесь все счётчики взводятся на ОДНО И ТО ЖЕ число кадров, то есть меряют один и тот же кусок
+// игры. Это и было главной бедой прежнего порядка, а не количество команд.
+class CCC_DaFrame : public IConsole_Command
+{
+public:
+    CCC_DaFrame(pcstr N) : IConsole_Command(N) {}
+
+    void Execute(pcstr args) override
+    {
+        const int frames = atoi(args);
+        if (frames <= 0 || frames > 200000)
+        {
+            Msg("~ da_frame <кадров>: разбор кадра целиком (блоки логики, фазы видеокарты и процессора)");
+            return;
+        }
+
+        // ps_da_gpu_log живёт ВНУТРИ пространства имён рендера (da_gpu_timer.cpp), поэтому
+        // объявляется здесь же, а не рядом с движковым.
+        extern int ps_da_gpu_log;
+
+        ::ps_da_perf_dump = frames;
+        ps_da_gpu_log = frames;
+
+        Msg("~ [DA_PORT] разбор кадра на %d кадров: блоки логики [DA_PERF] + фазы [DA_GPU] "
+            "(процессор/видеокарта)", frames);
+    }
+
+    void Info(TInfo& I) override { xr_strcpy(I, "разбор кадра целиком: <кадров>"); }
+};
+
 void xrRender_initconsole()
 {
     ZoneScoped;
@@ -1418,6 +1460,7 @@ void xrRender_initconsole()
         // 450 к/с это 27 тысяч. Прежний предел молча обрезал команду, и замер заканчивался на
         // четвёртой секунде — в отчёте это выглядело как «данных нет», а не как упёртый лимит.
         CMD4(CCC_DaDebugInteger, "da_render_log", &ps_da_render_log, 0, 200000);
+        CMD1(CCC_DaFrame, "da_frame");
         // [DA_PORT] Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
         // мерцания целой тени на улице — см. комментарий в render_phase_sun.cpp::calculate.
         // [DA_PORT] ⚠️ ЧЕРЕЗ CCC_DaDebugInteger, а не CCC_Integer: диагностика не должна оседать в

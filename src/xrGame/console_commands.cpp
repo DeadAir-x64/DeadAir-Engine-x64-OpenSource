@@ -410,6 +410,17 @@ public:
     virtual void Execute(LPCSTR /*args*/) { DA_MemDump(); }
 };
 
+// [DA_PORT] Поимённая цена спавна: какие секции конфига стоят дороже всего. Копится всегда,
+// печатается и обнуляется по команде — так один прогон закрывает и загрузку, и переходы.
+void da_spawn_dump_print();
+
+class CCC_DaSpawnDump : public IConsole_Command
+{
+public:
+    CCC_DaSpawnDump(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/) { da_spawn_dump_print(); }
+};
+
 class CCC_DaMemReset : public IConsole_Command
 {
 public:
@@ -2549,6 +2560,12 @@ void CCC_RegisterCommands()
     CMD1(CCC_MemStats, "stat_memory");
     CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
     CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
+    CMD1(CCC_DaSpawnDump, "da_spawn_dump"); // [DA_PORT] цена спавна по секциям
+    {
+        // [DA_PORT] сверить быстрый поиск ближайшей вершины с прежним полным перебором
+        extern XRAICORE_API int ps_da_vertex_search_verify;
+        CMD4(CCC_DaDebugInteger, "da_vertex_search_verify", &ps_da_vertex_search_verify, 0, 1);
+    }
     CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
     CMD1(CCC_DaMemSnap, "da_mem_snap");   // [DA_PORT] снимок посреди игры: покадровые утечки
     {

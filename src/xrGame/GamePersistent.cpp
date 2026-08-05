@@ -632,7 +632,14 @@ void CGamePersistent::OnFrame()
         }
 #endif // MASTER_GOLD
     }
-    inherited::OnFrame();
+    {
+        // [DA_PORT] Система погоды и окружения. Счётчик читает разбор кадра (Device.cpp).
+        extern ENGINE_API float g_da_ms_env;
+        CTimer da_env;
+        da_env.Start();
+        inherited::OnFrame();
+        g_da_ms_env += da_env.GetElapsed_sec() * 1000.f;
+    }
 
     if (!Device.Paused())
     {

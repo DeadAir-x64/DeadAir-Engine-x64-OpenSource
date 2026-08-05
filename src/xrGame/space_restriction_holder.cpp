@@ -103,10 +103,24 @@ SpaceRestrictionHolder::CBaseRestrictionPtr CSpaceRestrictionHolder::restriction
     return (bridge);
 }
 
+// [DA_PORT] Регистрация ограничителя — 580 мс из 604 на всю их часть спавна. Внутри три разных
+// дела, и какое из них дорого, по одной сумме не видно. Считаем порознь; печатает da_spawn_dump.
+//
+// Отдельно считаем, сколько регистраций попадает в ветку списка по умолчанию: там строка со всеми
+// именами разбирается в массив на MAX_RESTRICTION_PER_TYPE_COUNT (128) указателей, а проверка
+// границы стоит под VERIFY, которого в релизе нет.
+float g_da_ms_reg_default = 0.f;
+float g_da_ms_reg_shape = 0.f;
+float g_da_ms_reg_insert = 0.f;
+u32 g_da_reg_default_count = 0;
+u32 g_da_reg_names_max = 0;
+
 void CSpaceRestrictionHolder::register_restrictor(
     CSpaceRestrictor* space_restrictor, const RestrictionSpace::ERestrictorTypes& restrictor_type)
 {
     string4096 m_temp_string;
+    CTimer da_reg;
+    da_reg.Start();
     shared_str space_restrictors = space_restrictor->cName();
     if (restrictor_type != RestrictionSpace::eDefaultRestrictorTypeNone)
     {
@@ -128,19 +142,34 @@ void CSpaceRestrictionHolder::register_restrictor(
 
         if (xr_strcmp(*temp, temp1))
             on_default_restrictions_changed();
+
+        ++g_da_reg_default_count;
+        const u32 da_names = _GetItemCount((*temp).c_str());
+        if (da_names > g_da_reg_names_max)
+            g_da_reg_names_max = da_names;
     }
+
+    g_da_ms_reg_default += da_reg.GetElapsed_sec() * 1000.f;
+    da_reg.Start();
 
     CSpaceRestrictionShape* shape =
         xr_new<CSpaceRestrictionShape>(space_restrictor, restrictor_type != RestrictionSpace::eDefaultRestrictorTypeNone);
+
+    g_da_ms_reg_shape += da_reg.GetElapsed_sec() * 1000.f;
+    da_reg.Start();
+
     RESTRICTIONS::iterator I = m_restrictions.find(space_restrictors);
     if (I == m_restrictions.end())
     {
         CSpaceRestrictionBridge* bridge = xr_new<CSpaceRestrictionBridge>(shape);
         m_restrictions.insert(std::make_pair(space_restrictors, bridge));
+        g_da_ms_reg_insert += da_reg.GetElapsed_sec() * 1000.f;
         return;
     }
 
     (*I).second->change_implementation(shape);
+
+    g_da_ms_reg_insert += da_reg.GetElapsed_sec() * 1000.f;
 }
 
 bool try_remove_string(shared_str& search_string, const shared_str& string_to_search)

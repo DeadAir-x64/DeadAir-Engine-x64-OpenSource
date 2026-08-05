@@ -302,6 +302,7 @@ public:
     // Условия включения меток. Спрашиваются и здесь, и по месту записи бита в трафарет - см. там.
     bool da_emissive_mark_ready() const;
     bool da_transparent_mark_ready() const;
+    bool da_water_mark_ready() const; // [DA_PORT] метка только воды, по её биту трафарета
     // Общая часть обеих: полноэкранный проход по трафаретному биту 0x02.
     void da_mark_reactive_from_stencil(float value);
 

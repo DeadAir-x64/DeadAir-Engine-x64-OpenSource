@@ -20,7 +20,7 @@ u32 g_da_smap_gpu_frames = 0;
 
 da_gpu_timer g_da_gpu_timer;
 
-static const char* zone_names[da_gpu_timer::z_count] = { "sun_smap", "sun_apply", "selfillum", "gbuffer", "lights", "combine" };
+static const char* zone_names[da_gpu_timer::z_count] = { "sun_smap", "sun_apply", "selfillum", "gbuffer", "gbuffer2", "lights", "combine" };
 
 void da_gpu_timer::create()
 {
@@ -74,6 +74,7 @@ void da_gpu_timer::frame_begin()
 
     frame_queries& f = m_ring[m_write];
     f.zone_used.fill(false);
+    f.cpu_ms.fill(0.0); // [DA_PORT]
     HW.get_context(CHW::IMM_CTX_ID)->Begin(f.disjoint);
     f.issued = true;
 }
@@ -100,6 +101,7 @@ void da_gpu_timer::zone_begin(zone z)
         return;
     HW.get_context(CHW::IMM_CTX_ID)->End(f.begin[z]); // timestamps use End() to record, not Begin()
     f.zone_used[z] = true;
+    m_cpu_timer[z].Start(); // [DA_PORT] то же самое процессором
 }
 
 void da_gpu_timer::zone_end(zone z)
@@ -109,6 +111,7 @@ void da_gpu_timer::zone_end(zone z)
     frame_queries& f = m_ring[m_write];
     if (!f.issued || !f.zone_used[z])
         return;
+    f.cpu_ms[z] += m_cpu_timer[z].GetElapsed_sec() * 1000.0; // [DA_PORT]
     HW.get_context(CHW::IMM_CTX_ID)->End(f.end[z]);
 }
 
@@ -136,13 +139,22 @@ void da_gpu_timer::collect(frame_queries& f)
         if (!f.zone_used[z])
             continue;
 
+        // [DA_PORT] Пропуск зоны теперь ВИДЕН в отчёте.
+        //
+        // Было три молчаливых continue: не готов результат -- зоны в строке просто нет. Отличить
+        // "фаза ничего не стоила" от "фазу не измерили" по такому отчёту невозможно, а решения по
+        // нему принимаются. Один раз это уже стоило неверного вывода: отсутствие gbuffer прочли как
+        // "он бесплатен", тогда как зона не размечалась вовсе.
         u64 t0 = 0, t1 = 0;
-        if (ctx->GetData(f.begin[z], &t0, sizeof(t0), D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK)
+        const bool got_begin = ctx->GetData(f.begin[z], &t0, sizeof(t0), D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK;
+        const bool got_end = ctx->GetData(f.end[z], &t1, sizeof(t1), D3D11_ASYNC_GETDATA_DONOTFLUSH) == S_OK;
+        if (!got_begin || !got_end || t1 <= t0)
+        {
+            string64 skipped;
+            xr_sprintf(skipped, " %s %.2f/??? |", zone_names[z], float(f.cpu_ms[z]));
+            xr_strcat(line, skipped);
             continue;
-        if (ctx->GetData(f.end[z], &t1, sizeof(t1), D3D11_ASYNC_GETDATA_DONOTFLUSH) != S_OK)
-            continue;
-        if (t1 <= t0)
-            continue;
+        }
 
         const double ms = 1000.0 * double(t1 - t0) / double(dj.Frequency);
         total += ms;
@@ -154,7 +166,8 @@ void da_gpu_timer::collect(frame_queries& f)
         }
 
         string64 part;
-        xr_sprintf(part, " %s %5.2f |", zone_names[z], ms);
+        // [DA_PORT] Пара чисел: сколько ПОПРОСИТЬ (процессор) и сколько СДЕЛАТЬ (видеокарта).
+        xr_sprintf(part, " %s %.2f/%.2f |", zone_names[z], float(f.cpu_ms[z]), ms);
         xr_strcat(line, part);
     }
 

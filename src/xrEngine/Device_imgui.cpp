@@ -46,6 +46,69 @@ void CRenderDevice::InitializeImGui()
     io.BackendPlatformName = "OpenXRay";
 
     io.ConfigDebugIsDebuggerPresent = xrDebug::DebuggerIsPresent();
+
+    // [DA_PORT] Шрифт с кириллицей: без него консоль печатала вопросительные знаки.
+    //
+    // Консоль рисует ImGui, а не игровой шрифт, и своего шрифта ей никто не задавал -- значит брался
+    // встроенный ProggyClean, в котором только латиница. UTF-8 он разбирает верно, поэтому на букву
+    // приходился ровно ОДИН вопросительный знак, а не два: строка декодировалась, а начертания не
+    // находилось, и подставлялся запасной символ. По этому признаку дефект и опознан -- в лог те же
+    // строки ложились правильными байтами.
+    //
+    // Берём системный моноширинный шрифт: тащить свой в репозиторий ради консоли не стоит, а на
+    // машине он есть всегда. Перебор по списку, потому что состав шрифтов у Windows и Linux разный;
+    // если не нашлось ни одного, остаётся прежнее поведение -- латиница вместо падения.
+    {
+        // Слэши ПРЯМЫЕ, и это не небрежность: Windows принимает их наравне с обратными, а обратные
+        // в строковом литерале пришлось бы удваивать. Первая версия этого не делала -- получилось
+        // "C:\Windows\..." с одинарными, где \W и \F для компилятора неизвестные управляющие
+        // последовательности. Путь молча превратился в мусор, файл не нашёлся, и выглядело это как
+        // "шрифта с кириллицей в системе нет".
+        string_path win_consola, win_lucon, win_tahoma;
+#ifdef XR_PLATFORM_WINDOWS
+        // Каталог из окружения, а не жёстко с диска C: система не обязана стоять там.
+        pcstr const sysroot = std::getenv("SystemRoot");
+        xr_sprintf(win_consola, "%s/Fonts/consola.ttf", sysroot ? sysroot : "C:/Windows");
+        xr_sprintf(win_lucon, "%s/Fonts/lucon.ttf", sysroot ? sysroot : "C:/Windows");
+        xr_sprintf(win_tahoma, "%s/Fonts/tahoma.ttf", sysroot ? sysroot : "C:/Windows");
+#endif
+
+        pcstr candidates[] =
+        {
+#ifdef XR_PLATFORM_WINDOWS
+            win_consola, // Consolas: моноширинный, кириллица есть
+            win_lucon,   // Lucida Console
+            win_tahoma,
+#else
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+#endif
+        };
+
+        // Диапазоны глифов НЕ задаём намеренно. С версии 1.92 ImGui растеризует начертания по мере
+        // надобности, если бэкенд умеет динамические текстуры -- а наш умеет. Прежние помощники
+        // вроде GetGlyphRangesCyrillic объявлены устаревшими и в нашей сборке отключены вовсе.
+        bool loaded = false;
+        for (pcstr path : candidates)
+        {
+            // Существование проверяем САМИ: AddFontFromFileTTF на отсутствующем файле роняет
+            // assert внутри ImGui, а не возвращает ноль.
+            if (FILE* f = fopen(path, "rb"))
+            {
+                fclose(f);
+                if (io.Fonts->AddFontFromFileTTF(path, 16.f))
+                {
+                    Msg("* [DA_PORT] шрифт консоли: %s (кириллица)", path);
+                    loaded = true;
+                    break;
+                }
+            }
+        }
+
+        if (!loaded)
+            Msg("! [DA_PORT] шрифт с кириллицей не найден -- консоль останется латинской");
+    }
 #ifdef DEBUG
     io.ConfigErrorRecoveryEnableAssert  = true;
     io.ConfigErrorRecoveryEnableTooltip = true;

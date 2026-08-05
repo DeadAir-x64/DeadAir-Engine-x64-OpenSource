@@ -18,6 +18,17 @@ function normal                (shader, t_base, t_second, t_detail)
 			:zb			(true,false)
 			:distort	(true)
 			:fog		(true)
+			-- [DA_PORT] Вода помечает себя в трафарете, бит 0x02. По этой отметке
+			-- phase_reactive_water пишет реактивность: апскейлер не должен доверять
+			-- накопленной истории там, где вода, потому что вода не пишет ни глубины,
+			-- ни векторов движения — историю ей восстанавливают по векторам ДНА.
+			--
+			-- Маска записи 2: общий бит 0x01 не трогается вовсе, поэтому для света и
+			-- отражений (они сравнивают трафарет с 0x01, в том числе на равенство)
+			-- ничего не меняется. Гасится бит в том же проходе, что и читается.
+			:dx10stencil	(true, cmp_func.always, 255, 2,
+							 stencil_op.keep, stencil_op.replace, stencil_op.keep)
+			:dx10stencil_ref	(3)
 --  shader:sampler        ("s_base")       :texture  (tex_base)
 --  shader:sampler        ("s_nmap")       :texture  (tex_nmap)
 --  shader:sampler        ("s_env0")       :texture  (tex_env0)   : clamp()

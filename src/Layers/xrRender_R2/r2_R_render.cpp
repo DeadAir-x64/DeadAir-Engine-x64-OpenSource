@@ -238,10 +238,14 @@ void CRender::Render()
     else
     {
         PIX_EVENT(DEFER_PART0_SPLIT);
+        // [DA_PORT] Зона G-буфера была только у НЕразделённой ветки выше, а работает эта. Отсюда и
+        // пустое место в отчёте: фаза исполнялась каждый кадр, а в лог не попадала ни разу.
+        DA_GPU_ZONE_BEGIN(z_gbuffer);
         // level, SPLIT
         Target->phase_scene_begin();
         dsgraph.render_graph(0);
         Target->disable_aniso();
+        DA_GPU_ZONE_END(z_gbuffer);
     }
 #ifdef USE_OGL
     if (psDeviceFlags.test(rsWireframe))
@@ -427,6 +431,9 @@ void CRender::Render()
     if (split_the_scene_to_minimize_wait)
     {
         PIX_EVENT(DEFER_PART1_SPLIT);
+        // [DA_PORT] Вторая половина G-буфера -- отдельной зоной: между половинами идёт проверка
+        // видимости источников света, и одна зона на обе показала бы её стоимость как свою.
+        DA_GPU_ZONE_BEGIN(z_gbuffer2);
         // skybox can be drawn here
         if (false)
         {
@@ -448,6 +455,7 @@ void CRender::Render()
         if (Details)
             Details->Render(dsgraph.cmd_list);
         Target->phase_scene_end();
+        DA_GPU_ZONE_END(z_gbuffer2);
     }
 
     if (g_pGameLevel->pHUD && g_pGameLevel->pHUD->RenderActiveItemUIQuery())

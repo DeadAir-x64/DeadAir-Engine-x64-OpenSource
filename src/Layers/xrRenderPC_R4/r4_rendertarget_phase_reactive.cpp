@@ -25,6 +25,7 @@ float g_da_probe_cam_turned = 0.f;
 }
 extern ENGINE_API float ps_r__reactive_emissive; // [DA_PORT] метка свечения, см. phase_reactive_emissive
 extern ENGINE_API float ps_r__reactive_transparent; // [DA_PORT] то же для прозрачной геометрии
+extern ENGINE_API float ps_r__reactive_water;       // [DA_PORT] и отдельно — только для воды
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -1280,6 +1281,20 @@ bool CRenderTarget::da_transparent_mark_ready() const
     return ps_r__reactive_transparent > 0.f && da_upscaler_active() && s_reactive_emissive && rt_Reactive;
 }
 
+// [DA_PORT] Только вода. Отличие от предыдущего не в силе метки, а в том, КТО ставит отметку в
+// трафарете: там её ставит движок на весь прямой проход разом, здесь — сама вода своим блоком
+// состояний (dx10stencil в effects_water.s и двух его зелёных близнецах).
+//
+// Почему это лучше грубой метки всего прозрачного:
+//   • дождь, стёкла и частицы не задеваются, а прозрачного в кадре бывает пол-экрана;
+//   • в меню и на локациях без воды отметки просто нет, и проход не делает ничего. Грубый вариант
+//     этим и опасен: сохранённый в user.ltx, он применялся с самого старта и давал чёрный экран,
+//     потому что метил кадр там, где сцены ещё нет.
+bool CRenderTarget::da_water_mark_ready() const
+{
+    return ps_r__reactive_water > 0.f && da_upscaler_active() && s_reactive_emissive && rt_Reactive;
+}
+
 void CRenderTarget::phase_reactive_emissive()
 {
     if (!da_emissive_mark_ready())
@@ -1294,11 +1309,17 @@ void CRenderTarget::phase_reactive_emissive()
 // вместо кадра значило бы вылить интерфейс в маску реактивности.
 void CRenderTarget::phase_reactive_transparent()
 {
-    if (!da_transparent_mark_ready())
+    // [DA_PORT] Два режима на один проход. Грубый метит весь прямой проход (отметку ставит движок
+    // перед render_forward), точный — только воду (отметку ставит она сама). Если включены оба,
+    // выигрывает грубый: он уже пометил в трафарете всё, включая воду, и второй проход был бы
+    // просто повтором по тому же биту.
+    const float value = da_transparent_mark_ready() ? ps_r__reactive_transparent
+                                                    : (da_water_mark_ready() ? ps_r__reactive_water : 0.f);
+    if (value <= 0.f)
         return;
 
     PIX_EVENT(DA_phase_reactive_transparent);
-    da_mark_reactive_from_stencil(ps_r__reactive_transparent);
+    da_mark_reactive_from_stencil(value);
 
     u_setrt(RCache, rt_Generic_0_r, nullptr, nullptr, rt_MSAADepth);
     RCache.set_Stencil(FALSE);

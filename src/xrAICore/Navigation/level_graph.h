@@ -32,6 +32,9 @@ enum ELineIntersections
 
 class CCoverPoint;
 
+// [DA_PORT] Сверка быстрого поиска вершины с прежним полным перебором, см. level_graph.cpp.
+extern XRAICORE_API int ps_da_vertex_search_verify;
+
 class XRAICORE_API CLevelGraph
 {
 private:
@@ -63,6 +66,7 @@ public:
 
 private:
     u32 vertex(const Fvector& position) const;
+    u32 da_vertex_slow(const Fvector& position) const; // [DA_PORT] прежний перебор, для сверки
     u32 guess_vertex_id(u32 const& current_vertex_id, Fvector const& position) const;
 
 public:

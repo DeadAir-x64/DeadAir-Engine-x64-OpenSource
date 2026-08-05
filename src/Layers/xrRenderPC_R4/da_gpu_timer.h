@@ -32,6 +32,11 @@ public:
         z_sun_apply,    // full-screen application of sun light (accum_direct_blend)
         z_selfillum,    // accumulator + emissive geometry
         z_gbuffer,      // main scene pass into the G-buffer
+        // [DA_PORT] Вторая половина G-буфера. В режиме с разделением сцены (он же и работает)
+        // геометрия рисуется двумя заходами: между ними идёт проверка видимости источников света.
+        // Раньше зона была одна и обёрнута вокруг НЕразделённой ветки -- поэтому "gbuffer" не
+        // появлялся в отчёте ни разу за триста кадров, хотя проход исполнялся каждый.
+        z_gbuffer2,
         z_lights,       // deferred light accumulation
         z_combine,      // combine + sky + post
         z_count
@@ -56,11 +61,20 @@ private:
         std::array<ID3D11Query*, z_count> end{};
         bool issued = false;
         std::array<bool, z_count> zone_used{};
+
+        // [DA_PORT] Процессорное время тех же фаз -- сколько заняло ПОПРОСИТЬ видеокарту.
+        //
+        // Раньше это мерили отдельной командой и по другим границам, и сравнить два числа между
+        // собой было нельзя: разные проходы, разные счётчики. Здесь фаза одна и та же, и в отчёте
+        // они стоят рядом -- сразу видно, ждём мы видеокарту или сами не успеваем её загрузить.
+        std::array<double, z_count> cpu_ms{};
     };
 
     std::array<frame_queries, RING> m_ring{};
     u32 m_write = 0;
     bool m_created = false;
+
+    std::array<CTimer, z_count> m_cpu_timer{};
 
     void collect(frame_queries& f);
 };
