@@ -55,6 +55,9 @@ class CAI_Crow : public CEntity
     };
 
 public:
+    // [DA_PORT] Анимированный визуал с проверкой — см. ai_crow.cpp
+    IKinematicsAnimated* da_animated() const;
+
     void OnHitEndPlaying(CBlend* B);
 
 protected:

@@ -239,6 +239,11 @@ struct R_dsgraph_structure
     void render_emissive();
     void render_wmarks();
     void render_distort();
+
+    // [DA_PORT] Та же геометрия, что и у искажения, но нарисованная ЧУЖИМ элементом шейдера и БЕЗ
+    // очистки списка: нужен второй проход по воде — в буфер скоростей. Разбор в
+    // r4_rendertarget_phase_water_velocity.cpp.
+    void da_render_distort_with(ShaderElement* se_override);
     void render_R1_box(IRender_Sector::sector_id_t sector_id, Fbox& _bb, int _element);
 
     void build_subspace();

@@ -37,8 +37,12 @@ CTorch::CTorch()
       light_render(GEnv.Render->light_create()),
       light_omni(GEnv.Render->light_create()),
       glow_render(GEnv.Render->glow_create()),
-      m_bNightVisionEnabled(false), m_bNightVisionOn(false), m_night_vision(nullptr),
-      m_da_use_spot(true)
+      // [DA_PORT] Порядок совпадает с порядком ОБЪЯВЛЕНИЯ в Torch.h — иначе -Wreorder. Само по себе
+      // расхождение здесь было безвредным (все инициализаторы независимы), но предупреждение в файле,
+      // который активно правят, маскирует будущее настоящее: когда одно поле инициализируют значением
+      // другого, фактический порядок решает всё.
+      m_da_use_spot(true), m_da_dynamic_applied(true),
+      m_bNightVisionEnabled(false), m_bNightVisionOn(false), m_night_vision(nullptr)
 {
     m_prev_hp.set(0, 0);
     m_da_color.set(1.f, 1.f, 1.f, 1.f); // [DA_PORT] default white; overridden per item by torch_set_color_*
@@ -211,8 +215,18 @@ void CTorch::Switch(bool light_on)
 // по клавише. Это то поведение, которое подтверждено в игре, выраженное на ОДНОЙ лампе вместо двух.
 void CTorch::DaUpdateLightState()
 {
-    if (!can_use_dynamic_lights())
-        return;
+    // [DA_PORT] Раньше здесь стоял ранний выход, и это делало консольную ручку
+    // `ai_use_torch_dynamic_lights` односторонней: выключить её на ходу было нельзя — уже горящие
+    // лампы никто не гасил, потому что до строк с set_active управление просто не доходило.
+    //
+    // Ручка нужна рабочей: теперь свет у сталкеров есть, и на слабой машине ночью в лагере это
+    // десятки источников. Пусть игрок сможет их убрать, не перезапуская игру.
+    //
+    // Свечение (glow) намеренно оставлено ВНЕ этого условия — так у автора: `if
+    // (can_use_dynamic_lights()) { ...лампы... } glow_render->set_active(light_on);`. Огонёк фонаря
+    // виден и без динамического света.
+    const bool dynamic = can_use_dynamic_lights();
+    m_da_dynamic_applied = dynamic;
 
     // [DA_PORT] У ДВУХ ЛАМП РАЗНЫЕ ВЫКЛЮЧАТЕЛИ, и это не усложнение, а суть механики.
     //
@@ -231,12 +245,41 @@ void CTorch::DaUpdateLightState()
     //
     // Лишнего света это не даёт: когда ничего не выбрано, скрипт ставит `torch_switch_spot(true)`
     // (xr_actor.script, ветка else), и шар гаснет по признаку предмета, а не по выключателю.
-    const bool beam = m_switched_on2 && m_da_use_spot;
-    const bool omni = m_switched_on && !m_da_use_spot;
+    // [DA_PORT] У СТАЛКЕРА своя, простая модель: одна команда Switch (torch1) зажигает обе лампы.
+    // Ровно так у автора: `light_render->set_active(light_on); if (!pA) light_omni->set_active(light_on);`
+    //
+    // Разведение torch1/torch2 и признак m_da_use_spot придуманы под ИГРОКА: у него два независимых
+    // источника света (предмет в руках и налобный фонарь), и оба выключателя шлёт скрипт. У сталкера
+    // нет ни того, ни другого: sr_light.script выдаёт ему device_torch и включает его через
+    // enable_attachable_item, а это доходит до Switch (torch1) — CObjectHandler::attach → switch_torch.
+    // Switch2 сталкеру не зовёт НИКТО: сервер шлёт в пакете только бит eTorchActive
+    // (CSE_ALifeItemTorch::UPDATE_Write), про torch2 он не знает вовсе.
+    //
+    // Пока формула была общей, у сталкера выходило beam = false && true = false и omni = true &&
+    // !true = false — фонарь не светил ни лучом, ни рассеянно. Симптома «ошибка» при этом нет
+    // никакого: объект создан, включён, кость видима, а света нет.
+    //
+    // Фонарь БЕЗ владельца не светит ничем. Это не перестраховка: в момент net_Spawn родителя ещё
+    // нет — его ставит событие GE_OWNERSHIP_TAKE, уже после, — а `m_active` в серверном объекте к
+    // этому времени может быть включён. Без условия лампа успевала зажечься в начале координат
+    // уровня. И тот же случай у осиротевших фонарей, что валяются по локации: гореть им незачем.
+    // Состояние не теряется — при появлении владельца его пересчитывает OnH_A_Chield.
+    //
+    // 🪤 Откуда там включённый `m_active` — НЕ из сохранения: `CSE_ALifeItemTorch::STATE_Write` его
+    // не пишет вовсе (проверено), в сейв идёт только унаследованная часть. Он живёт исключительно в
+    // UPDATE-пакетах, то есть внутри сессии: сталкер побывал в онлайне с горящим фонарём, ушёл в
+    // офлайн, вернулся — клиентская часть создаётся заново, а серверный признак остался включённым.
+    // Практическое следствие: после загрузки сейва фонари у всех выключены и загораются заново
+    // схемой света, массового «все горят при входе» не будет.
+    const bool actor_owned = !!smart_cast<CActor*>(H_Parent());
+    const bool npc_owned = !actor_owned && !!H_Parent();
 
-    light_render->set_active(beam);
+    const bool beam = actor_owned ? (m_switched_on2 && m_da_use_spot) : (npc_owned && m_switched_on);
+    const bool omni = actor_owned ? (m_switched_on && !m_da_use_spot) : (npc_owned && m_switched_on);
+
+    light_render->set_active(beam && dynamic);
+    light_omni->set_active(omni && dynamic);
     glow_render->set_active(beam);
-    light_omni->set_active(omni);
 
     // [DA_PORT] Фонарь В РУКАХ ИГРОКА потолок теневых ламп не вытесняет и места в бюджете не
     // занимает. Иначе при значении по умолчанию (одна теневая карта за кадр) единственный слот
@@ -244,7 +287,7 @@ void CTorch::DaUpdateLightState()
     // рук начинает проходить сквозь стены. Ставится здесь: сюда сходятся все пути смены состояния,
     // и здесь же уже известно, что владелец - актёр. У NPC приоритета нет: их фонарей может быть
     // много, и они бы съели бюджет целиком.
-    const bool mine = !!smart_cast<CActor*>(H_Parent());
+    const bool mine = actor_owned;
     light_render->set_never_demote(mine);
     light_omni->set_never_demote(mine);
 
@@ -254,16 +297,21 @@ void CTorch::DaUpdateLightState()
     {
         const bool has_item = (m_da_item_range > 0.001f);
 
+        // Печатаем ФАКТИЧЕСКОЕ состояние ламп, а не запрошенное: при выключенном динамическом свете
+        // они гаснут, и отчёт «луч 1» тогда сбивал бы с толку ровно там, где нужен больше всего.
+        const bool lit_beam = beam && dynamic;
+        const bool lit_omni = omni && dynamic;
+
         static int last = -1;
-        const int state = (beam ? 1 : 0) | (omni ? 2 : 0) | (m_switched_on ? 4 : 0) |
-            (m_switched_on2 ? 8 : 0) | (has_item ? 16 : 0);
+        const int state = (lit_beam ? 1 : 0) | (lit_omni ? 2 : 0) | (m_switched_on ? 4 : 0) |
+            (m_switched_on2 ? 8 : 0) | (has_item ? 16 : 0) | (dynamic ? 32 : 0);
         if (state != last)
         {
             last = state;
             const Fcolor& c = has_item ? m_da_color : m_da2_color;
             Msg("* [DA_PORT] лампа: луч %d, рассеянная %d (torch1 %d, torch2 %d, предмет %d), "
                 "дальность %.1f, цвет %.2f/%.2f/%.2f, аниматор %d",
-                beam ? 1 : 0, omni ? 1 : 0, m_switched_on ? 1 : 0, m_switched_on2 ? 1 : 0,
+                lit_beam ? 1 : 0, lit_omni ? 1 : 0, m_switched_on ? 1 : 0, m_switched_on2 ? 1 : 0,
                 has_item ? 1 : 0, has_item ? m_da_item_range : m_da2_range, c.r, c.g, c.b,
                 lanim ? 1 : 0);
         }
@@ -385,7 +433,21 @@ void CTorch::Switch2(bool light_on)
     if (light_trace_bone.c_str())
     {
         IKinematics* pVisual = smart_cast<IKinematics*>(Visual());
-        VERIFY(pVisual);
+
+        // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а следующая строка — ВИРТУАЛЬНЫЙ
+        // вызов. По нулевому указателю это переход по адресу 0, то есть падение без машинного
+        // стека: «исполнение по адресу 0000000000000000», разматывать нечего.
+        //
+        // Визуала может не быть законно. Switch2 зовут и при выгрузке уровня, когда визуал уже снят,
+        // и у предмета, который сейчас разбирают. В логе это выглядело так: строка отладки фонаря
+        // печаталась (значит до неё дошло), а следом — прыжок в ноль.
+        //
+        // 🔑 Место стало горячим после того, как sr_light.script перестал УДАЛЯТЬ фонарь на свету и
+        // начал его выключать: выключение идёт как раз сюда, и мина, лежавшая тихо, стала попадаться
+        // на каждой выгрузке.
+        if (!pVisual)
+            return;
+
         u16 bi = pVisual->LL_BoneID(light_trace_bone);
 
         pVisual->LL_SetBoneVisible(bi, light_on, TRUE);
@@ -513,6 +575,17 @@ void CTorch::OnH_A_Chield()
         DaApplyBeam();
         DaUpdateLightState();
         DaSyncScriptSwitch();
+    }
+    else
+    {
+        // [DA_PORT] Владелец появился — пересчитать лампы. У сталкера это единственный момент, когда
+        // включённый фонарь может зажечься обратно: `Switch` ему зовут при спавне (net_Spawn, по
+        // сохранённому m_active) и при attach из sr_light.script, а между ними лежит установка
+        // родителя. Без пересчёта фонарь сталкера, вошедшего в онлайн уже включённым, остался бы
+        // тёмным до следующего цикла схемы света — а тот включает его лишь через
+        // enable_attachable_item и только когда предмет ещё не прикреплён, то есть мог не прийти
+        // вовсе.
+        DaUpdateLightState();
     }
 }
 
@@ -737,20 +810,73 @@ void CTorch::UpdateCL()
     if (!m_switched_on && !m_switched_on2)
         return;
 
-    CBoneInstance& BI = smart_cast<IKinematics*>(Visual())->LL_GetBoneInstance(guid_bone);
+    // [DA_PORT] Владелец мёртв — фонарь гасим. Страховка в движке, потому что штатно это делает
+    // СКРИПТ: `sr_light.check_light` зовётся из death_callback (xr_motivator.script) и выключает
+    // фонарь веткой «сталкер не жив». Путь целиком скриптовый и оборвать его есть чем — в том числе
+    // нашей же проверкой `db.storage[id]` в начале check_light: нет записи, и до выключения дело не
+    // дойдёт вовсе.
+    //
+    // Раньше это ничего не стоило заметить: фонари сталкеров не светили в принципе. Теперь светят, и
+    // цена промаха — горящий фонарь на трупе до самой выгрузки уровня. Проверка только для НЕ-актёра:
+    // у игрока смерть обрабатывается своим путём, и трогать её незачем.
+    if (H_Parent() && !smart_cast<CActor*>(H_Parent()))
+    {
+        const CEntityAlive* owner_alive = smart_cast<const CEntityAlive*>(H_Parent());
+        if (owner_alive && !owner_alive->g_Alive())
+        {
+            Switch(false);
+            return;
+        }
+    }
+
+    // [DA_PORT] Признак динамического света мог смениться на ходу — консольной ручкой
+    // `ai_use_torch_dynamic_lights`. Пересчитываем здесь, потому что штатно состояние ламп считается
+    // ПО СОБЫТИЯМ, а у сталкера с горящим фонарём события может не быть часами: схема света зовёт
+    // включение один раз, при входе в темноту, и больше не возвращается.
+    //
+    // Сверка в обе стороны, поэтому по запомненному значению, а не по факту «лампа активна»: ручку
+    // могут и включить обратно, и свет тогда обязан вернуться.
+    //
+    // Стоит ПОСЛЕ проверки мёртвого владельца намеренно: у трупа лампы всё равно гасятся строкой
+    // выше, и пересчитывать их перед этим — впустую.
+    if (m_da_dynamic_applied != can_use_dynamic_lights())
+        DaUpdateLightState();
+
+    // [DA_PORT] Тот же случай, что в Switch2: без визуала это виртуальный вызов по нулю, то есть
+    // прыжок по адресу 0 без стека. Ранний выход выше отсекает выключённый фонарь, но включённый
+    // может дожить до выгрузки уровня, когда визуал уже снят.
+    IKinematics* kinematics = smart_cast<IKinematics*>(Visual());
+    if (!kinematics)
+        return;
+
+    // [DA_PORT] Кость направляющей берётся из user_data модели по ИМЕНИ, и её там может не быть:
+    // LL_BoneID вернёт BI_NONE. В net_Spawn это ловит VERIFY, но он исчезает в релизе, а
+    // LL_GetBoneInstance внутри защищён тоже только VERIFY — то есть в релизе мы читаем
+    // bone_instances[65535], далеко за концом массива. Падения может и не случиться: чаще оттуда
+    // приходит мусорная матрица, и лампа уезжает в бесконечность или в NaN.
+    if (guid_bone == BI_NONE || guid_bone >= kinematics->LL_BoneCount())
+        return;
+
+    CBoneInstance& BI = kinematics->LL_GetBoneInstance(guid_bone);
     Fmatrix M;
 
     if (H_Parent())
     {
         CActor* actor = smart_cast<CActor*>(H_Parent());
-        if (actor)
-            smart_cast<IKinematics*>(H_Parent()->Visual())->CalculateBones_Invalidate();
+
+        // [DA_PORT] Визуал РОДИТЕЛЯ тоже может быть снят — тот же прыжок в ноль, что и выше.
+        // Берём один раз и проверяем: ниже он используется ещё раз, в ветке ближней камеры.
+        IKinematics* parent_kinematics = H_Parent()->Visual() ? smart_cast<IKinematics*>(H_Parent()->Visual()) : nullptr;
+
+        if (actor && parent_kinematics)
+            parent_kinematics->CalculateBones_Invalidate();
 
         if (H_Parent()->XFORM().c.distance_to_sqr(Device.vCameraPosition) < _sqr(OPTIMIZATION_DISTANCE) ||
             GameID() != eGameIDSingle)
         {
             // near camera
-            smart_cast<IKinematics*>(H_Parent()->Visual())->CalculateBones();
+            if (parent_kinematics)
+                parent_kinematics->CalculateBones();
             M.mul_43(XFORM(), BI.mTransform);
         }
         else

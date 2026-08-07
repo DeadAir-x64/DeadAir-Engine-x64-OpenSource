@@ -75,7 +75,11 @@ TEMPLATE_SPECIALIZATION
 IC void CSGraphVertex::remove_edge(const _vertex_id_type& vertex_id)
 {
     typename EDGES::iterator I = std::find(m_edges.begin(), m_edges.end(), vertex_id);
-    VERIFY(m_edges.end() != I);
+    // [DA_PORT] Проверка вместо VERIFY: ниже разыменование и erase по end(), плюс счётчик рёбер
+    // ушёл бы в минус — а он общий для графа.
+    if (m_edges.end() == I)
+        return;
+
     CGraphVertex* vertex = (*I).vertex();
     vertex->on_edge_removal(this);
     m_edges.erase(I);
@@ -93,7 +97,12 @@ TEMPLATE_SPECIALIZATION
 IC void CSGraphVertex::on_edge_removal(const CGraphVertex* vertex)
 {
     typename VERTICES::iterator I = std::find(m_vertices.begin(), m_vertices.end(), vertex);
-    VERIFY(I != m_vertices.end());
+    // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а erase(end()) — неопределённое
+    // поведение, оно портит контейнер и рушится потом в стороне. Пропуск удаления безвреден:
+    // элемента и так нет.
+    if (I == m_vertices.end())
+        return;
+
     m_vertices.erase(I);
 }
 

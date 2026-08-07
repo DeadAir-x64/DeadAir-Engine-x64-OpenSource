@@ -1640,6 +1640,11 @@ void xrRender_initconsole()
     CMD4(CCC_Float, "r2_dhemi_light_flow", &ps_r2_dhemi_light_flow, 0, 1.f);
     CMD4(CCC_Float, "r2_dhemi_smooth", &ps_r2_lt_smooth, 0.f, 10.f);
     CMD3(CCC_Mask, "rs_hom_depth_draw", &ps_r2_ls_flags_ext, R_FLAGEXT_HOM_DEPTH_DRAW);
+    {
+        // [DA_PORT] выключатель программного отсечения, для разбора мигающей геометрии
+        extern int ps_da_hom_enabled;
+        CMD4(CCC_DaDebugInteger, "r__hom", &ps_da_hom_enabled, 0, 1);
+    }
     CMD3(CCC_Mask, "r2_shadow_cascede_zcul", &ps_r2_ls_flags_ext, R2FLAGEXT_SUN_ZCULLING);
     CMD3(CCC_Mask, "r2_shadow_cascede_old", &ps_r2_ls_flags_ext, R2FLAGEXT_SUN_OLD);
 

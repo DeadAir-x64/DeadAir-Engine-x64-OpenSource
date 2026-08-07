@@ -202,8 +202,31 @@ void CALifeStorageManager::load(void* buffer, const u32& buffer_size, LPCSTR fil
 
     can_register_objects(true);
 
-    for (auto& object : objects().objects())
-        object.second->on_register();
+    // [DA_PORT] Идём по СНИМКУ номеров, а не по живому реестру.
+    //
+    // on_register — виртуальный, и у скриптовых серверных классов он уходит в Lua
+    // (DEFINE_LUA_WRAPPER_METHOD_V0 в xrServer_script_macroses.h). В Dead Air таких классов много:
+    // отряды, смарт-террейны, все se_* объекты — и они в этом обработчике регистрируются в
+    // симуляции, а значит могут создать или освободить объект. То есть изменить тот самый реестр,
+    // по которому мы прямо сейчас идём.
+    //
+    // Для xr_map вставка безопасна, а вот удаление ТЕКУЩЕГО элемента обесценивает итератор — обход
+    // продолжится по освобождённому узлу. Тот же класс дефекта, что мы нашли в составе отряда, и
+    // так же не ловится ни меткой жизни, ни санитаром: объекты живы, ломается сам обход.
+    //
+    // Снимок стоит один проход по номерам, и это происходит один раз за загрузку.
+    xr_vector<ALife::_OBJECT_ID> ids;
+    ids.reserve(objects().objects().size());
+    for (const auto& object : objects().objects())
+        ids.push_back(object.first);
+
+    for (const ALife::_OBJECT_ID id : ids)
+    {
+        // Объект мог исчезнуть, пока обработчик предыдущего работал в скриптах.
+        CSE_ALifeDynamicObject* object = objects().object(id, true);
+        if (object)
+            object->on_register();
+    }
 
     if (!g_pGameLevel)
         return;

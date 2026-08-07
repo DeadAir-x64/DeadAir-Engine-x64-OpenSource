@@ -2394,9 +2394,14 @@ void CActor::MoveArtefactBelt(const CArtefact* artefact, bool on_belt)
     }
     else
     {
+        // [DA_PORT] Проверка вместо VERIFY, и заодно правильная идиома удаления.
+        //
+        // std::remove не удаляет ничего — он сдвигает нужное к началу и возвращает новый конец.
+        // Стирать надо весь хвост от него до end(), а не один элемент; при отсутствии артефакта
+        // remove вернёт end(), и прежний erase(end()) был неопределённым поведением.
         auto it = std::remove(m_ArtefactsOnBelt.begin(), m_ArtefactsOnBelt.end(), artefact);
-        VERIFY(it != m_ArtefactsOnBelt.end());
-        m_ArtefactsOnBelt.erase(it);
+        if (it != m_ArtefactsOnBelt.end())
+            m_ArtefactsOnBelt.erase(it, m_ArtefactsOnBelt.end());
     }
     if (Level().CurrentViewEntity() && Level().CurrentViewEntity() == this && CurrentGameUI()->UIMainIngameWnd->UIArtefactPanel)
         CurrentGameUI()->UIMainIngameWnd->UIArtefactPanel->InitIcons(m_ArtefactsOnBelt);

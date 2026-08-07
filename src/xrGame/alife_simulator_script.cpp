@@ -38,6 +38,79 @@ bool valid_object_id(const CALifeSimulator* self, ALife::_OBJECT_ID object_id)
     return (object_id != 0xffff);
 }
 
+// [DA_PORT] Сторож висячих выдач: ловит момент, когда реестр отдаёт скрипту УЖЕ УДАЛЁННЫЙ объект.
+//
+// Зачем нужен именно такой прибор. Падение при массовой уборке выглядит как «исполнение по адресу
+// 0000000000000000» без машинного стека: скрипт получил указатель на освобождённую память и позвал
+// метод, а таблицы методов там больше нет. По самому падению виновника не найти — оно происходит
+// уже внутри чужого кода, за много шагов от того, кто взял плохой указатель.
+//
+// Поэтому ловим НЕ падение, а выдачу. Адреса освобождаемых объектов запоминаем, и если реестр отдаёт
+// такой адрес наружу — печатаем номер, имя и стек Lua. Стек назовёт скрипт и строку, то есть ровно
+// то, чего не даёт разбор краша.
+//
+// Ложных срабатываний быть не должно: аллокатор охотно отдаёт освобождённую память следующему, кто
+// попросит, поэтому при регистрации нового объекта его адрес из списка вычёркивается (da_watch_reused).
+namespace
+{
+xr_unordered_map<const void*, u16> s_da_released;
+}
+
+int ps_da_dangling_watch = 0;
+
+void da_watch_released(const void* object, u16 id)
+{
+    if (!ps_da_dangling_watch || !object)
+        return;
+
+    // Список не должен расти бесконечно: за долгую игру через него проходят десятки тысяч трупов.
+    // Точность от сброса не страдает — интересует ближайшее прошлое, а не вся сессия.
+    if (s_da_released.size() > 8192)
+        s_da_released.clear();
+
+    s_da_released[object] = id;
+
+    // [DA_PORT] Самопроверка: молчание прибора и отсутствие события неотличимы, пока прибор не
+    // отчитался, что он вообще работает. Раз в 500 удалений говорим, сколько адресов под присмотром —
+    // тогда «висячих выдач ноль» означает именно ноль, а не мёртвый сторож.
+    static u32 s_da_watched = 0;
+    if (((++s_da_watched) % 500) == 0)
+        Msg("~ [DA_DANGLE] сторож жив: под присмотром %u адресов, всего запомнено %u",
+            u32(s_da_released.size()), s_da_watched);
+}
+
+void da_watch_reused(const void* object)
+{
+    if (s_da_released.empty() || !object)
+        return;
+
+    s_da_released.erase(object);
+}
+
+namespace
+{
+CSE_ALifeDynamicObject* da_check_dangling(CSE_ALifeDynamicObject* object, ALife::_OBJECT_ID asked_id)
+{
+    if (!ps_da_dangling_watch || !object || s_da_released.empty())
+        return object;
+
+    const auto it = s_da_released.find(object);
+    if (it == s_da_released.end())
+        return object;
+
+    // Ни одного метода объекта здесь не вызываем — он мёртв, любое обращение к полям недостоверно.
+    Msg("! [DA_DANGLE] реестр отдал скрипту УДАЛЁННЫЙ объект: спрошен id [%d], запись была id [%d], адрес [%p]",
+        asked_id, it->second, (const void*)object);
+    FlushLog();
+
+    if (g_da_lua_stack_printer)
+        g_da_lua_stack_printer();
+
+    FlushLog();
+    return object;
+}
+} // namespace
+
 CSE_ALifeDynamicObject* alife_object(const CALifeSimulator* self, ALife::_OBJECT_ID object_id)
 {
     VERIFY(self);
@@ -46,7 +119,7 @@ CSE_ALifeDynamicObject* alife_object(const CALifeSimulator* self, ALife::_OBJECT
         GEnv.ScriptEngine->script_log(LuaMessageType::Error,"! alife():object(id): invalid id[%u] specified", object_id);
         return nullptr;
     }
-    return (self->objects().object(object_id, true));
+    return da_check_dangling(self->objects().object(object_id, true), object_id);
 }
 
 CSE_ALifeDynamicObject* alife_object(const CALifeSimulator* self, pcstr name)
@@ -67,7 +140,7 @@ CSE_ALifeDynamicObject* alife_object(const CALifeSimulator* self, pcstr name)
 CSE_ALifeDynamicObject* alife_object(const CALifeSimulator* self, ALife::_OBJECT_ID id, bool no_assert)
 {
     VERIFY(self);
-    return (self->objects().object(id, no_assert));
+    return da_check_dangling(self->objects().object(id, no_assert), id);
 }
 
 CSE_ALifeDynamicObject* alife_story_object(const CALifeSimulator* self, ALife::_STORY_ID id)
@@ -297,15 +370,77 @@ void CALifeSimulator__release(CALifeSimulator* self, CSE_Abstract* object, bool)
     VERIFY(self);
     //	self->release						(object,true);
 
-    THROW(object);
+    // [DA_PORT] Здесь стоял `THROW(object);` и строкой ниже — недостижимый `if (!object) return;`.
+    // Две проверки, которые вместе не проверяют ничего: THROW бросает, а ловить некому, и до второй
+    // строки управление не доходит никогда.
+    //
+    // Ноль сюда приходит законно: скрипты мода удаляют объекты пачками (вороны, отряды), и движок к
+    // этому моменту мог убрать тот же объект сам. Это норма пути, а не ошибка вызывающего.
     if (!object)
+    {
+        extern ENGINE_API int ps_da_alife_release_log;
+        if (ps_da_alife_release_log)
+            Msg("~ [DA_REL] скрипт просит освободить НОЛЬ — объект уже убран движком, пропускаем");
         return;
+    }
+
+    // [DA_PORT] Отметка пути: сюда приходит ТОЛЬКО скрипт. Движок зовёт release напрямую, минуя эту
+    // обёртку, и по следу их иначе не различить — а разница решает, где искать обрыв.
+    {
+        extern ENGINE_API int ps_da_alife_release_log;
+        if (ps_da_alife_release_log)
+            Msg("~ [DA_REL] СКРИПТ просит освободить id [%d] (онлайн: %s)", object->ID,
+                smart_cast<CSE_ALifeObject*>(object) && smart_cast<CSE_ALifeObject*>(object)->m_bOnline
+                    ? "да" : "нет");
+    }
 
     CSE_ALifeObject* alife_object = smart_cast<CSE_ALifeObject*>(object);
-    THROW(alife_object);
+
+    // [DA_PORT] Здесь стоял второй `THROW(alife_object);`, а следующей строкой — разыменование без
+    // проверки. То есть при неудачном приведении выбор был между броском, который никто не ловит, и
+    // обращением по нулю. Приведение не обязано удаваться: серверный объект может не быть
+    // CSE_ALifeObject, и это не ошибка вызывающего.
+    if (!alife_object)
+    {
+        extern ENGINE_API int ps_da_alife_release_log;
+        if (ps_da_alife_release_log)
+            Msg("~ [DA_REL] id [%d] не является объектом ALife — освобождать нечего, пропускаем",
+                object->ID);
+        return;
+    }
+
     if (!alife_object->m_bOnline)
     {
+        // [DA_PORT] Номер запоминаем ДО удаления: после него читать поля объекта уже нельзя.
+        const u16 da_released_id = object->ID;
+
         self->release(object, true);
+
+        extern ENGINE_API int ps_da_alife_release_log;
+        if (ps_da_alife_release_log)
+            Msg("~ [DA_REL] возврат в скрипт после id [%d]", da_released_id);
+        return;
+    }
+
+    // [DA_PORT] Онлайн-объект: пакет шлём только если есть КОМУ его исполнить.
+    //
+    // Приём взят из второго порта (Dead Air Refined, alife_simulator_script.cpp). Ниже —
+    // единственное, что делает скриптовый release с онлайновым объектом: посылает GE_DESTROY и
+    // уходит. Если клиентской части уже нет или она помечена на уничтожение, пакет исполнять некому:
+    // на сервере он обернётся «ge_destroy: not found on server», а номер при этом всё равно уйдёт в
+    // общий пул и достанется новому объекту. Так и получаются висячие записи в реестрах, из-за
+    // которых потом падает планировщик ALife.
+    //
+    // Корень этим не лечится — скриптовый release для онлайн-объекта по-прежнему ничего не
+    // уничтожает, — но мусора становится заметно меньше: повторные и запоздалые вызовы отсекаются
+    // здесь, а не превращаются в пакет.
+    IGameObject* online_object = Level().Objects.net_Find(object->ID);
+    if (!online_object || online_object->getDestroy())
+    {
+        extern ENGINE_API int ps_da_alife_release_log;
+        if (ps_da_alife_release_log)
+            Msg("~ [DA_REL] id [%d]: клиентской части %s — GE_DESTROY не шлём", object->ID,
+                online_object ? "уже уничтожается" : "нет");
         return;
     }
 
@@ -404,7 +539,16 @@ CSE_Abstract* try_to_clone_object(CALifeSimulator* self, CSE_Abstract* object, p
 
     CSE_ALifeItemWeaponMagazined * clone = smart_cast<CSE_ALifeItemWeaponMagazined*>(absClone);
     if (!clone)
+    {
+        // [DA_PORT] Заготовку за собой убираем (приём из Dead Air Refined). Здесь стоял голый
+        // return: объект уже создан и НОМЕР ЗА НИМ ЗАНЯТ, а уйти он должен был в клон, которого не
+        // получилось. Утечка тихая — ни ошибки, ни следа, только номер, который больше никому не
+        // достанется... до тех пор, пока не достанется: это ровно тот механизм, из которого у нас
+        // растут переиспользованные номера и висячие записи в реестрах ALife.
+        self->server().FreeID(absClone->ID, 0);
+        F_entity_Destroy(absClone);
         return nullptr;
+    }
 
     clone->wpn_flags = wpnmag->wpn_flags;
     clone->m_addon_flags = wpnmag->m_addon_flags;

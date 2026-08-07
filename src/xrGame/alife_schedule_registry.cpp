@@ -8,6 +8,9 @@
 
 #include "StdAfx.h"
 #include "alife_schedule_registry.h"
+#include "ai_space.h"                 // [DA_PORT] da_alife_object_registered
+#include "alife_simulator.h"          // [DA_PORT] da_alife_object_registered
+#include "alife_object_registry.h"    // [DA_PORT] da_alife_object_registered
 #include "xrEngine/Device.h" // [DA_PORT] ps_da_seq_trap - общий выключатель диагностики задач кадра
 
 // [DA_PORT] Накопление по секциям объектов ALife, разбор в alife_schedule_registry.h.
@@ -125,4 +128,55 @@ void CALifeScheduleRegistry::remove(CSE_ALifeDynamicObject* object, bool no_asse
         return;
 
     inherited::remove(object->ID, no_assert || !schedulable->need_update(object));
+}
+
+// [DA_PORT] Числится ли объект в реестре ALife — см. CUpdatePredicate в заголовке.
+//
+// no_assert обязателен: отсутствие записи здесь не ошибка, а ровно тот случай, ради которого
+// проверка и заведена. Симулятора может не быть вовсе (главное меню, выгрузка) — тогда обновлять
+// тем более нечего.
+bool da_alife_object_registered(u16 id, const CSE_ALifeSchedulable* scheduled)
+{
+    const CALifeSimulator* alife = ai().get_alife();
+    if (!alife)
+        return false;
+
+    CSE_ALifeDynamicObject* object = alife->objects().object(id, true);
+
+    // [DA_PORT] Сверяем ЛИЧНОСТЬ объекта, а не номер.
+    //
+    // Первая версия проверки спрашивала только «числится ли такой номер» — и этого не хватило.
+    // Номера у нас уходят в общий пул при живом объекте (скриптовый release для онлайн-объекта его
+    // не уничтожает) и раздаются заново: реестр честно отвечает «номер занят», а в расписании при
+    // этом лежит указатель на СТАРЫЙ объект, чья память уже освобождена. Проверка проходила, и
+    // планировщик звал update() по мёртвому адресу.
+    //
+    // Так выглядел вылет 07.08: `CSE_ALifeOnlineOfflineGroup::commander_id()`, чтение по мусорному
+    // адресу, стек — ALife → обёртка скриптового отряда → Lua → обратно в C++. Сама commander_id
+    // безупречна (проверяет пустоту списка), падал доступ по `this`.
+    //
+    // Сравнение адресов законно: слева — живой объект из реестра, приведённый к тому же подтипу,
+    // что хранится в расписании (множественное наследование сдвигает указатель, поэтому приводим,
+    // а не сравниваем как есть). Справа — то, что планировщик собирается вызвать. Разошлись —
+    // значит номер переиспользован, и трогать его нельзя.
+    if (object && smart_cast<CSE_ALifeSchedulable*>(object) == scheduled)
+        return true;
+
+    // [DA_PORT] Считаем отказы: молчаливая защита неотличима от неработающей.
+    //
+    // Если это число растёт — значит в расписании действительно лежат номера, которых в реестре
+    // объектов уже нет, и без проверки планировщик звал бы update() по мёртвой памяти. Если оно
+    // остаётся нулём, а падения ушли — причина была в другом, и это надо знать, а не додумывать.
+    extern int ps_da_registry_log;
+    if (ps_da_registry_log)
+    {
+        static u32 s_da_skipped = 0;
+        ++s_da_skipped;
+        if (s_da_skipped <= 5 || (s_da_skipped % 100) == 0)
+            Msg("~ [DA_REG] расписание: номер [%d] %s — обновление пропущено, всего %u", id,
+                object ? "занят ДРУГИМ объектом (номер переиспользован)" : "не числится в реестре",
+                s_da_skipped);
+    }
+
+    return false;
 }

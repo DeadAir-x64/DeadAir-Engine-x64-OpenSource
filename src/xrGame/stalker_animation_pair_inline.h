@@ -62,7 +62,12 @@ IC void CStalkerAnimationPair::add_callback(const CALLBACK_ID& callback)
 IC void CStalkerAnimationPair::remove_callback(const CALLBACK_ID& callback)
 {
     CALLBACKS::iterator I = std::find(m_callbacks.begin(), m_callbacks.end(), callback);
-    VERIFY(I != m_callbacks.end());
+    // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а erase(end()) — неопределённое
+    // поведение, оно портит контейнер и рушится потом в стороне. Пропуск удаления безвреден:
+    // элемента и так нет.
+    if (I == m_callbacks.end())
+        return;
+
     m_callbacks.erase(I);
 }
 

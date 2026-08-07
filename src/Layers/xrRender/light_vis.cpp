@@ -42,7 +42,39 @@ void light::vis_prepare(CBackend& cmd_list)
     if (ps_r2_ls_flags.test(R2FLAG_EXP_DONT_TEST_SHADOWED) && flags.bShadow)
         skiptest = true;
 
-    if (skiptest || Device.vCameraPosition.distance_to(spatial.sphere.P) <= (spatial.sphere.R * 1.01f + safe_area))
+    // [DA_PORT] Источник, обрезанный краем экрана, считаем видимым и запрос не выдаём.
+    //
+    // Проверка видимости источника — это запрос к видеокарте: рисуем объём и спрашиваем, сколько его
+    // пикселей прошло. Когда объём наполовину за краем кадра, ответ ненадёжен: выборка промахивается
+    // мимо всех пикселей, хотя источник до экрана достаёт. Лампа на краю зрения от этого мигает при
+    // повороте камеры.
+    //
+    // Раздельные части точечного источника (OMNIPART) — шесть граней ОДНОГО объёма, поэтому меряем
+    // родительскую сферу, а не грань: своих границ света у грани нет.
+    //
+    // Взято из Dead Air Refined («Stabilize local lights at viewport edges»).
+    //
+    // ⚠️ ЦЕНА ИЗВЕСТНА: fcvPartial возвращается почти для всех источников вокруг игрока, поэтому
+    // видимыми становятся почти все, и наш потолок теневых ламп начинает перебирать, кому достанется
+    // тень — тени мелькают. У Refined потолка нет, поэтому там этой цены не видно. Правка уже
+    // откатывалась по этой причине и возвращена по прямой просьбе; если мелькание тени вернётся,
+    // ограничить её нетеневыми источниками (`!flags.bShadow`) — потолок тогда не тронется.
+    Fvector queryCenter = spatial.sphere.P;
+    float queryRadius = spatial.sphere.R;
+    if (flags.type == IRender_Light::OMNIPART)
+    {
+        queryCenter = position;
+        queryRadius = range;
+    }
+
+    u32 planeMask = 0xffffffff;
+    const EFC_Visible viewVisibility = RImplementation.ViewBase.testSphere(queryCenter, queryRadius, planeMask);
+    const bool screenClippedVolume = viewVisibility == fcvPartial;
+
+    const bool cameraInsideVolume =
+        Device.vCameraPosition.distance_to(queryCenter) <= (queryRadius * 1.01f + safe_area);
+
+    if (skiptest || screenClippedVolume || cameraInsideVolume)
     { // small error
         vis.visible = true;
         vis.pending = false;

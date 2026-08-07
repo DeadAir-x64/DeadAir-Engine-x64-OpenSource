@@ -21,16 +21,21 @@ protected:
     float m_delta_h;
     Fvector2 m_prev_hp;
     bool m_switched_on;
-    // [DA_PORT] Dead Air's scripts drive two independent lights: "torch" (itms_manager.script
-    // forces this ON every actor_on_update tick - it's meant to be a harmless base light) and
-    // "torch2" (the one the player actually toggles with the torch key). m_switched_on/light_omni
-    // stay the "torch" (dim, no shadow); m_switched_on2/light_render are the "torch2" (bright
-    // spot with shadow) - the real flashlight beam the player controls.
+    // [DA_PORT] Скрипты мода дают два независимых ВЫКЛЮЧАТЕЛЯ: "torch" (m_switched_on, его
+    // itms_manager держит включённым каждый тик, пока выбран предмет со светом) и "torch2"
+    // (m_switched_on2 — клавиша игрока, ею управляется налобный фонарь).
+    //
+    // ⚠️ Здесь стояло, что m_switched_on — это ВСЕГДА light_omni, а m_switched_on2 — light_render.
+    // Прямой связи нет, и полагаться на неё нельзя:
+    //   • у ИГРОКА какая лампа кому подчиняется, решает ещё и m_da_use_spot (предмет споттовый или
+    //     нет) — см. DaUpdateLightState;
+    //   • у СТАЛКЕРА обе лампы идут по m_switched_on, потому что torch2 ему не шлёт никто.
+    // Единственное место, где это решается, — DaUpdateLightState; читать надо его, а не эти поля.
     bool m_switched_on2;
     ref_light light_render;
     ref_light light_omni;
     ref_glow glow_render;
-    Fvector m_focus;
+    Fvector m_focus; // upstream: только записывается в OnH_A_Chield, не читается нигде
 
     // [DA_PORT] Runtime light tuning driven by Dead Air's xr_actor.script. DA carries ONE hidden
     // device_torch (this CTorch) and reconfigures its light per equipped light item (flashlight =
@@ -39,6 +44,12 @@ protected:
     // the current item is a spot-beam item (flashlight) or an omni-glow item (glowstick/lighter).
     Fcolor m_da_color;
     bool m_da_use_spot;
+
+    // [DA_PORT] Каким был признак динамического света, когда лампы выставляли в последний раз.
+    // Нужен, чтобы консольная ручка `ai_use_torch_dynamic_lights` действовала СРАЗУ: состояние ламп
+    // пересчитывается по событиям, а у сталкера с горящим фонарём события может не быть часами —
+    // схема света зовёт включение один раз, при входе в темноту. Сверяется в UpdateCL.
+    bool m_da_dynamic_applied;
 
     // [DA_PORT] ВТОРОЕ семейство настроек - для налобного фонаря (torch2). DA настраивает луч двумя
     // независимыми наборами: torch_set_* описывает свет ПРЕДМЕТА в руках (фонарик, палочка,

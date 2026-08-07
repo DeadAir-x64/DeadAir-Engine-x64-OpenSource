@@ -54,6 +54,8 @@ void CPureServerObject::save(NET_Packet& tNetPacket) {}
 ////////////////////////////////////////////////////////////////////////////
 CSE_Abstract::CSE_Abstract(LPCSTR caSection)
 {
+    m_da_alive = u32(da_alive_magic); // [DA_PORT] метка жизни, см. заголовок
+
     m_editor_flags.zero();
     RespawnTime = 0;
     net_Ready = FALSE;
@@ -133,6 +135,10 @@ CSE_Abstract::CSE_Abstract(LPCSTR caSection)
 
 CSE_Abstract::~CSE_Abstract()
 {
+    // [DA_PORT] Гасим метку ПЕРВЫМ делом: с этого мгновения любая ссылка на нас в реестрах
+    // ALife — висячая, и обходчик обязан её пропустить, а не звать методы по мёртвой памяти.
+    m_da_alive = 0;
+
     xr_free(s_name_replace);
     xr_delete(m_ini_file);
 }

@@ -103,7 +103,16 @@ void CGroupHierarchyHolder::unregister_in_group(CEntity* member)
 {
     VERIFY(member);
     MEMBER_REGISTRY::iterator I = std::find(m_members.begin(), m_members.end(), member);
-    VERIFY3(I != m_members.end(), "Specified group member cannot be found", member->cName().c_str());
+    // [DA_PORT] Проверка вместо VERIFY3: он исчезает в релизе, а erase(end()) портит состав
+    // группы. Боец мог быть снят раньше — пути освобождения рекурсивны и приходят дважды, ровно
+    // как в CSE_ALifeOnlineOfflineGroup::unregister_member.
+    if (I == m_members.end())
+    {
+        Msg("! [DA_PORT] иерархия групп: боец [%s] не числится в составе, снятие пропущено",
+            member->cName().c_str());
+        return;
+    }
+
     m_members.erase(I);
 }
 

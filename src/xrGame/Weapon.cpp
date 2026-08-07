@@ -995,7 +995,14 @@ void CWeapon::EnableActorNVisnAfterZoom()
         if (pTorch)
         {
             pTorch->SwitchNightVision(true, false);
-            pTorch->GetNightVision()->PlaySounds(CNightVisionEffector::eIdleSound);
+
+            // [DA_PORT] Эффектор создаётся ЛЕНИВО, внутри SwitchNightVision, и та выходит раньше
+            // создания сразу по двум веткам: когда у предмета выключено night_vision и когда у фонаря
+            // нет владельца-актёра. Здесь результат разыменовывали без проверки — по нулевому
+            // указателю это чтение поля m_pActor у нулевого объекта, то есть падение по малому адресу
+            // при выходе из прицела с ночной оптикой. Баг достался от upstream.
+            if (CNightVisionEffector* nv = pTorch->GetNightVision())
+                nv->PlaySounds(CNightVisionEffector::eIdleSound);
         }
     }
 }

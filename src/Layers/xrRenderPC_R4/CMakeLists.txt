@@ -27,6 +27,7 @@ target_sources(xrRenderPC_R4 PRIVATE
     r4_rendertarget_phase_velocity_guard.cpp
     r4_rendertarget_phase_reactive.cpp
     r4_rendertarget_phase_sky_velocity.cpp
+    r4_rendertarget_phase_water_velocity.cpp
     r4_rendertarget_phase_xess.cpp
     r4_rendertarget_phase_dlss.cpp
     r4_rendertarget_u_set_rt.cpp

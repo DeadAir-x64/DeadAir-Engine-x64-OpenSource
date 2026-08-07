@@ -40,7 +40,11 @@ void register_file_mapping(void* address, const u32& size, pcstr file_name)
 void unregister_file_mapping(void* address, const u32& size)
 {
     FILE_MAPPINGS::iterator I = g_file_mappings.find(*(u32*)&address);
-    VERIFY(I != g_file_mappings.end());
+    // [DA_PORT] Проверка вместо VERIFY: ниже читается (*I).second и вычитается из счётчика
+    // памяти. По end() это чтение мусора и порча бухгалтерии — молча и навсегда.
+    if (I == g_file_mappings.end())
+        return;
+
     // VERIFY2 ((*I).second.first == size,make_string("file mapping sizes are different: %d ->
     // %d",(*I).second.first,size));
     g_file_mapped_memory -= (*I).second.first;

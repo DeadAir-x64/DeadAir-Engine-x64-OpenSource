@@ -1168,8 +1168,12 @@ bool CSE_ALifeMonsterAbstract::need_update(CSE_ALifeDynamicObject* object)
 #ifdef XRGAME_EXPORTS
 void CSE_ALifeMonsterAbstract::kill()
 {
+    // [DA_PORT] Группа могла уйти раньше бойца — см. object_safe в alife_group_registry.cpp.
     if (m_group_id != 0xffff)
-        ai().alife().groups().object(m_group_id).unregister_member(ID);
+    {
+        if (CSE_ALifeOnlineOfflineGroup* group = ai().alife().groups().object_safe(m_group_id))
+            group->unregister_member(ID);
+    }
     set_health(0.f);
 }
 bool CSE_ALifeMonsterAbstract::has_detector()
@@ -1917,10 +1921,32 @@ void CSE_ALifeOnlineOfflineGroup::STATE_Read(NET_Packet& tNetPacket, u16 size)
 
 #if 1
     u32 container_size = tNetPacket.r_u32();
+
+    // [DA_PORT] Размер состава берётся из пакета и раньше применялся без единой проверки.
+    //
+    // Отряд из сохранения — это число плюс столько-то номеров. Если пакет прочитан не с того места
+    // (иная версия сейва, битый файл, рассогласование записи и чтения), сюда приходит любое u32 — и
+    // цикл честно пытается вставить, скажем, четыре миллиарда пар. Дальше либо нехватка памяти,
+    // либо порча соседних данных, и падение приходит потом и совсем в другом месте.
+    //
+    // Порог с запасом: отряды в моде — это единицы бойцов, десятки уже аномалия, а тысяча заведомо
+    // означает, что мы читаем не то. Лучше потерять состав одного отряда, чем сессию.
+    constexpr u32 da_sane_member_limit = 1024;
+    if (container_size > da_sane_member_limit)
+    {
+        Msg("! [DA_PORT] отряд [%d]: в сохранении заявлено бойцов %u — это заведомо мусор, состав "
+            "не восстановлен",
+            ID, container_size);
+        return;
+    }
+
     for (u32 i = 0; i < container_size; ++i)
     {
         MEMBERS::value_type pair;
         load_data(pair.first, tNetPacket);
+
+        // ⚠️ Указатель на бойца здесь НЕИЗВЕСТЕН и остаётся нулём до register_member. Все, кто
+        // читает состав, обязаны это учитывать — см. проверки в alife_online_offline_group.cpp.
         pair.second = nullptr;
         m_members.insert(pair);
     }

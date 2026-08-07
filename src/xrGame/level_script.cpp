@@ -142,24 +142,45 @@ ESingleGameDifficulty get_game_difficulty() { return g_SingleGameDifficulty; }
 u32 get_time_days()
 {
     u32 year = 0, month = 0, day = 0, hours = 0, mins = 0, secs = 0, milisecs = 0;
-    split_time((g_pGameLevel && Level().game) ? Level().GetGameTime() : ai().alife().time_manager().game_time(), year,
-        month, day, hours, mins, secs, milisecs);
+    // [DA_PORT] В главном меню нет ни уровня, ни ALife — спрашивать время не у кого.
+    //
+    // Проверка на уровень тут была, а на ALife нет: в меню ветка уходила в
+    // ai().alife() по неинициализированной симуляции. Погода в меню зовёт эти функции, отсюда и
+    // падение. Взято из Dead Air Refined («Fix main-menu weather crash»); наша строка совпадала.
+    const ALife::_TIME_ID da_game_time = (g_pGameLevel && Level().game) ? Level().GetGameTime()
+        : ai().get_alife()                                             ? ai().alife().time_manager().game_time()
+                                                                       : ALife::_TIME_ID{};
+    split_time(da_game_time, year, month, day, hours, mins, secs, milisecs);
     return day;
 }
 
 u32 get_time_hours()
 {
     u32 year = 0, month = 0, day = 0, hours = 0, mins = 0, secs = 0, milisecs = 0;
-    split_time((g_pGameLevel && Level().game) ? Level().GetGameTime() : ai().alife().time_manager().game_time(), year,
-        month, day, hours, mins, secs, milisecs);
+    // [DA_PORT] В главном меню нет ни уровня, ни ALife — спрашивать время не у кого.
+    //
+    // Проверка на уровень тут была, а на ALife нет: в меню ветка уходила в
+    // ai().alife() по неинициализированной симуляции. Погода в меню зовёт эти функции, отсюда и
+    // падение. Взято из Dead Air Refined («Fix main-menu weather crash»); наша строка совпадала.
+    const ALife::_TIME_ID da_game_time = (g_pGameLevel && Level().game) ? Level().GetGameTime()
+        : ai().get_alife()                                             ? ai().alife().time_manager().game_time()
+                                                                       : ALife::_TIME_ID{};
+    split_time(da_game_time, year, month, day, hours, mins, secs, milisecs);
     return hours;
 }
 
 u32 get_time_minutes()
 {
     u32 year = 0, month = 0, day = 0, hours = 0, mins = 0, secs = 0, milisecs = 0;
-    split_time((g_pGameLevel && Level().game) ? Level().GetGameTime() : ai().alife().time_manager().game_time(), year,
-        month, day, hours, mins, secs, milisecs);
+    // [DA_PORT] В главном меню нет ни уровня, ни ALife — спрашивать время не у кого.
+    //
+    // Проверка на уровень тут была, а на ALife нет: в меню ветка уходила в
+    // ai().alife() по неинициализированной симуляции. Погода в меню зовёт эти функции, отсюда и
+    // падение. Взято из Dead Air Refined («Fix main-menu weather crash»); наша строка совпадала.
+    const ALife::_TIME_ID da_game_time = (g_pGameLevel && Level().game) ? Level().GetGameTime()
+        : ai().get_alife()                                             ? ai().alife().time_manager().game_time()
+                                                                       : ALife::_TIME_ID{};
+    split_time(da_game_time, year, month, day, hours, mins, secs, milisecs);
     return mins;
 }
 
@@ -842,7 +863,15 @@ void CLevel::script_register(lua_State* luaState)
         def("get_rain_volume", get_rain_volume), // Dead Air compat
         def("patrol_path_exists", patrol_path_exists),
         def("vertex_position", vertex_position),
-        def("name", +[]() { return Level().name().c_str(); }),
+        // [DA_PORT] Уровня может не быть: из главного меню это тоже зовут.
+        //
+        // Настройки AtmosFear при применении спрашивают имя текущего уровня, а в меню уровня нет —
+        // Level() разыменовывает нулевой g_pGameLevel и игра падает на кнопке «Применить». Пустая
+        // строка — честный ответ: уровня действительно нет.
+        //
+        // Найдено в Dead Air Refined (коммит «Prevent main-menu AtmosFear apply crash»); у нас была
+        // ровно та же строка. Проверено по нашему дереву — дыра совпадала посимвольно.
+        def("name", +[]() { return g_pGameLevel ? Level().name().c_str() : ""; }),
         def("prefetch_sound", prefetch_sound),
 
         def("client_spawn_manager", get_client_spawn_manager),

@@ -264,12 +264,20 @@ public:
     void AddSeqFrame(pureFrame* f, bool mt);
     void RemoveSeqFrame(pureFrame* f);
 
+    // [DA_PORT] Снимаем ВСЕ вхождения делегата, а не первое найденное.
+    //
+    // Было `std::find` + `erase` одного элемента, и это молчаливая мина. Обычно объект попадает в
+    // список один раз за кадр, а в конце кадра список очищается целиком — дублей не возникает.
+    // Но при выгрузке уровня кадров нет: IGame_Level::net_Stop гоняет Objects.Update ШЕСТЬ раз
+    // подряд, и каждый проход добавляет делегат заново. Получается до шести одинаковых записей,
+    // из которых net_Destroy снимал ровно одну.
+    //
+    // Остальные пять переживали уничтожение объекта и вызывались уже по освобождённой памяти:
+    // падение выглядело как чтение по адресу 0x40 внутри CSoundPlayer::update, в рабочем потоке
+    // TaskManager, без всякой связи с местом настоящей ошибки.
     ICF void remove_from_seq_parallel(const fastdelegate::FastDelegate0<>& delegate)
     {
-        xr_vector<fastdelegate::FastDelegate0<>>::iterator I =
-            std::find(seqParallel.begin(), seqParallel.end(), delegate);
-        if (I != seqParallel.end())
-            seqParallel.erase(I);
+        seqParallel.erase(std::remove(seqParallel.begin(), seqParallel.end(), delegate), seqParallel.end());
     }
 
 private:

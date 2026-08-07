@@ -32,6 +32,10 @@ public:
     void load(IReader& file_stream);
     IC void add(CSE_ALifeDynamicObject* object);
     IC void remove(const ALife::_OBJECT_ID& id, bool no_assert = false);
+
+    // [DA_PORT] Санитар: выкидывает записи, чьи объекты уже разрушены (метка жизни погашена).
+    void da_sanitize();
+    void da_sanitize_report();
     IC CSE_ALifeDynamicObject* object(const ALife::_OBJECT_ID& id, bool no_assert = false) const;
     IC const OBJECT_REGISTRY& objects() const;
     IC OBJECT_REGISTRY& objects();

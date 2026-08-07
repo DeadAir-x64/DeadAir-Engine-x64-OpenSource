@@ -92,7 +92,13 @@ void CObjectList::o_remove(Objects& v, IGameObject* O)
     //. Log("ahtung");
     //. }
     Objects::iterator _i = std::find(v.begin(), v.end(), O);
-    VERIFY(_i != v.end());
+
+    // [DA_PORT] Проверка вместо VERIFY: erase(end()) — неопределённое поведение, а объект
+    // мог быть снят с учёта раньше по другому пути. Ломается при этом не здесь, а потом и
+    // в стороне: список объектов уровня обходят все подряд.
+    if (_i == v.end())
+        return;
+
     v.erase(_i);
     //. Msg("---o_remove[%s][%d]", O->cName().c_str(), O->ID() );
 }
@@ -418,6 +424,26 @@ void CObjectList::Update(bool bForce)
     {
         ZoneScopedN("net_Relcase");
 
+        // [DA_PORT] Замер уборки ссылок на удаляемые объекты.
+        //
+        // Ниже — двойной цикл: КАЖДЫЙ живой объект уведомляется о КАЖДОМ удаляемом. При массовом
+        // удалении это произведение, и оно быстро становится дорогим: пара сотен трупов на тысячу
+        // объектов сцены — это сотни тысяч виртуальных вызовов в одном кадре.
+        //
+        // Второй порт (Dead Air Refined 1.2.2) лечит это выносом общей работы из цикла — отряды
+        // монстров и менеджеры агентов чистятся пакетом, один раз. Прежде чем повторять, нужно
+        // ЧИСЛО: сколько это стоит именно у нас. Порог берём с общей ручки da_seq_trap (мс), чтобы
+        // не заводить ещё одну.
+        const bool da_measure = (ps_da_seq_trap > 0.f);
+        CTimer da_relcase_timer;
+        if (da_measure)
+            da_relcase_timer.Start();
+
+        // [DA_PORT] Сначала — общая работа, один раз на всю пачку (см. IGame_Persistent.h).
+        // Без этого она делалась внутри net_Relcase каждого объекта и умножалась на размер очереди.
+        if (g_pGamePersistent)
+            g_pGamePersistent->OnObjectsRelcaseBatch(destroy_queue);
+
         // Info
         for (Objects::iterator oit = objects_active.begin(); oit != objects_active.end(); ++oit)
             for (int it = destroy_queue.size() - 1; it >= 0; it--)
@@ -427,6 +453,23 @@ void CObjectList::Update(bool bForce)
         for (Objects::iterator oit = objects_sleeping.begin(); oit != objects_sleeping.end(); ++oit)
             for (int it = destroy_queue.size() - 1; it >= 0; it--)
                 (*oit)->net_Relcase(destroy_queue[it]);
+
+        // [DA_PORT] Память монстров пересчитывается ПОСЛЕ прохода — по уже вычищенным ссылкам, а не
+        // в середине процесса. Это и дешевле, и корректнее исходного порядка.
+        if (g_pGamePersistent)
+            g_pGamePersistent->OnObjectsRelcaseBatchComplete();
+
+        if (da_measure)
+        {
+            const float da_ms = da_relcase_timer.GetElapsed_sec() * 1000.f;
+            if (da_ms >= ps_da_seq_trap)
+                Msg("~ [DA_RELCASE] уборка ссылок: %.2f мс, удаляется %u, живых %u + спящих %u "
+                    "(вызовов %llu)",
+                    da_ms, u32(destroy_queue.size()), u32(objects_active.size()),
+                    u32(objects_sleeping.size()),
+                    (unsigned long long)destroy_queue.size() *
+                        (objects_active.size() + objects_sleeping.size()));
+        }
 
         for (int it = destroy_queue.size() - 1; it >= 0; it--)
             g_pGameLevel->Sound->object_relcase(destroy_queue[it]);
@@ -465,6 +508,21 @@ void CObjectList::net_Register(IGameObject* O)
     R_ASSERT(O);
     R_ASSERT(O->ID() < 0xffff);
 
+    // [DA_PORT] Прибор на переиспользование номера в КЛИЕНТСКОЙ таблице.
+    //
+    // Если номер уже занят другим живым объектом, мы сейчас его затрём — и прежний владелец станет
+    // недоступен через net_Find, оставаясь живым. На сервере такая же коллизия у нас уже измерена
+    // (см. ps_da_registry_log), а на клиенте её никто не считал. Молчаливая перезапись неотличима
+    // от нормальной работы, поэтому — считаем и называем.
+    if (map_NETID[O->ID()] && map_NETID[O->ID()] != O)
+    {
+        static u32 s_da_collisions = 0;
+        ++s_da_collisions;
+        if (s_da_collisions <= 10 || (s_da_collisions % 100) == 0)
+            Msg("~ [DA_NETID] номер [%d] переиспользован: прежний объект вытеснен из таблицы, случай #%u",
+                O->ID(), s_da_collisions);
+    }
+
     map_NETID[O->ID()] = O;
     //. map_NETID.insert(std::make_pair(O->ID(),O));
     // Msg ("-------------------------------- Register: %s",O->cName());
@@ -474,7 +532,29 @@ void CObjectList::net_Unregister(IGameObject* O)
 {
     // R_ASSERT (O->ID() < 0xffff);
     if (O->ID() < 0xffff) // demo_spectator can have 0xffff
-        map_NETID[O->ID()] = NULL;
+    {
+        // [DA_PORT] Стираем запись, только если она НАША.
+        //
+        // Было: `map_NETID[O->ID()] = NULL;` — обнуление по номеру, без взгляда на то, чей объект там
+        // лежит. Пока номера уникальны, разницы нет. Но они у нас переиспользуются: номер уходит в
+        // общий пул и достаётся новому объекту (см. xrServer::entity_Destroy). Тогда порядок
+        // «новый зарегистрировался — старый уничтожился» стирает запись ЖИВОГО объекта.
+        //
+        // Последствие тихое и оттого неприятное: net_Find по этому номеру возвращает ноль, объект
+        // как бы исчезает для всех, кто ищет его по id — скриптов, событий, поиска владельца, — хотя
+        // сам он жив и работает. Это ровно та же сверка личности, что мы поставили на сервере, где
+        // висячая запись в реестре ALife роняла планировщик.
+        if (map_NETID[O->ID()] == O)
+            map_NETID[O->ID()] = NULL;
+        else if (map_NETID[O->ID()])
+        {
+            static u32 s_da_foreign = 0;
+            ++s_da_foreign;
+            if (s_da_foreign <= 10 || (s_da_foreign % 100) == 0)
+                Msg("~ [DA_NETID] номер [%d] занят ДРУГИМ объектом — запись сохранена, случай #%u",
+                    O->ID(), s_da_foreign);
+        }
+    }
     /*
      xr_map<u32,IGameObject*>::iterator it = map_NETID.find(O->ID());
      if ((it!=map_NETID.end()) && (it->second == O)) {

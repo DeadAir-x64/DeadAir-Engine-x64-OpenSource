@@ -203,7 +203,12 @@ void CSpaceRestrictionHolder::unregister_restrictor(CSpaceRestrictor* space_rest
 {
     shared_str restrictor_id = space_restrictor->cName();
     RESTRICTIONS::iterator I = m_restrictions.find(restrictor_id);
-    VERIFY(I != m_restrictions.end());
+
+    // [DA_PORT] Проверка вместо VERIFY: ниже разыменование и erase, оба по end() при
+    // отсутствии записи. Рестриктор мог быть снят раньше — на смене уровня это обычное дело.
+    if (I == m_restrictions.end())
+        return;
+
 
     CSpaceRestrictionBridge* bridge = (*I).second;
     m_restrictions.erase(I);

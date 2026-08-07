@@ -24,7 +24,12 @@ CPS_Instance::~CPS_Instance()
 {
     VERIFY(!g_bRendering);
     auto it = g_pGamePersistent->ps_active.find(this);
-    VERIFY(it != g_pGamePersistent->ps_active.end());
+    // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а erase(end()) — неопределённое
+    // поведение, оно портит контейнер и рушится потом в стороне. Пропуск удаления безвреден:
+    // элемента и так нет.
+    if (it == g_pGamePersistent->ps_active.end())
+        return;
+
     g_pGamePersistent->ps_active.erase(it);
 
     [[maybe_unused]] auto it2 = std::find(g_pGamePersistent->ps_destroy.begin(), g_pGamePersistent->ps_destroy.end(), this);

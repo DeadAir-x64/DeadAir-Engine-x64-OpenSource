@@ -464,7 +464,13 @@ void CPHGeometryOwner::remove_geom(CODEGeom* g)
     VERIFY(b_builded);
     VERIFY(m_group);
     GEOM_I gi = std::find(m_geoms.begin(), m_geoms.end(), g);
-    VERIFY(gi != m_geoms.end());
+
+    // [DA_PORT] Проверка вместо VERIFY: erase(end()) — неопределённое поведение, а геометрия могла
+    // быть снята раньше при разборе оболочки. group_remove тоже пропускаем: снимать из группы то,
+    // чего в ней нет, незачем.
+    if (gi == m_geoms.end())
+        return;
+
     //(*gi)->remove_from_space( m_group );
     group_remove(*g);
     m_geoms.erase(gi);

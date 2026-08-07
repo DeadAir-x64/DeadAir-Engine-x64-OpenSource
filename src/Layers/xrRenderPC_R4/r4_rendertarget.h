@@ -163,6 +163,7 @@ private:
     ref_shader s_reactive_dilate_v; // DA: and vertically, folding in the mask the G-buffer left
     ref_shader s_reactive_emissive; // [DA_PORT] метка самосветящейся геометрии, см. phase_reactive_emissive
     ref_shader s_sky_velocity; // DA: the sky writes no motion vectors of its own
+    ref_shader s_water_velocity; // [DA_PORT] и вода тоже — см. phase_water_velocity
     ref_shader s_ssao_msaa[8];
     ref_shader s_hdao_cs;      // HDAO compute shader
 
@@ -299,6 +300,7 @@ public:
     void phase_reactive_emissive();
     // [DA_PORT] То же для прозрачной геометрии, из середины phase_combine. Своя ручка, по умолчанию 0.
     void phase_reactive_transparent();
+    void phase_water_velocity(); // [DA_PORT] векторы движения для воды
     // Условия включения меток. Спрашиваются и здесь, и по месту записи бита в трафарет - см. там.
     bool da_emissive_mark_ready() const;
     bool da_transparent_mark_ready() const;

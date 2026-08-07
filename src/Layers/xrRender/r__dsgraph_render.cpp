@@ -388,6 +388,52 @@ void R_dsgraph_structure::render_distort()
     sort_back_to_front_render_and_clean(context_id, mapDistort);
 }
 
+// [DA_PORT] Проход по той же геометрии искажения, но нашим шейдером и без очистки списка.
+//
+// Зачем: вода не пишет векторов движения, а апскейлеру без них нечем перенести её между кадрами —
+// он берёт вектор дна, и поверхность мигает целиком. Рисуем воду второй раз, прямо в буфер
+// скоростей, шейдером da_water_velocity.
+//
+// Почему по списку искажения: вода уже собрана в нём (он наполняется по флагу bDistort в
+// r__dsgraph_build.cpp), и другого готового перечня водной геометрии в кадре нет. Список НЕ
+// очищаем — сразу после нас по нему пойдёт штатный render_distort, и он же его и уберёт.
+//
+// Элемент шейдера подменяется на наш: геометрия, мировая матрица и порядок остаются от объекта,
+// меняется только то, чем он рисуется.
+// Обход принимает УКАЗАТЕЛЬ НА ФУНКЦИЮ (FixedMap::callback), а не замыкание, поэтому подменяемый
+// элемент передаём через файловую переменную. Проход зовётся из phase_combine, из главного потока и
+// строго между наполнением списка и его очисткой — перекрыться самому с собой ему негде.
+static ShaderElement* s_da_velocity_override = nullptr;
+
+static void __fastcall da_render_item_override(u32 context_id, const R_dsgraph::mapSorted_T::value_type& item)
+{
+    auto& dsgraph = RImplementation.get_context(context_id);
+
+    dxRender_Visual* V = item.second.pVisual;
+    if (!V || !s_da_velocity_override)
+        return;
+
+    dsgraph.cmd_list.set_Element(s_da_velocity_override);
+    dsgraph.cmd_list.set_xform_world(item.second.Matrix);
+    RImplementation.apply_object(dsgraph.cmd_list, item.second.pObject);
+    dsgraph.cmd_list.apply_lmaterial();
+
+    V->Render(dsgraph.cmd_list, calcLOD(item.first, V->vis.sphere.R), FALSE);
+}
+
+void R_dsgraph_structure::da_render_distort_with(ShaderElement* se_override)
+{
+    ZoneScoped;
+    PIX_EVENT(dsgraph_render_distort_velocity);
+
+    if (!se_override || mapDistort.empty())
+        return;
+
+    s_da_velocity_override = se_override;
+    mapDistort.traverse_right_left(context_id, da_render_item_override);
+    s_da_velocity_override = nullptr;
+}
+
 void R_dsgraph_structure::render_R1_box(IRender_Sector::sector_id_t sector_id, Fbox& BB, int sh)
 {
     VERIFY(sector_id != IRender_Sector::INVALID_SECTOR_ID);

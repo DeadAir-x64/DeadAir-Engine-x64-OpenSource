@@ -25,6 +25,13 @@ protected:
 private:
     OBJECT_VECTOR m_saved_chidren;
 
+    // [DA_PORT] Очередь отложенного удаления, см. switch_object.
+    //
+    // Храним ИДЕНТИФИКАТОРЫ, а не указатели: пока запись ждёт разбора, объект может уйти вместе с
+    // родителем (release рекурсивен и уносит детей). Указатель к этому моменту стал бы висячим, а
+    // номер просто не найдётся в реестре — это проверяемо.
+    xr_vector<ALife::_OBJECT_ID> m_da_pending_release;
+
 protected:
     bool synchronize_location(CSE_ALifeDynamicObject* object);
 
@@ -40,6 +47,8 @@ public:
     IC CALifeSwitchManager(IPureServer* server, LPCSTR section);
     virtual ~CALifeSwitchManager();
     void switch_object(CSE_ALifeDynamicObject* object);
+    void da_flush_pending_release(); // [DA_PORT] см. switch_object
+    void da_drop_pending_release();  // [DA_PORT] забыть очередь: смена уровня
     IC float online_distance() const noexcept;
     IC float offline_distance() const noexcept;
     IC float switch_distance() const noexcept;

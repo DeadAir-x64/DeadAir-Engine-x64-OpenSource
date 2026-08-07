@@ -46,6 +46,13 @@ public:
     virtual shared_str shedule_Name() const { return shared_str("alife_simulator"); };
     virtual float shedule_Scale() const;
     virtual void shedule_Update(u32 dt);
+
+    // [DA_PORT] Публичная точка входа для санитара реестра: сам реестр снаружи закрыт, а команда
+    // da_alife_sanitize и любой другой вызывающий обязаны как-то до него достучаться.
+    void da_sanitize_now();
+
+    // [DA_PORT] Разовая уборка осиротевших служебных фонарей при первом обновлении ALife.
+    void da_cleanup_orphan_torches();
     virtual bool shedule_Needed() { return true; };
     void update_switch();
     void update_scheduled(bool init_ef = true);

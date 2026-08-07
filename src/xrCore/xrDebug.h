@@ -66,6 +66,15 @@ public:
 
 inline IUserConfigHandler::~IUserConfigHandler() = default;
 
+// [DA_PORT] Кто умеет печатать стек Lua. Ставит движок скриптов, зовёт обработчик отказов: машинный
+// стек при переходе по нулевому адресу пуст, а стек интерпретатора цел и называет строку скрипта.
+extern XRCORE_API void (*g_da_lua_stack_printer)();
+
+// [DA_PORT] Полная сборка мусора Lua, вызывается с экрана загрузки (device.cpp). Возвращает,
+// сколько килобайт освобождено, или -1 если скриптовый движок ещё не поднят. Хук по той же причине,
+// что и печать стека выше: xrCore и xrEngine про Lua ничего не знают.
+extern XRCORE_API int (*g_da_lua_full_gc)();
+
 class XRCORE_API xrDebug
 {
 public:

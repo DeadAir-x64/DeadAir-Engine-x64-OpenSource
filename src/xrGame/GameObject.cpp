@@ -1142,7 +1142,12 @@ void CGameObject::add_visual_callback(visual_callback callback)
 void CGameObject::remove_visual_callback(visual_callback callback)
 {
     CALLBACK_VECTOR_IT I = std::find(m_visual_callback.begin(), m_visual_callback.end(), callback);
-    VERIFY(I != m_visual_callback.end());
+    // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а erase(end()) — неопределённое
+    // поведение, оно портит контейнер и рушится потом в стороне. Пропуск удаления безвреден:
+    // элемента и так нет.
+    if (I == m_visual_callback.end())
+        return;
+
     m_visual_callback.erase(I);
     if (m_visual_callback.empty())
         SetKinematicsCallback(false);

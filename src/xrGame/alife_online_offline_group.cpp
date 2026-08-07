@@ -35,14 +35,50 @@ ALife::EMeetActionType CSE_ALifeOnlineOfflineGroup::tfGetActionType(
 bool CSE_ALifeOnlineOfflineGroup::bfActive() { return (!m_bOnline && !m_members.empty()); }
 CSE_ALifeDynamicObject* CSE_ALifeOnlineOfflineGroup::tpfGetBestDetector() { return (0); }
 bool CSE_ALifeOnlineOfflineGroup::need_update(CSE_ALifeDynamicObject* object) { return true; }
+// [DA_PORT] Снимок состава: копия указателей на бойцов, без нулевых.
+//
+// Нужен всем обходам, которые внутри цикла уводят управление наружу (add_online, remove_online,
+// а через них — события, скрипты, смерть бойца). Любой такой вызов может снять бойца с учёта, а
+// снятие делает erase у AssociativeVector, то есть у ВЕКТОРА: элементы сдвигаются, итератор
+// обесценивается, и обход продолжается уже по чужой памяти.
+//
+// Копия дороже итератора ровно на один проход по составу — а состав это единицы бойцов.
+xr_vector<CSE_ALifeOnlineOfflineGroup::MEMBER*> CSE_ALifeOnlineOfflineGroup::da_members_snapshot() const
+{
+    xr_vector<MEMBER*> result;
+    result.reserve(m_members.size());
+
+    for (const auto& pair : m_members)
+    {
+        // Нулевые пропускаем здесь, чтобы вызывающие о них не думали: состав, поднятый из
+        // сохранения, держит {номер, nullptr} до register_member (см. STATE_Read).
+        if (pair.second)
+            result.push_back(pair.second);
+    }
+
+    return result;
+}
+
 void CSE_ALifeOnlineOfflineGroup::update()
 {
     if (m_bOnline)
     {
-        MEMBER* commander = (*m_members.begin()).second;
-        o_Position = commander->o_Position;
-        m_tNodeID = commander->m_tNodeID;
-        m_tGraphID = commander->m_tGraphID;
+        // [DA_PORT] Две проверки на две строки, и обе обязательны.
+        //
+        // begin() у ПУСТОГО состава — чтение за концом контейнера. Пустым он бывает штатно: отряд
+        // остаётся жить, пока из него уходит последний боец.
+        //
+        // 🔑 А `.second` бывает НУЛЁМ по построению: CSE_ALifeOnlineOfflineGroup::STATE_Read кладёт
+        // в состав пары {номер, nullptr} — указатели на бойцов при загрузке ещё неизвестны и
+        // проставляются позже, в register_member. До этого момента отряд уже живёт и обновляется.
+        // Разыменование такого нуля — падение в самом начале сессии, без единой ошибки в логе.
+        MEMBER* commander = m_members.empty() ? nullptr : (*m_members.begin()).second;
+        if (commander)
+        {
+            o_Position = commander->o_Position;
+            m_tNodeID = commander->m_tNodeID;
+            m_tGraphID = commander->m_tGraphID;
+        }
     }
     if (!bfActive())
         return;
@@ -54,6 +90,11 @@ void CSE_ALifeOnlineOfflineGroup::update()
     for (; I != E; ++I)
     {
         MEMBER* m = (*I).second;
+
+        // Тот же случай: боец из сохранения ещё не связан с объектом — пропускаем до register_member.
+        if (!m)
+            continue;
+
         m->o_Position = o_Position;
         m->m_tNodeID = m_tNodeID;
         m->m_tGraphID = m_tGraphID;
@@ -117,8 +158,42 @@ void CSE_ALifeOnlineOfflineGroup::unregister_member(ALife::_OBJECT_ID member_id)
     //	CALifeLevelRegistry			&level = graph.level();
 
     MEMBERS::iterator I = m_members.find(member_id);
-    VERIFY(I != m_members.end());
-    VERIFY((*I).second->m_group_id == ID);
+
+    // [DA_PORT] Проверка вместо VERIFY: тот исчезает в релизе, а под ним разыменование end() и
+    // erase(end()) — то есть порча самого списка членов отряда.
+    //
+    // Отсутствие бойца здесь законно: снятие с учёта зовётся из on_unregister, а до него можно
+    // дойти дважды — освобождение рекурсивно, и один и тот же боец достаётся и рекурсии, и внешнему
+    // обходу реестра.
+    //
+    // 🔑 Именно этим объясняется давнее падение в commander_id() с чтением по ffffffffffffffff:
+    // отряд был ЖИВ, испорчен был его m_members, а commander_id читает ровно его —
+    // (*m_members.begin()).first. Отсюда же ноль срабатываний сторожа висячих выдач: объект в
+    // реестре числился и был настоящим, негодным стало его содержимое.
+    if (I == m_members.end())
+    {
+        Msg("! [DA_PORT] отряд [%d]: боец [%d] не числится в составе, снятие с учёта пропущено",
+            ID, member_id);
+        return;
+    }
+
+    // [DA_PORT] Указатель на бойца может быть нулевым — состав, поднятый из сохранения, держит
+    // пары {номер, nullptr} до register_member (см. STATE_Read). Боец может уйти из отряда и в это
+    // окно: умереть, быть удалённым скриптом, не дожить до привязки. Тогда возвращать в мир нечего —
+    // просто вычёркиваем запись.
+    if (!(*I).second)
+    {
+        Msg("~ [DA_PORT] отряд [%d]: боец [%d] снят с учёта до привязки к объекту (состав из "
+            "сохранения)",
+            ID, member_id);
+        m_members.erase(I);
+
+        if (m_members.empty())
+            m_flags.set(flUsedAI_Locations, FALSE);
+
+        return;
+    }
+
     (*I).second->m_group_id = 0xffff;
 
     graph.update((*I).second);
@@ -148,11 +223,16 @@ bool CSE_ALifeOnlineOfflineGroup::synchronize_location()
 {
     if (m_bOnline)
     {
-        MEMBER* member = (*m_members.begin()).second;
-        o_Position = member->o_Position;
-        m_tNodeID = member->m_tNodeID;
-        m_tGraphID = member->m_tGraphID;
-        m_fDistance = member->m_fDistance;
+        // [DA_PORT] См. update(): состав бывает пустым, а указатель на бойца — нулевым сразу после
+        // загрузки сохранения (STATE_Read кладёт nullptr до register_member).
+        MEMBER* member = m_members.empty() ? nullptr : (*m_members.begin()).second;
+        if (member)
+        {
+            o_Position = member->o_Position;
+            m_tNodeID = member->m_tNodeID;
+            m_tGraphID = member->m_tGraphID;
+            m_fDistance = member->m_fDistance;
+        }
     }
 
     return (true);
@@ -175,6 +255,9 @@ void CSE_ALifeOnlineOfflineGroup::try_switch_online()
     MEMBERS::iterator E = m_members.end();
     for (; I != E; ++I)
     {
+        // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
+        if (!(*I).second)
+            continue;
         VERIFY3((*I).second->g_Alive(), "Incorrect situation : some of the OnlineOffline group members is dead",
             (*I).second->name_replace());
         VERIFY3((*I).second->can_switch_online(),
@@ -215,6 +298,9 @@ void CSE_ALifeOnlineOfflineGroup::try_switch_offline()
     MEMBERS::iterator E = m_members.end();
     for (; I != E; ++I)
     {
+        // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
+        if (!(*I).second)
+            continue;
         VERIFY3((*I).second->g_Alive(), "Incorrect situation : some of the OnlineOffline group members is dead",
             (*I).second->name_replace());
         VERIFY3((*I).second->can_switch_offline(),
@@ -240,12 +326,30 @@ void CSE_ALifeOnlineOfflineGroup::switch_online()
     R_ASSERT(!m_bOnline);
     m_bOnline = true;
 
-    MEMBERS::iterator I = m_members.begin();
-    MEMBERS::iterator E = m_members.end();
-    for (; I != E; ++I)
+    // [DA_PORT] Идём по КОПИИ состава, а не по живому контейнеру.
+    //
+    // add_online уводит управление далеко: клиентская часть создаётся, идут события, работают
+    // скрипты. Любое из этого может снять бойца с учёта — смерть, удаление, распад отряда, — а
+    // снятие делает m_members.erase(). MEMBERS — это AssociativeVector, то есть вектор: erase
+    // сдвигает элементы и обесценивает итератор, по которому мы идём прямо сейчас.
+    //
+    // Дальше обход читает уже не свои данные, и падение приходит не здесь, а там, где этот состав
+    // прочитают в следующий раз — например, в commander_id с чтением по ffffffffffffffff. Отряд при
+    // этом ЖИВОЙ и в реестрах числится правильно, поэтому ни метка жизни, ни санитар такого не ловят.
+    const xr_vector<MEMBER*> members = da_members_snapshot();
+
+    for (MEMBER* member : members)
     {
-        if ((*I).second->m_bOnline == false)
-            alife().add_online((*I).second, false);
+        // [DA_PORT] Снимок лечит обесценивание итератора, но сам может протухнуть: боец,
+        // взятый в копию, способен быть освобождён, пока мы работаем с предыдущими. Здесь это
+        // маловероятно — удаление объектов в обходе реестра отложено (m_da_pending_release в
+        // alife_switch_manager), — но проверка метки жизни стоит чтения одного поля, а закрывает
+        // весь класс «висячий элемент снимка» разом, включая пути, которых мы не знаем.
+        if (!member->da_object_alive())
+            continue;
+
+        if (member->m_bOnline == false)
+            alife().add_online(member, false);
     }
 
     alife().scheduled().remove(this);
@@ -257,10 +361,10 @@ void CSE_ALifeOnlineOfflineGroup::switch_offline()
     R_ASSERT(m_bOnline);
     m_bOnline = false;
 
-    if (!m_members.empty())
+    // [DA_PORT] Пустой состав отсекается, но и указатель может быть нулевым — см. STATE_Read.
+    MEMBER* member = m_members.empty() ? nullptr : (*m_members.begin()).second;
+    if (member)
     {
-        MEMBER* member = (*m_members.begin()).second;
-
         member->synchronize_location();
 
         o_Position = member->o_Position;
@@ -269,14 +373,25 @@ void CSE_ALifeOnlineOfflineGroup::switch_offline()
         m_fDistance = member->m_fDistance;
     }
 
-    MEMBERS::iterator I = m_members.begin();
-    MEMBERS::iterator E = m_members.end();
-    for (; I != E; ++I)
+    // [DA_PORT] По КОПИИ состава — см. разбор в switch_online. Здесь опаснее вдвойне:
+    // remove_online делает Perform_destroy, а это уничтожение клиентской части со всем каскадом
+    // событий, включая смерть бойца и снятие его с учёта. То есть erase посреди нашего же обхода.
+    const xr_vector<MEMBER*> members = da_members_snapshot();
+
+    for (MEMBER* member : members)
     {
-        if ((*I).second->m_bOnline == true)
+        // [DA_PORT] Снимок лечит обесценивание итератора, но сам может протухнуть: боец,
+        // взятый в копию, способен быть освобождён, пока мы работаем с предыдущими. Здесь это
+        // маловероятно — удаление объектов в обходе реестра отложено (m_da_pending_release в
+        // alife_switch_manager), — но проверка метки жизни стоит чтения одного поля, а закрывает
+        // весь класс «висячий элемент снимка» разом, включая пути, которых мы не знаем.
+        if (!member->da_object_alive())
+            continue;
+
+        if (member->m_bOnline == true)
         {
-            (*I).second->clear_client_data();
-            alife().remove_online((*I).second, false);
+            member->clear_client_data();
+            alife().remove_online(member, false);
         }
     }
 
@@ -285,7 +400,12 @@ void CSE_ALifeOnlineOfflineGroup::switch_offline()
 }
 
 bool CSE_ALifeOnlineOfflineGroup::redundant() const { return (m_members.empty()); }
-void CSE_ALifeOnlineOfflineGroup::notify_on_member_death(MEMBER* member) { unregister_member(member->ID); }
+// [DA_PORT] Указатель приходит извне (смерть бойца) и может быть нулём: проверка вместо падения.
+void CSE_ALifeOnlineOfflineGroup::notify_on_member_death(MEMBER* member)
+{
+    if (member)
+        unregister_member(member->ID);
+}
 void CSE_ALifeOnlineOfflineGroup::on_before_register()
 {
     m_tGraphID = GameGraph::_GRAPH_ID(-1);
@@ -318,13 +438,58 @@ void CSE_ALifeOnlineOfflineGroup::on_after_game_load()
 
 ALife::_OBJECT_ID CSE_ALifeOnlineOfflineGroup::commander_id()
 {
+    // [DA_PORT] Метка жизни ПРЯМО ЗДЕСЬ, потому что сюда приходят из Lua по висячей ссылке.
+    //
+    // Скрипты мода держат отряды не по номеру, а объектами: sim_board хранит их в таблице
+    // smarts[id].squads, и записи оттуда не вычёркиваются при удалении отряда. Полный стек с живого
+    // падения:
+    //   [C] commander_id
+    //   sim_squad_scripted:get_script_target (107)
+    //   smart_terrain.smart_terrain_squad_count (1559)  <- for k,v in pairs(board_smart_squads)
+    //   sim_board:assign_squad_to_smart (229)
+    //
+    // Наши защиты сюда не достают: реестр ALife чист, расписание чисто, объект давно удалён — а
+    // luabind зовёт метод по сохранённому в Lua адресу, минуя любые реестры. Единственное место,
+    // где это ещё можно поймать, — начало самого метода.
+    //
+    // Проверка читает поле уже освобождённой памяти. Это осознанный компромисс (разбор в
+    // xrServer_Object_Base.h): страница ещё отображена, а если её переписали — метка не сойдётся, и
+    // мы вернём «командира нет» вместо падения. Скрипт такой ответ переживает: он и так возможен у
+    // отряда без бойцов.
+    if (!da_object_alive())
+    {
+        static u32 s_da_dead_calls = 0;
+        ++s_da_dead_calls;
+        if (s_da_dead_calls <= 10 || (s_da_dead_calls % 100) == 0)
+            Msg("~ [DA_SQUAD] скрипт спросил командира у МЁРТВОГО отряда — отвечаю «нет», всего %u",
+                s_da_dead_calls);
+
+        return 0xffff;
+    }
+
     if (!m_members.empty())
         return (*m_members.begin()).first;
     return 0xffff;
 }
 
-CSE_ALifeOnlineOfflineGroup::MEMBERS const& CSE_ALifeOnlineOfflineGroup::squad_members() const { return m_members; }
-u32 CSE_ALifeOnlineOfflineGroup::npc_count() const { return m_members.size(); }
+// [DA_PORT] Состав отдаётся В СКРИПТЫ (return_stl_iterator), и запрос может прийти по висячей
+// ссылке — см. commander_id. У мёртвого отряда отдаём пустой список: скрипты обходят его циклом,
+// и пустота для них штатна, а чужая память — нет.
+CSE_ALifeOnlineOfflineGroup::MEMBERS const& CSE_ALifeOnlineOfflineGroup::squad_members() const
+{
+    if (!da_object_alive())
+    {
+        static MEMBERS s_da_empty;
+        return s_da_empty;
+    }
+
+    return m_members;
+}
+// [DA_PORT] Те же висячие ссылки из Lua, что и в commander_id — проверяем метку жизни.
+u32 CSE_ALifeOnlineOfflineGroup::npc_count() const
+{
+    return da_object_alive() ? u32(m_members.size()) : 0u;
+}
 void CSE_ALifeOnlineOfflineGroup::clear_location_types()
 {
     m_tpaTerrain.clear();
@@ -332,7 +497,9 @@ void CSE_ALifeOnlineOfflineGroup::clear_location_types()
     MEMBERS::iterator E = m_members.end();
     for (; I != E; ++I)
     {
-        (*I).second->m_tpaTerrain.clear();
+        // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
+        if ((*I).second)
+            (*I).second->m_tpaTerrain.clear();
     }
 }
 
@@ -343,13 +510,29 @@ void CSE_ALifeOnlineOfflineGroup::add_location_type(LPCSTR mask)
     MEMBERS::iterator E = m_members.end();
     for (; I != E; ++I)
     {
-        setup_location_types_line((*I).second->m_tpaTerrain, mask);
+        // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
+        if ((*I).second)
+            setup_location_types_line((*I).second->m_tpaTerrain, mask);
     }
 }
 
 void CSE_ALifeOnlineOfflineGroup::force_change_position(Fvector position)
 {
-    u32 new_level_vertex = ai().level_graph().vertex_id(position);
+    // [DA_PORT] Тот же дефект, что был в CLevelChanger::net_Spawn: vertex_id честно возвращает
+    // u32(-1), если точка вне навигационного графа, а cross_table().vertex() проверяет индекс лишь
+    // VERIFY — то есть в релизе читает далеко за концом отображённого файла.
+    //
+    // Позиция сюда приходит из скрипта (принудительный перенос отряда), так что «вне графа» —
+    // обычное дело, а не исключение.
+    const u32 new_level_vertex = ai().level_graph().vertex_id(position);
+    if (!ai().level_graph().valid_vertex_id(new_level_vertex))
+    {
+        Msg("! [DA_PORT] отряд [%d]: точка [%.2f][%.2f][%.2f] вне навигационного графа — перенос "
+            "отменён",
+            ID, VPUSH(position));
+        return;
+    }
+
     GameGraph::_GRAPH_ID new_graph_vertex = ai().cross_table().vertex(new_level_vertex).game_vertex_id();
     o_Position = position;
     m_tNodeID = new_level_vertex;
@@ -367,6 +550,8 @@ void CSE_ALifeOnlineOfflineGroup::on_failed_switch_online()
     MEMBERS::const_iterator E = m_members.end();
     for (; I != E; ++I)
     {
-        (*I).second->clear_client_data();
+        // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
+        if ((*I).second)
+            (*I).second->clear_client_data();
     }
 }

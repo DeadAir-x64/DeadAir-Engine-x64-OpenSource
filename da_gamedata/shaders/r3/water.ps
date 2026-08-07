@@ -118,6 +118,15 @@ float4 main( vf I ) : SV_Target
 	float3	c_reflection       = env;
 #endif
 
+	// [DA_PORT] Потолок выброса — разбор в settings_da_water.h (WATER_REFL_CLAMP).
+#ifdef WATER_REFL_CLAMP
+	{
+		float da_refl_lum = dot(c_reflection, float3(0.299h, 0.587h, 0.114h));
+		if (da_refl_lum > WATER_REFL_CLAMP)
+			c_reflection *= WATER_REFL_CLAMP / max(da_refl_lum, 0.0001h);
+	}
+#endif
+
 	c_reflection *= 0.95;	// [DA_PORT] was 0.5 — the reflection was being halved on top of everything else
 
 	// [DA_PORT] Let the surface texture fade out at grazing angles: real water turns mirror-like as the

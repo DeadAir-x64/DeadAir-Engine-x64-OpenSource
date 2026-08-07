@@ -20,6 +20,7 @@
 #include "ShadersExternalData.h" //--#SM+#--
 
 class IGame_Level;
+class IGameObject; // [DA_PORT] см. OnObjectsRelcaseBatch
 class IRenderVisual;
 class ILoadingScreen;
 class IMainMenu;
@@ -185,6 +186,18 @@ public:
     ICF u32 GameType() { return m_game_params.m_e_game_type; };
     virtual void DumpStatistics(class IGameFont& font, class IPerformanceAlert* alert);
     virtual bool CanBePaused() { return true; }
+
+    // [DA_PORT] Уборка ссылок на удаляемые объекты — ПАЧКОЙ. Приём из Dead Air Refined 1.2.2.
+    //
+    // Движок уведомляет каждый живой объект о каждом удаляемом (CObjectList::ProcessDestroyQueue),
+    // и внутри этих уведомлений раньше делалась работа, общая для всех: полный обход дерева отрядов
+    // монстров, чистка менеджера агентов (он один на отряд, а звали его по разу на бойца) и
+    // пересчёт памяти монстра. Всё это умножалось на число удаляемых объектов.
+    //
+    // Эти два вызова дают игровому слою всю очередь целиком: до прохода — снять общие ссылки один
+    // раз, после — один раз обновить память. Вместо произведения получается сумма.
+    virtual void OnObjectsRelcaseBatch(const xr_vector<IGameObject*>& /*objects*/) {}
+    virtual void OnObjectsRelcaseBatchComplete() {}
 };
 
 class IMainMenu

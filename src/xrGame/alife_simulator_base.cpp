@@ -106,8 +106,30 @@ CSE_Abstract* CALifeSimulatorBase::spawn_item(LPCSTR section, const Fvector& pos
         return nullptr;
     }
 
-    CSE_Abstract* abstract = F_entity_Create(section);
-    R_ASSERT3(abstract, "Cannot find item with section", section);
+    // [DA_PORT] Неизвестный движку класс — отказ, а не падение (приём из Dead Air Refined).
+    //
+    // Здесь стоял R_ASSERT3, и он работает в релизе: опечатка в секции у скрипта мода роняла игру
+    // целиком, с фатальным окном вместо строки в логе. Секция при этом СУЩЕСТВУЕТ (её наличие
+    // проверено выше) — не найден класс в фабрике, то есть данные ссылаются на сущность, которой в
+    // этой сборке движка нет.
+    //
+    // Скрипту возвращается nil, и это ровно то, чего он ждёт от неудачного create: все вызывающие
+    // ниже по файлу и в alife_simulator_script.cpp результат проверяют. Имя секции в логе называет
+    // виновника сразу, а стек Lua — место вызова.
+    CSE_Abstract* abstract = F_entity_Create(section, true);
+    if (!abstract)
+    {
+        Msg("! [DA_PORT] spawn_item: для секции '%s' не нашлось серверного класса — спавн отклонён",
+            section);
+
+        // g_da_lua_stack_printer объявлен в xrCore/xrDebug.h — свой extern здесь дал бы конфликт
+        // с импортом из DLL.
+        if (g_da_lua_stack_printer)
+            g_da_lua_stack_printer();
+
+        FlushLog();
+        return nullptr;
+    }
 
     abstract->s_name = section;
     //. abstract->s_gameid          = u8(GAME_SINGLE);
@@ -328,6 +350,10 @@ void CALifeSimulatorBase::release(CSE_Abstract* abstract, bool alife_query)
     // исполнялся НИКОГДА (интервал стоял 65535 часов), и мина лежала невзведённой.
     //
     // Ищем с no_assert: отсутствие объекта здесь -- не ошибка, а «уже убрали».
+    extern ENGINE_API int ps_da_alife_release_log;
+    if (ps_da_alife_release_log)
+        Msg("~ [DA_REL] вход: id [%d]", abstract->ID);
+
     CSE_ALifeDynamicObject* object = objects().object(abstract->ID, true);
     if (!object)
     {
@@ -357,12 +383,19 @@ void CALifeSimulatorBase::release(CSE_Abstract* abstract, bool alife_query)
         }
     }
 
+    if (ps_da_alife_release_log)
+        Msg("~ [DA_REL] снимаю: id [%d] секция [%s] детей [%u]", object->ID, object->s_name.c_str(),
+            u32(object->children.size()));
+
     unregister_object(object, alife_query);
 
     object->m_bALifeControl = false;
 
     if (alife_query)
         server().entity_Destroy(abstract);
+
+    if (ps_da_alife_release_log)
+        Msg("~ [DA_REL] снят");
 }
 
 void CALifeSimulatorBase::append_item_vector(OBJECT_VECTOR& tObjectVector, ITEM_P_VECTOR& tItemList)

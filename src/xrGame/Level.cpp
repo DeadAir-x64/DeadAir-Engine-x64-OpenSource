@@ -753,13 +753,15 @@ void CLevel::OnFrame()
         else
             m_level_sound_manager->Update();
 
-        // defer LUA-GC-STEP
-        if (g_mt_config.test(mtLUA_GC))
-        {
-            Device.seqParallel.push_back(fastdelegate::FastDelegate0<>(this, &CLevel::script_gc));
-        }
-        else
-            script_gc();
+        // [DA_PORT] Сборка мусора Lua — ТОЛЬКО в главном потоке, флаг mtLUA_GC больше не спрашивается.
+        //
+        // Он отправлял script_gc в seqParallel, то есть на рабочий поток. Сборщик мусора не просто
+        // читает состояние интерпретатора — он переставляет в нём объекты, пока главный поток по
+        // этим объектам ходит через биндеры. Та же гонка, что и с mtALife (см. shedule_Update в
+        // alife_update_manager.cpp), только последствия грязнее: портится не стек, а куча Lua.
+        //
+        // Флаг не проверяем вовсе: сохранённое значение из user.ltx перебило бы любое умолчание.
+        script_gc();
     }
     if (pStatGraphR)
     {

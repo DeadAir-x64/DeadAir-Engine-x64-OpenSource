@@ -65,12 +65,24 @@ void AttachmentCallback(IKinematics* tpKinematics)
 
     IKinematics* kinematics = smart_cast<IKinematics*>(game_object->Visual());
 
+    // [DA_PORT] Здесь ни одной проверки не было, а место горячее — колбэк считает положение всех
+    // прикреплённых предметов КАЖДЫЙ КАДР, у каждого владельца.
+    if (!kinematics)
+        return;
+
     xr_vector<CAttachableItem*>::const_iterator I = attachment_owner->attached_objects().begin();
     xr_vector<CAttachableItem*>::const_iterator E = attachment_owner->attached_objects().end();
     for (; I != E; ++I)
     {
-        (*I)->item().object().XFORM().mul_43(
-            kinematics->LL_GetBoneInstance((*I)->bone_id()).mTransform, (*I)->offset());
+        // [DA_PORT] Кость ищется по ИМЕНИ из конфига предмета (attach_bone_name), и её может не быть
+        // на модели этого владельца: LL_BoneID вернёт BI_NONE. Внутри LL_GetBoneInstance стоит только
+        // VERIFY, а он исчезает в релизе — то есть читался бы bone_instances[65535], далеко за концом
+        // массива. Оттуда приходит мусорная матрица, и предмет уезжает в бесконечность или в NaN.
+        const u16 bone_id = (*I)->bone_id();
+        if (bone_id == BI_NONE || bone_id >= kinematics->LL_BoneCount())
+            continue;
+
+        (*I)->item().object().XFORM().mul_43(kinematics->LL_GetBoneInstance(bone_id).mTransform, (*I)->offset());
         (*I)->item().object().XFORM().mulA_43(game_object->XFORM());
     }
 }
@@ -92,10 +104,25 @@ void CAttachmentOwner::attach(CInventoryItem* inventory_item)
         VERIFY(attachable_item);
         CGameObject* game_object = smart_cast<CGameObject*>(this);
         VERIFY(game_object && game_object->Visual());
+
+        // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а двумя строками ниже стоит
+        // ВИРТУАЛЬНЫЙ вызов по результату smart_cast от `Visual()`. Без визуала это переход по адресу
+        // 0 — падение без машинного стека, разматывать нечего (тот же случай, что был в CTorch::Switch2).
+        //
+        // Путь стал горячим: `sr_light.script` дёргает прикрепление и открепление фонарей у сталкеров
+        // каждые ~2 секунды, и попасть можно на владельца, у которого визуал ещё не создан или уже
+        // снят — при спавне, выгрузке уровня и разборе тела. Не прикрепить предмет здесь безопаснее,
+        // чем упасть: схема света вызовет прикрепление снова на следующем цикле.
+        //
+        // Проверять надо РЕЗУЛЬТАТ smart_cast, а не сам Visual(): падение даёт именно приведение —
+        // у не-скелетной модели оно вернёт ноль при живом указателе на визуал.
+        IKinematics* owner_kinematics = game_object ? smart_cast<IKinematics*>(game_object->Visual()) : nullptr;
+        if (!owner_kinematics)
+            return;
+
         if (m_attached_objects.empty())
             game_object->add_visual_callback(AttachmentCallback);
-        attachable_item->set_bone_id(
-            smart_cast<IKinematics*>(game_object->Visual())->LL_BoneID(attachable_item->bone_name()));
+        attachable_item->set_bone_id(owner_kinematics->LL_BoneID(attachable_item->bone_name()));
         m_attached_objects.push_back(smart_cast<CAttachableItem*>(inventory_item));
 
         inventory_item->object().setVisible(true);
@@ -156,14 +183,23 @@ void CAttachmentOwner::reattach_items()
     CGameObject* game_object = smart_cast<CGameObject*>(this);
     VERIFY(game_object && game_object->Visual());
 
+    // [DA_PORT] Третье место с тем же дефектом: VERIFY исчезает в релизе, а ниже стоит виртуальный
+    // вызов по результату приведения. Смена визуала владельца (её этот метод и обслуживает) — ровно
+    // тот момент, когда визуала может не быть.
+    IKinematics* kinematics = game_object ? smart_cast<IKinematics*>(game_object->Visual()) : nullptr;
+    if (!kinematics)
+        return;
+
     xr_vector<CAttachableItem*>::const_iterator I = m_attached_objects.begin();
     xr_vector<CAttachableItem*>::const_iterator E = m_attached_objects.end();
     for (; I != E; ++I)
     {
         CAttachableItem* attachable_item = *I;
         VERIFY(attachable_item);
-        attachable_item->set_bone_id(
-            smart_cast<IKinematics*>(game_object->Visual())->LL_BoneID(attachable_item->bone_name()));
+        if (!attachable_item)
+            continue;
+
+        attachable_item->set_bone_id(kinematics->LL_BoneID(attachable_item->bone_name()));
     }
 }
 

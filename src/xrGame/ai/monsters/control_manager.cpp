@@ -117,11 +117,24 @@ void CControl_Manager::update_frame()
     if (!m_object->g_Alive())
         return;
 
-    for (auto& it : m_active_elems)
+    // [DA_PORT] Индексный цикл по ЖИВОМУ вектору — и это принципиально.
+    //
+    // Ком во время обновления может активировать другой (anti_aim_ability::update_schedule зовёт
+    // m_man->activate), а активация делает m_active_elems.push_back — вектор перевыделяется, и
+    // итератор range-based цикла становится висячим. Поэтому обход обязан быть индексным: по
+    // индексу мы каждый раз читаем АКТУАЛЬНЫЙ вектор, где бы он ни лежал после перевыделения.
+    //
+    // ⛔ Копия вектора здесь НЕ годится, хотя от перевыделения она тоже спасает. Деактивация кома
+    // (check_active_com, ветка eRemove) не удаляет запись, а ЗАНУЛЯЕТ её прямо в живом векторе —
+    // на это и рассчитана проверка `if (com)` ниже. В копии, снятой заранее, зануления не будет,
+    // и деактивированный ком всё равно получит update: падение с записью по нулевому адресу в
+    // CControlJump::update_frame. Проверено на живом крахе — снимок пришлось откатить.
+    for (u32 i = 0; i < m_active_elems.size(); ++i)
     {
         // update coms
-        if (it)
-            it->update_frame();
+        CControl_Com* com = m_active_elems[i];
+        if (com)
+            com->update_frame();
     }
 
     m_active_elems.erase(
@@ -133,11 +146,24 @@ void CControl_Manager::update_schedule()
     if (!m_object->g_Alive())
         return;
 
-    for (auto& it : m_active_elems)
+    // [DA_PORT] Индексный цикл по ЖИВОМУ вектору — и это принципиально.
+    //
+    // Ком во время обновления может активировать другой (anti_aim_ability::update_schedule зовёт
+    // m_man->activate), а активация делает m_active_elems.push_back — вектор перевыделяется, и
+    // итератор range-based цикла становится висячим. Поэтому обход обязан быть индексным: по
+    // индексу мы каждый раз читаем АКТУАЛЬНЫЙ вектор, где бы он ни лежал после перевыделения.
+    //
+    // ⛔ Копия вектора здесь НЕ годится, хотя от перевыделения она тоже спасает. Деактивация кома
+    // (check_active_com, ветка eRemove) не удаляет запись, а ЗАНУЛЯЕТ её прямо в живом векторе —
+    // на это и рассчитана проверка `if (com)` ниже. В копии, снятой заранее, зануления не будет,
+    // и деактивированный ком всё равно получит update: падение с записью по нулевому адресу в
+    // CControlJump::update_frame. Проверено на живом крахе — снимок пришлось откатить.
+    for (u32 i = 0; i < m_active_elems.size(); ++i)
     {
         // update coms
-        if (it)
-            it->update_schedule();
+        CControl_Com* com = m_active_elems[i];
+        if (com)
+            com->update_schedule();
     }
 
     m_active_elems.erase(

@@ -46,8 +46,12 @@ void CSE_ALifeMonsterAbstract::on_unregister()
     inherited1::on_unregister();
     RELATION_REGISTRY().ClearRelations(ID);
     brain().on_unregister();
+    // [DA_PORT] Группа могла уйти раньше бойца — см. object_safe в alife_group_registry.cpp.
     if (m_group_id != 0xffff)
-        ai().alife().groups().object(m_group_id).unregister_member(ID);
+    {
+        if (CSE_ALifeOnlineOfflineGroup* group = ai().alife().groups().object_safe(m_group_id))
+            group->unregister_member(ID);
+    }
 }
 
 void CSE_ALifeMonsterAbstract::update()
@@ -244,26 +248,89 @@ Fvector CSE_ALifeMonsterAbstract::draw_level_position() const
     return (brain().movement().detail().draw_level_position());
 }
 
+// [DA_PORT] Прибор на уборку тел: почему труп НЕ убирается.
+//
+// Настройка stay_after_death_time_interval молчалива по своей природе: когда она не срабатывает,
+// в логе не появляется ничего, и «уборка выключена» неотличимо от «уборка включена, но условие не
+// выполнено». Считаем отказы по причинам — тогда видно, какое именно условие держит тело.
+// Объявление обязано стоять ВНЕ анонимного пространства имён: внутри него компоновщик ищет
+// локальный символ (_GLOBAL__N_1::ps_da_alife_release_log) и не находит ничего.
+extern ENGINE_API int ps_da_alife_release_log;
+
+namespace
+{
+struct da_redundant_stats
+{
+    u32 alive = 0;
+    u32 online = 0;
+    u32 story = 0;
+    u32 no_death_time = 0;
+    u32 too_fresh = 0;
+    u32 removed = 0;
+    u32 calls = 0;
+};
+da_redundant_stats s_da_redundant;
+
+void da_redundant_report()
+{
+    if (!ps_da_alife_release_log)
+        return;
+
+    if ((++s_da_redundant.calls % 20000) != 0)
+        return;
+
+    Msg("~ [DA_CORPSE] проверок %u: живых %u, онлайн %u, сюжетных %u, без времени смерти %u, "
+        "не отлежали срок %u, УБРАНО %u",
+        s_da_redundant.calls, s_da_redundant.alive, s_da_redundant.online, s_da_redundant.story,
+        s_da_redundant.no_death_time, s_da_redundant.too_fresh, s_da_redundant.removed);
+}
+} // namespace
+
 bool CSE_ALifeMonsterAbstract::redundant() const
 {
+    da_redundant_report();
+
     if (g_Alive())
+    {
+        ++s_da_redundant.alive;
         return (false);
+    }
 
     if (m_bOnline)
+    {
+        ++s_da_redundant.online;
         return (false);
+    }
 
     if (m_story_id != INVALID_STORY_ID)
+    {
+        ++s_da_redundant.story;
         return (false);
+    }
 
     if (!m_game_death_time)
+    {
+        ++s_da_redundant.no_death_time;
         return (false);
+    }
 
     ALife::_TIME_ID current_time = alife().time_manager().game_time();
     VERIFY2(m_game_death_time <= current_time,
         make_string("incorrect death time for monster %s[death time = %I64d][current time = %I64d]", name_replace(),
             m_game_death_time, current_time));
     if ((m_game_death_time + m_stay_after_death_time_interval) > current_time)
-        return (false);
+    {
+        // Первый такой случай печатаем поимённо: он показывает, СКОЛЬКО телу ещё лежать, и сразу
+        // видно, читается ли настройка из конфига или взято зашитое «никогда».
+        if (ps_da_alife_release_log && !s_da_redundant.too_fresh)
+            Msg("~ [DA_CORPSE] тело [%s]: срок выдержки %I64d ч, лежит %I64d ч",
+                name_replace(), m_stay_after_death_time_interval / (60 * 60 * 1000),
+                (current_time - m_game_death_time) / (60 * 60 * 1000));
 
+        ++s_da_redundant.too_fresh;
+        return (false);
+    }
+
+    ++s_da_redundant.removed;
     return (true);
 }

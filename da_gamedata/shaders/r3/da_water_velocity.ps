@@ -1,0 +1,21 @@
+#include "common.h"
+
+// [DA_PORT] Пиксельная половина векторов движения для воды — разбор в da_water_velocity.vs.
+//
+// Формула та же, что у всей остальной геометрии (см. deffer_base.ps): разность экранных положений
+// точки в этом и в предыдущем кадре, обе — без джиттера. Апскейлер вычитает джиттер сам, поэтому
+// вектор не должен его содержать.
+struct vf
+{
+	float4	hpos_curr	: TEXCOORD0;
+	float4	hpos_old	: TEXCOORD1;
+	float4	hpos		: SV_Position;
+};
+
+float4 main(vf I) : SV_Target
+{
+	const float2 ndc_now  = I.hpos_curr.xy / I.hpos_curr.w;
+	const float2 ndc_prev = I.hpos_old.xy  / I.hpos_old.w;
+
+	return float4(ndc_now - ndc_prev, 0, 0);
+}

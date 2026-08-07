@@ -378,8 +378,10 @@ void CUIMpTradeWnd::UpdateCorrespondingItemsForList(CUIDragDropListEx* _list)
             SBuyItemInfo* res_info = nullptr;
             TryToSellItem(bi, true, res_info);
             xr_list<SBuyItemInfo*>::iterator tmp_it = find(_tmp_list.begin(), _tmp_list.end(), res_info);
-            VERIFY(tmp_it != _tmp_list.end());
-            _tmp_list.erase(tmp_it);
+            // [DA_PORT] Проверка вместо VERIFY: erase(end()) портит список, а TryToSellItem мог
+            // не вернуть предмет — тогда res_info остаётся нулём и find законно не находит его.
+            if (tmp_it != _tmp_list.end())
+                _tmp_list.erase(tmp_it);
         }
     }
 }

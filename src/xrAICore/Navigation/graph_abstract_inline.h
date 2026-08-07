@@ -32,7 +32,12 @@ TEMPLATE_SPECIALIZATION
 IC void CAbstractGraph::remove_vertex(const _vertex_id_type& vertex_id)
 {
     vertex_iterator I = m_vertices.find(vertex_id);
-    VERIFY(m_vertices.end() != I);
+    // [DA_PORT] Проверка вместо VERIFY: ниже разыменование, delete_data и erase — все три по
+    // end() при отсутствии вершины. Граф после такого негоден целиком, а рушится он потом и в
+    // другом месте.
+    if (m_vertices.end() == I)
+        return;
+
     typename VERTICES::value_type v = *I;
     delete_data(v);
     m_vertices.erase(I);

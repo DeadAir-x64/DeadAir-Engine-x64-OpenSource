@@ -124,7 +124,14 @@ void _unregister_open_file(T* _r)
     _lock.Enter();
 
     auto it = std::find_if(g_open_files.begin(), g_open_files.end(), eq_pointer<T>(_r));
-    VERIFY(it != g_open_files.end());
+    // [DA_PORT] Проверка вместо VERIFY: ниже разыменование итератора и запись в него.
+    // Блокировку обязательно снять на выходе — иначе файловая система встанет намертво.
+    if (it == g_open_files.end())
+    {
+        _lock.Leave();
+        return;
+    }
+
     _open_file& _of = *it;
     _of._reader = nullptr;
     _lock.Leave();

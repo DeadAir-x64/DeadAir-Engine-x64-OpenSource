@@ -56,8 +56,35 @@ bool CLevelChanger::net_Spawn(CSE_Abstract* DC)
     if (ai().get_level_graph())
     {
         // XXX: this information should be computed in xrAI
-        ai_location().level_vertex(ai().level_graph().vertex(u32(-1), Position()));
-        ai_location().game_vertex(ai().cross_table().vertex(ai_location().level_vertex_id()).game_vertex_id());
+        const u32 da_level_vertex = ai().level_graph().vertex(u32(-1), Position());
+        ai_location().level_vertex(da_level_vertex);
+
+        // [DA_PORT] Вершину проверяем, прежде чем идти с ней в кросс-таблицу.
+        //
+        // `CLevelGraph::vertex` честно возвращает u32(-1), когда позиция вне навигационного графа —
+        // а у переходов это обычное дело, их ставят у самой границы локации. Дальше стояло
+        // `cross_table().vertex(id)`, внутри которого проверка есть, но это VERIFY: в релизе он
+        // исчезает, и остаётся `m_tpaCrossTable[0xFFFFFFFF]` — чтение примерно на 25 ГБ за концом
+        // отображённого файла.
+        //
+        // Именно это и роняло загрузку: краш C0000005 с чтением по мусорному адресу, стек обрывался
+        // на спавне. Виновника назвал прибор da_spawn_trace — последняя строка перед отказом была
+        // `создаю [level_changer]`. Два падения подряд легли на один и тот же элемент за концом
+        // массива (младшие байты адреса совпали при разных базах) — то есть индекс стабильный, это
+        // не случайная порча памяти, а конкретный переход с позицией вне графа.
+        //
+        // Если вершины нет, номер игрового узла берём из серверной сущности: там он посчитан заранее
+        // и для перехода как раз осмыслен.
+        if (ai().level_graph().valid_vertex_id(da_level_vertex))
+            ai_location().game_vertex(ai().cross_table().vertex(da_level_vertex).game_vertex_id());
+        else
+        {
+            ai_location().game_vertex(l_tpALifeLevelChanger->m_tGraphID);
+            Msg("! [DA_PORT] переход [%s] id [%u] стоит вне навигационного графа: точка "
+                "[%.2f][%.2f][%.2f]. Игровой узел взят из спавна (%u).",
+                l_tpALifeLevelChanger->name_replace(), u32(l_tpALifeLevelChanger->ID),
+                VPUSH(Position()), u32(l_tpALifeLevelChanger->m_tGraphID));
+        }
     }
 
     feel_touch.clear();

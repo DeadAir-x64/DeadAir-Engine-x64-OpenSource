@@ -813,6 +813,33 @@ struct luajit
 
 void CScriptEngine::init(export_func exporter, bool loadGlobalNamespace)
 {
+    // [DA_PORT] Оставляем обработчику отказов способ напечатать стек Lua. Машинный стек при переходе
+    // по нулевому адресу пуст, а стек интерпретатора цел — и только он назовёт строку скрипта.
+    g_da_lua_stack_printer = []()
+    {
+        if (GEnv.ScriptEngine)
+            GEnv.ScriptEngine->print_stack();
+    };
+
+    // [DA_PORT] Полная сборка мусора под экраном загрузки — см. вызов в device.cpp.
+    //
+    // После загрузки уровня в интерпретаторе остаётся много мусора: разобранные конфиги, временные
+    // таблицы схем логики, всё созданное при спавне. Раньше это разгребалось шагами по кадру и было
+    // незаметно, пока сборка крутилась на рабочем потоке. После перевода её в главный (гонка с
+    // lua_State, см. mtLUA_GC) каждый шаг стал стоить 9-11 мс при бюджете кадра 16.6 — ловушка
+    // da_seq_trap ловила их пачками сразу после загрузки.
+    g_da_lua_full_gc = []() -> int
+    {
+        if (!GEnv.ScriptEngine || !GEnv.ScriptEngine->lua())
+            return -1;
+
+        lua_State* L = GEnv.ScriptEngine->lua();
+        const int before = lua_gc(L, LUA_GCCOUNT, 0);
+        lua_gc(L, LUA_GCCOLLECT, 0);
+        const int after = lua_gc(L, LUA_GCCOUNT, 0);
+        return before - after;
+    };
+
     ZoneScoped;
 
     Msg("* [DA_PORT] ScriptEngine::init: before reinit"); FlushLog();

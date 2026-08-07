@@ -83,7 +83,12 @@ u32 CSoundPlayer::add(LPCSTR prefix, u32 max_count, ESoundTypes type, u32 priori
 void CSoundPlayer::remove(u32 internal_type)
 {
     SOUND_COLLECTIONS::iterator I = m_sounds.find(internal_type);
-    VERIFY(m_sounds.end() != I);
+
+    // [DA_PORT] Проверка вместо VERIFY: erase(end()) портит набор звуков объекта. Снятие того,
+    // чего нет, — обычное дело при разборе существа.
+    if (m_sounds.end() == I)
+        return;
+
     m_sounds.erase(I);
 }
 

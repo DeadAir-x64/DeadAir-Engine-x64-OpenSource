@@ -106,6 +106,17 @@ public:
     virtual void OnSectorChanged(IRender_Sector::sector_id_t sector);
     virtual void OnAssetsChanged();
 
+    // [DA_PORT] Пакетная уборка ссылок, см. IGame_Persistent.h
+    void OnObjectsRelcaseBatch(const xr_vector<IGameObject*>& objects) override;
+    void OnObjectsRelcaseBatchComplete() override;
+
+private:
+    // Живые монстры, собранные на входе в пачку: им пересчитывается память по её завершении. Держим
+    // список, чтобы не обходить все объекты уровня второй раз (у источника проходов два).
+    xr_vector<class CBaseMonster*> m_da_relcase_monsters;
+
+public:
+
     CHudTuner GetHudTuner() { return m_hudTuner; }
 };
 

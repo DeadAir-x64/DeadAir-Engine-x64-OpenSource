@@ -1738,7 +1738,38 @@ ENGINE_API float ps_r__reactive_transparent = 0.f;
 //
 // Отметку ставит сама вода, битом трафарета (см. effects_water.s), поэтому в меню и на локациях без
 // воды проход не делает ничего.
-ENGINE_API float ps_r__reactive_water = 0.6f;
+//
+// [DA_PORT] Умолчание снижено 0.6 -> 0.0 после того, как заработал проход векторов воды.
+//
+// Раньше метка была вынужденной: своих векторов у воды не было, история бралась по векторам дна, и
+// запрет усреднять был меньшим злом. Ценой шло то, что апскейлер вообще не сглаживал воду — блики
+// на ряби вспыхивали каждый кадр в новом пикселе, «как огоньки на ёлке».
+//
+// Теперь вектора считаются своим проходом (phase_water_velocity), история корректна, и запрет стал
+// не нужен. Проверено в игре: на 0 мерцание падает в разы, шлейфов за движущимся по воде не
+// появилось. Ручка остаётся — если у кого-то на другом железе вылезет шлейф, поднять до 0.2.
+//
+// 🪤 Долго это не проявлялось потому, что в dev-ярлыке стоял -nodistort: проход векторов исполнялся
+// вхолостую, список искажения был пуст. Прежде чем настраивать, стоит убедиться, что настраиваемое
+// вообще работает — прибор r__water_velocity_log отвечает на это одной строкой.
+ENGINE_API float ps_r__reactive_water = 0.f;
+
+// [DA_PORT] Проход векторов движения для воды: 1 - вода пишет СВОИ вектора, 0 - проход выключен и
+// в буфере скоростей на воде остаётся вектор ДНА (поведение до появления прохода).
+//
+// Ручка нужна для честного сравнения двух половин. У пикселя мелкой воды содержимое - смесь дна и
+// поверхности, а вектор в буфере может быть только ОДИН. С вектором воды дрожит дно, видимое
+// сквозь неё; с вектором дна дрожит сама вода. Какая из двух дрожей слабее - вопрос к глазу, а не
+// к рассуждению, и решается только переключением на одной сцене.
+ENGINE_API int ps_da_water_velocity = 1;
+
+// [DA_PORT] Показать, работает ли проход векторов движения для воды: сколько объектов он видит.
+ENGINE_API int ps_da_water_velocity_log = 0;
+
+// [DA_PORT] Пошаговый след освобождения объектов ALife. Нужен для падений БЕЗ стека: виртуальный
+// вызов по освобождённой памяти даёт прыжок по нулевому адресу, разматывать нечего, и последняя
+// строка лога — единственное, что указывает на виновника.
+ENGINE_API int ps_da_alife_release_log = 0;
 
 // [DA_PORT] Не загружать константный буфер, если его содержимое не отличается от уже загруженного.
 //
@@ -2479,6 +2510,18 @@ void CCC_Register()
     CMD4(CCC_Float, "r__taa_reactive", &ps_r__taa_reactive, 0.f, 32.f);
     CMD4(CCC_Float, "r__reactive_transparent", &ps_r__reactive_transparent, 0.f, 1.f);
     CMD4(CCC_Float, "r__reactive_water", &ps_r__reactive_water, 0.f, 1.f);
+    {
+        extern ENGINE_API int ps_da_water_velocity_log;
+        CMD4(CCC_DaDebugInteger, "r__water_velocity_log", &ps_da_water_velocity_log, 0, 1);
+
+        // [DA_PORT] Переключатель самого прохода — см. ps_da_water_velocity.
+        extern ENGINE_API int ps_da_water_velocity;
+        CMD4(CCC_DaDebugInteger, "r__water_velocity", &ps_da_water_velocity, 0, 1);
+    }
+    {
+        extern ENGINE_API int ps_da_alife_release_log;
+        CMD4(CCC_DaDebugInteger, "da_alife_release_log", &ps_da_alife_release_log, 0, 1);
+    }
     CMD4(CCC_DaDebugInteger, "r__emissive_probe", &ps_r__emissive_probe, 0, 2000);
     CMD4(CCC_DaDebugInteger, "r__cb_skip_redundant", &ps_r__cb_skip_redundant, 0, 1);
     CMD4(CCC_DaDebugInteger, "r__probe_center", &ps_r__probe_center, 0, 1);

@@ -140,7 +140,12 @@ void CSpaceRestrictionManager::restrict(ALife::_OBJECT_ID id, shared_str out_res
 void CSpaceRestrictionManager::unrestrict(ALife::_OBJECT_ID id)
 {
     CLIENT_RESTRICTIONS::iterator I = m_clients->find(id);
-    VERIFY(I != m_clients->end());
+    // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а erase(end()) — неопределённое
+    // поведение, оно портит контейнер и рушится потом в стороне. Пропуск удаления безвреден:
+    // элемента и так нет.
+    if (I == m_clients->end())
+        return;
+
     m_clients->erase(I);
     collect_garbage();
 }

@@ -20,7 +20,22 @@ CPatrolPathParams::CPatrolPathParams(LPCSTR caPatrolPathToGo, EPatrolStartType t
 {
     m_path = GEnv.AISpace->patrol_paths().path(m_path_name, true);
 
-    THROW3(m_path, "There is no patrol path", caPatrolPathToGo);
+    // [DA_PORT] Сообщение вместо броска.
+    //
+    // Было `THROW3(m_path, ...)` — исключение, которое никто не ловит, то есть «Unexpected
+    // application termination» из-за одного отсутствующего пути. Поймано на переходе в Военные
+    // склады: аномальная зона mil_2c_01_hw_anomal_zone ссылается на mil_2c_01_hw_af_way, путь
+    // объявлен в level.game того же уровня, но в реестре его к этому моменту нет.
+    //
+    // Ронять из-за этого всю игру несоразмерно: без пути зона просто не расставит артефакты, а
+    // остальной мир к ней отношения не имеет. Все обращения к m_path ниже закрыты проверками
+    // (VERIFY там не годился — он исчезает в релизе), поэтому пустой путь ведёт себя как путь из
+    // нуля точек, а не переносит падение из конструктора в первый же вызванный метод.
+    //
+    // Сообщение подробное намеренно: имя пути — единственное, что позволит найти виновника в
+    // данных уровня, а без него в логе останется только факт падения.
+    if (!m_path)
+        Msg("! [DA_PORT] патрульный путь [%s] не найден — объект останется без маршрута", caPatrolPathToGo);
 
     m_tPatrolPathStart = tPatrolPathStart;
     m_tPatrolPathStop = tPatrolPathStop;
@@ -31,14 +46,19 @@ CPatrolPathParams::CPatrolPathParams(LPCSTR caPatrolPathToGo, EPatrolStartType t
 CPatrolPathParams::~CPatrolPathParams() {}
 u32 CPatrolPathParams::count() const
 {
-    VERIFY(m_path);
+    // [DA_PORT] Пустой путь = ноль точек, см. конструктор.
+    if (!m_path)
+        return 0;
+
     return (m_path->vertices().size());
 }
 
 const Fvector& CPatrolPathParams::point(u32 index) const
 {
-    VERIFY(m_path);
-    VERIFY(!m_path->vertices().empty());
+    static const Fvector nowhere = { 0.f, 0.f, 0.f };
+    if (!m_path || m_path->vertices().empty())
+        return nowhere;
+
     if (!m_path->vertex(index))
     {
         GEnv.ScriptEngine->script_log(LuaMessageType::Error,
@@ -51,45 +71,63 @@ const Fvector& CPatrolPathParams::point(u32 index) const
 
 u32 CPatrolPathParams::level_vertex_id(u32 index) const
 {
-    VERIFY(m_path->vertex(index));
+    if (!m_path || !m_path->vertex(index))
+        return u32(-1);
+
     return (m_path->vertex(index)->data().level_vertex_id());
 }
 
 GameGraph::_GRAPH_ID CPatrolPathParams::game_vertex_id(u32 index) const
 {
-    VERIFY(m_path->vertex(index));
+    if (!m_path || !m_path->vertex(index))
+        return GameGraph::_GRAPH_ID(-1);
+
     return (m_path->vertex(index)->data().game_vertex_id());
 }
 
 u32 CPatrolPathParams::point(LPCSTR name) const
 {
-    if (m_path->point(name))
+    if (m_path && m_path->point(name))
         return (m_path->point(name)->vertex_id());
     return (u32(-1));
 }
 
-u32 CPatrolPathParams::point(const Fvector& point) const { return (m_path->point(point)->vertex_id()); }
+u32 CPatrolPathParams::point(const Fvector& point) const
+{
+    if (!m_path || !m_path->point(point))
+        return u32(-1);
+
+    return (m_path->point(point)->vertex_id());
+}
 bool CPatrolPathParams::flag(u32 index, u8 flag_index) const
 {
-    VERIFY(m_path->vertex(index));
+    if (!m_path || !m_path->vertex(index))
+        return false;
+
     return (!!(m_path->vertex(index)->data().flags() & (u32(1) << flag_index)));
 }
 
 Flags32 CPatrolPathParams::flags(u32 index) const
 {
-    VERIFY(m_path->vertex(index));
+    if (!m_path || !m_path->vertex(index))
+        return Flags32().zero();
+
     return (Flags32().assign(m_path->vertex(index)->data().flags()));
 }
 
 LPCSTR CPatrolPathParams::name(u32 index) const
 {
-    VERIFY(m_path->vertex(index));
+    if (!m_path || !m_path->vertex(index))
+        return "";
+
     return m_path->vertex(index)->data().name().c_str();
 }
 
 bool CPatrolPathParams::terminal(u32 index) const
 {
-    VERIFY(m_path->vertex(index));
+    if (!m_path || !m_path->vertex(index))
+        return true;
+
 
     return (m_path->vertex(index)->edges().size() == 0);
 }

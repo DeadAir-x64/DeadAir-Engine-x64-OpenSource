@@ -45,6 +45,22 @@ public:
 
     IC void operator()(CALifeLevelRegistry::_iterator& i, u64 cycle_count) const
     {
+        // [DA_PORT] Метка жизни — перед переключением онлайн/офлайн.
+        //
+        // Это самый горячий обход реестров: он идёт каждый кадр по всем объектам уровня. Выдача по
+        // номеру (CALifeObjectRegistry::object) защищена, расписание тоже, а этот путь ходит по карте
+        // напрямую и до сих пор оставался открытым — висячая запись здесь означала бы switch_object
+        // по освобождённой памяти.
+        if (!(*i).second || !(*i).second->da_object_alive())
+        {
+            static u32 s_da_dead = 0;
+            ++s_da_dead;
+            if (s_da_dead <= 5 || (s_da_dead % 200) == 0)
+                Msg("~ [DA_SANITAR] переключение: мёртвая запись, номер [%d], пропущено, всего %u",
+                    (*i).first, s_da_dead);
+            return;
+        }
+
         m_switch_manager->switch_object((*i).second);
     }
 };
@@ -89,6 +105,11 @@ void CALifeUpdateManager::update_switch()
     START_PROFILE("ALife/switch");
     graph().level().update(CSwitchPredicate(this), Device.dwPrecacheFrame > 0);
     STOP_PROFILE
+
+    // [DA_PORT] Только теперь можно удалять: обход закончен, итератор реестра больше никому не
+    // нужен, и рекурсивный release не может выбить землю у него из-под ног. Подробности —
+    // в CALifeSwitchManager::switch_object.
+    da_flush_pending_release();
 }
 
 void CALifeUpdateManager::update_scheduled(bool init_ef)
@@ -102,11 +123,78 @@ void CALifeUpdateManager::update_scheduled(bool init_ef)
     STOP_PROFILE
 }
 
+void CALifeUpdateManager::da_sanitize_now() { objects().da_sanitize_report(); }
+
 void CALifeUpdateManager::update()
 {
     da_seq_probe _probe("alife update (обе половины)"); // [DA_PORT] ловушка da_seq_trap
+
+    // [DA_PORT] Санитар реестра — раз в 30 секунд реального времени.
+    //
+    // Метка жизни не даёт упасть на висячей записи, но саму запись не убирает: она остаётся лежать и
+    // попадаться снова. Здесь мы её выметаем.
+    //
+    // Почему редко: проход по всему реестру не бесплатен (тысячи объектов), а висячие записи — вещь
+    // редкая и не срочная, метка их и так обезвреживает. Тридцать секунд — компромисс между «не
+    // копится» и «не мешает».
+    //
+    // Почему здесь: это единственное место, которое гарантированно бьётся ровно тогда, когда ALife
+    // жив и не в середине загрузки.
+    {
+        static u32 s_da_next_sanitize = 0;
+        const u32 now = Device.dwTimeGlobal;
+        if (now >= s_da_next_sanitize)
+        {
+            s_da_next_sanitize = now + 30000;
+            objects().da_sanitize();
+        }
+    }
+
     update_switch();
     update_scheduled(false);
+}
+
+// [DA_PORT] Уборка осиротевших служебных фонарей, см. вызов ниже.
+void CALifeUpdateManager::da_cleanup_orphan_torches()
+{
+    xr_vector<ALife::_OBJECT_ID> orphans;
+
+    for (const auto& pair : objects().objects())
+    {
+        CSE_ALifeDynamicObject* object = pair.second;
+        if (!object || object->ID_Parent != 0xffff)
+            continue;
+
+        // [DA_PORT] Только ОФЛАЙН. Первая версия этого условия не проверяла онлайн — и повторила
+        // ровно ту ошибку, которую здесь же и чинит: release не уничтожает клиентскую часть
+        // онлайнового объекта, он шлёт сетевой пакет. Серверный объект уходил, клиентский
+        // оставался, и на выгрузке уровня движок падал в CObjectList::register_object_to_destroy,
+        // отчитавшись «objects-leaked: 130». В логах до этой правки утечек не было ни одной.
+        //
+        // Офлайн-фонари составляют подавляющее большинство: онлайн только те, что в поле зрения.
+        // Их подберёт следующая загрузка, когда они станут офлайновыми.
+        if (object->m_bOnline)
+            continue;
+
+        // Сравниваем по секции: имя экземпляра у них вида device_torch12345.
+        if (xr_strcmp(object->s_name.c_str(), "device_torch") != 0)
+            continue;
+
+        orphans.push_back(object->ID);
+    }
+
+    if (orphans.empty())
+        return;
+
+    // Список забираем заранее: release рекурсивен и правит тот самый реестр, по которому мы шли.
+    for (const ALife::_OBJECT_ID id : orphans)
+    {
+        CSE_ALifeDynamicObject* object = objects().object(id, true);
+        if (object)
+            release(object);
+    }
+
+    Msg("* [DA_PORT] уборка: снято осиротевших служебных фонарей: %u", u32(orphans.size()));
 }
 
 void CALifeUpdateManager::shedule_Update(u32 dt)
@@ -116,11 +204,38 @@ void CALifeUpdateManager::shedule_Update(u32 dt)
     if (!initialized())
         return;
 
-    if (!m_first_time && g_mt_config.test(mtALife))
-    {
-        Device.seqParallel.push_back(fastdelegate::FastDelegate0<>(this, &CALifeUpdateManager::update));
-        return;
-    }
+    // [DA_PORT] ALife обновляется ТОЛЬКО в главном потоке, флаг mtALife здесь больше не спрашивается.
+    //
+    // Было: с этим флагом update уходил в seqParallel, то есть на рабочий поток TaskManager. А
+    // внутри он доходит до CSE_ALifeDynamicObject::try_switch_online(), которое зовёт
+    // can_switch_online() — виртуальный метод, и у скриптовых серверных классов (в Dead Air их
+    // много) он уходит В LUA через luabind.
+    //
+    // lua_State однопоточен по построению. Главный поток в этот же момент крутит биндеры через
+    // CSheduler::Update — два потока в одном интерпретаторе. Состояние портится, а падает потом
+    // где угодно: lua_rawgeti по адресу -1, memcpy внутри lua_remove, lj_err_optype. Ни одной
+    // ошибки скрипта в логе при этом нет, потому что это порча памяти, а не ошибка Lua-кода.
+    //
+    // Проверять флаг нельзя даже «на всякий случай»: у игрока в user.ltx лежит сохранённое
+    // `mt_alife on`, и любое умолчание в коде оно перебьёт. Поэтому решение принято здесь и
+    // окончательно — см. [[user-ltx-debug-traps]].
+
+    // [DA_PORT] Разовая уборка осиротевших служебных фонарей — при первом обновлении ALife.
+    //
+    // sr_light.script создавал NPC фонарь device_torch на входе в тень и удалял на выходе через
+    // sim:release. Для ОНЛАЙН-объекта тот ничего не удаляет: номер уходит в пул, а объект остаётся
+    // жить и теряет владельца. Замер прибором da_registry_log: 753 таких фонаря за один заход.
+    //
+    // Сам источник закрыт в скрипте (теперь фонарь выключается, а не удаляется), но у тех, кто уже
+    // играл, осиротевшие лежат В СОХРАНЕНИИ. Они видны на локациях и ломают игру: в логе на них
+    // приходятся «Actor tries to reject item that has no parent» и «ge_destroy: not found on
+    // server», а следом падение.
+    //
+    // Убираем только device_torch без владельца: это служебный предмет (inv_name "FUCKING TORCH"),
+    // у живого он всегда в инвентаре, а без родителя существовать не должен вовсе. Ни dummy-версия,
+    // ни фонарь игрока под условие не попадают.
+    if (m_first_time)
+        da_cleanup_orphan_torches();
 
     m_first_time = false;
 
@@ -184,6 +299,9 @@ bool CALifeUpdateManager::change_level(NET_Packet& net_packet)
     Level().ClientSend();
 
     m_changing_level = true;
+
+    // [DA_PORT] Отложенная уборка не переживает уровень: её номера относятся к старому реестру.
+    da_drop_pending_release();
 
     GameGraph::_GRAPH_ID safe_graph_vertex_id = graph().actor()->m_tGraphID;
     u32 safe_level_vertex_id = graph().actor()->m_tNodeID;

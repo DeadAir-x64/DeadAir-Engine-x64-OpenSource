@@ -10,6 +10,10 @@
 #include "xrUICore/Cursor/UICursor.h"
 #include "game_base_space.h"
 #include "Level.h"
+#include "agent_manager.h"
+#include "ai/monsters/basemonster/base_monster.h"
+#include "ai/monsters/ai_monster_squad_manager.h"
+#include "ai/stalker/ai_stalker.h"
 #include "ParticlesObject.h"
 #include "game_base_space.h"
 #include "stalker_animation_data_storage.h"
@@ -447,6 +451,76 @@ void CGamePersistent::update_game_loaded()
     xr_delete(m_intro);
     load_screen_renderer.Stop();
     start_game_intro();
+}
+
+// [DA_PORT] Пакетная уборка ссылок на удаляемые объекты. Приём из Dead Air Refined 1.2.2, разбор в
+// IGame_Persistent.h.
+//
+// ⚠️ Отличие от источника: у них список объектов уровня обходится ДВАЖДЫ — сначала чтобы собрать
+// менеджеры агентов, потом (во второй функции) чтобы обновить память монстрам. Это два прохода по
+// тысячам объектов на КАЖДУЮ пачку удаления, включая пачку из одного трупа. Здесь проход один:
+// живые монстры запоминаются заодно со сбором менеджеров, а вторая функция идёт уже по короткому
+// списку. Результат тот же, накладных расходов вдвое меньше.
+void CGamePersistent::OnObjectsRelcaseBatch(const xr_vector<IGameObject*>& objects)
+{
+    m_da_relcase_monsters.clear();
+
+    if (objects.empty())
+        return;
+
+    // Дерево отрядов монстров обходится один раз на всю пачку — внутри проверка по множеству.
+    if (g_monster_squad)
+        g_monster_squad->remove_links(objects);
+
+    xr_set<CAgentManager*> agent_managers;
+
+    const u32 object_count = Level().Objects.o_count();
+    for (u32 i = 0; i < object_count; ++i)
+    {
+        IGameObject* object = Level().Objects.o_get_by_iterator(i);
+        if (!object)
+            continue;
+
+        // ⚠️ Помеченные на уничтожение здесь НЕ пропускаются, и это намеренно: менеджер агентов
+        // общий на отряд и переживёт своего бойца, а пропустив последнего собранного из отряда, мы
+        // оставили бы в менеджере висячую ссылку. Пересчёт памяти — другое дело, там уходящий
+        // монстр отсеивается (см. OnObjectsRelcaseBatchComplete).
+        //
+        // Менеджер агентов ОБЩИЙ на отряд: собираем уникальные, иначе одна и та же чистка
+        // повторяется столько раз, сколько в отряде бойцов.
+        if (CAI_Stalker* stalker = object->cast_stalker())
+        {
+            if (stalker->g_Alive())
+                agent_managers.insert(&stalker->agent_manager());
+            continue;
+        }
+
+        if (CBaseMonster* monster = object->cast_base_monster())
+        {
+            if (monster->g_Alive())
+                m_da_relcase_monsters.push_back(monster);
+        }
+    }
+
+    for (CAgentManager* agent_manager : agent_managers)
+        for (IGameObject* object : objects)
+            agent_manager->remove_links(object);
+}
+
+void CGamePersistent::OnObjectsRelcaseBatchComplete()
+{
+    // Идём по списку, собранному выше, а не по всем объектам уровня заново. Память пересчитывается
+    // ПОСЛЕ того, как все ссылки вычищены: раньше это делалось внутри net_Relcase, то есть по разу
+    // на каждый удаляемый объект и посреди недоделанной уборки.
+    for (CBaseMonster* monster : m_da_relcase_monsters)
+    {
+        if (monster->getDestroy() || !monster->g_Alive())
+            continue;
+
+        monster->UpdateMemory();
+    }
+
+    m_da_relcase_monsters.clear();
 }
 
 void CGamePersistent::start_game_intro()

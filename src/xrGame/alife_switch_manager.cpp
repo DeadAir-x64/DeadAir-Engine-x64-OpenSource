@@ -238,9 +238,16 @@ void CALifeSwitchManager::try_switch_offline(CSE_ALifeDynamicObject* I)
 
 void CALifeSwitchManager::switch_object(CSE_ALifeDynamicObject* I)
 {
+    // [DA_PORT] Удаление отложено до конца обхода реестра.
+    //
+    // Зовут нас из обхода реестра уровня (CALifeUpdateManager::update_switch → CSwitchPredicate), а
+    // release() вычёркивает из ЭТОГО ЖЕ реестра — и не только сам объект, но и всех его детей
+    // (труп уносит инвентарь). Ребёнок, удалённый вместе с родителем, остаётся дальше по списку
+    // обхода: следующий шаг придёт с висячим указателем, первое же обращение к нему виртуальное
+    // (redundant()) — и это прыжок по нулевому адресу, без стека и без единого сообщения.
     if (I->redundant())
     {
-        release(I);
+        m_da_pending_release.push_back(I->ID);
         return;
     }
 
@@ -253,5 +260,47 @@ void CALifeSwitchManager::switch_object(CSE_ALifeDynamicObject* I)
         try_switch_online(I);
 
     if (I->redundant())
-        release(I);
+        m_da_pending_release.push_back(I->ID);
+}
+
+// [DA_PORT] Смена уровня: очередь обязана умереть вместе со старым уровнем.
+//
+// В ней лежат ИДЕНТИФИКАТОРЫ, а при смене уровня реестр объектов пересоздаётся целиком
+// (CALifeSimulatorBase::unload). Пережившая смену запись означала бы поиск старого номера в НОВОМ
+// реестре — то есть удаление ни в чём не повинного объекта, которому этот номер достался. Ошибка
+// при этом всплыла бы далеко от места и выглядела бы как «объект уже есть в реестре».
+void CALifeSwitchManager::da_drop_pending_release()
+{
+    if (m_da_pending_release.empty())
+        return;
+
+    Msg("~ [DA_PORT] ALife: очередь уборки (%u) забыта — уровень меняется",
+        u32(m_da_pending_release.size()));
+    m_da_pending_release.clear();
+}
+
+// [DA_PORT] Разбор очереди. Зовётся после обхода реестра, когда итератор уже никому не нужен.
+void CALifeSwitchManager::da_flush_pending_release()
+{
+    if (m_da_pending_release.empty())
+        return;
+
+    // Список забираем себе: release() рекурсивен и может добавить сюда ещё, а дописывать в вектор,
+    // по которому идём, значит снова наступить на инвалидацию — ровно на ту, от которой уходим.
+    xr_vector<ALife::_OBJECT_ID> pending;
+    pending.swap(m_da_pending_release);
+
+    extern ENGINE_API int ps_da_alife_release_log;
+    if (ps_da_alife_release_log)
+        Msg("~ [DA_REL] очередь уборки: %u объектов", u32(pending.size()));
+
+    for (const ALife::_OBJECT_ID id : pending)
+    {
+        // no_assert: объект мог уйти вместе с родителем, пока очередь ждала. Это норма, а не ошибка.
+        CSE_ALifeDynamicObject* object = objects().object(id, true);
+        if (!object)
+            continue;
+
+        release(object);
+    }
 }

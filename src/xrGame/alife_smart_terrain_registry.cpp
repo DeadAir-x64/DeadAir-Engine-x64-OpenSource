@@ -28,6 +28,17 @@ void CALifeSmartTerrainRegistry::remove(CSE_ALifeDynamicObject* object)
         return;
 
     OBJECTS::iterator I = m_objects.find(object->ID);
-    VERIFY(I != m_objects.end());
+
+    // [DA_PORT] Проверка вместо VERIFY: тот исчезает в релизной сборке.
+    //
+    // Было `VERIFY(I != m_objects.end()); m_objects.erase(I);` — то есть в релизе при ненайденной
+    // записи выполнялось erase(end()). Это не «ничего не делает», а неопределённое поведение:
+    // дерево std::map правится по невалидному узлу, и рушится потом в произвольном месте.
+    //
+    // Отсутствие записи здесь — законный случай, а не ошибка: зону могли снять с учёта раньше по
+    // другому пути, а до нас дойти повторно (освобождение рекурсивно, см. CALifeSimulatorBase::release).
+    if (I == m_objects.end())
+        return;
+
     m_objects.erase(I);
 }

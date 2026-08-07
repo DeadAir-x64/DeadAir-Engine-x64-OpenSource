@@ -10,6 +10,52 @@
 
 #include "base_client_classes_wrappers.h"
 
+namespace
+{
+// [DA_PORT] Скрипт не должен ронять игру, передав nil вторым вектором.
+//
+// Мера расстояния — самый частый вызов в логике мода, и второй аргумент ей обычно даёт позиция
+// другого объекта. Стоит объекту исчезнуть, и скрипт приносит сюда nil: luabind делает из него
+// нулевую ССЫЛКУ, а Fvector::distance_to читает по ней и падает с обращением по нулевому адресу.
+// Поймано на CWrapperAbstractZone<CSE_ALifeSmartZone>::update — умная зона мерила расстояние до
+// того, кого уже убрали.
+//
+// Возвращаем бесконечность: «бесконечно далеко» — единственный ответ, который не соврёт ни одной
+// проверке. Сравнения «ближе чем» дадут ложь, «дальше чем» — истину, и логика мода поведёт себя
+// так, будто объекта рядом нет. Он и правда исчез.
+//
+// Молча не проходим: одно сообщение на вызов покажет, какая именно логика носит сюда пустоту.
+float da_vector_distance_to(const Fvector* self, const Fvector* other)
+{
+    if (!self || !other)
+    {
+        Msg("! [DA_PORT] vector:distance_to получил пустой вектор — считаю бесконечность");
+        return flt_max;
+    }
+    return self->distance_to(*other);
+}
+
+float da_vector_distance_to_sqr(const Fvector* self, const Fvector* other)
+{
+    if (!self || !other)
+    {
+        Msg("! [DA_PORT] vector:distance_to_sqr получил пустой вектор — считаю бесконечность");
+        return flt_max;
+    }
+    return self->distance_to_sqr(*other);
+}
+
+float da_vector_distance_to_xz(const Fvector* self, const Fvector* other)
+{
+    if (!self || !other)
+    {
+        Msg("! [DA_PORT] vector:distance_to_xz получил пустой вектор — считаю бесконечность");
+        return flt_max;
+    }
+    return self->distance_to_xz(*other);
+}
+} // namespace
+
 void CScriptFvector::script_register(lua_State* luaState)
 {
     using namespace luabind;
@@ -92,9 +138,10 @@ void CScriptFvector::script_register(lua_State* luaState)
             // return_reference_to<1>())
             .def("dotproduct", &Fvector::dotproduct)
             .def("crossproduct", &Fvector::crossproduct, return_reference_to<1>())
-            .def("distance_to_xz", &Fvector::distance_to_xz)
-            .def("distance_to_sqr", &Fvector::distance_to_sqr)
-            .def("distance_to", &Fvector::distance_to)
+            // [DA_PORT] через обёртки: см. da_vector_distance_to выше
+            .def("distance_to_xz", &da_vector_distance_to_xz)
+            .def("distance_to_sqr", &da_vector_distance_to_sqr)
+            .def("distance_to", &da_vector_distance_to)
             //			.def("from_bary",					(Fvector & (Fvector::*)(const Fvector &, const Fvector
             //&, const Fvector &, float, float, float))(&Fvector::from_bary),	return_reference_to<1>())
             //			.def("from_bary",					(Fvector & (Fvector::*)(const Fvector &, const Fvector

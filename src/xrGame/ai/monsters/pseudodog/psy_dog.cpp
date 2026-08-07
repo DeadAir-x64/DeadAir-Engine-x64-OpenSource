@@ -76,9 +76,14 @@ void CPsyDog::unregister_phantom(CPsyDogPhantom* phantom)
     if (it == m_storage.end())
         return;
 
+    // [DA_PORT] Номер считаем ДО удаления: после erase итератор невалиден, и std::distance по нему —
+    // неопределённое поведение. Раньше это работало «случайно», потому что у вектора память обычно
+    // остаётся на месте и адрес ещё указывает внутрь буфера, но при перевыделении или на другой
+    // реализации даёт мусорный номер — а он идёт индексом в m_phantoms_die_time.
+    const auto idx = std::distance(m_storage.begin(), it);
+
     m_storage.erase(it);
 
-    const auto idx = std::distance(m_storage.begin(), it);
     if (idx < m_max_phantoms_count)
         m_phantoms_die_time[idx] = time();
 }

@@ -769,6 +769,9 @@ public:
     virtual CSE_ALifeDynamicObject& get_object() { return *this; }
     ALife::_OBJECT_ID commander_id();
     MEMBERS const& squad_members() const;
+
+    // [DA_PORT] Копия состава для безопасного обхода — см. alife_online_offline_group.cpp.
+    xr_vector<MEMBER*> da_members_snapshot() const;
     u32 npc_count() const;
     void clear_location_types();
     void add_location_type(LPCSTR mask);

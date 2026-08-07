@@ -207,8 +207,30 @@ void register_mp_console_commands();
 
 BOOL g_bCheckTime = FALSE;
 int net_cl_inputupdaterate = 50;
+// [DA_PORT] mtALife убран из умолчаний: обновление ALife НЕЛЬЗЯ выносить в рабочий поток.
+//
+// С этим флагом CALifeUpdateManager::update уходит в seqParallel, то есть исполняется на рабочем
+// потоке TaskManager. А внутри оно доходит до CSE_ALifeDynamicObject::try_switch_online(), которое
+// зовёт can_switch_online() — виртуальный метод, и у скриптовых серверных классов (а их в Dead Air
+// много) он уходит В LUA через luabind.
+//
+// lua_State однопоточен по построению. Главный поток в этот же момент крутит биндеры через
+// CSheduler::Update, и два потока работают с одним состоянием интерпретатора. Стек Lua портится, а
+// падает потом где угодно и без всякой связи с виновником — в логах это выглядело тремя разными
+// авариями подряд:
+//   lua_rawgeti по адресу -1  (luabind::weak_ref::get из рабочего потока)
+//   memcpy внутри lua_remove  (luabind::pcall из биндера актёра)
+//   lj_err_optype / lj_meta_tget (тот же биндер, другой кадр)
+// Ни одной ошибки скрипта при этом в логе нет: это порча памяти, а не ошибка в Lua-коде.
+//
+// Ручка mt_alife остаётся — выключенной. Кому нужен старый режим, включит сам и получит те же
+// падения.
+//
+// mtLUA_GC убран по той же причине и он даже опаснее: с ним CLevel::script_gc уходит в тот же
+// рабочий поток, а это сборка мусора Lua. Она не просто читает состояние интерпретатора, а
+// переставляет объекты в нём — параллельно с главным потоком, который по этим объектам ходит.
 Flags32 g_mt_config = {mtLevelPath | mtDetailPath | mtObjectHandler | mtSoundPlayer | mtAiVision | mtBullets |
-    mtLUA_GC | mtLevelSounds | mtALife | mtMap};
+    mtLevelSounds | mtMap};
 #ifdef DEBUG
 Flags32 dbg_net_Draw_Flags{};
 #endif
@@ -413,12 +435,49 @@ public:
 // [DA_PORT] Поимённая цена спавна: какие секции конфига стоят дороже всего. Копится всегда,
 // печатается и обнуляется по команде — так один прогон закрывает и загрузку, и переходы.
 void da_spawn_dump_print();
+int ps_da_registry_log = 0; // [DA_PORT] см. xrServer::entity_Destroy
+// [DA_PORT] Имя объекта, который СЕЙЧАС создаётся из спавн-пакета — печатается до того,
+// как за него возьмётся net_Spawn. Нужно, когда падение приходит внутри спавна: стек там
+// бесполезен (в быстрой сборке нет карты линковщика, и символ берётся ближайший, то есть
+// чужой), а имя секции называет виновника сразу. Печатать всё подряд дорого — по флагу.
+int ps_da_spawn_trace = 0; // [DA_PORT] см. CLevel::g_sv_Spawn
 
 class CCC_DaSpawnDump : public IConsole_Command
 {
 public:
     CCC_DaSpawnDump(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
     virtual void Execute(LPCSTR /*args*/) { da_spawn_dump_print(); }
+};
+
+// [DA_PORT] Цена обновления ALife по секциям — печать ПО ТРЕБОВАНИЮ.
+//
+// Копится, пока включён da_seq_trap (замер вооружается им же), а печаталась статистика только
+// в деструкторе CALifeUpdateManager, то есть при выгрузке уровня. Для вопроса «что грузит игру
+// первые секунды ПОСЛЕ загрузки сейва» это бесполезно: чтобы увидеть числа, надо выйти, а к
+// тому моменту в сумме уже весь сеанс. Отсюда команда: загрузился, подождал, напечатал.
+void da_alife_dump_update_stats();
+
+// [DA_PORT] Санитар реестра ALife: отчёт + немедленная чистка (см. alife_object_registry.cpp).
+class CCC_DaSanitar : public IConsole_Command
+{
+public:
+    CCC_DaSanitar(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/)
+    {
+        if (!ai().get_alife())
+        {
+            Msg("~ [DA_SANITAR] ALife не запущен — чистить нечего");
+            return;
+        }
+        const_cast<CALifeSimulator*>(ai().get_alife())->da_sanitize_now();
+    }
+};
+
+class CCC_DaAlifeDump : public IConsole_Command
+{
+public:
+    CCC_DaAlifeDump(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/) { da_alife_dump_update_stats(); }
 };
 
 class CCC_DaMemReset : public IConsole_Command
@@ -2561,6 +2620,19 @@ void CCC_RegisterCommands()
     CMD1(CCC_DaMemDump, "da_mem_dump");   // [DA_PORT] таблица памяти по загрузкам
     CMD1(CCC_DaMemReset, "da_mem_reset"); // [DA_PORT] забыть накопленное
     CMD1(CCC_DaSpawnDump, "da_spawn_dump"); // [DA_PORT] цена спавна по секциям
+    CMD1(CCC_DaAlifeDump, "da_alife_dump"); // [DA_PORT] цена обновления ALife по секциям
+    CMD1(CCC_DaSanitar, "da_alife_sanitize"); // [DA_PORT] чистка висячих записей реестра
+    {
+        // [DA_PORT] расхождение серверного реестра и реестра ALife, см. xrServer::entity_Destroy
+        extern int ps_da_registry_log;
+        CMD4(CCC_DaDebugInteger, "da_registry_log", &ps_da_registry_log, 0, 1);
+        extern int ps_da_spawn_trace;
+        CMD4(CCC_DaDebugInteger, "da_spawn_trace", &ps_da_spawn_trace, 0, 1);
+
+        // [DA_PORT] Сторож висячих выдач: кто спрашивает у реестра уже удалённый объект.
+        extern int ps_da_dangling_watch;
+        CMD4(CCC_DaDebugInteger, "da_dangling_watch", &ps_da_dangling_watch, 0, 1);
+    }
     {
         // [DA_PORT] сверить быстрый поиск ближайшей вершины с прежним полным перебором
         extern XRAICORE_API int ps_da_vertex_search_verify;

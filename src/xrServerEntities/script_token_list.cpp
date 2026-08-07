@@ -61,14 +61,30 @@ void CScriptTokenList::clear()
 int CScriptTokenList::id(pcstr name)
 {
     iterator I = token(name);
-    VERIFY(I != m_token_list.end());
+
+    // [DA_PORT] Проверка вместо VERIFY: сюда приходят имена ИЗ СКРИПТОВ, то есть из данных мода.
+    // Опечатка в конфиге не должна ронять игру разыменованием end(); -1 — общепринятый здесь
+    // признак "нет такого", его вызывающая сторона уже умеет отличать.
+    if (I == m_token_list.end())
+    {
+        Msg("! [DA_PORT] список токенов: имя [%s] не найдено", name);
+        return -1;
+    }
+
     return (*I).id;
 }
 
 pcstr CScriptTokenList::name(int id)
 {
     iterator I = token(id);
-    VERIFY(I != m_token_list.end());
+
+    // [DA_PORT] Проверка вместо VERIFY — см. id() выше. Пустая строка вместо разыменования end().
+    if (I == m_token_list.end())
+    {
+        Msg("! [DA_PORT] список токенов: номер [%d] не найден", id);
+        return "";
+    }
+
     return (*I).name;
 }
 

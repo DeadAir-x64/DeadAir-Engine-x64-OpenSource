@@ -144,7 +144,12 @@ void ISpatial_NODE::_remove(ISpatial* S)
 {
     S->GetSpatialData().node_ptr = NULL;
     xr_vector<ISpatial*>::iterator it = std::find(items.begin(), items.end(), S);
-    VERIFY(it != items.end());
+    // [DA_PORT] Проверка вместо VERIFY: он исчезает в релизе, а erase(end()) — неопределённое
+    // поведение, оно портит контейнер и рушится потом в стороне. Пропуск удаления безвреден:
+    // элемента и так нет.
+    if (it == items.end())
+        return;
+
     items.erase(it);
     S->GetSpatialData().space->Stats.ObjectCount--;
 }

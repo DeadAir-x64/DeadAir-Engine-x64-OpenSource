@@ -208,8 +208,30 @@ void CAI_Crow::net_Destroy()
 }
 
 // crow update
-void CAI_Crow::switch2_FlyUp() { smart_cast<IKinematicsAnimated*>(Visual())->PlayCycle(m_Anims.m_fly.GetRandom()); }
-void CAI_Crow::switch2_FlyIdle() { smart_cast<IKinematicsAnimated*>(Visual())->PlayCycle(m_Anims.m_idle.GetRandom()); }
+// [DA_PORT] Анимированный визуал вороны — с проверкой.
+//
+// Ниже семь мест звали PlayCycle прямо на результате smart_cast, без проверки. Приведение может
+// вернуть ноль законно: у объекта может не быть визуала вовсе (выгрузка уровня, объект в разборе)
+// или визуал окажется не анимированным. Вызов метода по такому нулю — прыжок по адресу 0 без
+// машинного стека, ровно как было в CTorch::Switch2.
+//
+// Ворон в Dead Air много и живут они недолго: в логах по три десятка освобождений за раз, то есть
+// смена состояний у них идёт постоянно и на объектах, которые вот-вот исчезнут.
+IKinematicsAnimated* CAI_Crow::da_animated() const
+{
+    return Visual() ? smart_cast<IKinematicsAnimated*>(Visual()) : nullptr;
+}
+
+void CAI_Crow::switch2_FlyUp()
+{
+    if (IKinematicsAnimated* animated = da_animated())
+        animated->PlayCycle(m_Anims.m_fly.GetRandom());
+}
+void CAI_Crow::switch2_FlyIdle()
+{
+    if (IKinematicsAnimated* animated = da_animated())
+        animated->PlayCycle(m_Anims.m_idle.GetRandom());
+}
 void CAI_Crow::switch2_DeathDead()
 {
     // AI need to pickup this
@@ -217,14 +239,16 @@ void CAI_Crow::switch2_DeathDead()
     if (self)
         self->GetSpatialData().type |= STYPE_VISIBLEFORAI;
     //
-    smart_cast<IKinematicsAnimated*>(Visual())->PlayCycle(m_Anims.m_death_dead.GetRandom());
+    if (IKinematicsAnimated* animated = da_animated())
+        animated->PlayCycle(m_Anims.m_death_dead.GetRandom());
 }
 void CAI_Crow::switch2_DeathFall()
 {
     Fvector V;
     V.mul(XFORM().k, fSpeed);
     //	m_PhysicMovementControl->SetVelocity(V);
-    smart_cast<IKinematicsAnimated*>(Visual())->PlayCycle(m_Anims.m_death.GetRandom(), TRUE, cb_OnHitEndPlaying, this);
+    if (IKinematicsAnimated* animated = da_animated())
+        animated->PlayCycle(m_Anims.m_death.GetRandom(), TRUE, cb_OnHitEndPlaying, this);
 }
 
 void CAI_Crow::state_Flying(float fdt)
@@ -296,7 +320,8 @@ void CAI_Crow::state_DeathFall()
 
     if (bPlayDeathIdle)
     {
-        smart_cast<IKinematicsAnimated*>(Visual())->PlayCycle(m_Anims.m_death_idle.GetRandom());
+        if (IKinematicsAnimated* animated = da_animated())
+            animated->PlayCycle(m_Anims.m_death_idle.GetRandom());
         bPlayDeathIdle = false;
     }
     VERIFY2(valid_pos(Position()), dbg_valide_pos_string(Position(), this, "CAI_Crow::state_DeathFall()"));
@@ -473,7 +498,8 @@ void CAI_Crow::HitSignal(float /**HitAmount**/, Fvector& /**local_dir**/, IGameO
         st_target = eDeathFall;
     }
     else
-        smart_cast<IKinematicsAnimated*>(Visual())->PlayCycle(m_Anims.m_death_dead.GetRandom());
+        if (IKinematicsAnimated* animated = da_animated())
+        animated->PlayCycle(m_Anims.m_death_dead.GetRandom());
 }
 //---------------------------------------------------------------------
 void CAI_Crow::HitImpulse(float /**amount**/, Fvector& /**vWorldDir**/, Fvector& /**vLocalDir**/) {}

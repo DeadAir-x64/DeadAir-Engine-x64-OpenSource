@@ -27,6 +27,9 @@ public:
     void add(CSE_ALifeDynamicObject* object);
     void remove(CSE_ALifeDynamicObject* object);
     OBJECT& object(const ALife::_OBJECT_ID& id) const;
+
+    // [DA_PORT] Тот же поиск, но отсутствие группы — законный ответ, а не отказ. Разбор в .cpp.
+    OBJECT* object_safe(const ALife::_OBJECT_ID& id) const;
     IC const OBJECTS& objects() const;
     void on_after_game_load();
 };

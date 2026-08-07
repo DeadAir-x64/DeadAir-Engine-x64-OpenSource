@@ -346,6 +346,12 @@ void CRenderTarget::phase_combine()
     {
         if ((0 == dsgraph.mapDistort.size()) && !_menu_pp)
             bDistort = FALSE;
+        // [DA_PORT] Векторы движения для воды — до штатного искажения, потому что оно очищает
+        // список, по которому мы идём, и вне условия bDistort: оно ложно, когда список пуст, а нам
+        // важно доложить об этом прибором, а не промолчать. Разбор — в
+        // r4_rendertarget_phase_water_velocity.cpp.
+        phase_water_velocity();
+
         if (bDistort)
         {
             PIX_EVENT(render_distort_objects);

@@ -1437,9 +1437,15 @@ CSE_ALifeSchedulable::CSE_ALifeSchedulable(LPCSTR caSection)
     m_tpCurrentBestWeapon = nullptr;
     m_tpBestDetector = nullptr;
     m_schedule_counter = u64(-1);
+    m_da_alive = u32(da_alive_magic); // [DA_PORT] метка жизни, см. заголовок
 }
 
-CSE_ALifeSchedulable::~CSE_ALifeSchedulable() {}
+CSE_ALifeSchedulable::~CSE_ALifeSchedulable()
+{
+    // [DA_PORT] Гасим метку: с этого мгновения любая запись о нас в расписании — висячая,
+    // и планировщик обязан её пропустить, а не звать update() по мёртвой памяти.
+    m_da_alive = 0;
+}
 bool CSE_ALifeSchedulable::need_update(CSE_ALifeDynamicObject* object)
 {
     return (!object ||

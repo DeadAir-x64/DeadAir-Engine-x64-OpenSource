@@ -107,8 +107,17 @@ void CCameraManager::RemoveCamEffector(ECamEffectorType type)
     for (auto it = m_EffectorsCam.begin(); it != m_EffectorsCam.end(); ++it)
         if ((*it)->eType == type)
         {
-            OnEffectorReleased(*it);
+            // [DA_PORT] Сначала изымаем из списка, потом освобождаем.
+            //
+            // OnEffectorReleased дёргает колбэк на удаление (m_on_b_remove_callback), а тот может
+            // снять другой эффектор — список тогда меняется прямо во время нашего обхода, и erase
+            // ниже работал бы по обесцененному итератору.
+            //
+            // Порядок «изъять — освободить» снимает вопрос целиком: к моменту колбэка нас в списке
+            // уже нет, и что бы он ни делал, наш итератор больше не нужен.
+            SBaseEffector* effector = *it;
             m_EffectorsCam.erase(it);
+            OnEffectorReleased(effector);
             return;
         }
 }
@@ -153,12 +162,16 @@ void CCameraManager::RemovePPEffector(EEffectorPPType type)
     for (auto it = m_EffectorsPP.begin(); it != m_EffectorsPP.end(); ++it)
         if ((*it)->Type() == type)
         {
-            if ((*it)->FreeOnRemove())
-            {
-                OnEffectorReleased(*it);
-                // xr_delete (*it);
-            }
+            // [DA_PORT] Тот же порядок, что в RemoveCamEffector: изъять, затем освободить.
+            // Колбэк на удаление способен снять другой эффектор и обесценить наш итератор.
+            CEffectorPP* effector = *it;
+            const bool free_on_remove = effector->FreeOnRemove();
+
             m_EffectorsPP.erase(it);
+
+            if (free_on_remove)
+                OnEffectorReleased(effector);
+
             return;
         }
 }
@@ -264,9 +277,17 @@ void CCameraManager::UpdateCamEffectors()
             // Dereferencing reverse iterator returns previous element of the list, r_it.base() returns current element
             // So, we should use base()-1 iterator to delete just processed element. 'Previous' element would be
             // automatically changed after deletion, so r_it would dereferencing to another value, no need to change it
-            OnEffectorReleased(*r_it);
+            // [DA_PORT] Сначала изымаем, потом освобождаем — как в RemoveCamEffector.
+            //
+            // OnEffectorReleased дёргает колбэк на удаление, а тот может снять эффектор сам. Для
+            // списка снятие ЧУЖОГО элемента безопасно (остальные итераторы живы), но если колбэк
+            // уберёт ровно текущий, r_it протухнет — и erase ниже станет вторым удалением того же
+            // узла. Порядок «изъять — освободить» снимает вопрос: к моменту колбэка нас в списке уже
+            // нет, и наш итератор больше никому не нужен.
+            CEffectorCam* effector = *r_it;
             auto r_to_del = r_it.base();
             m_EffectorsCam.erase(--r_to_del);
+            OnEffectorReleased(effector);
         }
     }
 

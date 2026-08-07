@@ -5,6 +5,8 @@
 #include "Common/LevelStructure.hpp"
 #include "xrEngine/xr_collide_form.h"
 
+#include <filesystem>
+
 
 //----------------------------------------------------------------------
 // Class	: CObjectSpaceData
@@ -15,6 +17,198 @@ thread_local collide::rq_results CObjectSpaceData::r_temp;
 thread_local xr_vector<ISpatial*> CObjectSpaceData::r_spatial;
 
 using namespace collide;
+
+namespace
+{
+// [DA_PORT] Кэш столкновений ограничен по объёму, а не вычищается целиком.
+//
+// Движок кладёт в appdata\cdb_cache каталог на каждый посещённый уровень и не убирает их никогда:
+// на машине разработки накопилось 2.6 ГБ в 28 каталогах, причём одно только Кладбище техники — 491
+// МБ. У игрока будет столько же, и он не поймёт, откуда.
+//
+// В Dead Air Refined это лечится удалением ВСЕХ каталогов, кроме текущего. Для линейного
+// прохождения годится, для нас нет: здесь ходят между уровнями свободно, и такая уборка означала бы
+// перестроение кэша при каждом возвращении — а он затем и нужен, чтобы повторная загрузка была
+// быстрой.
+//
+// Поэтому держим предел по сумме: пока она превышена, удаляем каталоги, к которым дольше всего не
+// обращались. Текущий не трогаем никогда. Так и диск не растёт без края, и уровни, между которыми
+// игрок ходит чаще всего, остаются тёплыми.
+//
+// Предел меняется ключом -cdb_cache_limit_mb <число>; 0 отключает уборку совсем.
+constexpr u64 DA_CDB_CACHE_LIMIT_MB_DEFAULT = 1536;
+
+u64 da_directory_size(const std::filesystem::path& directory, std::error_code& error)
+{
+    u64 total = 0;
+    std::filesystem::directory_iterator it(directory, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::directory_iterator end;
+    if (error)
+        return 0;
+
+    for (; it != end; it.increment(error))
+    {
+        if (error)
+            break;
+
+        // ⚠️ Ошибку file_size проверять ОБЯЗАТЕЛЬНО: при неудаче он возвращает (uintmax_t)-1, то есть
+        // около восемнадцати экзабайт. Одна такая величина переполнила бы сумму, предел оказался бы
+        // «превышен» — и уборка снесла бы весь кэш до последнего уровня.
+        std::error_code local;
+        if (!it->is_regular_file(local) || local)
+            continue;
+
+        const std::uintmax_t size = it->file_size(local);
+        if (local)
+            continue;
+
+        total += u64(size);
+    }
+    error.clear();
+    return total;
+}
+
+// [DA_PORT] Отметка «этим кэшем только что пользовались».
+//
+// Без неё выбор жертвы шёл бы по времени СОЗДАНИЯ каталога: файл кэша пишется один раз, а при чтении
+// его время не меняется. Тогда уровень, куда игрок ходит каждый день, удалялся бы наравне с
+// забытым — лишь потому, что создан раньше. Отмечаем каталог при каждой удачной загрузке, и выбор
+// становится честным: уходит то, что дольше всего не грузили.
+void da_touch_cache_dir(const std::filesystem::path& cacheFile)
+{
+    const std::filesystem::path directory = cacheFile.parent_path();
+    if (directory.empty())
+        return;
+
+    std::error_code error;
+    std::filesystem::last_write_time(directory, std::filesystem::file_time_type::clock::now(), error);
+}
+
+void prune_inactive_level_caches(const std::filesystem::path& activeCacheFile)
+{
+    const std::filesystem::path activeDirectory = activeCacheFile.parent_path();
+    const std::filesystem::path cacheRoot = activeDirectory.parent_path();
+    if (activeDirectory.empty() || cacheRoot.empty() || activeCacheFile.filename() != "objspace.bin" ||
+        cacheRoot.filename() != "cdb_cache")
+        return;
+
+    u64 limit_mb = DA_CDB_CACHE_LIMIT_MB_DEFAULT;
+    if (const char* const param = strstr(Core.Params, "-cdb_cache_limit_mb"))
+    {
+        u64 parsed = 0;
+        if (sscanf(param, "-cdb_cache_limit_mb %llu", &parsed) == 1)
+            limit_mb = parsed;
+    }
+    if (!limit_mb)
+        return;
+
+    struct da_cache_entry
+    {
+        std::filesystem::path path;
+        std::filesystem::file_time_type touched;
+        u64 bytes;
+    };
+
+    std::error_code error;
+    std::filesystem::directory_iterator iterator(
+        cacheRoot, std::filesystem::directory_options::skip_permission_denied, error);
+    const std::filesystem::directory_iterator end;
+    if (error)
+        return;
+
+    xr_vector<da_cache_entry> entries;
+    u64 total = 0;
+
+    for (; iterator != end; iterator.increment(error))
+    {
+        if (error)
+            break;
+
+        const std::filesystem::directory_entry& entry = *iterator;
+
+        const std::filesystem::file_status status = entry.symlink_status(error);
+        if (error)
+        {
+            error.clear();
+            continue;
+        }
+        if (status.type() != std::filesystem::file_type::directory)
+            continue;
+
+        // Каталог кэша узнаём по содержимому: мало ли что ещё окажется рядом.
+        bool containsCacheFile = false;
+        for (const char* cacheFile : { "objspace.bin", "hom.bin", "portals.bin" })
+        {
+            containsCacheFile = std::filesystem::is_regular_file(entry.path() / cacheFile, error);
+            if (containsCacheFile)
+                break;
+            error.clear();
+        }
+        if (!containsCacheFile)
+            continue;
+
+#ifdef _WIN32
+        // Точку повторного разбора не трогаем: рекурсивное удаление по ней ушло бы за пределы каталога.
+        const DWORD attributes = GetFileAttributesW(entry.path().c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            continue;
+#endif
+
+        std::error_code local;
+        const u64 bytes = da_directory_size(entry.path(), local);
+        total += bytes;
+
+        if (entry.path() == activeDirectory)
+            continue; // текущий уровень в счёт идёт, а под нож — никогда
+
+        const std::filesystem::file_time_type touched = std::filesystem::last_write_time(entry.path(), local);
+        entries.push_back({ entry.path(), local ? std::filesystem::file_time_type::min() : touched, bytes });
+    }
+
+    const u64 limit_bytes = limit_mb * 1024ull * 1024ull;
+    if (total <= limit_bytes || entries.empty())
+        return;
+
+    // Первыми уходят те, к которым дольше всего не обращались.
+    std::sort(entries.begin(), entries.end(),
+        [](const da_cache_entry& a, const da_cache_entry& b) { return a.touched < b.touched; });
+
+    u32 removedDirectories = 0;
+    u64 removedBytes = 0;
+    for (const da_cache_entry& victim : entries)
+    {
+        if (total <= limit_bytes)
+            break;
+
+        // [DA_PORT] Удалять только через файловую систему движка.
+        //
+        // CLocatorAPI ведёт СВОЙ каталог файлов, и удаление мимо него оставляет в индексе записи о
+        // том, чего на диске уже нет. Дальше движок «находит» несуществующий файл и получает отказ
+        // на пустом месте. Ту же грабля мы прошли на сейвах: там пришлось звать FS.file_rename
+        // вместо системного переименования, иначе сейв исчезал из списка загрузки.
+        //
+        // Замечено в Dead Air Refined («Keep level cache pruning synchronized with VFS») — их первая
+        // версия чистила через std::filesystem и наступила ровно на это.
+        const std::string directory = victim.path.string() + DELIMITER;
+        FS.dir_delete(directory.c_str(), true);
+
+        std::error_code local;
+        if (std::filesystem::exists(victim.path, local) || local)
+        {
+            local.clear();
+            continue; // не ушёл — в счёт не берём, попробуем в следующий раз
+        }
+
+        total -= victim.bytes;
+        removedBytes += victim.bytes;
+        ++removedDirectories;
+    }
+
+    if (removedDirectories)
+        Msg("* [DA_PORT] кэш столкновений: удалено уровней %u (%llu МБ), осталось %llu МБ из %llu",
+            removedDirectories, removedBytes / (1024ull * 1024ull), total / (1024ull * 1024ull), limit_mb);
+}
+} // namespace
 
 //----------------------------------------------------------------------
 // Class	: CObjectSpace
@@ -155,6 +349,10 @@ void CObjectSpace::Create(Fvector* verts, CDB::TRI* tris, const hdrCFORM& H,
     strconcat(file_name, "cdb_cache" DELIMITER, FS.get_path("$level$")->m_Add, "objspace.bin");
     FS.update_path(file_name, "$app_data_root$", file_name);
 
+    // [DA_PORT] Чужие уровни чистим здесь: путь к своему уже собран, и он же служит опорой проверок.
+    if (use_cache)
+        prune_inactive_level_caches(std::filesystem::path(file_name));
+
     if (use_cache && cacheStream)
     {
 #ifndef MASTER_GOLD
@@ -183,6 +381,7 @@ void CObjectSpace::Create(Fvector* verts, CDB::TRI* tris, const hdrCFORM& H,
     }
     else if (use_cache && FS.exist(file_name) && Static.deserialize(file_name, skip_crc32_check, deserialize_callback))
     {
+        da_touch_cache_dir(std::filesystem::path(file_name)); // [DA_PORT] см. da_touch_cache_dir
 #ifndef MASTER_GOLD
         Msg("* Loaded ObjectSpace cache (%s)...", file_name);
 #endif

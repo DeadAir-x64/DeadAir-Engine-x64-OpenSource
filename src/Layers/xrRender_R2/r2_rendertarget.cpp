@@ -815,6 +815,11 @@ CRenderTarget::CRenderTarget()
             // [DA_PORT] Метка свечения: не читает вообще ничего, пишет константу по трафарету.
             s_reactive_emissive.create("da_reactive_emissive");
             s_sky_velocity.create("da_sky_velocity");
+#if RENDER == R_R4
+            // [DA_PORT] Вода рисуется после G-буфера и векторов не пишет — свой проход, см.
+            // r4_rendertarget_phase_water_velocity.cpp.
+            s_water_velocity.create("da_water_velocity");
+#endif
         }
 #endif
     }

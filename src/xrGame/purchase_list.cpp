@@ -15,6 +15,13 @@
 
 static float min_deficit_factor = .3f;
 
+// [DA_PORT] Счётчики закупки: заполняются вложенным process(), печатаются в конце верхнего.
+namespace
+{
+u32 da_spawned_total = 0;
+u32 da_sections_total = 0;
+} // namespace
+
 void CPurchaseList::process(CInifile& ini_file, LPCSTR section, CInventoryOwner& owner)
 {
     owner.sell_useless_items();
@@ -22,6 +29,19 @@ void CPurchaseList::process(CInifile& ini_file, LPCSTR section, CInventoryOwner&
     m_deficits.clear();
 
     const CGameObject& game_object = smart_cast<const CGameObject&>(owner);
+
+    // [DA_PORT] Отчёт о закупке товара торговцем — по жалобе «у торговца пусто».
+    //
+    // Разобрать это со стороны было нечем: скриптовая часть отрабатывает молча (печать `CTime
+    // update` идёт лишь в момент пополнения, то есть раз в игровые сутки), а движковая не говорила
+    // ничего. Отличить «пополнение не звали» от «звали, но не создалось» стало невозможно.
+    //
+    // Здесь видно и то, и другое: строка есть — значит дошло до закупки, число созданных предметов
+    // говорит, отработала ли она. ⚠️ Первой строкой этой функции идёт sell_useless_items(), которая
+    // УНИЧТОЖАЕТ у торговца всё, кроме оружия в слоте и своей ПДА. Если после неё создастся ноль,
+    // торговец останется пустым до следующих суток — и снаружи это выглядит как «товар пропал».
+    da_spawned_total = 0;
+    da_sections_total = 0;
     CInifile::Sect& S = ini_file.r_section(section);
     auto I = S.Data.cbegin();
     auto E = S.Data.cend();
@@ -41,8 +61,12 @@ void CPurchaseList::process(CInifile& ini_file, LPCSTR section, CInventoryOwner&
 		cpcstr count = _GetItem(I->second.c_str(), 0, temp0);
 		cpcstr prob = _GetItemCount(I->second.c_str()) >= 2 ? _GetItem(I->second.c_str(), 1, temp1) : "1.0f";
 
+        ++da_sections_total;
         process(game_object, I->first, atoi(count), (float)atof(prob));
     }
+
+    Msg("~ [DA_TRADE] закупка: торговец [%s], список [%s] — строк учтено %u, предметов создано %u",
+        game_object.cName().c_str(), section, da_sections_total, da_spawned_total);
 }
 
 void CPurchaseList::process(
@@ -62,6 +86,7 @@ void CPurchaseList::process(
             continue;
 
         ++j;
+        ++da_spawned_total;
         Level().spawn_item(name.c_str(), position, level_vertex_id, id, false);
     }
 

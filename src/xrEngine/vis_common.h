@@ -18,6 +18,10 @@ public:
     u32 hom_frame; // when to perform test - shedule
     u32 hom_tested; // when it was last time tested
 
+    // [DA_PORT] Сколько проверок подряд сказали «не видно». Гасим объект только когда их накопится
+    // несколько — разбор в HOM.cpp, у CHOM::visible.
+    u8 hom_miss_streak;
+
     vis_object_data* obj_data; //--#SM+#-- Объектные данные, используемые при рендере этой модели [shaders data which
                                //will be used at render for this model]
 
@@ -35,6 +39,7 @@ public:
         accept_frame = 0;
         hom_frame = 0;
         hom_tested = 0;
+        hom_miss_streak = 0; // [DA_PORT]
     }
 };
 #pragma pack(pop)
