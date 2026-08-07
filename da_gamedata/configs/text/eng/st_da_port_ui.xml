@@ -217,6 +217,15 @@
 	<string id="ui_mm_fps_limit">
 		<text>FPS limit</text>
 	</string>
+	<string id="st_opt_fps_vsync">
+		<text>Vertical sync</text>
+	</string>
+	<string id="ui_mm_v_sync">
+		<text>Vertical sync</text>
+	</string>
+	<string id="ui_mm_v_sync_note">
+		<text>(fullscreen only)</text>
+	</string>
 	<string id="st_opt_fps_unlimited">
 		<text>Unlimited</text>
 	</string>

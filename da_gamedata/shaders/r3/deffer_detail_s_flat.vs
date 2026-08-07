@@ -7,11 +7,16 @@ uniform float4 		consts; // {1/quant,1/quant,diffusescale,ambient}
 	uniform float4 		array[61*4];
 //}
 
-v2p_flat 	main (v_detail v)
+v2p_flat 	main (v_detail v, uint instance_id : SV_InstanceID)
 {
 	v2p_flat 		O;
 	// index
-	int 	i 	= v.misc.w;
+	// [DA_PORT] Номер экземпляра приходит от видеокарты, а не из вершины.
+	//
+	// Раньше в буфере лежала 61 копия одной травинки, и каждая вершина несла номер своей копии.
+	// Теперь копия одна, а размножает её сам вызов отрисовки - буфер вершин меньше в 61 раз,
+	// и та же горстка вершин читается из кэша.
+	int 	i 	= int(instance_id) * 4;
 	float4  m0 	= array[i+0];
 	float4  m1 	= array[i+1];
 	float4  m2 	= array[i+2];

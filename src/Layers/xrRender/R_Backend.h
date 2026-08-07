@@ -510,6 +510,11 @@ public:
 
     // Rendering
     ICF void Render(D3DPRIMITIVETYPE T, u32 baseV, u32 startV, u32 countV, u32 startI, u32 PC);
+#ifdef USE_DX11
+    // [DA_PORT] То же самое, но N раз за один вызов: используется пакетной отрисовкой деревьев.
+    ICF void RenderInstanced(
+        D3DPRIMITIVETYPE T, u32 baseV, u32 startV, u32 countV, u32 startI, u32 PC, u32 instanceCount);
+#endif
     ICF void Render(D3DPRIMITIVETYPE T, u32 startV, u32 PC);
 
     ICF void submit()

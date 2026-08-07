@@ -198,7 +198,16 @@ struct FTreeVisual_setup
     }
 };
 
-void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
+// [DA_PORT] Общие для кадра параметры покачивания: ветер, волна и та же пара за прошлый кадр.
+//
+// Вынесено из Render, потому что спрашивающих стало двое — обычная отрисовка и пакетная
+// (инстансинг). Оба обязаны получить ОДНИ И ТЕ ЖЕ числа: иначе дерево, попавшее в пачку, качается
+// не так, как соседнее, не попавшее, и это видно.
+//
+// ⚠️ Потоко-локальная копия здесь не годится, хотя гонку убирает тоже. Фаза НАКАПЛИВАЕТСЯ, и у
+// каждого потока счётчик пошёл бы своим ходом: поток, пропустивший кадр (каскад целиком отсечён),
+// отстаёт навсегда, и листва в теневой карте расходится с листвой в сцене.
+FTreeVisual_setup& da_tree_setup_for_frame()
 {
     static FTreeVisual_setup tvs;
     // [DA_PORT] Exactly once per frame, and provably so.
@@ -241,6 +250,28 @@ void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
         while (s_ready.load(std::memory_order_acquire) != Device.dwFrame)
             std::this_thread::yield();
     }
+
+    return tvs;
+}
+
+// [DA_PORT] Ветер для текущего прохода. В теневом его гасим — см. разбор ниже, в Render.
+static void da_tree_wind_for_phase(
+    CBackend& cmd_list, const FTreeVisual_setup& tvs, Fvector4& wind, Fvector4& wind_old)
+{
+    wind = tvs.wind;
+    wind_old = tvs.wind_old;
+
+    if (ps_r__wind_shadow == 0 &&
+        RImplementation.get_context(cmd_list.context_id).o.phase == CRender::PHASE_SMAP)
+    {
+        wind.set(0.f, 0.f, 0.f, 0.f);
+        wind_old.set(0.f, 0.f, 0.f, 0.f);
+    }
+}
+
+void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
+{
+    FTreeVisual_setup& tvs = da_tree_setup_for_frame();
 // setup constants
 #if RENDER != R_R1
     Fmatrix xform_v;
@@ -263,13 +294,8 @@ void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
     // The cost is that a tree's shadow no longer sways with the tree. Dappled foliage shade is diffuse
     // and moves subtly, so this reads as far less wrong than the metal boiling - and it is a common
     // trade in engines with sharp shadow maps. Costs nothing per frame either way.
-    Fvector4 wind = tvs.wind;
-    Fvector4 wind_old = tvs.wind_old;
-    if (ps_r__wind_shadow == 0 && RImplementation.get_context(cmd_list.context_id).o.phase == CRender::PHASE_SMAP)
-    {
-        wind.set(0.f, 0.f, 0.f, 0.f);
-        wind_old.set(0.f, 0.f, 0.f, 0.f);
-    }
+    Fvector4 wind, wind_old;
+    da_tree_wind_for_phase(cmd_list, tvs, wind, wind_old);
 
     cmd_list.tree.set_wave(tvs.wave); // wave
     cmd_list.tree.set_wind(wind); // wind
@@ -287,6 +313,60 @@ void FTreeVisual::Render(CBackend& cmd_list, float /*LOD*/, bool use_fast_geo)
 #endif
     cmd_list.tree.set_c_sun(s * c_scale.sun, s * c_bias.sun, 0, 0); // sun
 }
+
+#ifdef USE_DX11
+// [DA_PORT] --- Пакетная отрисовка деревьев (инстансинг) ---------------------------------------
+//
+// Дерево рисуется одним вызовом на штуку, а их на уровне тысячи: на Юпитере это самая длинная
+// череда однотипных вызовов за кадр. Инстансинг позволяет нарисовать до 64 одинаковых деревьев
+// одним вызовом, разложив их матрицы и освещение в константный буфер.
+//
+// Здесь только «что рисовать» и «чем оно отличается от соседа». Сама сборка пачек — в
+// r__dsgraph_render.cpp, там же и решение, что пакетировать, а что оставить обычному пути.
+//
+// База ничего не умеет: FTreeVisual сам по себе не рисуется, рисуются наследники ST и PM.
+bool FTreeVisual::GetInstancedDraw(float /*LOD*/, FTreeVisualInstancedDraw& /*draw*/) { return false; }
+
+// [DA_PORT] Общее для всей пачки: то же, что Render ставит для одиночного дерева, кроме матриц и
+// освещения — они у каждого экземпляра свои и уезжают в FillInstanceData.
+//
+// ⚠️ Ветер обязан считаться той же функцией, что и в Render: если пакетные деревья возьмут
+// нескошенный ветер в теневом проходе, их тени поедут относительно тех, что рисуются обычным путём.
+void FTreeVisual::SetupInstancedGlobals(CBackend& cmd_list)
+{
+    FTreeVisual_setup& tvs = da_tree_setup_for_frame();
+
+    Fvector4 wind, wind_old;
+    da_tree_wind_for_phase(cmd_list, tvs, wind, wind_old);
+
+    cmd_list.tree.set_consts(tvs.scale, tvs.scale, 0, 0);
+    cmd_list.tree.set_wave(tvs.wave);
+    cmd_list.tree.set_wind(wind);
+    cmd_list.tree.set_wave_old(tvs.wave_old); // [DA_PORT] векторы движения
+    cmd_list.tree.set_wind_old(wind_old); // [DA_PORT] векторы движения
+}
+
+// [DA_PORT] Девять векторов на экземпляр: две матрицы 3x4 (мировая и видовая) плюс масштаб, смещение
+// и солнце. Раскладка ОБЯЗАНА совпадать с tree_instance.h, иначе дерево уедет молча — шейдер просто
+// прочитает не те числа. Порядок компонент такой же, каким матрицы уходят в константы обычным путём.
+void FTreeVisual::FillInstanceData(CBackend& cmd_list, FTreeVisualInstanceData& data) const
+{
+    Fmatrix xform_v;
+    xform_v.mul_43(cmd_list.get_xform_view(), xform);
+
+    data.vectors[0].set(xform._11, xform._21, xform._31, xform._41);
+    data.vectors[1].set(xform._12, xform._22, xform._32, xform._42);
+    data.vectors[2].set(xform._13, xform._23, xform._33, xform._43);
+    data.vectors[3].set(xform_v._11, xform_v._21, xform_v._31, xform_v._41);
+    data.vectors[4].set(xform_v._12, xform_v._22, xform_v._32, xform_v._42);
+    data.vectors[5].set(xform_v._13, xform_v._23, xform_v._33, xform_v._43);
+
+    const float s = ps_r__Tree_SBC * 1.3333f;
+    data.vectors[6].set(s * c_scale.rgb.x, s * c_scale.rgb.y, s * c_scale.rgb.z, s * c_scale.hemi);
+    data.vectors[7].set(s * c_bias.rgb.x, s * c_bias.rgb.y, s * c_bias.rgb.z, s * c_bias.hemi);
+    data.vectors[8].set(s * c_scale.sun, s * c_bias.sun, 0, 0);
+}
+#endif
 
 #define PCOPY(a) a = pFrom->a
 void FTreeVisual::Copy(dxRender_Visual* pSrc)
@@ -328,6 +408,20 @@ void FTreeVisual_ST::Render(CBackend& cmd_list, float LOD, bool use_fast_geo)
     cmd_list.Render(D3DPT_TRIANGLELIST, vBase, 0, vCount, iBase, dwPrimitives);
     cmd_list.stat.r.s_flora.add(vCount);
 }
+#ifdef USE_DX11
+bool FTreeVisual_ST::GetInstancedDraw(float /*LOD*/, FTreeVisualInstancedDraw& draw)
+{
+    if (!rm_geom)
+        return false;
+
+    draw.geometry = &*rm_geom;
+    draw.base_vertex = vBase;
+    draw.vertex_count = vCount;
+    draw.start_index = iBase;
+    draw.primitive_count = dwPrimitives;
+    return true;
+}
+#endif
 void FTreeVisual_ST::Copy(dxRender_Visual* pSrc) { inherited::Copy(pSrc); }
 //-----------------------------------------------------------------------------------
 // Progressive Tree
@@ -348,9 +442,14 @@ void FTreeVisual_PM::Load(const char* N, IReader* data, u32 dwFlags)
         pSWI = RImplementation.getSWI(ID);
     }
 }
-void FTreeVisual_PM::Render(CBackend& cmd_list, float LOD, bool use_fast_geo)
+// [DA_PORT] Выбор уровня детализации вынесен из Render: пакетной отрисовке он нужен ОТДЕЛЬНО от
+// самого рисования — чтобы сложить в одну пачку только деревья с одинаковым куском геометрии.
+//
+// ⚠️ Побочный эффект сохранён намеренно: last_lod запоминается. На него опирается ветка LOD < 0
+// («рисуй тем же, чем в прошлый раз»), и если пакетный путь перестанет его обновлять, дерево при
+// возврате на обычный путь возьмёт устаревший уровень.
+u32 FTreeVisual_PM::SelectLOD(float LOD)
 {
-    inherited::Render(cmd_list, LOD, use_fast_geo);
     int lod_id = last_lod;
     if (LOD >= 0.f)
     {
@@ -358,11 +457,33 @@ void FTreeVisual_PM::Render(CBackend& cmd_list, float LOD, bool use_fast_geo)
         last_lod = lod_id;
     }
     VERIFY(lod_id >= 0 && lod_id < int(pSWI->count));
-    FSlideWindow& SW = pSWI->sw[lod_id];
+    return u32(lod_id);
+}
+
+void FTreeVisual_PM::Render(CBackend& cmd_list, float LOD, bool use_fast_geo)
+{
+    inherited::Render(cmd_list, LOD, use_fast_geo);
+    FSlideWindow& SW = pSWI->sw[SelectLOD(LOD)];
     cmd_list.set_Geometry(rm_geom);
     cmd_list.Render(D3DPT_TRIANGLELIST, vBase, 0, SW.num_verts, iBase + SW.offset, SW.num_tris);
     cmd_list.stat.r.s_flora.add(SW.num_verts);
 }
+
+#ifdef USE_DX11
+bool FTreeVisual_PM::GetInstancedDraw(float LOD, FTreeVisualInstancedDraw& draw)
+{
+    if (!rm_geom || !pSWI || !pSWI->count)
+        return false;
+
+    const FSlideWindow& window = pSWI->sw[SelectLOD(LOD)];
+    draw.geometry = &*rm_geom;
+    draw.base_vertex = vBase;
+    draw.vertex_count = window.num_verts;
+    draw.start_index = iBase + window.offset;
+    draw.primitive_count = window.num_tris;
+    return true;
+}
+#endif
 void FTreeVisual_PM::Copy(dxRender_Visual* pSrc)
 {
     inherited::Copy(pSrc);

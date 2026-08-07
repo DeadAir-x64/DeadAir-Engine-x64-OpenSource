@@ -22,7 +22,7 @@ const xr_token vid_bpp_token[] = {{"16", 16}, {"32", 32}, {0, 0}};
 // [DA_PORT] Frame-rate cap offered as a list in the video options. The numeric token names are
 // their own labels - no string table entry needed; only the "unlimited" row has one.
 const xr_token fps_limit_token[] = {
-    {"st_opt_fps_unlimited", 1000},
+    {"st_opt_fps_unlimited", ps_fps_limit_unlimited},
     {"30", 30}, {"60", 60}, {"75", 75}, {"90", 90}, {"120", 120}, {"150", 150},
     {"165", 165}, {"180", 180}, {"200", 200}, {"240", 240}, {"260", 260}, {"300", 300},
     {nullptr, 0},
@@ -2032,6 +2032,30 @@ ENGINE_API xr_token qda_season_token[] = {
     { nullptr, 0 },
 };
 
+// [DA_PORT] Лежит ли летний архив там, где его ищет файловая система.
+//
+// Проверяем именно файлом на диске: сам архив в виртуальной файловой системе не числится — он ею и
+// является, поэтому FS.exist по нему ничего не знает.
+//
+// ⚠️ Без этой проверки выбор «лето» был МОЛЧАЛИВО бесполезен у части игроков. В оригинальной
+// установке Dead Air летний архив лежит не в database, а в отдельной папке «Летняя растительность
+// (опционально)» — автор оставил перенос на усмотрение игрока. Кто не переносил, тот выбирал лето в
+// меню, признак послушно записывался, игра перезапускалась — и ничего не менялось, без единого слова.
+// Пришло с закрытого теста именно так: «при смене осень→лето не заработало лето».
+static bool da_season_summer_archive_present()
+{
+    string_path summer_archive;
+    FS.update_path(summer_archive, "$arch_dir$", "xtra_green.xdb0");
+
+    if (FILE* archive = fopen(summer_archive, "rb"))
+    {
+        fclose(archive);
+        return true;
+    }
+
+    return false;
+}
+
 // [DA_PORT] ⚠️ Хранилище у сезона РОВНО ОДНО — файл-признак. В user.ltx команда не пишется намеренно.
 //
 // Пока писалась, хранилищ было два, и они разъезжались. Порядок на старте такой: файловая система
@@ -2067,6 +2091,13 @@ public:
         }
         else
             Msg("! [DA_PORT] сезон: не удалось записать %s", marker);
+
+        if (1 == ps_da_season && !da_season_summer_archive_present())
+        {
+            Msg("! [DA_PORT] сезон: выбрано лето, но архива xtra_green.xdb0 в database НЕТ - "
+                "трава останется осенней");
+            Msg("! [DA_PORT] сезон: перенесите его туда из папки 'Летняя растительность (опционально)'");
+        }
     }
 };
 
@@ -2091,17 +2122,21 @@ static void da_season_read_marker()
         // Сезон невидим, пока не посмотришь на деревья, а вопрос «почему у меня зелень» задают по
         // логу. Одна строка на запуск — и состояние больше не приходится угадывать.
         Msg("* [DA_PORT] сезон: %s", (1 == ps_da_season) ? "лето" : "осень");
+
+        // Признак говорит «лето», а архива нет — игрок УЖЕ выбрал лето и уже его не получил.
+        // Сказать об этом надо здесь, а не только в момент выбора: между выбором и запуском
+        // проходит перезапуск, и до этой строки лог доживает, а прошлый - нет.
+        if (1 == ps_da_season && !da_season_summer_archive_present())
+        {
+            Msg("! [DA_PORT] сезон: выбрано лето, но архива xtra_green.xdb0 в database НЕТ - "
+                "игра идёт осенней");
+            Msg("! [DA_PORT] сезон: перенесите его туда из папки 'Летняя растительность (опционально)'");
+        }
         return;
     }
 
-    // Проверяем именно файлом на диске: сам архив в виртуальной файловой системе не числится — он ею и
-    // является, поэтому FS.exist по нему ничего не знает.
-    string_path summer_archive;
-    FS.update_path(summer_archive, "$arch_dir$", "xtra_green.xdb0");
-
-    if (FILE* archive = fopen(summer_archive, "rb"))
+    if (da_season_summer_archive_present())
     {
-        fclose(archive);
         ps_da_season = 1;
         Msg("* [DA_PORT] сезон: лето (признака нет, летний архив на месте)");
         return;
@@ -2450,6 +2485,33 @@ ENGINE_API shared_str current_player_hud_sect{};
 extern u32 ps_fps_limit;
 extern u32 ps_fps_limit_in_menu;
 
+// [DA_PORT] Переходник со сборки, где синхронизация была ПУНКТОМ этого списка, а не галочкой.
+//
+// У того, кто её тогда выбрал, в user.ltx осталась строка `rs_fps_limit st_opt_fps_vsync`. Такого
+// значения в списке больше нет, и без этой ветки строка дала бы «Invalid syntax» в лог, а настройка
+// молча вернулась бы к значению по умолчанию: игрок включал синхронизацию, а получил её отсутствие
+// и ни слова о том, почему.
+//
+// Переводим в то же самое, но по-новому: галочка включена, потолка нет.
+class CCC_FpsLimit final : public CCC_Token
+{
+public:
+    CCC_FpsLimit(pcstr N, u32* V, const xr_token* T) : CCC_Token(N, V, T) {}
+
+    void Execute(pcstr args) override
+    {
+        if (args && 0 == xr_strcmp(args, "st_opt_fps_vsync"))
+        {
+            psDeviceFlags.set(rsVSync, TRUE);
+            *value = ps_fps_limit_unlimited;
+            Msg("* [DA_PORT] синхронизация переехала из списка в галочку - настройка перенесена");
+            return;
+        }
+
+        CCC_Token::Execute(args);
+    }
+};
+
 void CCC_Register()
 {
     // General
@@ -2677,7 +2739,7 @@ void CCC_Register()
 
     CMD1(CCC_Editor, "rs_editor");
 
-    CMD3(CCC_Token, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] list, not a raw number
+    CMD3(CCC_FpsLimit, "rs_fps_limit", &ps_fps_limit, fps_limit_token); // [DA_PORT] список, не число
     CMD4(CCC_Integer, "rs_fps_limit_in_menu", (int*)&ps_fps_limit_in_menu, 30, 501);
     CMD3(CCC_Mask, "rs_always_active", &psDeviceFlags, rsAlwaysActive);
     CMD3(CCC_Mask, "rs_v_sync", &psDeviceFlags, rsVSync);

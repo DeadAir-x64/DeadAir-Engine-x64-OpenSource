@@ -45,6 +45,9 @@ function opt_video:InitControls(x, y, xml, handler)
 	-- [DA_PORT] frame-rate cap, right under the resolution
 	xml:InitStatic("tab_video:cap_fps_limit", self)
 	handler.combo_fps_limit = xml:InitComboBox("tab_video:list_fps_limit", self)
+	xml:InitStatic("tab_video:cap_v_sync", self)
+	xml:InitCheck("tab_video:check_v_sync", self)
+	xml:InitStatic("tab_video:cap_v_sync_note", self)
 
 	xml:InitStatic("tab_video:cap_grp_scaling", self)
 	xml:InitStatic("tab_video:cap_upscaler", self)

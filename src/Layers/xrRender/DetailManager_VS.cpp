@@ -48,14 +48,31 @@ void CDetailManager::hw_Load_Geom()
     clamp<size_t>(hw_BatchSize, 0, 64);
     Msg("* [DETAILS] VertexConsts(%u), Batch(%zu)", u32(HW.Caps.geometry.dwRegisters), hw_BatchSize);
 
+    // [DA_PORT] Сколько копий геометрии каждого кустика лежит в буфере.
+    //
+    // Пачка из 61 куста рисовалась так: в буфере 61 копия одной и той же травинки, и каждая вершина
+    // несла в себе номер своей копии, чтобы шейдер взял из массива нужную матрицу. Приём старый,
+    // из времён, когда аппаратного размножения не было.
+    //
+    // На DX11 оно есть: копия нужна ОДНА, а сколько раз её нарисовать, говорится вызову отрисовки.
+    // Буфер вершин ужимается в 61 раз, и та же горстка вершин читается многократно - она попросту
+    // остаётся в кэше. Пачка при этом не меняется: матриц в константах по-прежнему 61.
+    //
+    // Для остальных рендеров всё остаётся как было: их шейдеры по-прежнему ждут номер в вершине.
+#ifdef USE_DX11
+    const u32 geometry_copies = 1;
+#else
+    const u32 geometry_copies = hw_BatchSize;
+#endif
+
     // Pre-process objects
     u32 dwVerts = 0;
     u32 dwIndices = 0;
     for (u32 o = 0; o < objects.size(); o++)
     {
         const CDetail& D = *objects[o];
-        dwVerts += D.number_vertices * hw_BatchSize;
-        dwIndices += D.number_indices * hw_BatchSize;
+        dwVerts += D.number_vertices * geometry_copies;
+        dwIndices += D.number_indices * geometry_copies;
     }
     u32 vSize = sizeof(vertHW);
     Msg("* [DETAILS] %d v(%d), %d p", dwVerts, vSize, dwIndices / 3);
@@ -68,7 +85,7 @@ void CDetailManager::hw_Load_Geom()
         for (u32 o = 0; o < objects.size(); o++)
         {
             const CDetail& D = *objects[o];
-            for (u32 batch = 0; batch < hw_BatchSize; batch++)
+            for (u32 batch = 0; batch < geometry_copies; batch++)
             {
                 u32 mid = batch * c_size;
                 for (u32 v = 0; v < D.number_vertices; v++)
@@ -96,7 +113,7 @@ void CDetailManager::hw_Load_Geom()
         {
             const CDetail& D = *objects[o];
             u16 offset = 0;
-            for (u32 batch = 0; batch < hw_BatchSize; batch++)
+            for (u32 batch = 0; batch < geometry_copies; batch++)
             {
                 for (u32 i = 0; i < u32(D.number_indices); i++)
                     *pI++ = u16(u16(D.indices[i]) + u16(offset));

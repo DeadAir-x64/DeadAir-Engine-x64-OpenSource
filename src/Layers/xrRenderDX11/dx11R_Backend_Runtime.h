@@ -358,6 +358,42 @@ IC void CBackend::Render(D3DPRIMITIVETYPE T, u32 baseV, u32 startV, u32 countV, 
     PGO(Msg("PGO:DIP:%dv/%df", countV, PC));
 }
 
+// [DA_PORT] Инстансный вариант Render: та же геометрия, нарисованная instanceCount раз.
+//
+// Отличается ровно двумя вещами — вызовом DrawIndexedInstanced вместо DrawIndexed и тем, что
+// счётчики вершин и полигонов умножаются на число экземпляров. Всё остальное (топология, ресурсы,
+// цели, разметка вершин, состояния и сброс констант) делается тем же порядком, что и в Render:
+// разойдись они — пакетные деревья рисовались бы в другом состоянии, чем одиночные.
+IC void CBackend::RenderInstanced(
+    D3DPRIMITIVETYPE T, u32 baseV, u32 /*startV*/, u32 countV, u32 startI, u32 PC, u32 instanceCount)
+{
+    VERIFY(instanceCount);
+
+    D3D_PRIMITIVE_TOPOLOGY Topology = TranslateTopology(T);
+    const u32 iIndexCount = GetIndexCount(T, PC);
+
+    if (hs != 0 || ds != 0)
+    {
+        R_ASSERT(Topology == D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        Topology = D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST;
+    }
+
+    stat.render.calls++;
+    stat.render.verts += countV * instanceCount;
+    stat.render.polys += PC * instanceCount;
+
+    ApplyPrimitieTopology(Topology);
+    SRVSManager.Apply(context_id);
+    ApplyRTandZB();
+    ApplyVertexLayout();
+    StateManager.Apply();
+    //  State manager may alter constants
+    constants.flush();
+    HW.get_context(context_id)->DrawIndexedInstanced(iIndexCount, instanceCount, startI, baseV, 0);
+
+    PGO(Msg("PGO:DIP:%dv/%df", countV * instanceCount, PC * instanceCount));
+}
+
 IC void CBackend::Render(D3DPRIMITIVETYPE T, u32 startV, u32 PC)
 {
     //  TODO: DX11: Remove triangle fan usage from the engine

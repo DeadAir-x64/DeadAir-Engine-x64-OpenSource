@@ -251,11 +251,12 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, 
                         {
                             // flush
                             RImplementation.BasicStats.DetailCount += dwBatch;
+                            // [DA_PORT] Одна копия геометрии, нарисованная dwBatch раз, вместо
+                            // dwBatch копий подряд в буфере. Номер экземпляра шейдер берёт из
+                            // SV_InstanceID, а не из вершины.
                             u32 dwCNT_verts = dwBatch * Object.number_vertices;
-                            u32 dwCNT_prims = (dwBatch * Object.number_indices) / 3;
-                            // RCache.get_ConstantCache_Vertex().b_dirty				=	TRUE;
-                            // RCache.get_ConstantCache_Vertex().get_array_f().dirty	(c_base,c_base+dwBatch*4);
-                            cmd_list.Render(D3DPT_TRIANGLELIST, vOffset, 0, dwCNT_verts, iOffset, dwCNT_prims);
+                            cmd_list.RenderInstanced(D3DPT_TRIANGLELIST, vOffset, 0,
+                                Object.number_vertices, iOffset, Object.number_indices / 3, dwBatch);
                             cmd_list.stat.r.s_details.add(dwCNT_verts);
 
                             // restart
@@ -276,16 +277,23 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, 
                 {
                     RImplementation.BasicStats.DetailCount += dwBatch;
                     u32 dwCNT_verts = dwBatch * Object.number_vertices;
-                    u32 dwCNT_prims = (dwBatch * Object.number_indices) / 3;
-                    // RCache.get_ConstantCache_Vertex().b_dirty				=	TRUE;
-                    // RCache.get_ConstantCache_Vertex().get_array_f().dirty	(c_base,c_base+dwBatch*4);
-                    cmd_list.Render(D3DPT_TRIANGLELIST, vOffset, 0, dwCNT_verts, iOffset, dwCNT_prims);
+                    cmd_list.RenderInstanced(D3DPT_TRIANGLELIST, vOffset, 0,
+                        Object.number_vertices, iOffset, Object.number_indices / 3, dwBatch);
                     cmd_list.stat.r.s_details.add(dwCNT_verts);
+
+                    // [DA_PORT] Одна строка за запуск. Размер буфера доказывает, что копия осталась
+                    // одна, но не то, что трава ВИДНА: ошибка в номере экземпляра дала бы пустое
+                    // поле молча. Ненулевой счётчик означает, что кусты доходят до видеокарты.
+                    static std::atomic<bool> reported{ false };
+                    if (dwBatch && !reported.exchange(true))
+                        Msg("* [DA_PORT] трава: %u кустов одним вызовом (вершин у куста %u)",
+                            dwBatch, Object.number_vertices);
                 }
             }
         }
-        vOffset += hw_BatchSize * Object.number_vertices;
-        iOffset += hw_BatchSize * Object.number_indices;
+        // [DA_PORT] В буфере теперь одна копия на объект — шаг соответственно.
+        vOffset += Object.number_vertices;
+        iOffset += Object.number_indices;
     }
 }
 } // namespace xray::render::RENDER_NAMESPACE

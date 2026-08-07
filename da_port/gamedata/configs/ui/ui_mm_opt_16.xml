@@ -124,10 +124,10 @@
 		<cap_grp_screen x="215" y="10" width="330" height="22">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_screen</text>
 		</cap_grp_screen>
-		<cap_grp_scaling x="215" y="182" width="330" height="22">
+		<cap_grp_scaling x="215" y="210" width="330" height="22">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_scaling</text>
 		</cap_grp_scaling>
-		<cap_grp_image x="215" y="298" width="330" height="22">
+		<cap_grp_image x="215" y="326" width="330" height="22">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_image</text>
 		</cap_grp_image>
 		<cap_renderer x="215" y="40" width="90" height="21" complex_mode="1" >
@@ -185,11 +185,26 @@
 			</text_color>
 			<list_font_s r="240" g="240" b="240"/>
 		</list_fps_limit>
+		<!-- [DA_PORT] Вертикальная синхронизация. Отдельной галочкой, а не пунктом списка выше: это
+		     не потолок кадров, а другой способ их раскладывать. Пока она включена, наш потолок не
+		     применяется вовсе - иначе два ограничителя дают неровный шаг, и кадры идут рывками при
+		     совершенно правильном числе на счётчике.
+		     Работает только в монопольном полноэкранном режиме - об этом говорит подпись справа. -->
+		<cap_v_sync x="215" y="180" width="140" height="21" complex_mode="1">
+			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_v_sync</text>
+		</cap_v_sync>
+		<check_v_sync x="360" y="178" width="30" height="21">
+			<options_item entry="rs_v_sync" group="mm_opt_video" depend="runtime"/>
+		</check_v_sync>
+		<cap_v_sync_note x="395" y="180" width="158" height="21" complex_mode="1">
+			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_v_sync_note</text>
+		</cap_v_sync_note>
 
-		<cap_upscaler x="215" y="212" width="90" height="21">
+
+		<cap_upscaler x="215" y="240" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_upscaler</text>
 		</cap_upscaler>
-		<list_upscaler x="360" y="210" width="150" height="21" list_length="7">
+		<list_upscaler x="360" y="238" width="150" height="21" list_length="7">
 			<options_item entry="r__upscaler" group="mm_opt_video" depend="restart"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
@@ -198,10 +213,10 @@
 			<list_font_s r="240" g="240" b="240"/>
 		</list_upscaler>
 
-		<cap_upscaler_quality x="215" y="240" width="90" height="21">
+		<cap_upscaler_quality x="215" y="268" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_upscaler_quality</text>
 		</cap_upscaler_quality>
-		<list_upscaler_quality x="360" y="238" width="150" height="21" list_length="5">
+		<list_upscaler_quality x="360" y="266" width="150" height="21" list_length="5">
 			<options_item entry="r__upscaler_quality" group="mm_opt_video" depend="vid"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
@@ -217,10 +232,10 @@
 		     OnUpscalerChanged in ui_mm_opt_main.script sets Show() on both in the same breath, which is
 		     what keeps the invariant true. Marked restart: the sample count is baked into every scene
 		     render target when the renderer is created. -->
-		<cap_msaa x="215" y="240" width="90" height="21">
+		<cap_msaa x="215" y="268" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_msaa</text>
 		</cap_msaa>
-		<list_msaa x="360" y="238" width="150" height="21" list_length="3">
+		<list_msaa x="360" y="266" width="150" height="21" list_length="3">
 			<options_item entry="r3_msaa" group="mm_opt_video" depend="restart"/>
 			<text_color>
 				<e r="220" g="220" b="220"/>
@@ -229,78 +244,78 @@
 			<list_font_s r="240" g="240" b="240"/>
 		</list_msaa>
 
-		<cap_color_correction x="215" y="444" width="90" height="21">
+		<cap_color_correction x="215" y="472" width="90" height="21">
             <text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_color_correction</text>
         </cap_color_correction>
 		
-		<cap_color_r x="215" y="472" width="90" height="21">
+		<cap_color_r x="215" y="500" width="90" height="21">
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_color_r</text>
         </cap_color_r>
-		<track_color_r x="360" y="470" width="135" height="21" step="0.01">
+		<track_color_r x="360" y="498" width="135" height="21" step="0.01">
             <options_item entry="r__color_base_r" group="mm_opt_video" depend="runtime"/>
         </track_color_r>
-		<cap_color_r_val x="500" y="472">
+		<cap_color_r_val x="500" y="500">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_color_r_val>
 		
-		<cap_color_g x="215" y="500" width="90" height="21">
+		<cap_color_g x="215" y="528" width="90" height="21">
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_color_g</text>
         </cap_color_g>
-		<track_color_g x="360" y="498" width="135" height="21" step="0.01">
+		<track_color_g x="360" y="526" width="135" height="21" step="0.01">
             <options_item entry="r__color_base_g" group="mm_opt_video" depend="runtime"/>
         </track_color_g>
-		<cap_color_g_val x="500" y="500">
+		<cap_color_g_val x="500" y="528">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_color_g_val>
 		
-		<cap_color_b x="215" y="528" width="90" height="21">
+		<cap_color_b x="215" y="556" width="90" height="21">
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_color_b</text>
         </cap_color_b>
-		<track_color_b x="360" y="526" width="135" height="21" step="0.01">
+		<track_color_b x="360" y="554" width="135" height="21" step="0.01">
             <options_item entry="r__color_base_b" group="mm_opt_video" depend="runtime"/>
         </track_color_b>
-		<cap_color_b_val x="500" y="528">
+		<cap_color_b_val x="500" y="556">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_color_b_val>
 		
-		<cap_vibrance x="215" y="556" width="90" height="21">
+		<cap_vibrance x="215" y="584" width="90" height="21">
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_vibrance</text>
         </cap_vibrance>
-        <track_vibrance_val x="360" y="554" width="135" height="21" step="0.1">
+        <track_vibrance_val x="360" y="582" width="135" height="21" step="0.1">
             <options_item entry="r2_vibrance_val" group="mm_opt_video" depend="runtime"/>
         </track_vibrance_val>
-		<cap_vibrance_val x="500" y="556">
+		<cap_vibrance_val x="500" y="584">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_vibrance_val>
-		<cap_gamma x="215" y="328" width="90" height="21">
+		<cap_gamma x="215" y="356" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_gamma</text>
 		</cap_gamma>
-		<track_gamma x="360" y="326" width="135" height="21">
+		<track_gamma x="360" y="354" width="135" height="21">
             <options_item entry="rs_c_gamma" group="mm_opt_video" depend="runtime"/>
 		</track_gamma>
 
-		<cap_contrast x="215" y="356" width="90" height="21">
+		<cap_contrast x="215" y="384" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_contrast</text>
 		</cap_contrast>
-		<track_contrast x="360" y="354" width="135" height="21">
+		<track_contrast x="360" y="382" width="135" height="21">
             <options_item entry="rs_c_contrast" group="mm_opt_video" depend="runtime"/>
 		</track_contrast>
 
-		<cap_brightness x="215" y="384" width="90" height="21">
+		<cap_brightness x="215" y="412" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_brightness</text>
 		</cap_brightness>
-		<track_brightness x="360" y="382" width="135" height="21">
+		<track_brightness x="360" y="410" width="135" height="21">
             <options_item entry="rs_c_brightness" group="mm_opt_video" depend="runtime"/>
 		</track_brightness>
 
 
-		<cap_fov x="215" y="412" width="90" height="21">
+		<cap_fov x="215" y="440" width="90" height="21">
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_fov</text>
         </cap_fov>
-		<track_fov x="360" y="410" width="135" height="21" step="1">
+		<track_fov x="360" y="438" width="135" height="21" step="1">
             <options_item entry="fov" group="mm_opt_video" depend="runtime"/>
         </track_fov>
-		<cap_fov_value x="500" y="412">
+		<cap_fov_value x="500" y="440">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_fov_value>
 		<!--
@@ -333,23 +348,23 @@
 		  </text_color>
 			<texture>ui_button_ordinary</texture>			
 		</btn_advanced>
-		<cap_aniso x="215" y="268" width="90" height="21">
+		<cap_aniso x="215" y="296" width="90" height="21">
 			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_filtering</text>
 		</cap_aniso>
-		<track_aniso x="360" y="266" width="135" height="21" step="4" is_integer="1">
+		<track_aniso x="360" y="294" width="135" height="21" step="4" is_integer="1">
 			<options_item entry="r__tf_aniso" group="mm_opt_video"/>
 		</track_aniso>
 
-    		<cap_gamma_val x="500" y="328" width="60" height="21">
+    		<cap_gamma_val x="500" y="356" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_gamma_val>
-		<cap_contrast_val x="500" y="356" width="60" height="21">
+		<cap_contrast_val x="500" y="384" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_contrast_val>
-		<cap_brightness_val x="500" y="384" width="60" height="21">
+		<cap_brightness_val x="500" y="412" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_brightness_val>
-		<cap_aniso_val x="500" y="268" width="60" height="21">
+		<cap_aniso_val x="500" y="296" width="60" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_aniso_val>
 </tab_video>

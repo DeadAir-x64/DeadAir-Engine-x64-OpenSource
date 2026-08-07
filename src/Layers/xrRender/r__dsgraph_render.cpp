@@ -3,7 +3,10 @@
 #include "xrEngine/IRenderable.h"
 #include "xrEngine/CustomHUD.h"
 
+#include <functional>
+
 #include "FBasicVisual.h"
+#include "FTreeVisual.h" // [DA_PORT] пакетная отрисовка деревьев
 #include "SkeletonCustom.h"
 #include "FLOD.h"
 
@@ -21,6 +24,315 @@ ICF float calcLOD(float ssa /*fDistSq*/, float /*R*/)
 {
     return _sqrt(clampr((ssa - r_ssaGLOD_end) / (r_ssaGLOD_start - r_ssaGLOD_end), 0.f, 1.f));
 }
+
+#ifdef USE_DX11
+// [DA_PORT] --- Пакетная отрисовка деревьев ------------------------------------------------------
+//
+// Деревьев на уровне тысячи, и каждое до сих пор рисовалось своим вызовом. Здесь одинаковые
+// собираются в пачки до 64 штук: их матрицы и освещение уезжают в константный буфер, и вся пачка
+// рисуется одним DrawIndexedInstanced. То, что в пачку не попало, возвращается обычному пути.
+//
+// ⚠️ Отключается САМО, без ручки: если в текущем шейдере нет констант tree_instance_*, функция
+// возвращает false и список остаётся нетронутым. Так что игрок со старыми шейдерами просто рисует
+// по-старому, а не получает чёрный экран.
+namespace
+{
+constexpr u32 da_tree_batch_capacity = 64; // столько же в tree_instance.h — расходиться нельзя
+
+struct da_tree_batch_item
+{
+    FTreeVisual* visual{};
+    FTreeVisualInstancedDraw draw{};
+    float lod{};
+    u32 lod_bucket{};
+    size_t original_order{};
+};
+
+struct da_tree_batch_segment
+{
+    size_t begin{};
+    u32 count{};
+};
+
+struct da_tree_batch_scratch
+{
+    xr_vector<da_tree_batch_item> items;
+    xr_vector<da_tree_batch_segment> segments;
+    xr_vector<u8> batched;
+};
+
+FTreeVisual* da_as_tree(dxRender_Visual* visual)
+{
+    switch (visual->Type)
+    {
+    case MT_TREE_ST:
+    case MT_TREE_PM: return static_cast<FTreeVisual*>(visual);
+    default: return nullptr;
+    }
+}
+
+// [DA_PORT] Уровень детализации огрубляется до семи ступеней. Иначе в пачку попадали бы только
+// деревья с точь-в-точь совпавшим LOD, то есть почти никогда: величина непрерывная.
+u32 da_tree_lod_bucket(float lod)
+{
+    return u32(clampr<float>(ceil(lod * lod * lod * lod * lod * 8.0f), 1, 7));
+}
+
+bool da_same_tree_geometry(const da_tree_batch_item& a, const da_tree_batch_item& b)
+{
+    const SGeometry& ga = *a.draw.geometry;
+    const SGeometry& gb = *b.draw.geometry;
+    return ga.vb == gb.vb && ga.ib == gb.ib && ga.dcl._get() == gb.dcl._get() &&
+        ga.vb_stride == gb.vb_stride;
+}
+
+bool da_same_tree_draw(const da_tree_batch_item& a, const da_tree_batch_item& b)
+{
+    return da_same_tree_geometry(a, b) && a.draw.base_vertex == b.draw.base_vertex &&
+        a.draw.vertex_count == b.draw.vertex_count && a.draw.start_index == b.draw.start_index &&
+        a.draw.primitive_count == b.draw.primitive_count && a.lod_bucket == b.lod_bucket;
+}
+
+bool da_less_tree_draw(const da_tree_batch_item& a, const da_tree_batch_item& b)
+{
+    const SGeometry& ga = *a.draw.geometry;
+    const SGeometry& gb = *b.draw.geometry;
+    if (ga.vb != gb.vb)
+        return std::less<VertexBufferHandle>{}(ga.vb, gb.vb);
+    if (ga.ib != gb.ib)
+        return std::less<IndexBufferHandle>{}(ga.ib, gb.ib);
+    if (ga.dcl._get() != gb.dcl._get())
+        return std::less<SDeclaration*>{}(ga.dcl._get(), gb.dcl._get());
+    if (ga.vb_stride != gb.vb_stride)
+        return ga.vb_stride < gb.vb_stride;
+    if (a.draw.base_vertex != b.draw.base_vertex)
+        return a.draw.base_vertex < b.draw.base_vertex;
+    if (a.draw.vertex_count != b.draw.vertex_count)
+        return a.draw.vertex_count < b.draw.vertex_count;
+    if (a.draw.start_index != b.draw.start_index)
+        return a.draw.start_index < b.draw.start_index;
+    if (a.draw.primitive_count != b.draw.primitive_count)
+        return a.draw.primitive_count < b.draw.primitive_count;
+    if (a.lod_bucket != b.lod_bucket)
+        return a.lod_bucket < b.lod_bucket;
+    return a.original_order < b.original_order; // порядок отрисовки сохраняем при прочих равных
+}
+
+// [DA_PORT] Проверяем не только наличие констант, но и их вид. Шейдер мог собраться со СВОИМИ
+// tree_instance_* другого размера или в другом регистре — тогда мы бы писали мимо и получили
+// разъехавшийся лес без единого сообщения.
+bool da_tree_instance_constants(CBackend& cmd_list, R_constant*& data, R_constant*& control)
+{
+    data = cmd_list.get_c("tree_instance_data")._get();
+    control = cmd_list.get_c("tree_instance_control")._get();
+    if (!data || !control)
+        return false;
+    if (!(data->destination & RC_dest_vertex) || !(control->destination & RC_dest_vertex))
+        return false;
+
+    const bool data_class_ok = data->vs.cls == RC_1x4 || data->vs.cls == RC_1x4a;
+    if (data->type != RC_float || !data_class_ok || control->type != RC_float ||
+        control->vs.cls != RC_1x4)
+        return false;
+
+    const u32 data_buffer = data->destination & RC_dest_vertex_cb_index_mask;
+    const u32 control_buffer = control->destination & RC_dest_vertex_cb_index_mask;
+    return data_buffer != control_buffer && !data->vs.index && !control->vs.index;
+}
+
+// [DA_PORT] Одна строка за запуск на каждую причину. Без неё «пакетирование не сработало»
+// неотличимо от «деревьев в кадре не было», а это разные беды с разным лечением.
+void da_tree_batch_note(pcstr reason)
+{
+    static std::atomic<u32> reported{ 0 };
+    static pcstr seen[4]{};
+    const u32 slot = reported.load(std::memory_order_relaxed);
+    for (u32 i = 0; i < slot && i < 4; ++i)
+        if (seen[i] == reason)
+            return;
+    if (slot >= 4)
+        return;
+    seen[slot] = reason;
+    reported.store(slot + 1, std::memory_order_relaxed);
+    Msg("* [DA_PORT] деревья пачками: %s", reason);
+}
+
+bool da_render_tree_batches(CBackend& cmd_list, mapNormalItems& items)
+{
+    R_constant* instance_data{};
+    R_constant* instance_control{};
+    if (!da_tree_instance_constants(cmd_list, instance_data, instance_control))
+    {
+        da_tree_batch_note("в шейдере нет констант tree_instance_* — рисуем по-старому");
+        return false;
+    }
+
+    // Шейдер инстансный, но пачки может не быть — тогда он обязан рисовать по-старому.
+    cmd_list.set_c(instance_control, 0.f, 0.f, 0.f, 0.f);
+    if (items.size() < 2)
+    {
+        da_tree_batch_note("в проходе меньше двух объектов");
+        return false;
+    }
+
+    static thread_local da_tree_batch_scratch scratch;
+    xr_vector<da_tree_batch_item>& trees = scratch.items;
+    trees.clear();
+    if (trees.capacity() < items.size())
+        trees.reserve(items.size());
+
+    for (size_t index = 0; index < items.size(); ++index)
+    {
+        const _NormalItem& item = items[index];
+        FTreeVisual* tree = da_as_tree(item.pVisual);
+        if (!tree)
+            continue;
+
+        const float lod = calcLOD(item.ssa, item.pVisual->vis.sphere.R);
+        FTreeVisualInstancedDraw draw;
+        if (!tree->GetInstancedDraw(lod, draw))
+            continue;
+
+        trees.push_back(da_tree_batch_item{ tree, draw, lod, da_tree_lod_bucket(lod), index });
+    }
+
+    if (trees.size() < 2)
+    {
+        da_tree_batch_note("деревьев в проходе меньше двух");
+        return false;
+    }
+
+    std::sort(trees.begin(), trees.end(), da_less_tree_draw);
+
+    // Режем на отрезки: подряд идущие одинаковые отрисовки, не длиннее вместимости буфера.
+    xr_vector<da_tree_batch_segment>& segments = scratch.segments;
+    segments.clear();
+    for (size_t group_begin = 0; group_begin < trees.size();)
+    {
+        size_t group_end = group_begin + 1;
+        while (group_end < trees.size() && da_same_tree_draw(trees[group_begin], trees[group_end]))
+            ++group_end;
+
+        size_t batch_begin = group_begin;
+        while (group_end - batch_begin > 1)
+        {
+            u32 count = u32(std::min<size_t>(da_tree_batch_capacity, group_end - batch_begin));
+
+            // Хвост в одно дерево не оставляем: пусть последняя пачка будет на одно короче,
+            // зато обе нарисуются инстансами, а не «пачка и ещё один вызов».
+            if (group_end - batch_begin - count == 1)
+                --count;
+
+            segments.push_back(da_tree_batch_segment{ batch_begin, count });
+            batch_begin += count;
+        }
+        group_begin = group_end;
+    }
+
+    if (segments.empty())
+    {
+        da_tree_batch_note("одинаковых деревьев не нашлось — пачку собрать не из чего");
+        return false;
+    }
+
+    static const shared_str instance_data_name = "tree_instance_data";
+    void* probe{};
+    cmd_list.get_ConstantDirect(
+        instance_data_name, da_tree_batch_capacity * sizeof(FTreeVisualInstanceData), &probe, nullptr, nullptr);
+    if (!probe)
+    {
+        da_tree_batch_note("константный буфер меньше пачки — уходим на обычный путь");
+        return false;
+    }
+
+    xr_vector<u8>& batched = scratch.batched;
+    batched.assign(items.size(), false);
+    FTreeVisual::SetupInstancedGlobals(cmd_list);
+
+    // Страница — столько отрезков, сколько влезает в один буфер: заполняем, потом рисуем.
+    for (size_t page_begin = 0; page_begin < segments.size();)
+    {
+        size_t page_end = page_begin;
+        u32 page_instances{};
+        while (page_end < segments.size() &&
+            page_instances + segments[page_end].count <= da_tree_batch_capacity)
+        {
+            page_instances += segments[page_end++].count;
+        }
+
+        void* vertex_data{};
+        cmd_list.get_ConstantDirect(
+            instance_data_name, page_instances * sizeof(FTreeVisualInstanceData), &vertex_data, nullptr, nullptr);
+        if (!vertex_data)
+            return false;
+
+        auto* storage = static_cast<FTreeVisualInstanceData*>(vertex_data);
+        u32 offset{};
+        for (size_t s = page_begin; s < page_end; ++s)
+        {
+            const da_tree_batch_segment& segment = segments[s];
+            for (u32 i = 0; i < segment.count; ++i)
+            {
+                da_tree_batch_item& item = trees[segment.begin + i];
+                item.visual->FillInstanceData(cmd_list, storage[offset + i]);
+                batched[item.original_order] = true;
+            }
+            offset += segment.count;
+        }
+
+        offset = 0;
+        for (size_t s = page_begin; s < page_end; ++s)
+        {
+            const da_tree_batch_segment& segment = segments[s];
+            const da_tree_batch_item& first = trees[segment.begin];
+            cmd_list.set_c(instance_control, 1.f, float(offset), 0.f, 0.f);
+            cmd_list.LOD.set_LOD(first.lod);
+            cmd_list.set_Geometry(first.draw.geometry);
+            cmd_list.RenderInstanced(D3DPT_TRIANGLELIST, first.draw.base_vertex, 0,
+                first.draw.vertex_count, first.draw.start_index, first.draw.primitive_count, segment.count);
+            cmd_list.stat.r.s_flora.add(first.draw.vertex_count * segment.count);
+            offset += segment.count;
+        }
+
+        page_begin = page_end;
+    }
+
+    // Обратно в одиночный режим — следующий проход может рисовать не деревья.
+    cmd_list.set_c(instance_control, 0.f, 0.f, 0.f, 0.f);
+
+    // [DA_PORT] Одна строка за запуск — при первом же сработавшем пакетировании.
+    //
+    // Без неё работу этой функции нельзя отличить от её отсутствия: картинка обязана выглядеть
+    // одинаково в обоих случаях, а молча не сработать она может по десятку причин — от старого
+    // шейдера до вырезанной компилятором константы. Строки нет в логе — значит деревья рисуются
+    // по-старому, и это надо знать сразу, а не гадать по кадрам в секунду.
+    // Отдельно по проходам: основной и теневой ходят сюда независимо, и знать надо про оба.
+    // Теневой прогоняется по разу на каждый каскад и на каждый теневой источник, поэтому экономия
+    // там умножается - и молчание про него означало бы, что половина работы не проверена.
+    const u32 phase = RImplementation.get_context(cmd_list.context_id).o.phase;
+    static std::atomic<u32> reported_phases{ 0 };
+    const u32 phase_bit = 1u << (phase & 31u);
+    if (!(reported_phases.fetch_or(phase_bit) & phase_bit))
+    {
+        u32 instanced = 0;
+        for (const da_tree_batch_segment& segment : segments)
+            instanced += segment.count;
+        Msg("* [DA_PORT] деревья пачками (%s): %u шт. за %u вызовов вместо %u, одиночно осталось %u",
+            phase == CRender::PHASE_SMAP ? "теневой проход" : "основной проход",
+            instanced, u32(segments.size()), instanced, u32(items.size()) - instanced);
+    }
+
+    size_t write = 0;
+    for (size_t read = 0; read < items.size(); ++read)
+    {
+        if (!batched[read])
+            items[write++] = items[read];
+    }
+    items.resize(write);
+    return true;
+}
+} // namespace
+#endif
 
 template <class T>
 bool cmp_ssa(const T &lhs, const T &rhs)
@@ -77,6 +389,12 @@ void R_dsgraph_structure::render_graph(u32 _priority)
                 items.ssa = 0;
 
                 std::sort(items.begin(), items.end(), cmp_ssa<_NormalItem>);
+#ifdef USE_DX11
+                // [DA_PORT] Деревья, которые удалось сложить в пачки, уже нарисованы и из списка
+                // убраны. Если после этого список пуст — рисовать больше нечего.
+                if (da_render_tree_batches(cmd_list, items) && items.empty())
+                    continue;
+#endif
                 for (const auto& item : items)
                 {
                     const float LOD = calcLOD(item.ssa, item.pVisual->vis.sphere.R);

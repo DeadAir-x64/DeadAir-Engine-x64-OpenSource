@@ -64,4 +64,8 @@ struct DeviceMode
 ENGINE_API extern DeviceMode psDeviceMode;
 ENGINE_API extern Flags32 psDeviceFlags;
 
+// [DA_PORT] «Без ограничений» — такое же значение списка rs_fps_limit, как остальные, только
+// заведомо недостижимое.
+enum : u32 { ps_fps_limit_unlimited = 1000 };
+
 #include "Common/FSMacros.hpp"

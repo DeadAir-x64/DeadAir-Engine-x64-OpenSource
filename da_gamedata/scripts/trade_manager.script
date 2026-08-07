@@ -1,11 +1,21 @@
 local tm = {}
 function trade_init(npc, cfg)
-	if not (db.actor) then 
-		return 
-	end 
+	-- [DA_PORT]  онфиг торговли грузим ¬—≈√ƒј, даже если актЄра ещЄ нет в db.
+	--
+	-- «десь сто€л `if not (db.actor) then return end`, и это убивало торговлю целиком: логика NPC
+	-- настраиваетс€ –јЌ№Ў≈, чем актЄр попадает в db, поэтому trade_init выходил на первой строке и
+	-- конфиг не загружалс€ никогда. ј update() при разговоре видит пустую запись и уходит сам Ч
+	-- повторной инициализации не предусмотрено. »тог: у торговца Ќ» ќ√ƒј нет товара, потому что
+	-- buy_supplies не вызываетс€ ни разу. ¬ логе это видно по паре строк подр€д:
+	--   trade_init: npc=bar_visitors_barman_stalker_trader cfg=misc\trade\trade_barman.ltx
+	--   trade_init: ¬џ’ќƒ Ч нет db.actor
+	--
+	-- јктЄр нужен ровно дл€ одной проверки Ч Ђвраг или зомбиї. ≈Є и делаем условной: есть актЄр Ч
+	-- спрашиваем, нет Ч грузим конфиг и разберЄмс€ позже, когда станет с кем сравнивать. ”слови€
+	-- покупки и продажи всЄ равно считаютс€ в update(), уже при живом актЄре.
 	
 	-- no use having trade for enemies or zombied (no dialogs)
-	if (npc:relation(db.actor) == game_object.enemy or npc:character_community() == "zombied") then 
+	if (db.actor) and (npc:relation(db.actor) == game_object.enemy or npc:character_community() == "zombied") then 
 		return 
 	end
 	
@@ -20,6 +30,7 @@ function trade_init(npc, cfg)
 	tm[id].config = ini_file(cfg)
 	if not (tm[id].config) then
 		tm[id] = nil
+	else
 	end
 end
 
