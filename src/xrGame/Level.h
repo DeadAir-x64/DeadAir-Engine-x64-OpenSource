@@ -237,6 +237,14 @@ public:
     xr_deque<CSE_Abstract*> game_spawn_queue;
     xrServer* Server = nullptr;
     GlobalFeelTouch m_feel_deny;
+
+    // [DA_PORT] Взведён на время, пока разбирается спавн предмета сразу в чей-то инвентарь.
+    //
+    // Такой спавн синтезирует РОВНО ТО ЖЕ событие GE_OWNERSHIP_TAKE, что и подбор с земли
+    // (Level_network_spawn.cpp), и отличить их по самому событию нельзя. Признак нужен, чтобы
+    // обработчик актёра не звал скриптовый обратный вызов «взял с земли» на подарки и служебные
+    // предметы. Вызов синхронный и в главном потоке, поэтому обычного поля достаточно.
+    bool m_da_spawn_attach = false;
     CZoneList* hud_zones_list = nullptr;
     CZoneList* create_hud_zones_list();
 

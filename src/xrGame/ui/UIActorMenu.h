@@ -274,6 +274,14 @@ protected:
     bool DropItemOnAnotherItem(EDDListType t_old, EDDListType t_new, CUIDragDropListEx* old_owner, CUIDragDropListEx* new_owner);
     bool OnItemStartDrag(CUICellItem* itm);
     bool OnItemDbClick(CUICellItem* itm);
+
+    // [DA_PORT] Ячейка ПОД КУРСОРОМ — для клавиши использования, см. OnKeyboardAction.
+    //
+    // Не то же самое, что CurrentItem(): тот выставляется щелчком и живёт до следующего, а нам нужно
+    // именно наведение. Ищем перебором, а не запоминаем указатель на наведении: списки
+    // перестраиваются на каждое перемещение предмета, и запомненная ячейка к моменту нажатия может
+    // быть уже удалена.
+    CUICellItem* DaCellUnderCursor();
     bool OnItemSelected(CUICellItem* itm);
     bool OnItemRButtonClick(CUICellItem* itm);
     bool OnItemFocusReceive(CUICellItem* itm);

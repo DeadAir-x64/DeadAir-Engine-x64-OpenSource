@@ -68,11 +68,17 @@ void CActor::OnEvent(NET_Packet& P, u16 type)
 
             SelectBestWeapon(Obj);
 
-            // Dead Air compat: fire "take_item_from_ground" only for genuine world/ground pickups.
-            // In single-player GE_OWNERSHIP_TAKE is generated exclusively by SendPickUpEvent
-            // (Actor_Feel ground pickups); trade uses GE_TRADE_BUY and boxes use their own path,
-            // so gating on the event type isolates ground pickups without spurious fires.
-            if (type == GE_OWNERSHIP_TAKE)
+            // [DA_PORT] Обратный вызов «взял с земли» — только на настоящий подбор из мира.
+            //
+            // Одного типа события мало, и прежнее условие здесь было неверным. Торговля идёт через
+            // GE_TRADE_BUY, ящики — своим путём, но спавн предмета сразу в инвентарь синтезирует
+            // ТО ЖЕ САМОЕ GE_OWNERSHIP_TAKE (Level_network_spawn.cpp), и оно сюда доходило.
+            //
+            // Отсюда и жалоба про быстрый удар ножом на T: скрипт мода создаёт на время удара
+            // служебный предмет в инвентаре актёра, а мод на «взял с земли» показывает уведомление
+            // с названием предмета и играет звук подбора. То же самое всплывало на любой скриптовой
+            // выдаче — награды за задания, выдача в диалогах.
+            if (type == GE_OWNERSHIP_TAKE && !Level().m_da_spawn_attach)
                 callback(GameObject::eOnItemTakeFromGround)(_GO->lua_game_object());
         }
         else

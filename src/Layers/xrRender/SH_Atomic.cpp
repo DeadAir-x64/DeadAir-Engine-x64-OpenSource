@@ -185,12 +185,16 @@ SDeclaration::~SDeclaration()
     RImplementation.Resources->_DeleteDecl(this);
     //	Release vertex layout
 #if defined(USE_DX11)
-    xr_map<ID3DBlob*, ID3DInputLayout*>::iterator iLayout;
-    iLayout = vs_to_layout.begin();
-    for (; iLayout != vs_to_layout.end(); ++iLayout)
+    // [DA_PORT] Кэш разведён по контекстам (см. SH_Atomic.h) — отпускаем разметки из каждого.
+    for (u32 ctx = 0; ctx < R__NUM_CONTEXTS; ++ctx)
     {
-        //	Release vertex layout
-        _RELEASE(iLayout->second);
+        xr_map<ID3DBlob*, ID3DInputLayout*>::iterator iLayout;
+        iLayout = vs_to_layout[ctx].begin();
+        for (; iLayout != vs_to_layout[ctx].end(); ++iLayout)
+        {
+            //	Release vertex layout
+            _RELEASE(iLayout->second);
+        }
     }
 #elif defined(USE_OGL)
     glDeleteVertexArrays(1, &dcl);

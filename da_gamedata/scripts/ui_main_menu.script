@@ -48,7 +48,7 @@ end
 --
 -- „тение под pcall намеренно: это стартовое меню, и люба€ ошибка здесь оставила бы
 -- игрока вообще без главного экрана.
-local da_build_fallback = "zbt-2026.08.07-2"
+local da_build_fallback = "zbt-2026.08.08-3"
 
 local function da_build_stamp()
 	local ok, stamp = pcall(function()

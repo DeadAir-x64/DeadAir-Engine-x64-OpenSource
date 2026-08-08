@@ -555,18 +555,22 @@ IC void CBackend::ApplyVertexLayout()
     VERIFY(decl);
     VERIFY(m_pInputSignature);
 
+    // [DA_PORT] Кэш берём СВОЙ ДЛЯ ЭТОГО КОНТЕКСТА. Разбор гонки — в SH_Atomic.h у vs_to_layout:
+    // общее дерево перестраивалось вставкой из одного потока, пока по нему шёл другой.
+    auto& layouts = decl->vs_to_layout[context_id];
+
     xr_map<ID3DBlob*, ID3DInputLayout*>::iterator it;
 
-    it = decl->vs_to_layout.find(m_pInputSignature);
+    it = layouts.find(m_pInputSignature);
 
-    if (it == decl->vs_to_layout.end())
+    if (it == layouts.end())
     {
         ID3DInputLayout* pLayout;
 
         CHK_DX(HW.pDevice->CreateInputLayout(&decl->dx11_dcl_code[0], decl->dx11_dcl_code.size() - 1,
             m_pInputSignature->GetBufferPointer(), m_pInputSignature->GetBufferSize(), &pLayout));
 
-        it = decl->vs_to_layout.insert(std::pair<ID3DBlob*, ID3DInputLayout*>(m_pInputSignature, pLayout)).first;
+        it = layouts.insert(std::pair<ID3DBlob*, ID3DInputLayout*>(m_pInputSignature, pLayout)).first;
     }
 
     if (m_pInputLayout != it->second)

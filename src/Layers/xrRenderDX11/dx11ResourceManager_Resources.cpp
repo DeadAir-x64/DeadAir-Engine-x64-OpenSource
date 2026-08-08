@@ -70,14 +70,21 @@ void CResourceManager::_DeleteVS(const SVS* vs)
 {
     if (DestroyShader(vs))
     {
+        // [DA_PORT] Кэш разметок разведён по контекстам (см. SH_Atomic.h), поэтому убирать
+        // разметку удаляемого шейдера надо из КАЖДОГО, а не только из общего.
         for (const auto& iDecl : v_declarations)
         {
-            const auto iLayout = iDecl->vs_to_layout.find(vs->signature->signature);
-            if (iLayout != iDecl->vs_to_layout.end())
+            for (u32 ctx = 0; ctx < R__NUM_CONTEXTS; ++ctx)
             {
-                //	Release vertex layout
-                _RELEASE(iLayout->second);
-                iDecl->vs_to_layout.erase(iLayout);
+                auto& layouts = iDecl->vs_to_layout[ctx];
+
+                const auto iLayout = layouts.find(vs->signature->signature);
+                if (iLayout != layouts.end())
+                {
+                    //	Release vertex layout
+                    _RELEASE(iLayout->second);
+                    layouts.erase(iLayout);
+                }
             }
         }
     }

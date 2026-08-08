@@ -308,6 +308,25 @@ bool CUIActorMenu::OnItemDbClick(CUICellItem* itm)
     return true;
 }
 
+CUICellItem* CUIActorMenu::DaCellUnderCursor()
+{
+    for (u32 i = 0; i < eListCount; ++i)
+    {
+        CUIDragDropListEx* lst = m_pLists[i];
+        if (!lst || !lst->IsShown() || !lst->CursorOverWindow())
+            continue;
+
+        const u32 count = lst->ItemsCount();
+        for (u32 c = 0; c < count; ++c)
+        {
+            CUICellItem* ci = lst->GetItemIdx(c);
+            if (ci && ci->CursorOverWindow())
+                return ci;
+        }
+    }
+    return nullptr;
+}
+
 bool CUIActorMenu::OnItemSelected(CUICellItem* itm)
 {
     SetCurrentItem(itm);
@@ -410,6 +429,32 @@ bool CUIActorMenu::OnKeyboardAction(int dik, EUIMessages keyboard_action)
         {
             SendEvent_Item_Drop(CurrentIItem(), m_pActorInvOwner->object_id());
             SetCurrentItem(NULL);
+        }
+        return true;
+    }
+
+    // [DA_PORT] Клавиша использования (F) внутри меню актёра раньше не делала НИЧЕГО.
+    //
+    // Ею открывают тайник и подбирают вещи в мире, а внутри открытого окна она пропадала: предмет
+    // под курсором приходилось использовать двойным щелчком, а тайник закрывать другой клавишей.
+    //
+    // Сводим её к двойному щелчку по ячейке под курсором, а не пишем вторую логику рядом. В
+    // OnItemDbClick уже разобраны все случаи и режимы: в инвентаре предмет из рюкзака используется,
+    // в тайнике - переезжает в тайник, из тайника - к игроку, из слота - туда же. Своя ветка
+    // повторяла бы этот разбор и разошлась бы с ним при первой же правке.
+    //
+    // Курсор не над предметом: в тайнике это закрытие окна - той же клавишей, которой открыли.
+    // В обычном инвентаре закрывать по F не стали: он открывается не ею, и выход по ней был бы
+    // неожиданным.
+    if (IsBinded(kUSE, dik))
+    {
+        if (WINDOW_KEY_PRESSED == keyboard_action &&
+            (m_currMenuMode == mmInventory || m_currMenuMode == mmDeadBodySearch))
+        {
+            if (CUICellItem* ci = DaCellUnderCursor())
+                OnItemDbClick(ci);
+            else if (m_currMenuMode == mmDeadBodySearch)
+                OnBtnExitClicked(this, nullptr);
         }
         return true;
     }

@@ -280,7 +280,10 @@ void CLevel::g_sv_Spawn(CSE_Abstract* E)
             GEN.write_start();
             GEN.read_start();
             GEN.w_u16(u16(O->ID()));
+            // [DA_PORT] См. CLevel::m_da_spawn_attach: помечаем, что это не подбор с земли.
+            m_da_spawn_attach = true;
             cl_Process_Event(E->ID_Parent, GE_OWNERSHIP_TAKE, GEN);
+            m_da_spawn_attach = false;
             //*/
         }
     }

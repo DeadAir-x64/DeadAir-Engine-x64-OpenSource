@@ -434,14 +434,32 @@ void CGamePersistent::game_loaded()
     if (Device.dwPrecacheFrame <= 2)
     {
         m_intro_event = nullptr;
+
+        // [DA_PORT] Пауза «нажмите любую клавишу» при входе на локацию: условий пять, и снаружи не
+        // видно НИ ОДНОГО. Не сработало - уровень просто начинается сразу, без единого слова.
+        // Строка печатается один раз за прогрев: тело этого условия само себя отвязывает выше.
+        //
+        // Разбор жалоб «а у меня клавишу не спрашивает» закрывается этой строкой сразу - видно,
+        // какое из условий не выполнилось.
+        Msg("* [DA_PORT] пауза при входе: уровень=%d готов=%d выключатель=%d ждём_ввода=%d одиночная=%d",
+            g_pGameLevel ? 1 : 0, (g_pGameLevel && g_pGameLevel->bReady) ? 1 : 0, g_keypress_on_start,
+            load_screen_renderer.NeedsUserInput() ? 1 : 0,
+            m_game_params.m_e_game_type == eGameIDSingle ? 1 : 0);
         if (g_pGameLevel && g_pGameLevel->bReady && g_keypress_on_start &&
             load_screen_renderer.NeedsUserInput() && m_game_params.m_e_game_type == eGameIDSingle)
         {
             VERIFY(NULL == m_intro);
             m_intro = xr_new<CUISequencer>();
             m_intro->m_on_destroy_event.bind(this, &CGamePersistent::update_game_loaded);
+
+            // Сама сцена лежит в ui\game_tutorials.xml под именем game_loaded.
             if (!m_intro->Start("game_loaded"))
+            {
+                Msg("! [DA_PORT] пауза при входе на локацию: сцена game_loaded не найдена");
                 m_intro->Destroy();
+            }
+            else
+                Msg("* [DA_PORT] пауза при входе на локацию: ждём клавишу");
         }
     }
 }

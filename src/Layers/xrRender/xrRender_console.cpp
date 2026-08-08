@@ -382,6 +382,9 @@ float ps_r_color_add_b = 0.f;
 // The console command applies the four values; the sliders stay live afterwards, so a profile is a
 // starting point rather than a lock.
 u32 ps_r_grading_preset = 1; // 1 = the port default below
+// [DA_PORT] Значение пункта «свой»: за пределами таблицы профилей.
+constexpr u32 da_grading_preset_custom = 6;
+
 const xr_token qgrading_preset_token[] =
 {
     { "ui_mm_grade_original", 0 },
@@ -390,6 +393,9 @@ const xr_token qgrading_preset_token[] =
     { "ui_mm_grade_cold",     3 },
     { "ui_mm_grade_faded",    4 },
     { "ui_mm_grade_vivid",    5 },
+    // [DA_PORT] «Свой» — не профиль, а признак «ползунки трогали руками». Значение за пределами
+    // таблицы профилей, поэтому применять нечего, см. CCC_GradingPreset::Execute.
+    { "ui_mm_grade_custom",   6 },
     { nullptr, 0 }
 };
 
@@ -1120,6 +1126,24 @@ public:
 
 // [DA_PORT] Applies one of the grading profiles. Values mirror the .ltx profiles shipped in
 // gamedata/configs/da_grade_*.ltx, so console, menu and files never disagree.
+// [DA_PORT] Ползунок цветокоррекции: тронули руками — выбор профиля переходит в «свой».
+//
+// Без этого профиль при следующей загрузке вернул бы свои числа поверх настроенных. См. разбор
+// в CCC_GradingPreset::Execute.
+class CCC_GradeValue : public CCC_Float
+{
+public:
+    CCC_GradeValue(pcstr N, float* V, float min, float max) : CCC_Float(N, V, min, max) {}
+
+    void Execute(pcstr args) override
+    {
+        const float before = *value;
+        CCC_Float::Execute(args);
+        if (!fsimilar(before, *value))
+            ps_r_grading_preset = da_grading_preset_custom;
+    }
+};
+
 class CCC_GradingPreset : public CCC_Token
 {
 public:
@@ -1140,7 +1164,19 @@ public:
             { 1.06f, 1.02f, 0.98f,  0.40f }, // vivid
         };
 
-        const u32 idx = *value < std::size(profiles) ? *value : 1;
+        // [DA_PORT] ⚠️ Хранилище у цветокоррекции должно быть ОДНО, иначе они разъезжаются.
+        //
+        // Было два: сами ползунки (r__color_base_*, r2_vibrance_val) и профиль. Оба уходили в
+        // user.ltx, а строки там отсортированы — профиль стоит ниже ползунков и выполняется
+        // последним. То есть при каждой загрузке он затирал всё, что игрок настроил руками.
+        // Ровно тот же класс, что был с сезоном.
+        //
+        // Теперь ползунки, тронутые руками, переводят выбор в «свой», а «свой» ничего не
+        // применяет: значения переживают загрузку, потому что применять их поверх некому.
+        if (*value >= std::size(profiles))
+            return;
+
+        const u32 idx = *value;
         ps_r_color_base_r = profiles[idx].r;
         ps_r_color_base_g = profiles[idx].g;
         ps_r_color_base_b = profiles[idx].b;
@@ -1772,17 +1808,17 @@ void xrRender_initconsole()
     CMD4(CCC_Float, "r2_tmp_x",              &ps_r2_tmp_x, 0.f, 1.f);
     CMD4(CCC_Float, "r2_tmp_y",              &ps_r2_tmp_y, 0.f, 1.f);
     CMD4(CCC_Float, "r2_tmp_z",              &ps_r2_tmp_z, 0.f, 1.f);
-    CMD4(CCC_Float, "r2_vibrance_val",       &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
+    CMD4(CCC_GradeValue, "r2_vibrance_val",  &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
     CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
     CMD4(CCC_Float, "r2_vignette",           &ps_r2_vignette, 0.f, 1.f);
     CMD4(CCC_Float, "r__zoom_dof",           &ps_r2_zoom_dof, 0.f, 1.f);
     CMD4(CCC_Float, "r1_dynamic_lights",    &ps_r1_dynamic_lights, 0.f, 2.f);
     CMD4(CCC_Float, "r__actor_body",         &ps_r2_actor_body, 0.f, 1.f);
-    CMD4(CCC_Float, "r__color_add_r",       &ps_r_color_add_r, -1.f, 1.f);
-    CMD4(CCC_Float, "r__color_add_g",       &ps_r_color_add_g, -1.f, 1.f);
-    CMD4(CCC_Float, "r__color_add_b",       &ps_r_color_add_b, -1.f, 1.f);
-    CMD4(CCC_Float, "r__color_base_r",      &ps_r_color_base_r, 0.f, 2.f);
-    CMD4(CCC_Float, "r__color_base_g",      &ps_r_color_base_g, 0.f, 2.f);
-    CMD4(CCC_Float, "r__color_base_b",      &ps_r_color_base_b, 0.f, 2.f);
+    CMD4(CCC_GradeValue, "r__color_add_r",       &ps_r_color_add_r, -1.f, 1.f);
+    CMD4(CCC_GradeValue, "r__color_add_g",       &ps_r_color_add_g, -1.f, 1.f);
+    CMD4(CCC_GradeValue, "r__color_add_b",       &ps_r_color_add_b, -1.f, 1.f);
+    CMD4(CCC_GradeValue, "r__color_base_r",      &ps_r_color_base_r, 0.f, 2.f);
+    CMD4(CCC_GradeValue, "r__color_base_g",      &ps_r_color_base_g, 0.f, 2.f);
+    CMD4(CCC_GradeValue, "r__color_base_b",      &ps_r_color_base_b, 0.f, 2.f);
 }
 } // namespace xray::render::RENDER_NAMESPACE
