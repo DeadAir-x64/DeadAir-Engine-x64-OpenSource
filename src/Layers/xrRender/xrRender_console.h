@@ -356,6 +356,7 @@ extern ECORE_API u32 ps_r_optimize_dynamic;
 extern ECORE_API int ps_r_high_optimize_sun_shad;
 extern ECORE_API float ps_r2_sun_shadows_far_casc;
 extern ECORE_API int ps_da_sun_log;  // [DA_PORT] замер по каскадам солнца
+extern ECORE_API int ps_da_bones_dump; // [DA_PORT] замер общего замка расчёта костей
 extern ECORE_API int ps_da_sun_only; // [DA_PORT] изолировать один каскад солнца
 
 extern ECORE_API float o_optimize_static_l1_dist;

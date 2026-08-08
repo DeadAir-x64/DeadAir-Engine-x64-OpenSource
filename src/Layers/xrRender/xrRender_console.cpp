@@ -616,6 +616,17 @@ float ps_r2_sun_shadows_far_casc = 192.f;
 // [DA_PORT] Счётчик кадров для da_sun_log (замер по каскадам солнца). 0 = молчит.
 int ps_da_sun_log = 0;
 
+// [DA_PORT] Сколько кадров подряд мерить ОБЩИЙ ЗАМОК РАСЧЁТА КОСТЕЙ. 0 = молчит.
+//
+// Расчёт костей всех моделей сериализован одним глобальным замком UCalc_Mutex
+// (SkeletonCustom.h). У соседей это место расшито: IX-Ray сделал потокобезопасный расчёт,
+// Monolith - многопоточный. Прежде чем повторять, надо узнать, есть ли что расшивать
+// ИМЕННО У НАС: если кости и так считаются в один поток, снятие замка не даст ничего.
+//
+// Прибор отвечает на три вопроса: сколько кадра уходит в ОЖИДАНИЕ на замке, сколько - в
+// работу под ним, и приходят ли вызовы с рабочих потоков вообще. Разбор в SkeletonRigid.cpp.
+int ps_da_bones_dump = 0;
+
 // [DA_PORT] da_sun_only N: накапливать солнечный свет только от каскада N (1..3), 0 = все.
 // Замер под мерцание тени; см. render_sun::accumulate_cascade.
 int ps_da_sun_only = 0;
@@ -1502,6 +1513,7 @@ void xrRender_initconsole()
         // [DA_PORT] ⚠️ ЧЕРЕЗ CCC_DaDebugInteger, а не CCC_Integer: диагностика не должна оседать в
         // user.ltx (почему именно — в xr_ioc_cmd.h, у самого CCC_DaDebug).
         CMD4(CCC_DaDebugInteger, "da_sun_log", &ps_da_sun_log, 0, 200000);
+        CMD4(CCC_DaDebugInteger, "da_bones_dump", &ps_da_bones_dump, 0, 200000); // [DA_PORT]
         CMD4(CCC_DaDebugInteger, "da_sun_only", &ps_da_sun_only, 0, 3);
 
         // [DA_PORT] Кэш теневых карт солнца. Разбор — в render_phase_sun.cpp, у da_smap_should_render.

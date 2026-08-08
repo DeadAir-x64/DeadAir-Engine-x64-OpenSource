@@ -12,6 +12,168 @@ extern int psSkeletonUpdate;
 void check_kinematics(CKinematics* _k, LPCSTR s);
 #endif
 
+// [DA_PORT] Замер общего замка расчёта костей. Пока da_bones_dump в нуле, не стоит ничего.
+//
+// Зачем. Расчёт костей ВСЕХ моделей сериализован одним глобальным замком UCalc_Mutex
+// (SkeletonCustom.h). У соседей это место расшито, но прежде чем повторять чужую правку, надо
+// узнать, есть ли что расшивать именно у нас.
+//
+// Считать надо ЧЕТЫРЕ разные вещи, и путать их нельзя:
+//   - ожидание на замке   — цена сериализации, ровно её и снимет расшивка;
+//   - работа под замком   — цена самого расчёта; расшивка её НЕ убирает, только раскладывает по ядрам;
+//   - сколько потоков     — если поток один, расшивать нечего вообще: мешать некому;
+//   - выходы без пересчёта — ранний выход стоит сразу за OnCalculateBones: кости НЕ пересчитываются,
+//                           но дорожки анимации прокручиваются. ⛔ Сначала эта строка называлась
+//                           «захваты впустую» и предлагала перенести проверку перед замок. Это было
+//                           неверно: работа там есть, UpdateTracks обязан отработать каждый вызов.
+//
+// ⚠️ Ожидание меряем через TryEnter: на свободном замке не платим вовсе, таймер заводится только
+// когда мы и правда встали в очередь. Иначе прибор мерил бы сам себя.
+//
+// ⚠️ Кадры считаем здесь же, по смене Device.dwFrame, а НЕ из кадрового обработчика рендера:
+// на скрытом рабочем столе кадры не презентуются, CRender::Calculate не идёт, и прибор молчал бы
+// именно на стенде. Расчёт костей идёт от игровой логики и не зависит от того, рисуем ли мы.
+//
+// Всё состояние трогается ТОЛЬКО под захваченным замком, поэтому атомики не нужны.
+namespace
+{
+constexpr u32 DA_BONES_MAX_THREADS = 16;
+
+struct da_bones_thread_row
+{
+    std::thread::id id{};
+    u64 calls{};
+    u64 wait_ns{};
+};
+
+da_bones_thread_row g_rows[DA_BONES_MAX_THREADS];
+u32 g_rows_used = 0;
+
+u64 g_calls = 0;
+u64 g_contended = 0;
+u64 g_wait_ns = 0;
+u64 g_held_ns = 0;
+u64 g_idle_locks = 0;
+
+u32 g_frames = 0;
+u32 g_last_frame = 0;
+bool g_armed = false;
+
+void da_bones_reset()
+{
+    for (auto& r : g_rows)
+        r = da_bones_thread_row();
+    g_rows_used = 0;
+    g_calls = g_contended = g_wait_ns = g_held_ns = g_idle_locks = 0;
+    g_frames = 0;
+    g_last_frame = Device.dwFrame;
+}
+
+void da_bones_report()
+{
+    if (!g_frames)
+    {
+        Msg("~ [DA_BONES] кадров не набралось - замер пуст");
+        return;
+    }
+
+    const double f = double(g_frames);
+    Msg("~ [DA_BONES] за %u кадров: вызовов %llu (%.1f за кадр), с ожиданием %llu (%.1f%%)", g_frames, g_calls,
+        double(g_calls) / f, g_contended, g_calls ? 100.0 * double(g_contended) / double(g_calls) : 0.0);
+    Msg("~ [DA_BONES]   ожидание на замке %6.3f мс/кадр   работа под замком %6.3f мс/кадр",
+        double(g_wait_ns) / 1e6 / f, double(g_held_ns) / 1e6 / f);
+    Msg("~ [DA_BONES]   без пересчёта костей %llu (%.1f за кадр) - только прокрутка дорожек анимации",
+        g_idle_locks, double(g_idle_locks) / f);
+    Msg("~ [DA_BONES]   потоков: %u%s", g_rows_used,
+        g_rows_used > 1 ? "" : " - ВСЁ В ОДИН ПОТОК, расшивать нечего");
+    for (u32 i = 0; i < g_rows_used; ++i)
+        Msg("~ [DA_BONES]     поток %u: вызовов %llu (%.1f за кадр), ожидание %6.3f мс/кадр", i + 1,
+            g_rows[i].calls, double(g_rows[i].calls) / f, double(g_rows[i].wait_ns) / 1e6 / f);
+}
+
+// Строка потока. Зовётся только под захваченным замком.
+da_bones_thread_row* da_bones_row()
+{
+    const std::thread::id me = std::this_thread::get_id();
+    for (u32 i = 0; i < g_rows_used; ++i)
+        if (g_rows[i].id == me)
+            return &g_rows[i];
+
+    if (g_rows_used >= DA_BONES_MAX_THREADS)
+        return nullptr;
+
+    g_rows[g_rows_used].id = me;
+    return &g_rows[g_rows_used++];
+}
+
+// Замок с измерением. Пока прибор выключен, ведёт себя ровно как UCalc_mtlock.
+struct da_bones_lock
+{
+    CTimer held;
+    bool measured;
+
+    da_bones_lock() : measured(ps_da_bones_dump > 0)
+    {
+        if (!measured)
+        {
+            UCalc_Mutex.Enter();
+            return;
+        }
+
+        u64 wait_ns = 0;
+        if (!UCalc_Mutex.TryEnter())
+        {
+            CTimer wait;
+            wait.Start();
+            UCalc_Mutex.Enter();
+            wait_ns = wait.GetElapsed_ns();
+        }
+
+        // Дальше - под замком, поэтому обычные переменные.
+        if (!g_armed)
+        {
+            da_bones_reset();
+            g_armed = true;
+        }
+
+        if (Device.dwFrame != g_last_frame) // новый кадр
+        {
+            g_last_frame = Device.dwFrame;
+            ++g_frames;
+            if (--ps_da_bones_dump <= 0)
+            {
+                ps_da_bones_dump = 0;
+                da_bones_report();
+                g_armed = false;
+                measured = false; // этот вызов уже вне замера
+                held.Start();
+                return;
+            }
+        }
+
+        ++g_calls;
+        g_wait_ns += wait_ns;
+        if (wait_ns)
+            ++g_contended;
+
+        if (da_bones_thread_row* row = da_bones_row())
+        {
+            ++row->calls;
+            row->wait_ns += wait_ns;
+        }
+
+        held.Start();
+    }
+
+    ~da_bones_lock()
+    {
+        if (measured)
+            g_held_ns += held.GetElapsed_ns();
+        UCalc_Mutex.Leave();
+    }
+};
+} // namespace
+
 void CKinematics::CalculateBones(BOOL bForceExact)
 {
     ZoneScoped;
@@ -21,10 +183,15 @@ void CKinematics::CalculateBones(BOOL bForceExact)
     // skip all the computations - assume nothing changes in a small period of time :)
     if (Device.dwTimeGlobal == UCalc_Time)
         return; // early out for "fast" update
-    UCalc_mtlock lock;
+    da_bones_lock lock; // [DA_PORT] был UCalc_mtlock; поведение то же, плюс замер
     OnCalculateBones();
     if (!bForceExact && (Device.dwTimeGlobal < (UCalc_Time + UCalc_Interval)))
+    {
+        // [DA_PORT] Замок взят, работы не будет. См. разбор у da_bones_lock.
+        if (g_armed)
+            ++g_idle_locks;
         return; // early out for "slow" update
+    }
     if (Update_Visibility)
         Visibility_Update();
 
