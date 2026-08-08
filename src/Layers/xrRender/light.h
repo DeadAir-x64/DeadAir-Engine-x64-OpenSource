@@ -71,6 +71,12 @@ public:
         u32 frame2test; // frame the test is sheduled to
         u32 query_id; // ID of occlusion query
         u32 query_order; // order of occlusion query
+        // [DA_PORT] С чего именно спрашивали. Ответ теперь приходит не сразу, а через кадр-другой,
+        // и к тому времени камера может смотреть в другую сторону — тогда «ноль пикселей» уже ничего
+        // не значит и лампу гасить нельзя. Перенесено из Dead Air Refined.
+        u32 query_frame;
+        Fvector query_camera_position;
+        Fvector query_camera_direction;
         bool visible; // visible/invisible
         bool pending; // test is still pending
         // [DA_PORT] Сколько проверок подряд сказали «не видно». Гасим лампу только после нескольких:

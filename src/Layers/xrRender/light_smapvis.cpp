@@ -16,11 +16,23 @@ smapvis::~smapvis()
 }
 void smapvis::invalidate()
 {
+    if (testQ_id != u32(-1))
+        RImplementation.occq_cancel(testQ_id);
+
     state = state_counting;
-    testQ_V = 0;
+    testQ_V = nullptr;
+    testQ_frame = u32(-1);
     frame_sleep = Device.dwFrame + ps_r__LightSleepFrames;
     invisible.clear();
 }
+// [DA_PORT] Его перегрузки begin(graph_id) здесь нет намеренно.
+//
+// Она была обходным путём против того, что одна и та же видимость теней использовалась из
+// нескольких контекстов сразу — та самая беда с повторными прогонами одной тени. У нас этой беды
+// нет по устройству: `svis` — массив по контекстам, и `id` каждому слоту присваивается при
+// создании лампы (light.cpp). Слот и контекст у нас совпадают всегда.
+//
+// Взять её означало бы завести второй способ задавать контекст, который расходится с первым.
 void smapvis::begin()
 {
     auto& dsgraph = RImplementation.get_context(id);
@@ -32,8 +44,8 @@ void smapvis::begin()
         break;
     case state_working:
         // mark already known to be invisible visuals, set breakpoint
-        testQ_V = 0;
-        testQ_id = 0;
+        testQ_V = nullptr;
+        testQ_id = u32(-1);
         mark();
         dsgraph.set_Feedback(this, test_current);
         break;
@@ -104,7 +116,8 @@ void smapvis::flushoccq()
         test_current++;
     }
 
-    testQ_V = 0;
+    testQ_V = nullptr;
+    testQ_frame = u32(-1);
 
     if (test_current == test_count)
     {

@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Layers/xrRender/light.h"
+#include "Layers/xrRender/r__occlusion.h"
 #include "xrCDB/Intersect.hpp"
 
 namespace xray::render::RENDER_NAMESPACE
@@ -76,14 +77,29 @@ void light::vis_prepare(CBackend& cmd_list)
 
     if (skiptest || screenClippedVolume || cameraInsideVolume)
     { // small error
+        // [DA_PORT] Незавершённый запрос отпускаем: ответ на него уже никому не нужен, а слот занят.
+        if (vis.pending)
+            RImplementation.occq_cancel(vis.query_id);
         vis.visible = true;
         vis.pending = false;
         vis.frame2test = frame + ::Random.randI(delay_small_min, delay_small_max);
         return;
     }
 
+    // [DA_PORT] Запрос закреплён за лампой, пока видеокарта не ответит.
+    //
+    // Раньше ответ забирали ожиданием в том же кадре, поэтому «ещё не готов» не существовало.
+    // Теперь готовность проверяется без ожидания, и пока прежний ответ не пришёл, новый запрос
+    // выдавать нельзя: получилось бы два запроса на одну лампу и потерянный слот.
+    if (vis.pending)
+        return;
+
     // testing
     vis.pending = true;
+    // С какого вида спрашивали — по этому потом решается, годен ли отложенный ответ.
+    vis.query_frame = frame;
+    vis.query_camera_position.set(Device.vCameraPosition);
+    vis.query_camera_direction.set(Device.vCameraDirection);
     xform_calc();
     cmd_list.set_xform_world(m_xform);
     vis.query_order = RImplementation.occq_begin(vis.query_id);
@@ -110,8 +126,22 @@ void light::vis_update()
         return;
 
     const u32 frame = Device.dwFrame;
-    const auto fragments = RImplementation.occq_get(vis.query_id);
-    // Log					("",fragments);
+
+    // [DA_PORT] Ответ забирается без ожидания. Не готов — уходим, лампа остаётся в прежнем
+    // состоянии и спросим на следующем кадре. Именно ради этого всё и затевалось: раньше здесь
+    // процессор стоял и ждал видеокарту, и на Кордоне это стоило 3.33 мс на кадр.
+    R_occlusion::occq_result fragments{};
+    if (!RImplementation.occq_try_get(vis.query_id, fragments))
+        return;
+
+    // [DA_PORT] Отложенный ноль верен только для того вида, с которого спрашивали.
+    //
+    // Между запросом и ответом проходит кадр-другой, и камера успевает повернуться. «Ноль пикселей»
+    // с прошлого положения ничего не говорит о нынешнем, и гасить по нему лампу нельзя — это и есть
+    // тот класс мигания, которым асинхронные запросы обычно и славятся.
+    const bool recentView = (frame - vis.query_frame) <= 2 &&
+        Device.vCameraPosition.similar(vis.query_camera_position, 0.1f) &&
+        Device.vCameraDirection.dotproduct(vis.query_camera_direction) >= _cos(deg2rad(1.f));
 
     // [DA_PORT] Гистерезис вместо мгновенного приговора: лампа гаснет только после нескольких
     // отрицательных проверок подряд, а загорается от первой же положительной.
@@ -134,7 +164,7 @@ void light::vis_update()
     // побочного эффекта не выяснен - к слоту теневой карты он отношения не имеет, `s_finalclip`
     // считает совсем другое (пустую сцену со стороны источника). Здесь важно лишь то, что флаг
     // лечит симптом и приносит свой; поэтому проверка остаётся, а чинится её устойчивость.
-    const bool seen = (fragments > cullfragments);
+    const bool seen = (fragments > cullfragments) || !recentView;
     vis.pending = false;
 
     if (seen)

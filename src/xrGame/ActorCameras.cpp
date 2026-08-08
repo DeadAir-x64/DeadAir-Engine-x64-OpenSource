@@ -279,12 +279,63 @@ float ik_cam_shift_tolerance = 0.2f;
 float ik_cam_shift_speed = 0.01f;
 float ik_cam_shift_interpolation = 4.f;
 
+// [DA_PORT] --- Управляемое вращение камеры: инструмент замера -----------------------------------
+//
+// Крутит взгляд с заданной скоростью заданное время. Нужно не игроку, а нам: без него любой замер
+// производительности делается «покрутил мышкой на глаз», и два прогона несравнимы между собой.
+// А сравнивать приходится постоянно — до правки и после.
+//
+// Идея взята у Dead Air Refined.
+namespace
+{
+struct da_camera_yaw_state
+{
+    float speed{};
+    float remaining{ -1.f }; // отрицательное — крутить, пока не остановят
+    bool active{};
+};
+
+da_camera_yaw_state da_camera_yaw;
+
+float da_consume_camera_yaw(float dt)
+{
+    if (!da_camera_yaw.active)
+        return 0.f;
+
+    const float step = da_camera_yaw.remaining < 0.f ? dt : std::min(dt, da_camera_yaw.remaining);
+    if (da_camera_yaw.remaining >= 0.f)
+    {
+        da_camera_yaw.remaining -= step;
+        if (da_camera_yaw.remaining <= EPS_S)
+            da_camera_yaw.active = false;
+    }
+
+    return deg2rad(da_camera_yaw.speed) * step;
+}
+} // namespace
+
+void ConfigureActorCameraYawRotation(float speedDegreesPerSecond, float durationSeconds)
+{
+    da_camera_yaw.speed = speedDegreesPerSecond;
+    da_camera_yaw.remaining = durationSeconds;
+    da_camera_yaw.active =
+        !fis_zero(speedDegreesPerSecond) && (durationSeconds < 0.f || durationSeconds > EPS_S);
+}
+
 void CActor::cam_Update(float dt, float fFOV)
 {
     if (m_holder)
         return;
 
     ZoneScoped;
+
+    // [DA_PORT] Замерочное вращение — только для того, чьими глазами смотрим.
+    if (this == Level().CurrentViewEntity())
+    {
+        const float yaw_step = da_consume_camera_yaw(dt);
+        if (!fis_zero(yaw_step))
+            cam_Active()->yaw = angle_normalize_signed(cam_Active()->yaw + yaw_step);
+    }
 
     if ((mstate_real & mcClimb) && (cam_active != eacFreeLook))
         camUpdateLadder(dt);

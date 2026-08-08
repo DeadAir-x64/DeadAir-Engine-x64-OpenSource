@@ -405,8 +405,10 @@
 		<text>Радиация наружу</text>
 	</string>
 	<string id="ui_da_wpn_breakage">
-		<text>
-Поломки: </text>
+		<text>\n \n%c[0,140,140,140]ПОЛОМКИ: </text>
+	</string>
+	<string id="ui_da_wpn_breakage_item">
+		<text>\n%c[0,93,0,116] • %c[0,140,140,140] </text>
 	</string>
 	<string id="ui_da_wpn_breakage_none">
 		<text>нет</text>

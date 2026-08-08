@@ -408,8 +408,10 @@
 		<text>Radiation leaking</text>
 	</string>
 	<string id="ui_da_wpn_breakage">
-		<text>
-Malfunctions: </text>
+		<text>\n \n%c[0,140,140,140]MALFUNCTIONS: </text>
+	</string>
+	<string id="ui_da_wpn_breakage_item">
+		<text>\n%c[0,93,0,116] • %c[0,140,140,140] </text>
 	</string>
 	<string id="ui_da_wpn_breakage_none">
 		<text>none</text>

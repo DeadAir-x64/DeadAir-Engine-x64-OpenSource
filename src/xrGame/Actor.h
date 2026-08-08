@@ -31,6 +31,10 @@ class CGameTaskRegistryWrapper;
 class CGameNewsRegistryWrapper;
 class CCharacterPhysicsSupport;
 class CActorCameraManager;
+
+// [DA_PORT] Замерочное вращение камеры, см. ActorCameras.cpp. Длительность меньше нуля — «крутить,
+// пока не остановят».
+void ConfigureActorCameraYawRotation(float speedDegreesPerSecond, float durationSeconds);
 // refs
 class ENGINE_API CCameraBase;
 class ENGINE_API CBoneInstance;

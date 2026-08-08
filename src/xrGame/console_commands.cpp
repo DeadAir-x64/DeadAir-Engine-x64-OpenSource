@@ -2609,6 +2609,36 @@ public:
     }
 };
 
+// [DA_PORT] Замерочное вращение камеры: воспроизводимый проезд вместо «покрутил мышкой».
+//
+// Два прогона, снятые вручную, несравнимы между собой — камера каждый раз идёт иначе, а значит и
+// набор видимой геометрии другой. С этой командой прогон повторяется в точности, и разница в кадрах
+// означает разницу от правки, а не от того, как повели мышкой.
+//
+// Пример: cam_yaw_rotate 30 12 — полный оборот за двенадцать секунд.
+class CCC_CameraYawRotate final : public IConsole_Command
+{
+public:
+    explicit CCC_CameraYawRotate(LPCSTR name) : IConsole_Command(name) {}
+
+    void Execute(LPCSTR args) override
+    {
+        float speed{};
+        float duration{ -1.f };
+        const int parsed = sscanf(args, "%f %f", &speed, &duration);
+        if (parsed < 1 || (parsed > 1 && duration < 0.f && !fsimilar(duration, -1.f)))
+        {
+            Msg("! Usage: %s <градусов_в_секунду> [секунд], -1 = пока не остановят", cName);
+            return;
+        }
+
+        ConfigureActorCameraYawRotation(speed, duration);
+        Msg("* %s: скорость %.3f град/с, длительность %.3f с", cName, speed, duration);
+    }
+
+    void Info(TInfo& info) override { xr_strcpy(info, "degrees_per_second [duration_seconds=-1]"); }
+};
+
 void CCC_RegisterCommands()
 {
     ZoneScoped;
@@ -2733,6 +2763,7 @@ void CCC_RegisterCommands()
     CMD1(CCC_ALifeSave, "save"); // save game
     CMD1(CCC_ALifeLoadFrom, "load"); // load game from ...
     CMD1(CCC_LoadLastSave, "load_last_save"); // load last saved game from ...
+    CMD1(CCC_CameraYawRotate, "cam_yaw_rotate"); // [DA_PORT] замерочное вращение камеры
 
     CMD1(CCC_FlushLog, "flush"); // flush log
     CMD1(CCC_ClearLog, "clear_log");

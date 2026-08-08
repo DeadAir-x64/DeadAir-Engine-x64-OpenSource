@@ -61,7 +61,6 @@ static void DA_AppendWeaponConditionType(xr_string& text, CInventoryItem& item)
         return;
     }
 
-    bool first = true;
     for (int i = 0; i < 32; ++i)
     {
         if (0 == (mask & (1u << i)))
@@ -72,9 +71,10 @@ static void DA_AppendWeaponConditionType(xr_string& text, CInventoryItem& item)
         string64 id;
         xr_sprintf(id, "st_condition_type_text_%d", i + 1);
 
-        if (!first)
-            text += ", ";
-        first = false;
+        // [DA_PORT] Каждая поломка — своей строкой с маркером, как в блоке навесного оборудования
+        // над ней. Разметка целиком в таблице строк: перевод строки, цвет и сам маркер. Здесь их
+        // быть не должно — иначе оформление мода окажется зашитым в движок.
+        text += StringTable().translate("ui_da_wpn_breakage_item").c_str();
 
         // ⚠️ Проверить наличие этих строк по данным НЕ УДАЛОСЬ: в распакованных таблицах их нет, а
         // в архивы игры наш распаковщик не пролез. Поэтому никакого «нет строки - молчим»: без
