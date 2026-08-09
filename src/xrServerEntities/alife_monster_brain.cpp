@@ -121,8 +121,23 @@ void CALifeMonsterBrain::select_task(const bool forced)
     }
 }
 
+// [DA_PORT] Разбор обновления оффлайнового NPC по фазам. Порог — da_alife_dump, мс. 0 = молчит.
+//
+// Это то, что планировщик зовёт на каждого сталкера в оффлайне. da_sched_dump показал у таких
+// объектов худшие вызовы по 6-7 мс при общей нагрузке планировщика 0.2 мс на кадр, то есть
+// выброс делает один вызов. Здесь видно, какая из трёх его фаз столько стоит.
+//
+// Печать только по превышению: обновлений тысячи, а интересных единицы.
+extern ENGINE_API float ps_da_alife_dump;
+
 void CALifeMonsterBrain::update(const bool forced)
 {
+    const bool da_watch = ps_da_alife_dump > 0.f;
+    CTimer da_t;
+    float da_select = 0.f, da_task = 0.f, da_move = 0.f;
+    if (da_watch)
+        da_t.Start();
+
 #if 0 // def DEBUG
     if (!Level().MapManager().HasMapLocation("debug_stalker",object().ID)) {
         CMapLocation				*map_location =
@@ -136,13 +151,25 @@ void CALifeMonsterBrain::update(const bool forced)
 #endif
 
     select_task(forced);
+    if (da_watch) { da_select = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
 
     if (object().m_smart_terrain_id != 0xffff)
         process_task();
     else
         default_behaviour();
+    if (da_watch) { da_task = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
 
     movement().update();
+
+    if (da_watch)
+    {
+        da_move = da_t.GetElapsed_sec() * 1000.f;
+        const float total = da_select + da_task + da_move;
+        if (total >= ps_da_alife_dump)
+            Msg("~ [DA_ALIFE] %s: всего %.3f мс | выбор задачи %.3f | задача %.3f | движение %.3f | смарт %s",
+                object().name_replace(), total, da_select, da_task, da_move,
+                object().m_smart_terrain_id != 0xffff ? "есть" : "нет");
+    }
 }
 
 void CALifeMonsterBrain::default_behaviour() { movement().path_type(MovementManager::ePathTypeNoPath); }

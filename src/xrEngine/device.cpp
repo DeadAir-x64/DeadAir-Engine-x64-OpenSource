@@ -1421,6 +1421,13 @@ void CRenderDevice::script_register(lua_State* luaState)
         def("time_global_async", +[]()
         {
             return Device.TimerAsync_MMT();
+        }),
+        // [DA_PORT] Микросекунды для пофазных замеров в скриптах, см. TimerAsync_MMT_us.
+        // Отдаём double: у Lua числа и есть double, целые до 2^53 представляются точно, а это
+        // почти триста лет в микросекундах.
+        def("time_global_us", +[]()
+        {
+            return double(Device.TimerAsync_MMT_us());
         })
     ];
 };

@@ -1,0 +1,65 @@
+From: Dead Air x64 port
+Subject: [PATCH] LuaJIT: бюджет сборки мусора на Windows был завышен в сто раз
+
+Подмодуль Externals/LuaJIT смотрит в апстрим OpenXRay, писать туда мы не можем, поэтому правка
+живёт заплаткой. Накладывается изнутри подмодуля:
+
+    cd Externals/LuaJIT && git apply ../../da_port/patches/0001-luajit-gc-timeout-units.patch
+
+СУТЬ. gc_step_timeout считает бюджет как timeout_usec * 1000, то есть в НАНОСЕКУНДАХ. Но часы рядом
+(get_high_resolution_time) на Windows возвращают ТИКИ QueryPerformanceCounter, а не наносекунды. При
+обычной частоте счётчика 10 МГц «1 мс» превращалась в 100 мс. Ветка POSIX верна, ошибка только в
+оконной.
+
+ЗАМЕР до починки, прогон 300 с: задача сборки мусора — 4565 срабатываний, 94.5 СЕКУНДЫ суммарно,
+худшее 54 мс. Треть времени прогона.
+
+ПОЧЕМУ ТАК. Переводится БЮДЖЕТ в единицы часов, а не наоборот: перевод счётчика в наносекунды
+переполнил бы 64 бита за сутки аптайма (10 МГц * 1e9). Частота берётся один раз.
+
+Дефект апстримный.
+
+---
+diff --git a/src/lj_api.c b/src/lj_api.c
+index 3ed1db1..033f0d6 100644
+--- a/src/lj_api.c
++++ b/src/lj_api.c
+@@ -50,11 +50,37 @@ static inline uint64_t get_high_resolution_time(void)
+ }
+ #endif
+ 
++/* [DA_PORT] Budget conversion. The Windows clock above returns QueryPerformanceCounter TICKS,
++** not nanoseconds, while the budget was computed as microseconds*1000 - i.e. as nanoseconds.
++** With the usual 10 MHz performance counter that made the budget 100x too large: a "1 ms" step
++** budget actually allowed 100 ms of collection.
++**
++** Measured on a 300 s stand run before the fix: 4565 firings, 94.5 s total, worst 54 ms - about a
++** third of wall-clock time spent collecting inside one frame task.
++**
++** Converting the counter to nanoseconds instead would overflow: at 10 MHz the counter passes
++** 8.6e11 within a day of uptime, and multiplying by 1e9 leaves the 64-bit range. So the BUDGET is
++** converted into the clock's own units, which keeps every value small.
++*/
++static inline uint64_t gc_timeout_ticks(uint32_t timeout_usec)
++{
++#if LJ_TARGET_WINDOWS
++  static LARGE_INTEGER freq;
++  if (freq.QuadPart == 0)
++    QueryPerformanceFrequency(&freq);
++  if (freq.QuadPart == 0)
++    return (uint64_t)timeout_usec * 1000;  /* no counter: keep the old behaviour */
++  return ((uint64_t)timeout_usec * (uint64_t)freq.QuadPart) / 1000000ULL;
++#else
++  return (uint64_t)timeout_usec * 1000;  /* clock is already in nanoseconds */
++#endif
++}
++
+ static int gc_step_timeout(lua_State *L, uint32_t timeout_usec)
+ {
+ #if LJ_TARGET_WINDOWS || LJ_TARGET_POSIX
+   int res = 0;
+-  uint64_t timeout = timeout_usec * 1000;
++  uint64_t timeout = gc_timeout_ticks(timeout_usec);
+ 
+   uint64_t time_current = get_high_resolution_time();
+ 

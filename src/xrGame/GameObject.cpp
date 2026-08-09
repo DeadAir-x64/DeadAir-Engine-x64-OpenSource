@@ -1,6 +1,8 @@
 #include "pch_script.h"
 #include "GameObject.h"
 
+#include <luabind/da_call_probe.hpp> // [DA_PORT] прибор переходов Lua -> движок
+
 #include "Include/xrRender/RenderVisual.h"
 #include "xrPhysics/PhysicsShell.h"
 #include "ai_space.h"
@@ -287,10 +289,21 @@ void CGameObject::net_Destroy()
         smart_cast<IKinematics*>(Visual())->Callback(0, 0);
     //
     VERIFY(getDestroy());
+    // [DA_PORT] Сначала убрать объект из пространственной базы, и только потом удалять форму.
+    //
+    // Было наоборот, и между двумя строками зияло окно: форма уже удалена, а объект ещё находится
+    // запросами луча и сферы. Оттуда пришёл вылет у тестера (CCF_Skeleton::_RayQuery через
+    // CAI_Stalker::can_kill_entity), и туда же смотрел разбор вылета зрения от 31.07.
+    //
+    // Перестановка безопасна: SpatialBase::spatial_unregister трогает только узел базы
+    // (spatial.node_ptr, spatial.space->remove, sector_id) и ни формы, ни визуала не касается.
+    //
+    // ⚠️ Однопоточную часть зазора это закрывает целиком. Гонку остаётся закрыть отложенным
+    // уничтожением: другой поток может прочитать указатель на форму ДО этой строки.
+    spatial_unregister();
     xr_delete(CForm);
     if (register_schedule())
         shedule_unregister();
-    spatial_unregister();
     // setDestroy (true); // commented in original src
     // remove visual
     cNameVisual_set(0);
@@ -1202,8 +1215,191 @@ void CGameObject::DestroyObject()
     }
 }
 
+// [DA_PORT] Разбор базового обновления объекта по шагам. Порог - da_object_dump, мс. 0 = молчит.
+//
+// Дно спуска от разбора кадра: планировщик -> сталкеры -> «наследуемое (существо)» ->
+// CEntityAlive::shedule_Update, где 98.7% приходится на вызов базового класса. Это он и есть.
+extern ENGINE_API float ps_da_object_dump;
+// [DA_PORT] Опорный темп машины (тактов на мс), см. разбор ниже.
+double da_object_cpm_ref = 0.0;
+
+// [DA_PORT] Порог для разбора перехода Lua -> движок. Пояснение — в luabind/da_call_probe.hpp.
+extern ENGINE_API float ps_da_lua_call_dump;
+
+// [DA_PORT] Счётчик ИСКЛЮЧЕНИЙ процесса — последняя развилка охоты за выбросами.
+//
+// Признаки выброса складываются в одну картину и ни во что другое: время садится на случайную
+// копеечную функцию (best_weapon, active_item, SetWndRect), один раз обошлось вовсе без движка,
+// поток жжёт ПОЛЬЗОВАТЕЛЬСКИЕ такты, соседние потоки в этот миг простаивают, память Lua не растёт.
+//
+// Так выглядит раскрутка стека. Луабинд ловит исключение на каждом неподходящем разборе перегрузок
+// (invoke_defer в make_function.hpp), а LuaJIT на x64 бросает ошибку тем же механизмом. Раскрутка
+// в GCC ищет запись в таблицах раскрутки двоичным поиском и берёт при этом ГЛОБАЛЬНЫЙ замок; в
+// модуле на сто с лишним мегабайт одно исключение обходится в миллисекунды.
+//
+// Обработчик вектора исключений видит КАЖДОЕ исключение процесса, включая первичные, поэтому
+// считает и то, что кто-то ловит и глушит. Возвращает «искать дальше» и ни на что не влияет.
+#ifdef XR_PLATFORM_WINDOWS
+#include <x86intrin.h>
+
+// [DA_PORT] Выборочный съём: где главный поток НА САМОМ ДЕЛЕ находится во время выброса.
+//
+// Все косвенные признаки исчерпаны и ни один не сошёлся: время садится на случайную копеечную
+// функцию, исключений ноль, соседние потоки простаивают, память Lua не растёт, такты честные.
+// Косвенно опознать помеху больше нечем — надо просто посмотреть, по какому адресу поток стоит.
+//
+// Отдельный поток раз в миллисекунду останавливает главный, забирает счётчик команд и отпускает.
+// Съёмы копятся в кольце вместе с отметкой времени; при выбросе печатаются те, что попали в окно.
+// Адреса выводятся как «модуль + смещение», потому что DLL грузится по своей базе, и абсолютный
+// адрес без этого ничего не значит.
+//
+// Сам съёмщик не выделяет память и не берёт замков: только счётчик тактов и запись в массив.
+// Иначе он мог бы остановить главный поток внутри кучи и заклинить процесс.
+namespace
+{
+struct da_sample
+{
+    u64 tsc;
+    u64 rip;
+};
+
+enum
+{
+    DA_SAMPLES = 8192
+};
+
+da_sample da_ring[DA_SAMPLES]{};
+volatile LONG da_ring_head = 0;
+HANDLE da_target_thread = nullptr;
+HANDLE da_sampler_thread = nullptr;
+
+DWORD WINAPI da_sampler_proc(LPVOID)
+{
+    CONTEXT ctx;
+    for (;;)
+    {
+        HANDLE target = da_target_thread;
+        if (target)
+        {
+            if (SuspendThread(target) != DWORD(-1))
+            {
+                ZeroMemory(&ctx, sizeof(ctx));
+                ctx.ContextFlags = CONTEXT_CONTROL;
+                const BOOL ok = GetThreadContext(target, &ctx);
+                ResumeThread(target);
+                if (ok)
+                {
+                    const LONG i = InterlockedIncrement(&da_ring_head) - 1;
+                    da_ring[i & (DA_SAMPLES - 1)].tsc = __rdtsc();
+                    da_ring[i & (DA_SAMPLES - 1)].rip = ctx.Rip;
+                }
+            }
+        }
+        Sleep(1);
+    }
+}
+
+void da_sampler_start()
+{
+    if (da_sampler_thread)
+        return;
+    DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &da_target_thread,
+        THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, 0);
+    da_sampler_thread = CreateThread(nullptr, 0, &da_sampler_proc, nullptr, 0, nullptr);
+    if (da_sampler_thread)
+        SetThreadPriority(da_sampler_thread, THREAD_PRIORITY_TIME_CRITICAL);
+}
+
+void da_sampler_report(u64 from, u64 to)
+{
+    const LONG head = da_ring_head;
+    int shown = 0;
+    for (LONG k = 0; k < DA_SAMPLES; ++k)
+    {
+        const da_sample& s = da_ring[(head - 1 - k) & (DA_SAMPLES - 1)];
+        if (!s.tsc)
+            continue;
+        if (s.tsc < from)
+            break;
+        if (s.tsc > to)
+            continue;
+
+        HMODULE mod = nullptr;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)s.rip, &mod);
+        char path[MAX_PATH] = "?";
+        if (mod)
+            GetModuleFileNameA(mod, path, MAX_PATH);
+        pcstr base = strrchr(path, char(92)); // обратная косая черта
+        base = base ? base + 1 : path;
+
+        Msg("~ [DA_WHERE]   съём %d: %s + 0x%llX", ++shown, base,
+            mod ? (unsigned long long)(s.rip - (u64)mod) : (unsigned long long)s.rip);
+        if (shown >= 24)
+            break;
+    }
+    if (!shown)
+        Msg("~ [DA_WHERE]   съёмов в окно не попало");
+}
+} // namespace
+
+static volatile LONG da_exc_count = 0;
+static volatile LONG da_exc_last_code = 0;
+static PVOID da_exc_handle = nullptr;
+
+static LONG CALLBACK da_exc_watch(PEXCEPTION_POINTERS info)
+{
+    InterlockedIncrement(&da_exc_count);
+    if (info && info->ExceptionRecord)
+        da_exc_last_code = LONG(info->ExceptionRecord->ExceptionCode);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 void CGameObject::shedule_Update(u32 dt)
 {
+    const bool da_watch = ps_da_object_dump > 0.f;
+    const bool da_calls = ps_da_lua_call_dump > 0.f;
+    const bool da_time = da_watch || da_calls;
+    CTimer da_t;
+    float da_destroy = 0.f, da_base = 0.f, da_spatial = 0.f, da_crow = 0.f, da_script = 0.f;
+
+    // [DA_PORT] ТАКТЫ ЭТОГО ПОТОКА рядом со временем по стенным часам — единственный признак,
+    // который отличает «мы считали» от «нас не выполняли».
+    //
+    // Зачем. Выбросы в 10-15 мс за день всплывали в ДЕВЯТИ разных местах, и каждый раз
+    // собственная цена места была на два-три порядка меньше: у commander_id медиана 2 мкс при
+    // пике 13.9 мс, у has_spot 104 мкс при 13.7 мс. Спуск по коду такую остановку не находит
+    // в принципе - она садится на ту строку, что оказалась под таймером.
+    //
+    // Такты не надо переводить в миллисекунды: достаточно сравнить выброс с обычным вызовом.
+    // Мало тактов при большом времени = поток стоял (вытеснение, ожидание, страничный отказ).
+    // Много тактов = мы и правда что-то считали, и тогда искать надо дальше по коду.
+    u64 da_cyc0 = 0;
+    // [DA_PORT] Выделения Lua за тот же вызов, точно в БАЙТАХ.
+    //
+    // Такты уже сказали, что поток выполнялся, а опыт с da_lua_gc 0 снял подозрение со сборщика:
+    // выбросов осталось столько же. В худших при этом сидят провод, стекло и дверь - объекты с
+    // примитивной логикой, значит дело не в том, ЧТО делает биндер.
+    //
+    // Остаются два объяснения, и они различимы по объёму выделений: разрастание таблиц (память
+    // скакнёт на сотни килобайт) или разовая работа внутри LuaJIT, например компиляция трассы
+    // (тактов много, а выделений почти нет).
+    //
+    // GCCOUNT даёт килобайты, GCCOUNTB - остаток байт; вместе это точное значение.
+    long da_lua_bytes0 = 0;
+    lua_State* da_L = nullptr;
+    if (da_time)
+    {
+        da_L = GEnv.ScriptEngine ? GEnv.ScriptEngine->lua() : nullptr;
+        if (da_L)
+            da_lua_bytes0 = long(lua_gc(da_L, LUA_GCCOUNT, 0)) * 1024 + lua_gc(da_L, LUA_GCCOUNTB, 0);
+#ifdef XR_PLATFORM_WINDOWS
+        QueryThreadCycleTime(GetCurrentThread(), &da_cyc0);
+#endif
+        da_t.Start();
+    }
+
     //уничтожить
     if (NeedToDestroyObject())
     {
@@ -1216,8 +1412,13 @@ void CGameObject::shedule_Update(u32 dt)
     // IGameObject::shedule_Update(dt);
     // consistency check
     // Msg ("-SUB-:[%x][%s] IGameObject::shedule_Update",dynamic_cast<void*>(this),*cName());
+    if (da_time) { da_destroy = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
+
     ScheduledBase::shedule_Update(dt);
+    if (da_time) { da_base = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
+
     spatial_update(base_spu_epsP * 1, base_spu_epsR * 1);
+    if (da_time) { da_spatial = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
     // Always make me crow on shedule-update
     // Makes sure that update-cl called at least with freq of shedule-update
     MakeMeCrow();
@@ -1226,8 +1427,183 @@ void CGameObject::shedule_Update(u32 dt)
     else if (Device.vCameraPosition.distance_to_sqr(Position()) < CROW_RADIUS*CROW_RADIUS) MakeMeCrow ();
     */
     // ~
+    if (da_time) { da_crow = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
+
+    // [DA_PORT] Чем поток был занят эти миллисекунды: считал сам, ждал ядро или крутился на замке.
+    //
+    // Прибор переходов показал, что выброс садится на СЛУЧАЙНУЮ копеечную функцию - best_weapon,
+    // active_item, SetWndRect, - а один раз обошёлся вовсе без движка, целиком в Lua. Такая
+    // всеядность бывает только у внешней помехи. Различить помехи можно тремя числами:
+    //   системное время велико -> ядро (зачистка страниц под новую память, системный вызов);
+    //   пользовательское велико, а работы нет -> кручение на замке в пользовательском коде;
+    //   такты ПРОЦЕССА много больше тактов нашего потока -> в этот же миг работали соседи,
+    //     то есть мы с кем-то делим ресурс.
+    //
+    // Раньше вывод «такты честные = работа настоящая» был прочитан неверно: QueryThreadCycleTime
+    // говорит лишь, что поток был НА процессоре, а не что он делал полезное. Кручение на замке
+    // даёт ровно те же честные такты.
+    u64 da_proc0 = 0, da_tsc0 = 0;
+    LONG da_exc0 = 0;
+    FILETIME da_kc0{}, da_ku0{}, da_ft{};
+    if (da_calls)
+    {
+#ifdef XR_PLATFORM_WINDOWS
+        if (!da_exc_handle)
+            da_exc_handle = AddVectoredExceptionHandler(1, &da_exc_watch);
+        da_sampler_start();
+        da_tsc0 = __rdtsc();
+        da_exc0 = da_exc_count;
+        QueryProcessCycleTime(GetCurrentProcess(), &da_proc0);
+        GetThreadTimes(GetCurrentThread(), &da_ft, &da_ft, &da_kc0, &da_ku0);
+#endif
+        luabind::da_probe::begin();
+    }
+
     if (!GEnv.isDedicatedServer)
         scriptBinder.shedule_Update(dt);
+
+    if (da_calls)
+        luabind::da_probe::finish();
+
+    if (da_time)
+    {
+        da_script = da_t.GetElapsed_sec() * 1000.f;
+        const float total = da_destroy + da_base + da_spatial + da_crow + da_script;
+
+        u64 da_cyc1 = da_cyc0;
+#ifdef XR_PLATFORM_WINDOWS
+        QueryThreadCycleTime(GetCurrentThread(), &da_cyc1);
+#endif
+        // Опору набираем по БЫСТРЫМ вызовам, включая непечатаемые: их тысячи, и только они
+        // показывают нормальный темп машины.
+        if (total > 0.05f && total < 1.f)
+        {
+            const double cpm = double(da_cyc1 - da_cyc0) / double(total);
+            da_object_cpm_ref = da_object_cpm_ref > 0.0 ? da_object_cpm_ref * 15.0 / 16.0 + cpm / 16.0 : cpm;
+        }
+
+        if (da_watch && total >= ps_da_object_dump)
+        {
+            long da_dbytes = 0;
+            if (da_L)
+                da_dbytes = long(lua_gc(da_L, LUA_GCCOUNT, 0)) * 1024 + lua_gc(da_L, LUA_GCCOUNTB, 0)
+                    - da_lua_bytes0;
+
+            // [DA_PORT] ⭐ ВЫБРОСОВ ДВА РАЗНЫХ ВИДА, и мерить их вперемешку - главная ошибка,
+            // из-за которой опыты давали смазанные ответы.
+            //
+            // Вид первый: такты честные (~4.3 млн на мс) - поток РАБОТАЛ, работы просто в
+            // десятки раз больше обычной.
+            // Вид второй: тактов мало при большом времени - поток СТОЯЛ. Живой пример из лога:
+            // actor 16.8 мс при 3.4 млн тактов, то есть 200 тыс на мс вместо 4300 тыс.
+            //
+            // Пока они шли одной кучей, каждая гипотеза подтверждалась на одной половине и
+            // опровергалась на другой. Поэтому приговор выносится ЗДЕСЬ, а не при разборе лога.
+            //
+            // Опора считается сама, по обычным быстрым вызовам: у каждой машины своя частота, и
+            // зашивать порог числом нельзя. Скользящее среднее, вес 1/16.
+            const double da_cpm_ref = da_object_cpm_ref;
+            const double da_cpm = total > 0.f ? double(da_cyc1 - da_cyc0) / double(total) : 0.0;
+
+            pcstr da_verdict = "?";
+            if (da_cpm_ref > 0.0)
+                da_verdict = da_cpm < da_cpm_ref * 0.5 ? "СТОЯЛ" : "работал";
+
+            // [DA_PORT] Имя биндера прибор называет САМ, а не оставляет угадывать.
+            //
+            // Биндер задаётся строкой script_binding в секции объекта (CScriptBinder::reload),
+            // так что это точный ответ на вопрос «какой скрипт открывать».
+            //
+            // Заведено после того, как я трижды за день выбрал цель по догадке и трижды ошибся:
+            // профили персонажей принял за отряды, серверный ALife за клиентский планировщик,
+            // физический биндер за биндер ламп. Каждый раз это стоило сборки и прогона.
+            pcstr da_binder = "нет";
+            if (pSettings->line_exist(cNameSect(), "script_binding"))
+                da_binder = pSettings->r_string(cNameSect(), "script_binding");
+
+            // [DA_PORT] Номер кадра — чтобы увидеть, ОДНОВРЕМЕННЫ ли выбросы.
+            //
+            // Это решающий признак. Если в одном кадре несколько объектов отчитались по 13 мс,
+            // значит 13 мс потрачены НЕ на каждого из них, а один раз на что-то общее, и каждое
+            // обновление просто попало на этот отрезок. Если же выбросы в разных кадрах -
+            // работа и правда своя у каждого.
+            //
+            // Косвенно на «общее» уже указывает то, что одинаковые ~13 мс дают ТРИ разных
+            // биндера в несвязанном коде: у сталкера в planner:update, у физического объекта в
+            // трёх set_callback.
+            Msg("~ [DA_OBJECT] кадр %u t=%u | %s [%s]: всего %.3f мс [%s], тактов/мс %.0f тыс"
+                " (опора %.0f тыс), lua %+ld Б | уничтожение %.3f | планировщик %.3f"
+                " | пространство %.3f | ворона %.3f | СКРИПТ %.3f",
+                Device.dwFrame, Device.dwTimeGlobal, cName().c_str(), da_binder, total, da_verdict, da_cpm / 1000.0,
+                da_cpm_ref / 1000.0, da_dbytes, da_destroy, da_base, da_spatial, da_crow, da_script);
+        }
+
+        // [DA_PORT] Разбор скриптового обновления по переходам Lua -> движок.
+        //
+        // Такты переводятся в миллисекунды долей от окна, а не по частоте процессора: окно
+        // обрамлено теми же часами, что дают da_script, поэтому доля от окна - это точная доля
+        // от измеренного времени. Зашивать частоту нельзя, она у каждой машины своя и плавает.
+        //
+        // Строка «сам Lua» - это окно минус сумма собственных времён вызовов движка. Она и
+        // отвечает на вопрос, ради которого прибор сделан: считает скрипт или считает движок.
+        if (da_calls && da_script >= ps_da_lua_call_dump)
+        {
+            u64 da_proc1 = da_proc0;
+            FILETIME da_kc1 = da_kc0, da_ku1 = da_ku0;
+#ifdef XR_PLATFORM_WINDOWS
+            QueryProcessCycleTime(GetCurrentProcess(), &da_proc1);
+            GetThreadTimes(GetCurrentThread(), &da_ft, &da_ft, &da_kc1, &da_ku1);
+#endif
+            const auto ft_ms = [](const FILETIME& a, const FILETIME& b)
+            {
+                const u64 x = (u64(a.dwHighDateTime) << 32) | a.dwLowDateTime;
+                const u64 y = (u64(b.dwHighDateTime) << 32) | b.dwLowDateTime;
+                return y > x ? double(y - x) / 10000.0 : 0.0; // 100 нс -> мс
+            };
+            const double da_sys = ft_ms(da_kc0, da_kc1);
+            const double da_usr = ft_ms(da_ku0, da_ku1);
+            const double da_proc_ms = da_object_cpm_ref > 0.0
+                ? double(da_proc1 - da_proc0) / da_object_cpm_ref : 0.0;
+
+            LONG da_exc = 0;
+#ifdef XR_PLATFORM_WINDOWS
+            da_exc = da_exc_count - da_exc0;
+#endif
+            Msg("~ [DA_STALL] кадр %u | %s: окно %.3f мс | система %.3f | пользователь %.3f"
+                " | процесс %.3f мс | ИСКЛЮЧЕНИЙ %ld (последний код 0x%08lX)",
+                Device.dwFrame, cName().c_str(), da_script, da_sys, da_usr, da_proc_ms,
+                long(da_exc), (unsigned long)da_exc_last_code);
+#ifdef XR_PLATFORM_WINDOWS
+            da_sampler_report(da_tsc0, __rdtsc());
+#endif
+
+            const double win = double(luabind::da_probe::window_cycles());
+            const double eng = double(luabind::da_probe::engine_cycles());
+            const double k = win > 0.0 ? double(da_script) / win : 0.0;
+
+            pcstr da_binder2 = "нет";
+            if (pSettings->line_exist(cNameSect(), "script_binding"))
+                da_binder2 = pSettings->r_string(cNameSect(), "script_binding");
+
+            Msg("~ [DA_LUACALL] кадр %u | %s [%s]: скрипт %.3f мс = движок %.3f (%llu переходов)"
+                " + сам Lua %.3f%s",
+                Device.dwFrame, cName().c_str(), da_binder2, da_script, eng * k,
+                (unsigned long long)luabind::da_probe::calls_total(), (win - eng) * k,
+                luabind::da_probe::overflowed() ? " | ИМЁН БОЛЬШЕ, ЧЕМ МЕСТА" : "");
+
+            luabind::da_probe::row rows[10];
+            const int n = luabind::da_probe::top(rows, 10);
+            for (int i = 0; i < n; ++i)
+            {
+                const double self_ms = double(rows[i].self) * k;
+                if (self_ms < 0.05)
+                    break; // мелочь не засоряет лог
+                Msg("~ [DA_LUACALL]   %d. %-34s своё %7.3f мс | общее %7.3f | вызовов %u",
+                    i + 1, rows[i].name ? rows[i].name : "?", self_ms,
+                    double(rows[i].incl) * k, rows[i].calls);
+            }
+        }
+    }
 }
 
 bool CGameObject::net_SaveRelevant() { return scriptBinder.net_SaveRelevant(); }

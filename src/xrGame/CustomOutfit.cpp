@@ -51,6 +51,21 @@ void CCustomOutfit::OnH_A_Chield()
         ReloadBonesProtection();
 }
 
+// [DA_PORT] Потолок слотов пояса берётся из данных, а не зашит числом.
+//
+// Было clamp(..., 0, 5) в двух местах, и это ломало сразу две вещи:
+//   1) апгрейд у техника «+1 к креплению на поясе» (artefact_count = 1 в outfit_upgrades) честно
+//      складывается процессором апгрейдов, но у костюма с базовыми пятью слотами шестой тут же
+//      срезался обратно - игрок платил и не получал ничего;
+//   2) костюмы, у которых в конфиге прямо написано artefact_count = 7, молча теряли два слота.
+//
+// В system.ltx мода стоит inventory/max_belt = 7 - это и есть настоящий потолок, движок просто о
+// нём не знал. Читаем оттуда же, откуда его читает CInventory (m_iMaxBelt).
+static u32 da_belt_capacity()
+{
+    return (u32)pSettings->read_if_exists<s32>("inventory", "max_belt", 5);
+}
+
 void CCustomOutfit::Load(LPCSTR section)
 {
     inherited::Load(section);
@@ -125,7 +140,7 @@ void CCustomOutfit::Load(LPCSTR section)
 
     m_full_icon_name = pSettings->r_string(section, "full_icon_name");
     m_artefact_count = READ_IF_EXISTS(pSettings, r_u32, section, "artefact_count", 0);
-    clamp(m_artefact_count, (u32)0, (u32)5);
+    clamp(m_artefact_count, (u32)0, da_belt_capacity()); // [DA_PORT]
 
     m_BonesProtectionSect = READ_IF_EXISTS(pSettings, r_string, section, "bones_koeff_protection", "");
     bIsHelmetAvaliable = !!READ_IF_EXISTS(pSettings, r_bool, section, "helmet_avaliable", true);
@@ -535,7 +550,7 @@ bool CCustomOutfit::install_upgrade_impl(LPCSTR section, bool test)
     clamp(m_fPowerLoss, 0.0f, 1.0f);
 
     result |= process_if_exists(section, "artefact_count", &CInifile::r_u32, m_artefact_count, test);
-    clamp(m_artefact_count, (u32)0, (u32)5);
+    clamp(m_artefact_count, (u32)0, da_belt_capacity()); // [DA_PORT]
 
     return result;
 }

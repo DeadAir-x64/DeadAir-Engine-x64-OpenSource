@@ -200,19 +200,50 @@ void CEntityAlive::reload(LPCSTR section)
     m_fFood = 100 * pSettings->r_float(section, "ph_mass");
 }
 
+// [DA_PORT] Разбор редкого обновления существа по шагам. Порог - da_entity_dump, мс. 0 = молчит.
+//
+// Сюда привёл спуск от разбора кадра: планировщик -> сталкеры -> фаза «наследуемое (существо)».
+// Средняя цена 0.073 мс на кадр, худший вызов 6.52 мс. Печатаем только превышение порога:
+// обновлений тысячи, интересных единицы.
+extern ENGINE_API float ps_da_entity_dump;
+
 void CEntityAlive::shedule_Update(u32 dt)
 {
+    const bool da_watch = ps_da_entity_dump > 0.f;
+    CTimer da_t;
+    float da_base = 0.f, da_time = 0.f, da_cond = 0.f, da_fire = 0.f, da_blood = 0.f, da_wounds = 0.f;
+    if (da_watch)
+        da_t.Start();
+
     inherited::shedule_Update(dt);
+    if (da_watch) { da_base = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
 
     // condition update with the game time pass
     conditions().UpdateConditionTime();
+    if (da_watch) { da_time = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
+
     conditions().UpdateCondition();
+    if (da_watch) { da_cond = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
+
     //Обновление партиклов огня
     UpdateFireParticles();
+    if (da_watch) { da_fire = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
+
     //капли крови
     UpdateBloodDrops();
+    if (da_watch) { da_blood = da_t.GetElapsed_sec() * 1000.f; da_t.Start(); }
+
     //обновить раны
     conditions().UpdateWounds();
+    if (da_watch)
+    {
+        da_wounds = da_t.GetElapsed_sec() * 1000.f;
+        const float total = da_base + da_time + da_cond + da_fire + da_blood + da_wounds;
+        if (total >= ps_da_entity_dump)
+            Msg("~ [DA_ENTITY] %s: всего %.3f мс | базовое %.3f | время состояния %.3f | состояние %.3f"
+                " | огонь %.3f | кровь %.3f | раны %.3f",
+                cName().c_str(), total, da_base, da_time, da_cond, da_fire, da_blood, da_wounds);
+    }
 
     //убить сущность
     if (Local() && !g_Alive() && !AlreadyDie())

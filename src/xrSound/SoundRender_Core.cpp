@@ -126,6 +126,28 @@ CSound* CSoundRender_Core::create(pcstr fName, esound_type sound_type, u32 game_
     return snd;
 }
 
+// [DA_PORT] Точка входа для остальных модулей. Разбор — у объявления в Sound.h.
+float xr_sound_length_sec(pcstr fName)
+{
+    return SoundRender ? SoundRender->get_source_length_sec(fName) : 0.f;
+}
+
+// [DA_PORT] Длина звука без создания CSound. Разбор — в объявлении, Sound.h.
+float CSoundRender_Core::get_source_length_sec(pcstr fName)
+{
+    if (!bPresent || !fName || !fName[0])
+        return 0.f;
+
+    // Расширение снимается так же, как в create(): ключом кэша служит имя без него.
+    string_path fn;
+    xr_strcpy(fn, fName);
+    if (strext(fn))
+        *strext(fn) = 0;
+
+    const CSoundRender_Source* source = i_create_source(fn);
+    return source ? source->length_sec() : 0.f;
+}
+
 void CSoundRender_Core::attach_tail(CSound& snd, pcstr fName)
 {
     if (!bPresent)

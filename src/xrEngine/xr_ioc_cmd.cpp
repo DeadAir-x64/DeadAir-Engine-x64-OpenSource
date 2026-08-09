@@ -1591,6 +1591,69 @@ ENGINE_API int ps_da_stalker_dump = 0;
 // [DA_PORT] Сколько кадров подряд разбирать ПЛАНИРОВЩИК поимённо. Разбор в xrSheduler.cpp.
 ENGINE_API int ps_da_sched_dump = 0;
 
+// [DA_PORT] Порог в МИЛЛИСЕКУНДАХ, выше которого печатать разбор обновления ОТРЯДА по фазам.
+//
+// Следующий спуск после da_sched_dump. Тот назвал виновника поимённо - обновление одного отряда
+// изредка стоит 6-7 мс при общей нагрузке планировщика 0.2 мс на кадр, то есть выброс делает
+// ОДИН неделимый вызов. Здесь видно, какая его фаза столько стоит.
+//
+// Порогом, а не числом кадров: выброс редкий, и печатать все обновления подряд - это залить лог
+// тысячами строк, среди которых нужных три. 0 выключает.
+//
+// Читает эту ручку СКРИПТ (sim_squad_scripted.script) через get_console():get_float, поэтому в
+// движке у неё читателя нет и быть не должно.
+ENGINE_API float ps_da_squad_dump = 0.f;
+
+// [DA_PORT] Порог в МИЛЛИСЕКУНДАХ для разбора обновления ОФФЛАЙНОВОГО NPC по фазам.
+//
+// da_sched_dump называет виновниками выбросов объекты вида sim_default_duty_123356 — это НЕ
+// отряды, а отдельные сталкеры: sim_default_* объявлены профилями персонажей в creatures/
+// profiles.ltx, тогда как отряды наследуют online_offline_group в squad_descr*.ltx. Разбор
+// отрядного кода из-за этой путаницы ушёл впустую.
+//
+// Здесь меряется то, что планировщик и вызывает: CALifeMonsterBrain::update — выбор задачи,
+// её исполнение и передвижение по графу. Печатается только превышение порога, 0 выключает.
+ENGINE_API float ps_da_alife_dump = 0.f;
+
+// [DA_PORT] Порог в МИЛЛИСЕКУНДАХ для разбора CEntityAlive::shedule_Update по шагам.
+//
+// Куда пришли: da_perf_dump -> планировщик -> da_sched_dump -> объекты sim_default_* ->
+// da_stalker_dump -> фаза «[мозги] наследуемое (существо)». В живой игре у неё средняя цена
+// 0.073 мс на кадр, а ХУДШИЙ вызов 6.52 мс - единственная фаза, чей пик дотягивается до
+// выбросов, которые видно в разборе кадра. Здесь она раскладывается на шаги.
+ENGINE_API float ps_da_entity_dump = 0.f;
+
+// [DA_PORT] Порог в МИЛЛИСЕКУНДАХ для разбора CGameObject::shedule_Update по шагам.
+//
+// Дно спуска: da_entity_dump показал, что 98.7% времени существа уходит в вызов базового класса,
+// а собственный код CEntityAlive не стоит ничего. Здесь этот базовый вызов и раскладывается.
+ENGINE_API float ps_da_object_dump = 0.f;
+
+// [DA_PORT] Порог в МИЛЛИСЕКУНДАХ для разбора скриптового обновления NPC (xr_motivator).
+//
+// Конец спуска в движке: da_object_dump показал, что 99.5% базового обновления объекта уходит
+// в scriptBinder.shedule_Update, то есть в Lua мода. Дальше меряет уже сам скрипт, а эта ручка
+// служит ему выключателем - читается через get_console():get_float.
+ENGINE_API float ps_da_npc_dump = 0.f;
+
+// [DA_PORT] Порог в МИЛЛИСЕКУНДАХ для разбора перехода Lua -> движок.
+//
+// Последняя ступень спуска. Выше был вывод «весь выброс сидит в scriptBinder.shedule_Update», а
+// внутри обрамлять уже нечего: там вызов Lua мода. Но и он не сам по себе дорог — у лампы выброс
+// 12.578 мс дался при изменении памяти Lua на минус семь байт, то есть работа была в движке.
+//
+// Эта ручка включает счёт по КАЖДОМУ вызову связанной функции (луабинд, см. da_call_probe.hpp).
+// На выходе — самые дорогие функции обновления и отдельной строкой доля, которую съел сам Lua,
+// без движка. Это и есть развилка «виноват скрипт или виноват движок».
+ENGINE_API float ps_da_lua_call_dump = 0.f;
+
+// [DA_PORT] Период отчёта о памяти, В СЕКУНДАХ. 0 - молчит.
+//
+// Заведено под проверку смены стратегии сборки мусора Lua на gc_timeout: она перестаёт запускать
+// сборку из выделений памяти внутри скриптов, и надо убедиться, что память при этом не растёт.
+// Одним числом такое не проверяется - решает ФОРМА кривой на длинном прогоне.
+ENGINE_API float ps_da_mem_log = 0.f;
+
 // [DA_PORT] Сколько миллисекунд отдать прогреву планировщика в конце загрузки уровня.
 //
 // Первые обновления всех объектов локации иначе достаются первому игровому кадру: на Юпитере это
@@ -2703,6 +2766,13 @@ void CCC_Register()
     CMD4(CCC_DaDebugInteger, "da_light_watch", &ps_r__light_watch, 0, 600);
     CMD4(CCC_DaDebugInteger, "da_shift_watch", &ps_r__shift_watch, 0, 600);
     CMD4(CCC_DaDebugInteger, "da_move_dump", &ps_da_move_dump, 0, 2000);
+    CMD4(CCC_DaDebugFloat, "da_squad_dump", &ps_da_squad_dump, 0.f, 1000.f); // [DA_PORT] порог, мс
+    CMD4(CCC_DaDebugFloat, "da_alife_dump", &ps_da_alife_dump, 0.f, 1000.f); // [DA_PORT] порог, мс
+    CMD4(CCC_DaDebugFloat, "da_entity_dump", &ps_da_entity_dump, 0.f, 1000.f); // [DA_PORT] порог, мс
+    CMD4(CCC_DaDebugFloat, "da_object_dump", &ps_da_object_dump, 0.f, 1000.f); // [DA_PORT] порог, мс
+    CMD4(CCC_DaDebugFloat, "da_npc_dump", &ps_da_npc_dump, 0.f, 1000.f); // [DA_PORT] порог, мс
+    CMD4(CCC_DaDebugFloat, "da_lua_call_dump", &ps_da_lua_call_dump, 0.f, 1000.f); // [DA_PORT] порог, мс
+    CMD4(CCC_DaDebugFloat, "da_mem_log", &ps_da_mem_log, 0.f, 600.f); // [DA_PORT] период, с
     CMD4(CCC_DaDebugInteger, "da_stalker_dump", &ps_da_stalker_dump, 0, 2000);
     CMD4(CCC_DaDebugInteger, "da_sched_dump", &ps_da_sched_dump, 0, 2000);
     CMD4(CCC_DaDebugInteger, "da_sched_warmup_ms", &ps_da_sched_warmup_ms, 0, 5000);

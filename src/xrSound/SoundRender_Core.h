@@ -119,6 +119,7 @@ public:
 
 public:
     CSoundRender_Source* i_create_source(pcstr name);
+    float get_source_length_sec(pcstr fName); // [DA_PORT] НЕ виртуальный: см. xr_sound_length_sec
 
     void i_destroy_source(CSoundRender_Source* S);
     void i_start(CSoundRender_Emitter* E) const;

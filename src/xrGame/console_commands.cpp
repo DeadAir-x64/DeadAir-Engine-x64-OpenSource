@@ -134,6 +134,10 @@ extern float g_scope_fov; // Actor.cpp [DA_PORT] CoC-Xray compat
 extern float psSqueezeVelocity;
 extern int psLUA_GCSTEP;
 extern int psLUA_GCTIMEOUT;
+extern int psLUA_GCCEIL; // [DA_PORT] потолок кучи Lua, МБ — предохранитель к gc_timeout
+extern int psLUA_GCMUL;
+extern int psLUA_GCMIN;
+extern int psLUA_GCMAX;
 extern u32 ps_lua_gc_method;
 extern int g_auto_ammo_unload;
 
@@ -266,6 +270,7 @@ const xr_token lua_gc_method_token[] =
     { "gc_step", 1 },
     { "gc_timeout", 2 },
     { "gc_full", 3 },
+    { "gc_adaptive", 4 }, // [DA_PORT] шаг пропорционален выделенному
     { nullptr, -1 }
 };
 
@@ -1925,6 +1930,7 @@ public:
             break;
         case 1:
         case 2:
+        case 4:
             if (prev == 0)
                 lua_gc(GEnv.ScriptEngine->lua(), LUA_GCRESTART, 0);
             break;
@@ -2867,6 +2873,10 @@ void CCC_RegisterCommands()
     CMD1(CCC_LuaGCMethod, "lua_gc_method");
     CMD4(CCC_Integer, "lua_gcstep", &psLUA_GCSTEP, 1, 1000);
     CMD4(CCC_Integer, "lua_gc_timeout", &psLUA_GCTIMEOUT, 1000, 16000);
+    CMD4(CCC_Integer, "lua_gc_ceiling", &psLUA_GCCEIL, 0, 1024); // [DA_PORT] потолок кучи Lua, МБ
+    CMD4(CCC_Integer, "lua_gc_mul", &psLUA_GCMUL, 50, 1000);  // [DA_PORT] % от скорости выделения
+    CMD4(CCC_Integer, "lua_gc_min", &psLUA_GCMIN, 0, 4096);   // [DA_PORT] нижняя граница шага, КБ
+    CMD4(CCC_Integer, "lua_gc_max", &psLUA_GCMAX, 16, 16384); // [DA_PORT] верхняя граница шага, КБ
 
 #ifdef DEBUG
     CMD3(CCC_Mask, "ai_debug", &psAI_Flags, aiDebug);
@@ -3225,6 +3235,99 @@ void CCC_RegisterCommands()
     CMD4(CCC_Float, "con_sensitive", &g_console_sensitive, 0.01f, 1.0f);
     CMD4(CCC_Integer, "wpn_aim_toggle", &b_toggle_weapon_aim, 0, 1);
 
+// [DA_PORT] Выключатель сборщика мусора Lua — для ПРЯМОГО ОПЫТА, а не для игры.
+//
+// Зачем. Выбросы в 10-15 мс на объекте: замер тактов потока показал, что процессор их честно
+// отработал (4.3 млн тактов на мс и в обычном вызове, и в выбросе), то есть остановки НЕТ - работа
+// настоящая, просто её в сорок пять раз больше. В списке худших есть даже провод light_wire, а не
+// только сталкеры, значит дело не в логике NPC, а в чём-то общем для любого объекта внутри
+// scriptBinder.shedule_Update.
+//
+// Признак «память Lua упала» гипотезу о сборщике НЕ проверяет: инкрементальный шаг может ничего не
+// освободить, а память при этом продолжит расти. Поэтому проверяем опытом: выключить сборщик и
+// посмотреть, останутся ли выбросы.
+//
+// ⛔ Не для игры: с выключенным сборщиком память Lua растёт неограниченно. Только на время замера.
+// [DA_PORT] Выключатель компиляции LuaJIT — тоже для опыта, не для игры.
+//
+// Что уже установлено замерами по выбросам в 10-15 мс внутри scriptBinder.shedule_Update:
+//   - поток ВЫПОЛНЯЕТСЯ: 4.3 млн тактов на миллисекунду и в обычном вызове, и в выбросе;
+//   - НЕ сборщик мусора: с da_lua_gc 0 выбросов осталось столько же (16 против 19);
+//   - НЕ выделения памяти: при выбросе Lua тратит те же ~11 КБ, что и в обычном вызове,
+//     а у галогенного светильника - 800 байт при 62 млн тактов;
+//   - НЕ логика объекта: в списке худших провод, стекло, дверь, светильник.
+//
+// Много тактов, мало выделений, объект неважен, один выброс на пятьсот вызовов - это похоже на
+// разовую работу внутри самого LuaJIT: компиляцию трассы, когда счётчик горячего участка перевалил
+// порог. Платит за это тот вызов, которому не повезло.
+//
+// Проверка опытом: если с выключенной компиляцией выбросы исчезнут, а средняя цена вырастет -
+// вопрос закрыт.
+//
+// ⛔ Не для игры: без компиляции все скрипты идут интерпретатором и работают заметно медленнее.
+class CCC_DaLuaJIT final : public IConsole_Command
+{
+public:
+    CCC_DaLuaJIT(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+
+    void Execute(pcstr args) override
+    {
+        lua_State* L = GEnv.ScriptEngine->lua();
+        if (!L)
+        {
+            Msg("! [DA_PORT] компиляция: скриптовая машина ещё не создана");
+            return;
+        }
+
+        if (!args || !args[0])
+        {
+            Msg("~ [DA_PORT] da_lua_jit 0 - выключить компиляцию LuaJIT, 1 - вернуть");
+            return;
+        }
+
+        const bool on = atoi(args) != 0;
+        const int mode = LUAJIT_MODE_ENGINE | (on ? LUAJIT_MODE_ON : LUAJIT_MODE_OFF);
+        const int rc = luaJIT_setmode(L, 0, mode);
+        Msg("~ [DA_PORT] компиляция LuaJIT %s (код %d). Только для замера!", on ? "возвращена" : "ВЫКЛЮЧЕНА", rc);
+    }
+};
+
+class CCC_DaLuaGC final : public IConsole_Command
+{
+public:
+    CCC_DaLuaGC(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+
+    void Execute(pcstr args) override
+    {
+        lua_State* L = GEnv.ScriptEngine->lua();
+        if (!L)
+        {
+            Msg("! [DA_PORT] сборщик: скриптовая машина ещё не создана");
+            return;
+        }
+
+        const int kb = lua_gc(L, LUA_GCCOUNT, 0);
+        if (!args || !args[0])
+        {
+            Msg("~ [DA_PORT] память Lua: %d КБ. da_lua_gc 0 - остановить сборщик, 1 - вернуть", kb);
+            return;
+        }
+
+        if (atoi(args) == 0)
+        {
+            lua_gc(L, LUA_GCSTOP, 0);
+            Msg("~ [DA_PORT] сборщик мусора Lua ОСТАНОВЛЕН (память %d КБ). Только для замера!", kb);
+        }
+        else
+        {
+            lua_gc(L, LUA_GCRESTART, 0);
+            Msg("~ [DA_PORT] сборщик мусора Lua возвращён (память %d КБ)", kb);
+        }
+    }
+};
+
+    CMD1(CCC_DaLuaGC, "da_lua_gc"); // [DA_PORT] опыт со сборщиком
+    CMD1(CCC_DaLuaJIT, "da_lua_jit"); // [DA_PORT] опыт с компиляцией
     CMD1(CCC_UIStyle, "ui_style");
     CMD1(CCC_UIRestart, "ui_restart");
     {

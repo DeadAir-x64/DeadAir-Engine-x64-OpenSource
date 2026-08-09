@@ -197,6 +197,13 @@ public:
     u32 TimerAsync() { return TimerGlobal.GetElapsed_ms(); }
     u32 TimerAsync_MMT() { return TimerMM.GetElapsed_ms() + Timer_MM_Delta; }
 
+    // [DA_PORT] Тот же асинхронный отсчёт, но в МИКРОсекундах.
+    //
+    // Пофазные замеры в скриптах упирались в разрешение: time_global_async даёт миллисекунды, и
+    // работа на сотни микросекунд читалась как «ноль или один». Доказать, что правка что-то дала,
+    // на такой шкале нельзя - обе величины тонут в округлении.
+    u64 TimerAsync_MMT_us() { return TimerMM.GetElapsed_ns() / 1000 + u64(Timer_MM_Delta) * 1000; }
+
 public:
     // Creation & Destroying
     void Create();

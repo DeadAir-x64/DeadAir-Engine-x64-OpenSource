@@ -11,9 +11,30 @@
 #include "script_sound.h"
 #include "script_game_object.h"
 
+// [DA_PORT] sound_length(path) — длина звука в МИЛЛИСЕКУНДАХ, без создания объекта звука.
+//
+// Зачем. sound_theme создавал sound_object только затем, чтобы спросить :length(), и тут же его
+// выбрасывал — на каждую произнесённую реплику. Разбор заголовка при этом дешёвый, источники
+// кэшируются движком в s_sources (i_destroy_source вообще пустой), но обёртка CSound и userdata
+// в Lua создавались каждый раз, то есть это был чистый мусор.
+//
+// Единицы повторяют CScriptSound::Length один в один — iFloor(секунды * 1000). Иначе поедут
+// субтитры: closecaption.sound ждёт длину именно в миллисекундах.
+static u32 da_script_sound_length(pcstr path)
+{
+    if (!path || !path[0])
+        return 0;
+    return u32(iFloor(xr_sound_length_sec(path) * 1000.0f));
+}
+
 void CScriptSound::script_register(lua_State* luaState)
 {
     using namespace luabind;
+
+    module(luaState)
+    [
+        def("sound_length", &da_script_sound_length)
+    ];
 
     module(luaState)
     [

@@ -1,3 +1,4 @@
+#include <atomic> // [DA_PORT] счётчик срабатываний защиты формы
 #include "stdafx.h"
 #include "xr_area.h"
 #include "ISpatial.h"
@@ -15,6 +16,46 @@ using namespace collide;
 //--------------------------------------------------------------------------------
 // RayTest - Occluded/No
 //--------------------------------------------------------------------------------
+// [DA_PORT] Безопасный доступ к форме столкновений объекта, найденного пространственным запросом.
+//
+// Зачем. В CGameObject::net_Destroy форма удаляется РАНЬШЕ, чем объект уходит из пространственной
+// базы, и в этом зазоре его ещё находят запросы луча. Ни один путь запроса не проверял ни форму на
+// ноль, ни сам объект на признак уничтожения - во всём xrCDB не было ни одной проверки getDestroy.
+//
+// Вылет у тестера пришёл именно отсюда: CCF_Skeleton::_RayQuery <- CObjectSpace::_RayQuery2 <-
+// CAI_Stalker::can_kill_entity, и упало ВНУТРИ _RayQuery, то есть указатель был не нулевым, а
+// освобождённым - рабочий поток успел его прочитать до удаления.
+//
+// ⚠️ Эта проверка закрывает однопоточную часть зазора и случай нулевой формы. Гонку «прочитали
+// указатель, потом другой поток удалил объект» она не лечит: для этого уничтожение надо откладывать
+// до конца параллельной фазы. Код здесь стоковый, у OpenXRay та же дыра.
+IC ICollisionForm* da_query_cform(IGameObject* collidable)
+{
+    if (!collidable)
+        return nullptr;
+
+    if (collidable->getDestroy() || !collidable->GetCForm())
+    {
+        // [DA_PORT] Счётчик срабатываний — он заменяет недоступный минидамп.
+        //
+        // Вопрос, на который нечем было ответить: осталась ли гонка после перестановки в net_Destroy.
+        // Прямо её не измерить, но можно измерить, КАК ЧАСТО открывается окно. Если защита щёлкает
+        // регулярно, значит запросы и правда застают объекты в уничтожении, и гонка правдоподобна.
+        // Если молчит весь прогон - окно редкое, и причину вылета надо искать в другом слое.
+        //
+        // Счётчик атомарный: сюда приходят несколько рабочих потоков. Имя объекта НЕ печатается
+        // намеренно - трогать поля уничтожаемого объекта ради диагностики значит завести второй такой
+        // же баг.
+        static std::atomic<u32> s_hits{ 0 };
+        const u32 n = s_hits.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (n <= 5 || (n % 200) == 0)
+            Msg("~ [DA_CFORM] запрос застал объект в уничтожении, срабатывание %u", n);
+        return nullptr;
+    }
+
+    return collidable->GetCForm();
+}
+
 bool CObjectSpace::RayTest(const Fvector& start, const Fvector& dir, float range, collide::rq_target tgt,
     collide::ray_cache* cache, IGameObject* ignore_object)
 {
@@ -45,11 +86,13 @@ bool CObjectSpace::_RayTest(const Fvector& start, const Fvector& dir, float rang
             IGameObject* collidable = spatial->dcast_GameObject();
             if (collidable && (collidable != ignore_object))
             {
-                ECollisionFormType tp = collidable->GetCForm()->Type();
-                if ((tgt & (rqtObject | rqtObstacle)) && (tp == cftObject) &&
-                    collidable->GetCForm()->_RayQuery(Q, r_temp))
+                ICollisionForm* cform = da_query_cform(collidable); // [DA_PORT]
+                if (!cform)
+                    continue;
+                ECollisionFormType tp = cform->Type();
+                if ((tgt & (rqtObject | rqtObstacle)) && (tp == cftObject) && cform->_RayQuery(Q, r_temp))
                     return TRUE;
-                if ((tgt & rqtShape) && (tp == cftShape) && collidable->GetCForm()->_RayQuery(Q, r_temp))
+                if ((tgt & rqtShape) && (tp == cftShape) && cform->_RayQuery(Q, r_temp))
                     return TRUE;
             }
         }
@@ -149,12 +192,15 @@ bool CObjectSpace::_RayPick(
                 continue;
             if (collidable == ignore_object)
                 continue;
-            ECollisionFormType tp = collidable->GetCForm()->Type();
+            ICollisionForm* cform = da_query_cform(collidable); // [DA_PORT]
+            if (!cform)
+                continue;
+            ECollisionFormType tp = cform->Type();
             if (((tgt & (rqtObject | rqtObstacle)) && (tp == cftObject)) || ((tgt & rqtShape) && (tp == cftShape)))
             {
                 u32 C = color_xrgb(64, 64, 64);
                 Q.range = R.range;
-                if (collidable->GetCForm()->_RayQuery(Q, r_temp))
+                if (cform->_RayQuery(Q, r_temp))
                 {
                     C = color_xrgb(128, 128, 196);
                     R.set_if_less(r_temp.r_begin());
@@ -220,7 +266,9 @@ bool CObjectSpace::_RayQuery2(collide::rq_results& r_dest, const collide::ray_de
                 continue;
             if (collidable == ignore_object)
                 continue;
-            ICollisionForm* cform = collidable->GetCForm();
+            ICollisionForm* cform = da_query_cform(collidable); // [DA_PORT]
+            if (!cform)
+                continue;
             ECollisionFormType tp = cform->Type();
             if (((R.tgt & (rqtObject | rqtObstacle)) && (tp == cftObject)) || ((R.tgt & rqtShape) && (tp == cftShape)))
             {
@@ -407,7 +455,9 @@ bool CObjectSpace::_RayQuery(collide::rq_results& r_dest, const collide::ray_def
                         continue;
                     if (collidable == ignore_object)
                         continue;
-                    ICollisionForm* cform = collidable->GetCForm();
+                    ICollisionForm* cform = da_query_cform(collidable); // [DA_PORT]
+                    if (!cform)
+                        continue;
                     ECollisionFormType tp = cform->Type();
                     if (((R.tgt & (rqtObject | rqtObstacle)) && (tp == cftObject)) ||
                         ((R.tgt & rqtShape) && (tp == cftShape)))
