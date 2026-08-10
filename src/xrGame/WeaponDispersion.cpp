@@ -72,9 +72,19 @@ float CWeapon::GetFireDispersion(float cartridge_k, bool for_crosshair)
     //вычислить дисперсию, вносимую самим стрелком
     if (H_Parent())
     {
+        // [DA_PORT] Проверялся РОДИТЕЛЬ, а не результат приведения.
+        //
+        // Держать оружие может не только владелец инвентаря: ящик, физический контейнер, аномалия.
+        // Тогда `smart_cast` честно отдаёт ноль, и `pOwner->GetWeaponAccuracy()` падает — при том
+        // что сам `H_Parent()` не пуст и проверку проходит.
+        //
+        // ⭐ Соседняя `RemoveShotEffector` двенадцатью строками ниже проверяет ровно это же
+        // приведение (`if (pInventoryOwner)`). Здесь проверку не поставили.
+        //
+        // Без владельца разброса от стрелка нет — остаётся только базовый, и это верный ответ.
         const CInventoryOwner* pOwner = smart_cast<const CInventoryOwner*>(H_Parent());
-        float parent_disp = pOwner->GetWeaponAccuracy();
-        fire_disp += parent_disp;
+        if (pOwner)
+            fire_disp += pOwner->GetWeaponAccuracy();
     }
 
     return fire_disp;

@@ -392,6 +392,7 @@ void CAI_Stalker::OnItemTake(CInventoryItem* inventory_item)
 {
     CObjectHandler::OnItemTake(inventory_item);
     m_item_actuality = false;
+    m_da_best_item_frame = u32(-1);
     m_sell_info_actuality = false;
 }
 
@@ -400,6 +401,7 @@ void CAI_Stalker::OnItemDrop(CInventoryItem* inventory_item, bool just_before_de
     CObjectHandler::OnItemDrop(inventory_item, just_before_destroy);
 
     m_item_actuality = false;
+    m_da_best_item_frame = u32(-1);
     m_sell_info_actuality = false;
 
     if (!g_Alive())
@@ -420,6 +422,16 @@ void CAI_Stalker::update_best_item_info()
 {
     if (m_bTrading || !m_can_select_weapon)
         return;
+
+    // DA: за одно обновление сталкера сюда заходят по нескольку раз — четыре оценщика GOAP
+    // (item_to_kill, item_can_kill, remember_item_to_kill, remember_ammo) и best_weapon из
+    // скрипта. Каждый заход уходит в ai_stalker.update_best_weapon с обходом всего инвентаря.
+    // В пределах кадра ответ один и тот же: вход (враг, инвентарь) внутри кадра не меняется,
+    // а сам скрипт держит собственный порог в две секунды. Сброс — там же, где снимается
+    // m_item_actuality, то есть при взятии и выбросе предмета.
+    if (m_da_best_item_frame == Device.dwFrame)
+        return;
+    m_da_best_item_frame = Device.dwFrame;
 
     update_best_item_info_impl();
 }

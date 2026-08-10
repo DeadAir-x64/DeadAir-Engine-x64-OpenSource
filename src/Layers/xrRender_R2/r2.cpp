@@ -816,7 +816,9 @@ void CRender::reset_begin()
         !fsimilar(ps_r__Detail_density, ps_current_detail_density) ||
         !fsimilar(ps_r__Detail_height, ps_current_detail_height)))
     {
-        Details->Unload();
+        // [DA_PORT] b_loaded говорит про УРОВЕНЬ, а не про менеджер деталей — это разные времена жизни.
+        if (Details)
+            Details->Unload();
         xr_delete(Details);
     }
     //-AVO
@@ -1011,6 +1013,9 @@ void CRender::add_StaticWallmark(ref_shader& S, const Fvector& P, float s, CDB::
     if (T->suppress_wm)
         return;
     VERIFY2(_valid(P) && _valid(s) && verts && (s > EPS_L), "Invalid static wallmark params");
+    // [DA_PORT] Движка следов вне уровня НЕ СУЩЕСТВУЕТ — см. разбор у clear_static_wallmarks.
+    if (!Wallmarks)
+        return;
     Wallmarks->AddStaticWallmark(T, verts, P, &*S, s);
 }
 
@@ -1028,11 +1033,37 @@ void CRender::add_StaticWallmark(const wm_shader& S, const Fvector& P, float s, 
     add_StaticWallmark(pShader->hShader, P, s, T, V);
 }
 
-void CRender::clear_static_wallmarks() { Wallmarks->clear(); }
-void CRender::add_SkeletonWallmark(intrusive_ptr<CSkeletonWallmark> wm) { Wallmarks->AddSkeletonWallmark(wm); }
+// [DA_PORT] Найден расшифровкой стека: вылет при выходе из игры во время загрузки уровня.
+//
+// `C0000005`, чтение по `0x18`, и стек читается насквозь:
+//   CWallmarksEngine::clear + 13  <-  CRender::clear_static_wallmarks + 16
+//   <-  CLevel::remove_objects  <-  CLevel::net_Stop  <-  IGame_Persistent::OnEvent
+//
+// Движок следов заводится не в конструкторе рендера, а в level_Load (`r2_loader.cpp:105`), и
+// `xr_delete` в level_Unload возвращает указатель в НОЛЬ. То есть ноль здесь — законное состояние
+// «уровня сейчас нет», а не поломка. А `quit` уходит отложенным событием (`Engine.Event.Defer`),
+// и порядок «выгрузили уровень» / «остановили сеть» не закреплён: net_Stop доходит до уборки
+// следов уже после того, как их движок снесён.
+//
+// ⭐ Подпись та же, что у всех сегодняшних находок: парная защита рядом ЕСТЬ — `if (Wallmarks)`
+// в `r2_R_render.cpp:468`, — а эти четыре места её не получили.
+//
+// Вылет ПРОВЕРЕН воспроизведением и не наш: он одинаково валит и предыдущую сборку.
+void CRender::clear_static_wallmarks()
+{
+    if (Wallmarks)
+        Wallmarks->clear();
+}
+void CRender::add_SkeletonWallmark(intrusive_ptr<CSkeletonWallmark> wm)
+{
+    if (Wallmarks)
+        Wallmarks->AddSkeletonWallmark(wm);
+}
 void CRender::add_SkeletonWallmark(
     const Fmatrix* xf, CKinematics* obj, ref_shader& sh, const Fvector& start, const Fvector& dir, float size)
 {
+    if (!Wallmarks)
+        return;
     Wallmarks->AddSkeletonWallmark(xf, obj, sh, start, dir, size);
 }
 void CRender::add_SkeletonWallmark(

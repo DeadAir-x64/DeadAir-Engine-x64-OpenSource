@@ -1,12 +1,23 @@
 #include "stdafx.h"
+#include "xrScriptEngine/da_lua_singleton.hpp"
 
 #include "XR_IOConsole.h"
 #include "xr_ioc_cmd.h"
 
 #include "xrScriptEngine/script_space.hpp"
 
+// DA: одна обёртка вместо новой на каждый вызов, см. da_lua_singleton.hpp
+static da_lua_singleton<CConsole> s_da_console;
+
+static int da_lua_get_console(lua_State* L)
+{
+    return s_da_console.push(L, Console, "get_console");
+}
+
 void CConsole::script_register(lua_State* luaState)
 {
+    s_da_console.reset();
+
     using namespace luabind;
 
     module(luaState)
@@ -50,4 +61,8 @@ void CConsole::script_register(lua_State* luaState)
             return renderer_allow_override;
         })
     ];
+
+    // DA: перекрываем биндинг luabind своей функцией с кэшем обёртки
+    lua_pushcfunction(luaState, &da_lua_get_console);
+    lua_setglobal(luaState, "get_console");
 }

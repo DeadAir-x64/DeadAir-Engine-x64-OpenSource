@@ -335,13 +335,17 @@ IC bool material_callback(collide::rq_result& result, LPVOID params)
         if (K && (result.element > 0))
         {
             const auto& bone_data = K->LL_GetData(u16(result.element));
-            vis = GMLib.GetMaterialByIdx(bone_data.game_mtl_idx)->fVisTransparencyFactor;
+            // [DA_PORT] Материал кости приходит из данных модели и может не найтись — без него луч
+            // считаем перекрытым (vis остаётся нулём), а не разыменовываем пустоту.
+            if (const SGameMtl* mtl = GMLib.GetMaterialByIdx(bone_data.game_mtl_idx))
+                vis = mtl->fVisTransparencyFactor;
         }
     }
     else
     {
         CDB::TRI* T = g_pGameLevel->ObjectSpace.GetStaticTris() + result.element;
-        vis = GMLib.GetMaterialByIdx(T->material)->fVisTransparencyFactor;
+        const SGameMtl* static_mtl = GMLib.GetMaterialByIdx(T->material);
+        vis = static_mtl ? static_mtl->fVisTransparencyFactor : 0.f;
         if (fis_zero(vis))
         {
             Fvector* V = g_pGameLevel->ObjectSpace.GetStaticVerts();

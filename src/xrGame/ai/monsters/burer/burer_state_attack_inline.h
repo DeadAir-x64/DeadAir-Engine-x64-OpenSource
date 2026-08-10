@@ -94,13 +94,25 @@ void CStateBurerAttack<Object>::execute()
         }
     }
 
+    // [DA_PORT] Именно это место названо в чужом стеке («burer_state_attack_inline.h: execute»).
+    //
+    // Четыре подряд `get_state(...)->check_start_conditions()` без единой проверки. Корень закрыт
+    // в самой get_state (state_inline.h: разыменование end() заменено отказом), но здесь ноль
+    // означает вполне понятное «такого приёма у бюрера не заведено» — и правильный ответ на него
+    // «приём не готов», а не падение.
+    // `auto` намеренно: тип состояния здесь зависимый, имя CSState в этом контексте не видно.
+    const auto da_ready = [this](u32 state_id) -> bool {
+        auto* const st = this->get_state(state_id);
+        return st ? st->check_start_conditions() : false;
+    };
+
     m_allow_anti_aim = true;
-    bool const anti_aim_ready = this->get_state(eStateBurerAttack_AntiAim)->check_start_conditions();
+    bool const anti_aim_ready = da_ready(eStateBurerAttack_AntiAim);
     m_allow_anti_aim = false;
 
-    bool const gravi_ready = this->get_state(eStateBurerAttack_Gravi)->check_start_conditions();
-    bool const shield_ready = this->get_state(eStateBurerAttack_Shield)->check_start_conditions();
-    bool const tele_ready = this->get_state(eStateBurerAttack_Tele)->check_start_conditions();
+    bool const gravi_ready = da_ready(eStateBurerAttack_Gravi);
+    bool const shield_ready = da_ready(eStateBurerAttack_Shield);
+    bool const tele_ready = da_ready(eStateBurerAttack_Tele);
 
     bool selected_state = true;
 

@@ -119,7 +119,8 @@ void CRender::render_lights(light_Package& LP)
                 dsgraph.cmd_list.set_xform_view(L->X.S.view);
                 dsgraph.cmd_list.set_xform_project(L->X.S.project);
                 dsgraph.render_graph(0);
-                if (ps_r2_ls_flags.test(R2FLAG_SUN_DETAILS))
+                // [DA_PORT] Парная проверка: в r2_R_render.cpp:234 и :456 она есть, здесь не было.
+                if (ps_r2_ls_flags.test(R2FLAG_SUN_DETAILS) && Details)
                     Details->Render(dsgraph.cmd_list);
                 L->X.S.transluent = FALSE;
                 if (bSpecial)

@@ -234,7 +234,10 @@ void CRender::level_Unload()
     Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "HOM", (u32)da_device_refs());
 
     //*** Details
-    Details->Unload();
+    // [DA_PORT] Ноль здесь законен: xr_delete ниже возвращает указатель в ноль, а выгрузка
+    // может прийти повторно (см. разбор движка следов в r2.cpp).
+    if (Details)
+        Details->Unload();
     Msg("* [DA_PORT] выгрузка: после \"%s\" ссылок на устройство: %u", "детали", (u32)da_device_refs());
 
     //*** Sectors

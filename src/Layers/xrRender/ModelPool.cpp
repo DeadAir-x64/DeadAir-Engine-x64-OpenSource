@@ -129,8 +129,15 @@ dxRender_Visual* CModelPool::Instance_Load(const char* N, BOOL allow_register)
     case MT_SKELETON_ANIM:
     case MT_SKELETON_RIGID:
     {
+        // [DA_PORT] Здесь материал кости получает свой номер на всю жизнь модели, и здесь же он
+        // раньше молча становился негодным: `GetMaterialIdx` на неизвестном имени отдавал `size()`
+        // (исправлено в корне, теперь отдаёт GAMEMTL_NONE_IDX). Оба R_ASSERT2 разыменовывали
+        // результат ВНУТРИ своего условия, то есть падали до того, как успевали напечатать
+        // задуманное сообщение. Теперь материал берётся во временную, а негодное имя откатывается
+        // на «default_object» — модель с чужим материалом кости грузится, а не роняет игру.
         const u16 def_idx = GMLib.GetMaterialIdx("default_object");
-        R_ASSERT2(GMLib.GetMaterialByIdx(def_idx)->Flags.is(SGameMtl::flDynamic), "'default_object' - must be dynamic");
+        const SGameMtl* def_mtl = GMLib.GetMaterialByIdx(def_idx);
+        R_ASSERT2(def_mtl && def_mtl->Flags.is(SGameMtl::flDynamic), "'default_object' - must be dynamic");
         auto* K = static_cast<CKinematics*>(V);
         VERIFY(K);
         const u16 cnt = K->LL_BoneCount();
@@ -140,8 +147,17 @@ dxRender_Visual* CModelPool::Instance_Load(const char* N, BOOL allow_register)
             if (bd.game_mtl_name.c_str())
             {
                 bd.game_mtl_idx = GMLib.GetMaterialIdx(bd.game_mtl_name.c_str());
-                R_ASSERT2(GMLib.GetMaterialByIdx(bd.game_mtl_idx)->Flags.is(SGameMtl::flDynamic),
-                    "Required dynamic game material");
+                const SGameMtl* bone_mtl = GMLib.GetMaterialByIdx(bd.game_mtl_idx);
+                if (!bone_mtl)
+                {
+                    Msg("! [DA] модель «%s»: у кости «%s» материал «%s» неизвестен, взят default_object", N,
+                        K->LL_BoneName_dbg(k), bd.game_mtl_name.c_str());
+                    bd.game_mtl_idx = def_idx;
+                }
+                else
+                {
+                    R_ASSERT2(bone_mtl->Flags.is(SGameMtl::flDynamic), "Required dynamic game material");
+                }
             }
             else
             {
@@ -361,8 +377,26 @@ void CModelPool::Delete(dxRender_Visual*& V, BOOL bDiscard)
 
 void CModelPool::DeleteQueue()
 {
+    // [DA_PORT] Ссылка в элемент вектора, который может пересобраться прямо во время вызова.
+    //
+    // `DeleteInternal` принимает указатель ПО ССЫЛКЕ (`dxRender_Visual*&`) и в конце пишет в него
+    // ноль. А сам он строкой 353 может добавить в ЭТУ ЖЕ очередь (`ModelsToDelete.push_back`) —
+    // при удалении составной модели её части уходят на отложенное удаление.
+    //
+    // Пересборка вектора после push_back переносит хранилище, и ссылка, которую мы отдали,
+    // указывает в освобождённую память. Запись нуля туда портит чужую кучу, а падение приходит
+    // позже и в стороне — тот же почерк, что у утечек и висячих указателей.
+    //
+    // Берём КОПИЮ указателя: `DeleteInternal` обнулит свою переменную, а нам это и не нужно —
+    // очередь всё равно очищается ниже. Индекс вместо итератора уже стоял правильно, рост очереди
+    // во время обхода обрабатывается.
+    //
+    // Найдено разбором журнала Monolith («Safer procedure to deferred deletion of models»).
     for (u32 it = 0; it < ModelsToDelete.size(); it++)
-        DeleteInternal(ModelsToDelete[it]);
+    {
+        dxRender_Visual* victim = ModelsToDelete[it];
+        DeleteInternal(victim);
+    }
     ModelsToDelete.clear();
 }
 

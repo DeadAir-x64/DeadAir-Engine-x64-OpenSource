@@ -26,20 +26,60 @@ function(target_sources_grouped)
     source_group(${PARSED_ARGS_NAME} FILES ${PARSED_ARGS_FILES})
 endfunction()
 
+# [DA_PORT] Отпечаток ревизии обязан попадать в бинарник, иначе лог краша не с чем сопоставить.
+#
+# Прежняя версия звала `git` просто по имени и глушила ошибку через ERROR_QUIET. Наши сборочные
+# скрипты выставляют PATH="/c/msys64/mingw64/bin:/usr/bin:/bin", а git туда не входит — поэтому во
+# ВСЕХ отгруженных сборках строка выглядела как `commit[] branch[]`, то есть пустой. Обнаружилось на
+# логе тестера: краш в xrGame по смещению, а сопоставить не с чем — двоичные файлы того дня
+# отличались друг от друга, и какой из них у него, узнать было нельзя.
+#
+# Теперь: git ищется через find_package (полный путь, PATH не нужен), а если его нет вовсе — в
+# бинарник идёт явная метка, а не пустота. Отдельно помечается «грязное» дерево: сборка с
+# незакоммиченными правками невоспроизводима, и знать об этом надо сразу.
+#
+# Непроиндексированные файлы намеренно игнорируются (--untracked-files=no): в рабочем дереве их
+# всегда много, и они на содержимое сборки не влияют.
 function(query_git_info output_sha output_branch)
-    execute_process(COMMAND git rev-parse --verify HEAD
+    find_package(Git QUIET)
+
+    if(NOT GIT_EXECUTABLE)
+        message(WARNING "[DA_PORT] git не найден: ревизия в сборку не попадёт, логи крашей будет не с чем сопоставить")
+        set(${output_sha} "no-git" PARENT_SCOPE)
+        set(${output_branch} "no-git" PARENT_SCOPE)
+        return()
+    endif()
+
+    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short=12 --verify HEAD
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         OUTPUT_VARIABLE GIT_SHA1
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
-    execute_process(COMMAND git rev-parse --abbrev-ref HEAD
+    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         OUTPUT_VARIABLE GIT_BRANCH
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
+
+    execute_process(COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=no
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE GIT_DIRTY
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    if(NOT GIT_SHA1)
+        set(GIT_SHA1 "unknown")
+    elseif(GIT_DIRTY)
+        set(GIT_SHA1 "${GIT_SHA1}-dirty")
+    endif()
+
+    if(NOT GIT_BRANCH)
+        set(GIT_BRANCH "unknown")
+    endif()
 
     set(${output_sha} ${GIT_SHA1} PARENT_SCOPE)
     set(${output_branch} ${GIT_BRANCH} PARENT_SCOPE)

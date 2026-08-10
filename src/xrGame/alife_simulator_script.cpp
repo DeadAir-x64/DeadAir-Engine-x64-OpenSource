@@ -13,6 +13,7 @@
 #include "alife_object_registry.h"
 #include "alife_story_registry.h"
 #include "xrScriptEngine/script_engine.hpp"
+#include "xrScriptEngine/da_lua_singleton.hpp"
 #include "xrServer_Objects_ALife_Monsters.h"
 #include "restriction_space.h"
 #include "alife_graph_registry.h"
@@ -31,6 +32,16 @@ STORY_PAIRS story_ids;
 SPAWN_STORY_PAIRS spawn_story_ids;
 
 CALifeSimulator* alife() { return (const_cast<CALifeSimulator*>(ai().get_alife())); }
+
+// DA: одна обёртка вместо новой на каждый вызов — см. da_lua_singleton.hpp.
+// Симулятор пересоздаётся при загрузке сейва, поэтому кэш «на всю игру» был бы ссылкой на
+// освобождённую память; здесь подмена ловится сравнением указателей внутри шаблона.
+static da_lua_singleton<CALifeSimulator> s_da_alife;
+
+static int da_lua_alife(lua_State* L)
+{
+    return s_da_alife.push(L, alife(), "alife");
+}
 
 bool valid_object_id(const CALifeSimulator* self, ALife::_OBJECT_ID object_id)
 {
@@ -608,6 +619,8 @@ void CALifeSimulator::script_register(lua_State* luaState)
     using namespace luabind;
     using namespace luabind::policy;
 
+    s_da_alife.reset();
+
     module(luaState)
     [
         class_<CALifeSimulator>("alife_simulator")
@@ -669,6 +682,10 @@ void CALifeSimulator::script_register(lua_State* luaState)
         def("set_start_position", &set_start_position),
         def("set_start_game_vertex_id", &set_start_game_vertex_id)
     ];
+
+    // DA: перекрываем биндинг luabind своей функцией с кэшем обёртки (см. da_lua_alife выше)
+    lua_pushcfunction(luaState, &da_lua_alife);
+    lua_setglobal(luaState, "alife");
 
     class CALifeSimulatorExporter1
     {

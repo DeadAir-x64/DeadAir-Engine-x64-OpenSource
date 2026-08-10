@@ -158,6 +158,14 @@ void CUIArtefactDetectorAdv::SetBoneCallbacks()
     R_ASSERT(itm);
     m_bid = itm->m_model->LL_BoneID("screen_bone");
 
+    // [DA_PORT] Модель детектора — данные мода. Нет кости → LL_BoneID даёт BI_NONE (0xFFFF), и
+    // назначение обработчика ЗАПИСЫВАЕТ далеко за концом массива костей.
+    if (m_bid == BI_NONE || m_bid >= itm->m_model->LL_BoneCount())
+    {
+        Msg("! [DA] детектор: кости «screen_bone» в модели нет, стрелка не заработает");
+        return;
+    }
+
     CBoneInstance& bi = itm->m_model->LL_GetBoneInstance(m_bid);
     bi.set_callback(bctCustom, BoneCallback, this);
 
@@ -170,6 +178,8 @@ void CUIArtefactDetectorAdv::ResetBoneCallbacks()
     attachable_hud_item* itm = m_parent->HudItemData();
     R_ASSERT(itm);
     u16 bid = itm->m_model->LL_BoneID("screen_bone");
+    if (bid == BI_NONE || bid >= itm->m_model->LL_BoneCount()) // [DA_PORT] см. SetBoneCallbacks
+        return;
 
     CBoneInstance& bi = itm->m_model->LL_GetBoneInstance(bid);
     bi.reset_callback();

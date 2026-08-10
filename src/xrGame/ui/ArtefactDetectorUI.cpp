@@ -128,8 +128,13 @@ void CUIArtefactDetectorHudUI::GetUILocatorMatrix(Fmatrix& _m)
 {
     attachable_hud_item* hi = m_parent->HudItemData();
     Fmatrix trans = hi->m_item_transform;
-    u16 bid = hi->m_model->LL_BoneID(m_attach_bone);
-    Fmatrix attach_bone = hi->m_model->LL_GetTransform(bid);
+    // [DA_PORT] Имя кости из конфигурации детектора: нет её в модели → BI_NONE и чтение за массивом.
+    const u16 bid = hi->m_model->LL_BoneID(m_attach_bone);
+    Fmatrix attach_bone;
+    if (bid == BI_NONE || bid >= hi->m_model->LL_BoneCount())
+        attach_bone.identity();
+    else
+        attach_bone = hi->m_model->LL_GetTransform(bid);
     _m.mul(trans, attach_bone);
     _m.mulB_43(m_map_attach_offset);
 }

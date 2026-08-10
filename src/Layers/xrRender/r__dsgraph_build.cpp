@@ -929,7 +929,11 @@ void R_dsgraph_structure::build_subspace()
             }
             const auto& data = spatial->GetSpatialData();
             const auto& [type, sphere, sector_id] = std::tuple(data.type, data.sphere, data.sector_id);
-            if (sector_id == IRender_Sector::INVALID_SECTOR_ID)
+            // [DA_PORT] Номер сектора ограничивается по размеру массива, а не только сверяется с
+            // «недействительным». Он приходит из detect_sector, а тот получает его лучом по МОДЕЛИ
+            // ПОРТАЛОВ, то есть из данных уровня: рассинхрон портальной модели и списка секторов
+            // даёт номер вне диапазона, и `Sectors[sector_id]` читает за границей.
+            if (sector_id == IRender_Sector::INVALID_SECTOR_ID || sector_id >= Sectors.size())
                 continue; // disassociated from S/P structure
             auto* sector = Sectors[sector_id];
 
@@ -1017,7 +1021,8 @@ void R_dsgraph_structure::build_subspace()
                     const auto& entity_pos = viewEntity->spatial_sector_point();
                     viewEntity->spatial_updatesector(detect_sector(entity_pos));
                     const auto sector_id = viewEntity->GetSpatialData().sector_id;
-                    if (sector_id == IRender_Sector::INVALID_SECTOR_ID)
+                    // [DA_PORT] См. разбор выше: границу массива тоже проверяем.
+                    if (sector_id == IRender_Sector::INVALID_SECTOR_ID || sector_id >= Sectors.size())
                         break; // disassociated from S/P structure
                     CSector* sector = Sectors[sector_id];
                     if (PortalTraverser.i_marker != sector->r_marker)

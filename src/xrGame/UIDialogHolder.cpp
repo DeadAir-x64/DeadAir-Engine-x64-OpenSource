@@ -110,6 +110,15 @@ void CDialogHolder::StopMenu(CUIDialogWnd* pDialog)
 
 void CDialogHolder::AddDialogToRender(CUIWindow* pDialog)
 {
+    // [DA_PORT] Anomaly прикрыла ноль в ДВУХ циклах обхода списка (OnFrame и OnRender). Но ноль туда
+    // не доживает: он падает здесь же, на `pDialog->Show(true)` в конце этой функции. Корень один —
+    // окно приходит из скрипта, значит отказывать надо на входе, а не разбираться при обходе.
+    if (!pDialog)
+    {
+        Msg("! [UI] в список отрисовки пытались добавить пустое окно");
+        return;
+    }
+
     dlgItem itm(pDialog);
     itm.enabled = true;
 
@@ -141,6 +150,25 @@ void CDialogHolder::RemoveDialogToRender(CUIWindow* pDialog)
         (*it).wnd->Show(false);
         (*it).wnd->Enable(false);
         (*it).enabled = false;
+    }
+
+    // [DA_PORT] Очередь на добавление тоже надо просматривать.
+    //
+    // Пока идёт обход кадра (`m_b_in_update`), новые диалоги кладутся не в основной список, а в
+    // `m_dialogsToRender_new` — иначе поехал бы итератор. Снятие же искало ТОЛЬКО в основном.
+    //
+    // Отсюда дыра: диалог, открытый и закрытый в ОДНОМ кадре, снятия не получает — его не нашли, —
+    // и в конце кадра вливается в основной список с признаком «включён». Следующий кадр дёргает
+    // `IsEnabled()` у окна, у которого держатель уже снят, а само оно могло быть удалено.
+    //
+    // Убирать из очереди целиком безопаснее, чем гасить признак: элемент ещё не участвует ни в
+    // обходе, ни в отрисовке, и после слияния его быть не должно вовсе.
+    const auto stale = std::remove(m_dialogsToRender_new.begin(), m_dialogsToRender_new.end(), itm);
+    if (stale != m_dialogsToRender_new.end())
+    {
+        m_dialogsToRender_new.erase(stale, m_dialogsToRender_new.end());
+        pDialog->Show(false);
+        pDialog->Enable(false);
     }
 }
 

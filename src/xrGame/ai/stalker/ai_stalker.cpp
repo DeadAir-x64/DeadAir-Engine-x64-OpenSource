@@ -121,6 +121,7 @@ void CAI_Stalker::reinit()
     m_best_found_item_to_kill = 0;
     m_best_found_ammo = 0;
     m_item_actuality = false;
+    m_da_best_item_frame = u32(-1);
     m_sell_info_actuality = false;
 
     m_ce_close = xr_new<CCoverEvaluatorCloseToEnemy>(&movement().restrictions());
@@ -572,7 +573,9 @@ bool CAI_Stalker::net_Spawn(CSE_Abstract* DC)
     CInifile* ini = pKinematics->LL_UserData();
     if (ini)
     {
-        if (ini->section_exist("immunities"))
+        // [DA_PORT] Проверялось наличие СЕКЦИИ, а читается СТРОКА: пустая [immunities] в описании
+        // модели — а это данные мода — уводила в безусловный Fatal внутри r_string.
+        if (ini->line_exist("immunities", "immunities_sect"))
         {
             LPCSTR imm_sect = ini->r_string("immunities", "immunities_sect");
             conditions().LoadImmunities(imm_sect, pSettings);
@@ -1315,6 +1318,39 @@ void CAI_Stalker::net_Relcase(IGameObject* O)
     sight().remove_links(O);
     movement().remove_links(O);
 
+    // [DA_PORT] Кэш «чем лучше всего убивать» тоже надо бросать — он этого не делал.
+    //
+    // net_Relcase — это уведомление «объект уходит, брось на него ссылки», и здесь сбрасываются
+    // зрение, движение и физика. А `m_best_item_to_kill` — СЫРОЙ указатель, который живёт между
+    // кадрами (ставится в ai_stalker_fire.cpp, читается там же на следующих), и его не сбрасывал
+    // никто.
+    //
+    // ⚠️ Флаг `m_item_actuality` не спасает: он снимается при взятии и выбросе предмета, но не при
+    // уничтожении. И главное — в ветке со скриптовым хуком `ai_stalker.update_best_weapon`
+    // указатель разыменовывается ПЕРВОЙ же строкой (`smart_cast<CGameObject*>`), до всякой проверки
+    // актуальности. То есть чтение таблицы виртуальных функций у покойника.
+    //
+    // Сравнивать безопасно: на момент relcase объект ещё жив, уведомление приходит ДО того, как он
+    // будет снесён.
+    //
+    // Найдено разбором журнала Monolith («CAI_Stalker::net_Relcase invalidate m_best_item_to_kill
+    // if matches»), причина проверена по своему коду.
+    {
+        // ⚠️ Параметр константный: два поля из четырёх объявлены как `const CInventoryItem*`.
+        const auto da_matches = [O](const CInventoryItem* item) {
+            return item && (&item->object() == O);
+        };
+
+        if (da_matches(m_best_item_to_kill))
+            m_best_item_to_kill = nullptr;
+        if (da_matches(m_best_ammo))
+            m_best_ammo = nullptr;
+        if (da_matches(m_best_found_item_to_kill))
+            m_best_found_item_to_kill = nullptr;
+        if (da_matches(m_best_found_ammo))
+            m_best_found_ammo = nullptr;
+    }
+
     if (!g_Alive())
         return;
 
@@ -1501,19 +1537,31 @@ bool CAI_Stalker::unlimited_ammo() { return infinite_ammo() && CObjectHandler::p
 void CAI_Stalker::ResetBoneProtections(pcstr imm_sect, pcstr bone_sect)
 {
     IKinematics* pKinematics = smart_cast<IKinematics*>(Visual());
+    // [DA_PORT] Функция открыта скриптам как `reset_bone_protections`, то есть оба имени приходят
+    // из мода. `r_string` на отсутствующей строке делает БЕЗУСЛОВНЫЙ Fatal — он живой в релизе.
+    if (!pKinematics)
+        return;
+
     CInifile* ini = pKinematics->LL_UserData();
     if (ini)
     {
-        if (imm_sect || ini->section_exist("immunities"))
+        if (imm_sect || ini->line_exist("immunities", "immunities_sect"))
         {
+            // ⚠️ Условие было по `section_exist`, а читается СТРОКА: пустая секция [immunities] в
+            // описании модели давала Fatal при живой проверке.
             imm_sect = imm_sect ? imm_sect : ini->r_string("immunities", "immunities_sect");
             conditions().LoadImmunities(imm_sect, pSettings);
         }
 
         if (bone_sect || ini->line_exist("bone_protection", "bones_protection_sect"))
         {
-            bone_sect = ini->r_string("bone_protection", "bones_protection_sect");
-            m_boneHitProtection->reload(bone_sect, pKinematics);
+            // ⭐ Здесь переданное имя ЗАТИРАЛОСЬ чтением из ini — при том что соседняя ветка двумя
+            // строками выше делает ровно наоборот, через тернарник. Обычная описка копированием:
+            // вызов с именем секции костей и моделью без `bone_protection` уводил в Fatal, а само
+            // переданное имя не использовалось никогда.
+            bone_sect = bone_sect ? bone_sect : ini->r_string("bone_protection", "bones_protection_sect");
+            if (m_boneHitProtection)
+                m_boneHitProtection->reload(bone_sect, pKinematics);
         }
     }
 }

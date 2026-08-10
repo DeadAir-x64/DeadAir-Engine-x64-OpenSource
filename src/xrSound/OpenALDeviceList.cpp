@@ -161,6 +161,22 @@ XRSOUND_API void snd_device_display_name(pstr dst, size_t size, pcstr src)
 
 void ALDeviceList::IterateAndAddDevicesString(pcstr devices)
 {
+    // [DA_PORT] Пустой список устройств больше не роняет и не подвешивает запуск.
+    //
+    // `alcGetString(nullptr, ALC_*_DEVICES_SPECIFIER)` при отсутствии звуковых устройств (или при
+    // ошибке драйвера) отдаёт НОЛЬ, а цикл ниже первым же действием делает `*devices`. Проверки не
+    // было: расширение перечисления объявлено — значит список считался заведомо годным.
+    //
+    // ⚠️ Случай не выдуманный: машина без звуковой карты, отключённые устройства вывода,
+    // удалённый рабочий стол. Игра при этом падала ДО меню, то есть игрок не видел ничего.
+    //
+    // Найдено разбором журнала Monolith («fix infinite loop when no sound devices in system»).
+    if (!devices)
+    {
+        Log("! [DA] SOUND: OpenAL не отдал список устройств — звуковых устройств в системе нет");
+        return;
+    }
+
     // go through device list (each device terminated with a single NULL, list terminated with double NULL)
     while (*devices != '\0')
     {
@@ -216,7 +232,12 @@ void ALDeviceList::Enumerate()
     {
         pcstr devices = (pstr)alcGetString(nullptr, ALC_ALL_DEVICES_SPECIFIER);
 
-        xr_strcpy(m_defaultDeviceName, alcGetString(nullptr, ALC_DEFAULT_ALL_DEVICES_SPECIFIER));
+        // [DA_PORT] Имя устройства по умолчанию тоже бывает нулевым — см. разбор у
+        // IterateAndAddDevicesString. `xr_strcpy` из нулевого источника падает.
+        if (pcstr da_default = alcGetString(nullptr, ALC_DEFAULT_ALL_DEVICES_SPECIFIER))
+            xr_strcpy(m_defaultDeviceName, da_default);
+        else
+            m_defaultDeviceName[0] = '\0';
         string512 default_name;
         snd_device_display_name(default_name, sizeof(default_name), m_defaultDeviceName);
         Log("SOUND: OpenAL: system default sound device name is", default_name);
@@ -228,7 +249,11 @@ void ALDeviceList::Enumerate()
     {
         pcstr devices = (pstr)alcGetString(nullptr, ALC_DEVICE_SPECIFIER);
 
-        xr_strcpy(m_defaultDeviceName, alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER));
+        // [DA_PORT] См. разбор выше: источник может быть нулевым.
+        if (pcstr da_default = alcGetString(nullptr, ALC_DEFAULT_DEVICE_SPECIFIER))
+            xr_strcpy(m_defaultDeviceName, da_default);
+        else
+            m_defaultDeviceName[0] = '\0';
         string512 default_name;
         snd_device_display_name(default_name, sizeof(default_name), m_defaultDeviceName);
         Log("SOUND: OpenAL: system default sound device name is", default_name);

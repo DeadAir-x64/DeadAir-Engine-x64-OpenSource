@@ -543,8 +543,10 @@ float CActorCondition::GetInjuriousMaterialDamage()
 
     if (mat_injurios != GAMEMTL_NONE_IDX)
     {
+        // [DA_PORT] Проверка на GAMEMTL_NONE_IDX ловит ОДНО негодное значение из многих: за границы
+        // выводит любой номер >= размера библиотеки. Тот же разбор, что в PHSimpleCharacterInline.
         const SGameMtl* mtl = GMLib.GetMaterialByIdx(mat_injurios);
-        return mtl->fInjuriousSpeed;
+        return mtl ? mtl->fInjuriousSpeed : 0.0f;
     }
     else
         return 0.0f;

@@ -74,10 +74,44 @@ void CALifeSmartTerrainTask::setup_patrol_point(const shared_str& patrol_path_na
     VERIFY(!m_patrol_point);
 
     const CPatrolPath* patrol_path = GetPatrolPath(patrol_path_name);
-    VERIFY(patrol_path);
+    // [DA_PORT] Имя маршрута и номер точки приходят из ДАННЫХ мода (расстановка, конфигурации умных
+    // зон), а обе проверки ниже были мертвы в релизе:
+    //
+    //   VERIFY(patrol_path)   — а `path()` на промахе делает THROW3, который никто не ловит: на
+    //                           MinGW это тихое прекращение процесса, текст сообщения не печатается.
+    //                           Строку «! There is no patrol path» пишет сам поиск, она и остаётся
+    //                           единственной уликой.
+    //   VERIFY(m_patrol_point)— бесполезна по построению: `vertex()` на несуществующем номере
+    //                           возвращает НОЛЬ, и разыменование `->data()` происходит СТРОЧКОЙ
+    //                           ВЫШЕ, до всякой проверки.
+    //
+    // Обходной путь для пропавших маршрутов в движке есть (ENABLE_MISSING_PATROL_PATH_WORKAROUNDS),
+    // но он выключен и подбирает соседнее имя перебором — это гадание, а не починка.
+    if (!patrol_path)
+    {
+        Msg("! [ALife] задача умной зоны: маршрут «%s» не найден, точка не назначена",
+            patrol_path_name.c_str());
+        return;
+    }
 
-    m_patrol_point = &patrol_path->vertex(patrol_point_index)->data();
-    VERIFY(m_patrol_point);
+    const CPatrolPath::CVertex* vertex = patrol_path->vertex(patrol_point_index);
+    if (!vertex)
+    {
+        // Номера точек в маршруте разрежены: недостающий номер — это правка расстановки, а не
+        // поломка. Берём первую точку маршрута: задача остаётся рабочей, место сдвигается.
+        if (patrol_path->vertices().empty())
+        {
+            Msg("! [ALife] задача умной зоны: маршрут «%s» пуст, точка не назначена",
+                patrol_path_name.c_str());
+            return;
+        }
+
+        vertex = (*patrol_path->vertices().begin()).second;
+        Msg("! [ALife] задача умной зоны: в маршруте «%s» нет точки %u, взята первая",
+            patrol_path_name.c_str(), patrol_point_index);
+    }
+
+    m_patrol_point = &vertex->data();
 }
 
 GameGraph::_GRAPH_ID CALifeSmartTerrainTask::game_vertex_id() const

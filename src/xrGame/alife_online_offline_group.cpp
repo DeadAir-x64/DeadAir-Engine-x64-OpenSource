@@ -107,9 +107,26 @@ void CSE_ALifeOnlineOfflineGroup::on_location_change() const { brain().on_locati
 void CSE_ALifeOnlineOfflineGroup::register_member(ALife::_OBJECT_ID member_id)
 {
     VERIFY(m_members.find(member_id) == m_members.end());
-    CSE_ALifeDynamicObject* object = ai().alife().objects().object(member_id);
+
+    // [DA_PORT] Состав отряда приходит из СОХРАНЕНИЯ, а не из кода, и доверять ему нельзя.
+    //
+    // Здесь стояло: взять объект по номеру, привести к монстру, VERIFY(monster) — и дальше
+    // безусловно разыменовать. VERIFY в релизе исчезает (xrDebug_macros.h), и каждая следующая
+    // строка работает с нулём: object->m_bOnline, monster->m_group_id.
+    //
+    // Когда номер в составе не монстр или его вовсе нет: сохранение от другой сборки мода,
+    // снятый аддон, повторно использованный номер. Отряд при этом жив и должен продолжать —
+    // потеря одного бойца несравнимо лучше конца сессии.
+    //
+    // no_assert = true у object(): иначе реестр сам уронит игру раньше, чем мы проверим.
+    CSE_ALifeDynamicObject* object = ai().alife().objects().object(member_id, true);
     CSE_ALifeMonsterAbstract* monster = smart_cast<CSE_ALifeMonsterAbstract*>(object);
-    VERIFY(monster);
+    if (!monster)
+    {
+        Msg("! [DA] отряд [%d]: участник [%d] (%s) не монстр, пропущен", ID, member_id,
+            object ? object->name_replace() : "объекта нет в реестре");
+        return;
+    }
     VERIFY(monster->g_Alive());
 
     bool empty = m_members.empty();

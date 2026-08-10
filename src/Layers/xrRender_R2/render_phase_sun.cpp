@@ -543,7 +543,8 @@ void render_sun::render()
                 dsgraph.cmd_list.set_xform_view(Fidentity);
                 dsgraph.cmd_list.set_xform_project(sun->X.D[cascade_ind].combine);
                 dsgraph.render_graph(0);
-                if (ps_r2_ls_flags.test(R2FLAG_SUN_DETAILS))
+                // [DA_PORT] Парная проверка: в r2_R_render.cpp:234 и :456 она есть, здесь не было.
+                if (ps_r2_ls_flags.test(R2FLAG_SUN_DETAILS) && RImplementation.Details)
                     RImplementation.Details->Render(dsgraph.cmd_list);
                 sun->X.D[cascade_ind].transluent = FALSE;
                 if (bSpecial)

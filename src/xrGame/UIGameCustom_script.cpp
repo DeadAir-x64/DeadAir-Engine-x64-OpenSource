@@ -1,12 +1,23 @@
 #include "pch_script.h"
+#include "xrScriptEngine/da_lua_singleton.hpp"
 
 #include "xrUICore/Static/UIStatic.h"
 
 #include "UIGameCustom.h"
 #include "Level.h"
 
+// DA: одна обёртка вместо новой на каждый вызов, см. da_lua_singleton.hpp
+static da_lua_singleton<CUIGameCustom> s_da_hud;
+
+static int da_lua_get_hud(lua_State* L)
+{
+    return s_da_hud.push(L, CurrentGameUI(), "get_hud");
+}
+
 void CUIGameCustom::script_register(lua_State* luaState)
 {
+    s_da_hud.reset();
+
     using namespace luabind;
 
     module(luaState)
@@ -43,4 +54,8 @@ void CUIGameCustom::script_register(lua_State* luaState)
 
         def("get_hud", +[]() -> CUIGameCustom* { return CurrentGameUI(); })
     ];
+
+    // DA: перекрываем биндинг luabind своей функцией с кэшем обёртки
+    lua_pushcfunction(luaState, &da_lua_get_hud);
+    lua_setglobal(luaState, "get_hud");
 }

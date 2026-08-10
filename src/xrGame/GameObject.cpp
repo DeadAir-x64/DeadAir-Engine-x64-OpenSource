@@ -481,6 +481,50 @@ bool CGameObject::net_Spawn(CSE_Abstract* DC)
     //		Msg ("CGameObject::net_Spawn -- object %s[%x] setID [%d]", *(E->s_name), this, E->ID);
 
     // XForm
+    //
+    // [DA_PORT] Недопустимая позиция больше не переносится из офлайна в живой мир.
+    //
+    // Строкой ниже стоял `VERIFY(_valid(renderable.xform))` — то есть автор ЗНАЛ, что сюда может
+    // прийти нечисло, и проверял. В релизе от проверки не остаётся ничего, и объект выходит в
+    // онлайн с матрицей из NaN.
+    //
+    // ⚠️ Расплата приходит не здесь и потому опознаётся плохо. NaN расходится сразу по трём путям:
+    // в физику (солвер ODE срывается, в логе «LCP internal error»), в расчёт костей — а там уже
+    // ЖИВОЙ R_ASSERT2(_valid(bi.mTransform)) с текстом «callback kils bone matrix», — и в
+    // пространственную базу, где нечисловые границы портят дерево и роняют совсем посторонний
+    // запрос. Ни один из трёх стеков на этот объект не показывает.
+    //
+    // ⛔ Отказывать в спавне (return false) НЕЛЬЗЯ, хотя это и выглядит правильнее всего. Проверено
+    // подстановкой: из 14 подсунутых отказов уборку у вызывающего прошли только 10. Причина — в
+    // иерархии: ДЕВЯТЬ наследников зовут `inherited::net_Spawn(DC)` и выбрасывают результат
+    // (BreakableObject, PhysicObject, HangingLamp, InventoryBox, PDA, flare, entity_alive,
+    // PhysicsSkeletonObject, WeaponBinoculars). Отказ базового класса они проглотят и продолжат
+    // спавн — уже НЕ выставив матрицу, то есть с той, что осталась от прежнего жильца в пуле.
+    // Это хуже исходной болезни.
+    //
+    // Поэтому подменяем значение, а не поток управления. Точка отсчёта — вершина графа, на которой
+    // ALife считает объект: она заведомо на уровне и заведомо годная. Предмет окажется не там, где
+    // был, но мир останется целым, а строка в логе назовёт виновника.
+    //
+    // Правим и сам серверный объект: иначе то же нечисло уедет в следующее сохранение и вернётся.
+    if (!_valid(E->o_Position) || !_valid(E->o_Angle))
+    {
+        Fvector safe_position = {0.f, 0.f, 0.f};
+        if (const CSE_ALifeDynamicObject* dynamic = smart_cast<const CSE_ALifeDynamicObject*>(E))
+            if (ai().game_graph().valid_vertex_id(dynamic->m_tGraphID))
+                safe_position = ai().game_graph().vertex(dynamic->m_tGraphID)->level_point();
+
+        Msg("! [DA] у объекта [%s] секция[%s] id[%u] недопустимые координаты (%f,%f,%f) или поворот "
+            "(%f,%f,%f) — заменено на точку графа (%f,%f,%f), поворот обнулён",
+            E->name_replace(), E->s_name.c_str(), E->ID, VPUSH(E->o_Position), VPUSH(E->o_Angle),
+            VPUSH(safe_position));
+
+        if (!_valid(E->o_Position))
+            E->o_Position = safe_position;
+        if (!_valid(E->o_Angle))
+            E->o_Angle.set(0.f, 0.f, 0.f);
+    }
+
     XFORM().setXYZ(E->o_Angle);
     Position().set(E->o_Position);
 #ifdef DEBUG
@@ -1179,9 +1223,23 @@ void CGameObject::SetKinematicsCallback(bool set)
 
 void VisualCallback(IKinematics* tpKinematics)
 {
+    // [DA_PORT] Обратный вызов костей: ни параметр, ни результат приведения не проверялись.
+    //
+    // Приходит он из расчёта костей, и объект, которому принадлежит скелет, к этому моменту мог
+    // быть уже уничтожен — тогда `GetUpdateCallbackParam()` отдаёт мусор или ноль, а `VERIFY` в
+    // релизе не существует.
+    //
+    // ⭐ Тот же дефект слово в слово стоит в `ActionCallback` (script_entity.cpp) — два разных
+    // файла, один шаблон. Найдено ДИФФОМ дерева Monolith по признаку «они добавили проверку там,
+    // где мы разыменовываем без неё».
+    if (!tpKinematics)
+        return;
+
     CGameObject* game_object =
         smart_cast<CGameObject*>(static_cast<IGameObject*>(tpKinematics->GetUpdateCallbackParam()));
     VERIFY(game_object);
+    if (!game_object)
+        return;
     for (const auto& cb : game_object->visual_callbacks())
         cb(tpKinematics);
 }

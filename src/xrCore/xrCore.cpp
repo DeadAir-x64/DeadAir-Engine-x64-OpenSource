@@ -125,7 +125,20 @@ void xrCore::CalculateBuildId()
 
 void xrCore::PrintBuildInfo()
 {
-    Msg("%s %s build %d, %s (%s)", ApplicationName, XRAY_BUILD_CONFIGURATION, buildId, buildDate, XRAY_BUILD_CONFIGURATION2);
+    // [DA_PORT] Ревизию печатаем ПЕРВОЙ строкой, вместе с номером сборки.
+    //
+    // Номер сборки (buildId) считается из ДАТЫ компиляции, поэтому в один день их бывает несколько,
+    // и по нему нельзя понять, какой именно бинарник у игрока. На логе тестера это стоило разбора:
+    // краш в xrGame по смещению, а сопоставить не с чем — за 8 августа было четыре коммита, образы
+    // отличались на десяток килобайт, и адреса не совпадали ни с одним нашим файлом.
+    //
+    // Теперь в первой же строке лога стоит короткий хеш и, если сборка сделана с незакоммиченными
+    // правками, пометка -dirty. Строка "Custom build from commit[...]" ниже остаётся как была.
+    Msg("%s %s build %d [%s], %s (%s)", ApplicationName, XRAY_BUILD_CONFIGURATION, buildId,
+        GetBuildCommit(), buildDate, XRAY_BUILD_CONFIGURATION2);
+
+    if (!xr_strcmp(GetBuildCommit(), "unknown") || !xr_strcmp(GetBuildCommit(), "no-git"))
+        Log("! [DA_PORT] ревизия в сборку не попала: лог этой сборки будет не с чем сопоставить при разборе краша");
 
     pcstr name      = "Custom";
     pcstr buildUniqueId = nullptr;

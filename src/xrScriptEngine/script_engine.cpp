@@ -54,16 +54,403 @@ setfenv(1, this) ";
 
 static const char* file_header = nullptr;
 
+// [DA_PORT] Разбор мусора Lua ПО РАЗМЕРАМ БЛОКОВ.
+//
+// ЗАЧЕМ. Общий счёт известен — 3607 КБ/сек, из них по обновлениям биндеров разложились только
+// 607: NPC 286, актёр 221, монстры 100. Остальные 3023 КБ/сек не привязаны ни к чему. Искать их
+// профилировщиком по времени бесполезно: скрипты занимают 0.16 мс кадра, то есть в шуме.
+//
+// ⭐ Почему именно здесь. lua_alloc — единственная дверь, через которую LuaJIT ходит за памятью, и
+// он получает СТАРЫЙ размер вместе с новым. Значит отсюда видно и сколько выделено, и сколько
+// освобождено, точно, без выборки и без каких-либо допущений.
+//
+// ⭐ Почему по размерам, а не по функциям. Размер блока — это подпись структуры, и она называет
+// виновника быстрее любого обхода стека: обёртка luabind на возвращённый указатель — это ровно
+// 128 байт (замерено), таблица Lua — 64 плюс части, строка — 24 плюс длина. Тем же приёмом
+// («гистограмма назвала виновника ДО чтения кода») найдена утечка узлов xr_fixed_map.
+//
+// ⛔ Хуками этого не сделать: активный call-хук в LuaJIT подменяет все входы функций и ОТКЛЮЧАЕТ
+// запись новых трасс (Externals/LuaJIT/src/lj_dispatch.c). Профилировать при этом мы будем не ту
+// игру, в которую играют. Счётчик в аллокаторе трассы не трогает вовсе.
+namespace
+{
+constexpr size_t DA_LUA_EXACT = 2048; // точные размеры до 2 КБ: подпись структуры именно здесь
+constexpr size_t DA_LUA_BIG = 24;     // выше — по степеням двойки
+
+struct da_lua_counters
+{
+    u64 new_calls, new_bytes;      // ptr == nullptr: настоящее выделение
+    u64 grow_calls, grow_bytes;    // nsize > osize: рост существующего блока
+    u64 shrink_calls, shrink_bytes;// nsize < osize: усадка
+    u64 free_calls, free_bytes;    // nsize == 0
+    u64 exact[DA_LUA_EXACT];       // сколько выделений какого ТОЧНОГО размера
+    u64 big[DA_LUA_BIG];
+};
+
+// Не atomic и не thread_local намеренно: состояние Lua у нас однопоточное (выход Lua на рабочие
+// потоки был дефектом и закрыт), а атомарные счётчики в этом пути стоили бы дороже самого учёта.
+da_lua_counters g_da_lua{};
+u64 g_da_lua_since = 0;
+
+inline void da_lua_note_new(size_t size)
+{
+    ++g_da_lua.new_calls;
+    g_da_lua.new_bytes += size;
+    if (size < DA_LUA_EXACT)
+        ++g_da_lua.exact[size];
+    else
+    {
+        size_t b = 0;
+        while ((size >>= 1) && b + 1 < DA_LUA_BIG)
+            ++b;
+        ++g_da_lua.big[b];
+    }
+}
+// Отдаёт счётчик в Lua: всего байт, и отдельно штуки по трём размерам, которые дают 99% блоков.
+// Что есть что — установлено калибровкой, а не выведено из заголовков LuaJIT:
+//   48 Б  — замыкание с одним upvalue     64 Б — пустая таблица     128 Б — обёртка luabind
+// Возвращает числа, а не таблицу: числа в LuaJIT не объекты сборщика, значит сам опрос счётчика
+// мусора не создаёт.
+int da_lua_bytes_binding(lua_State* L)
+{
+    lua_pushnumber(L, double(g_da_lua.new_bytes + g_da_lua.grow_bytes));
+    lua_pushnumber(L, double(g_da_lua.exact[48]));
+    lua_pushnumber(L, double(g_da_lua.exact[128]));
+    lua_pushnumber(L, double(g_da_lua.exact[64]));
+    return 4;
+}
+} // namespace
+
 static void* lua_alloc(void* ud, void* ptr, size_t osize, size_t nsize)
 {
     (void)ud;
-    (void)osize;
     if (nsize == 0)
     {
+        if (ptr)
+        {
+            ++g_da_lua.free_calls;
+            g_da_lua.free_bytes += osize;
+        }
         xr_free(ptr);
         return nullptr;
     }
+    if (!ptr)
+        da_lua_note_new(nsize);
+    else if (nsize > osize)
+    {
+        ++g_da_lua.grow_calls;
+        g_da_lua.grow_bytes += nsize - osize;
+    }
+    else if (nsize < osize)
+    {
+        ++g_da_lua.shrink_calls;
+        g_da_lua.shrink_bytes += osize - nsize;
+    }
     return xr_realloc(ptr, nsize);
+}
+
+// Счётчики живут в самом LuaJIT (Externals/LuaJIT/src/lj_str.c): только там видно, выделяется ли
+// под строку память или она нашлась в таблице интернирования.
+extern "C" unsigned long long da_lj_str_new_count;
+extern "C" unsigned long long da_lj_str_new_bytes;
+// Кто создаёт замыкания — учёт в lj_func.c, где известен прототип с именем файла и строкой.
+// Обёртки luabind по классам — счётчик в push_new_instance (Externals/luabind/src/object_rep.cpp).
+extern "C" void da_ud_reset();
+extern "C" int da_ud_get(int index, const char** name, unsigned long long* count);
+extern "C" int da_udsite_get(int index, const char** src, int* line, unsigned long long* count);
+extern "C" int da_dep_get(int index, const void** ret, unsigned long long* count);
+extern "C" void da_ptr_stat(unsigned long long* total, unsigned long long* distinct, unsigned long long* overflow);
+// Кэш обёрток по указателю: сброс привязан к жизни состояния Lua, опт-ин — по имени класса.
+extern "C" void da_cache_reset(lua_State* L);
+extern "C" void da_cache_enable_class(const char* name);
+extern "C" void da_cache_stat(unsigned long long* hit, unsigned long long* miss, unsigned long long* full);
+extern "C" unsigned long long da_ud_total_get();
+extern "C" void da_tab_capi_reset();
+extern "C" unsigned long long da_tab_capi_get();
+extern "C" int da_tabc_get(int index, const void** ret, unsigned long long* count);
+extern "C" void da_cc_reset();
+extern "C" int da_cc_get(int index, void** fn, unsigned long long* count);
+extern "C" unsigned long long da_cc_total;
+extern "C" void da_fn_reset();
+extern "C" int da_fn_get(int index, const char** chunk, int* line, unsigned long long* count);
+extern "C" unsigned long long da_fn_total;
+extern "C" unsigned long long da_fn_lost;
+// Разбор по ТИПАМ объекта сборщика — счётчики в конструкторах LuaJIT. Размер блока типа не
+// выдаёт: 48 байт дают и строка в 21 символ, и хеш-часть таблицы на два узла, и пустая userdata.
+enum { DA_GC_FUNC, DA_GC_FUNCC, DA_GC_UPVAL, DA_GC_TAB, DA_GC_TABNODE, DA_GC_TABARRAY,
+       DA_GC_UDATA, DA_GC_STR, DA_GC_GCO_ALL, DA_GC_RAW_ALL, DA_GC_KINDS };
+extern "C" unsigned long long da_gc_count[DA_GC_KINDS];
+extern "C" unsigned long long da_gc_bytes[DA_GC_KINDS];
+static unsigned long long g_da_gc_base_count[DA_GC_KINDS];
+static unsigned long long g_da_gc_base_bytes[DA_GC_KINDS];
+// ⚠️ Отсечка окна — при СБРОСЕ, а не при печати. Если считать от прошлой печати, доля строк будет
+// относиться к другому отрезку времени, чем всё остальное в отчёте, и разъедется незаметно.
+static unsigned long long g_da_str_base_count = 0;
+static unsigned long long g_da_str_base_bytes = 0;
+
+XRSCRIPTENGINE_API void da_lua_alloc_reset()
+{
+    g_da_lua = da_lua_counters{};
+    g_da_lua_since = CPU::QPC();
+    g_da_str_base_count = da_lj_str_new_count;
+    g_da_str_base_bytes = da_lj_str_new_bytes;
+    da_fn_reset();
+    da_cc_reset();
+    da_ud_reset();
+    da_tab_capi_reset();
+    for (int k = 0; k < DA_GC_KINDS; ++k)
+    {
+        g_da_gc_base_count[k] = da_gc_count[k];
+        g_da_gc_base_bytes[k] = da_gc_bytes[k];
+    }
+}
+
+XRSCRIPTENGINE_API void da_lua_alloc_dump(int frames)
+{
+    // Снимок до печати: Msg сам выделяет память, и часть её пойдёт через Lua при логировании из
+    // скриптов. Прибор, попавший в собственную таблицу, у нас уже был.
+    da_lua_counters s = g_da_lua; // копия, а не ссылка: ниже мы вычёркиваем из неё найденные размеры
+    const double secs = double(CPU::QPC() - g_da_lua_since) / double(CPU::qpc_freq);
+    const double per_s = secs > 0.01 ? 1.0 / secs : 0.0;
+
+    Msg("~ [DA_LUAMEM] окно %.1f с%s", secs, frames > 0 ? "" : " (кадры не заданы)");
+    Msg("~ [DA_LUAMEM] выделено   %10llu блоков  %9.1f КБ/с", (unsigned long long)s.new_calls,
+        s.new_bytes / 1024.0 * per_s);
+    Msg("~ [DA_LUAMEM] рост блока %10llu раз     %9.1f КБ/с", (unsigned long long)s.grow_calls,
+        s.grow_bytes / 1024.0 * per_s);
+    Msg("~ [DA_LUAMEM] усадка     %10llu раз     %9.1f КБ/с", (unsigned long long)s.shrink_calls,
+        s.shrink_bytes / 1024.0 * per_s);
+    Msg("~ [DA_LUAMEM] освобождено %9llu блоков  %9.1f КБ/с", (unsigned long long)s.free_calls,
+        s.free_bytes / 1024.0 * per_s);
+    Msg("~ [DA_LUAMEM] ИТОГО мусора: %.1f КБ/с (выделено + рост)",
+        (s.new_bytes + s.grow_bytes) / 1024.0 * per_s);
+    if (frames > 0)
+        Msg("~ [DA_LUAMEM] НА КАДР: %.0f блоков, %.1f КБ", double(s.new_calls) / frames,
+            (s.new_bytes + s.grow_bytes) / 1024.0 / frames);
+
+    // Десять самых частых ТОЧНЫХ размеров. Ради этой таблицы всё и написано: размер — подпись
+    // структуры, и по ней виновник ищется в коде быстрее, чем любым чтением подряд.
+    // ⭐ Строки отдельной строкой отчёта. Размер их не выдаёт: строка в 21 символ и замыкание с
+    // одним upvalue дают ОДИН И ТОТ ЖЕ блок в 48 байт, а лечатся они совершенно по-разному.
+    // Поэтому счёт берётся из lj_str_new, уже ПОСЛЕ проверки таблицы интернирования.
+    {
+        const unsigned long long dc = da_lj_str_new_count - g_da_str_base_count;
+        const unsigned long long db = da_lj_str_new_bytes - g_da_str_base_bytes;
+        Msg("~ [DA_LUAMEM] из них СТРОК: %llu (%.1f%% блоков), %.1f КБ/с", dc,
+            s.new_calls ? dc * 100.0 / s.new_calls : 0.0, db / 1024.0 * per_s);
+    }
+    // ⭐ Разбор по типам — главная таблица отчёта. Дважды подряд размер блока назвал не того
+    // виновника (сначала «замыкания», потом «строки»), потому что 48 байт дают сразу четыре разные
+    // структуры. Тип известен в конструкторе и догадок не требует.
+    {
+        static pcstr names[DA_GC_KINDS] = { "замыкания Lua", "замыкания C (pushcclosure)", "upvalue", "таблицы (заголовок)",
+            "таблицы: хеш-часть", "таблицы: массив", "userdata (в т.ч. luabind)", "строки",
+            "ВСЕГО объектов сборщика", "ВСЕГО сырых векторов" };
+        Msg("~ [DA_LUAMEM] --- ПО ТИПАМ ОБЪЕКТА ---");
+        for (int k = 0; k < DA_GC_KINDS; ++k)
+        {
+            const unsigned long long dc = da_gc_count[k] - g_da_gc_base_count[k];
+            const unsigned long long db = da_gc_bytes[k] - g_da_gc_base_bytes[k];
+            if (!dc)
+                continue;
+            Msg("~ [DA_LUAMEM]   %-26s %10llu шт  %9.1f КБ/с  (%4.1f%% блоков)", names[k], dc,
+                db / 1024.0 * per_s, s.new_calls ? dc * 100.0 / s.new_calls : 0.0);
+        }
+        // Откуда таблицы: из C++ через API или из кода Lua. Это разные задачи и разные правки.
+        const unsigned long long tab_all = da_gc_count[DA_GC_TAB] - g_da_gc_base_count[DA_GC_TAB];
+        const unsigned long long tab_c = da_tab_capi_get();
+        if (tab_all)
+            Msg("~ [DA_LUAMEM]   из таблиц: из C++ %llu (%.1f%%), из кода Lua %llu (%.1f%%)", tab_c,
+                tab_c * 100.0 / tab_all, tab_all > tab_c ? tab_all - tab_c : 0,
+                tab_all > tab_c ? (tab_all - tab_c) * 100.0 / tab_all : 0.0);
+        if (tab_c)
+        {
+            struct trow { const void* ret; unsigned long long count; };
+            xr_vector<trow> rows;
+            const void* ret = nullptr;
+            unsigned long long cnt = 0;
+            for (int i = 0; da_tabc_get(i, &ret, &cnt); ++i)
+                rows.push_back({ ret, cnt });
+            std::sort(rows.begin(), rows.end(), [](const trow& a, const trow& b) { return a.count > b.count; });
+            Msg("~ [DA_LUAMEM]   кто объявляет зависимость (add_dependency):");
+            {
+                const void* dret = nullptr;
+                unsigned long long dcnt = 0;
+                for (int i = 0; i < 6 && da_dep_get(i, &dret, &dcnt); ++i)
+                {
+                    pcstr mod = "?";
+                    uintptr_t rva = 0;
+#if defined(XR_PLATFORM_WINDOWS)
+                    HMODULE hm = nullptr;
+                    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)dret, &hm) && hm)
+                    {
+                        static string_path dpath;
+                        GetModuleFileNameA(hm, dpath, sizeof(dpath));
+                        pcstr sl = strrchr(dpath, 0x5C);
+                        mod = sl ? sl + 1 : dpath;
+                        rva = (uintptr_t)dret - (uintptr_t)hm;
+                    }
+#endif
+                    Msg("~ [DA_LUAMEM]     %10llu  %s+0x%llX", dcnt, mod, (unsigned long long)rva);
+                }
+            }
+            Msg("~ [DA_LUAMEM]   кто зовёт lua_createtable:");
+            const size_t ttop = rows.size() < 8 ? rows.size() : 8;
+            for (size_t i = 0; i < ttop; ++i)
+            {
+                pcstr mod = "?";
+                uintptr_t rva = 0;
+#if defined(XR_PLATFORM_WINDOWS)
+                HMODULE hm = nullptr;
+                if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)rows[i].ret, &hm) && hm)
+                {
+                    static string_path path;
+                    GetModuleFileNameA(hm, path, sizeof(path));
+                    pcstr slash = strrchr(path, 0x5C);
+                    mod = slash ? slash + 1 : path;
+                    rva = (uintptr_t)rows[i].ret - (uintptr_t)hm;
+                }
+#endif
+                Msg("~ [DA_LUAMEM]     %10llu  %5.1f%%  %s+0x%llX", rows[i].count,
+                    rows[i].count * 100.0 / tab_c, mod, (unsigned long long)rva);
+            }
+        }
+    }
+    Msg("~ [DA_LUAMEM] --- самые частые размеры выделений ---");
+    for (int top = 0; top < 10; ++top)
+    {
+        size_t best = 0;
+        u64 best_n = 0;
+        for (size_t i = 0; i < DA_LUA_EXACT; ++i)
+            if (s.exact[i] > best_n)
+            {
+                best_n = s.exact[i];
+                best = i;
+            }
+        if (!best_n)
+            break;
+        Msg("~ [DA_LUAMEM]   %5u Б  x %-10llu = %8.1f КБ/с  (%4.1f%% блоков)%s", (u32)best,
+            (unsigned long long)best_n, best_n * best / 1024.0 * per_s,
+            s.new_calls ? best_n * 100.0 / s.new_calls : 0.0,
+            best == 128 ? "   <- размер обёртки luabind на возвращённый указатель" : "");
+        s.exact[best] = 0; // вычёркиваем найденный и ищем следующий
+    }
+    // ⭐ Какие КЛАССЫ оборачиваются. Первое место в мусоре после того, как убрали C-замыкания.
+    const unsigned long long ud_total = da_ud_total_get();
+    if (ud_total)
+    {
+        struct urow { pcstr name; unsigned long long count; };
+        xr_vector<urow> rows;
+        pcstr name = nullptr;
+        unsigned long long count = 0;
+        for (int i = 0; da_ud_get(i, &name, &count); ++i)
+            rows.push_back({ name, count });
+        std::sort(rows.begin(), rows.end(), [](const urow& a, const urow& b) { return a.count > b.count; });
+        Msg("~ [DA_LUAMEM] --- КАКИЕ КЛАССЫ ОБОРАЧИВАЮТСЯ (всего %llu) ---", ud_total);
+        const size_t top = rows.size() < 15 ? rows.size() : 15;
+        for (size_t i = 0; i < top; ++i)
+            Msg("~ [DA_LUAMEM]   %10llu  %5.1f%%  %s%s", rows[i].count,
+                rows[i].count * 100.0 / ud_total, rows[i].name,
+                frames > 0 ? "" : "");
+        if (frames > 0)
+            Msg("~ [DA_LUAMEM]   обёрток на кадр: %.0f", double(ud_total) / frames);
+        {
+            unsigned long long pt = 0, pd = 0, po = 0, ch = 0, cm = 0, cf = 0;
+            da_ptr_stat(&pt, &pd, &po);
+            da_cache_stat(&ch, &cm, &cf);
+            if (ch + cm)
+                Msg("~ [DA_LUAMEM]   кэш обёрток: попаданий %llu, промахов %llu (%.1f%%)%s", ch, cm,
+                    (ch + cm) ? ch * 100.0 / (ch + cm) : 0.0, cf ? "  ⚠️ таблица переполнена" : "");
+            if (pt)
+                Msg("~ [DA_LUAMEM]   РАЗНЫХ объектов: %llu из %llu обёрток — на объект по %.1f "
+                    "обёртке%s", pd, pt, pd ? double(pt) / pd : 0.0,
+                    po ? "  ⚠️ таблица переполнена, счёт неполон" : "");
+        }
+
+        // И самое нужное: КТО их просит — строка скрипта.
+        struct srow { pcstr src; int line; unsigned long long count; };
+        xr_vector<srow> sites;
+        pcstr src = nullptr;
+        int line = 0;
+        for (int i = 0; da_udsite_get(i, &src, &line, &count); ++i)
+            sites.push_back({ src, line, count });
+        std::sort(sites.begin(), sites.end(), [](const srow& a, const srow& b) { return a.count > b.count; });
+        Msg("~ [DA_LUAMEM] --- ОТКУДА ПРОСЯТ ОБЁРТКИ (строка скрипта) ---");
+        const size_t stop = sites.size() < 15 ? sites.size() : 15;
+        for (size_t i = 0; i < stop; ++i)
+        {
+            pcstr name = strrchr(sites[i].src, 0x5C);
+            Msg("~ [DA_LUAMEM]   %10llu  %5.1f%%  %s:%d", sites[i].count,
+                sites[i].count * 100.0 / ud_total, name ? name + 1 : sites[i].src, sites[i].line);
+        }
+    }
+
+    // ⭐ Кто создаёт C-замыкания — по адресу функции. Разбирается снаружи: addr2line по DLL.
+    if (da_cc_total)
+    {
+        struct crow { void* fn; unsigned long long count; };
+        xr_vector<crow> rows;
+        void* fn = nullptr;
+        unsigned long long count = 0;
+        for (int i = 0; da_cc_get(i, &fn, &count); ++i)
+            rows.push_back({ fn, count });
+        std::sort(rows.begin(), rows.end(), [](const crow& a, const crow& b) { return a.count > b.count; });
+        Msg("~ [DA_LUAMEM] --- КТО СОЗДАЁТ C-ЗАМЫКАНИЯ (всего %llu) ---", da_cc_total);
+        const size_t top = rows.size() < 12 ? rows.size() : 12;
+        for (size_t i = 0; i < top; ++i)
+        {
+            // Модуль и смещение — прямо в отчёте. Блок [DA_MODULES] пишется только при падении, а
+            // голый адрес без базы модуля разобрать нечем: addr2line ждёт смещение внутри образа.
+            pcstr mod = "?";
+            uintptr_t rva = 0;
+#if defined(XR_PLATFORM_WINDOWS)
+            HMODULE hm = nullptr;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    (LPCSTR)rows[i].fn, &hm) && hm)
+            {
+                static string_path path;
+                GetModuleFileNameA(hm, path, sizeof(path));
+                pcstr slash = strrchr(path, 0x5C); // 0x5C = обратная косая
+                mod = slash ? slash + 1 : path;
+                rva = (uintptr_t)rows[i].fn - (uintptr_t)hm;
+            }
+#endif
+            Msg("~ [DA_LUAMEM]   %10llu  %5.1f%%  %s+0x%llX", rows[i].count,
+                rows[i].count * 100.0 / da_cc_total, mod, (unsigned long long)rva);
+        }
+        Msg("~ [DA_LUAMEM]   различных функций: %u", (u32)rows.size());
+    }
+
+    // ⭐ Откуда берутся замыкания — по МЕСТУ В КОДЕ. Из Lua это недостижимо: классы мода сделаны
+    // через luabind и являются userdata, перебрать их методы обёртками нельзя. Здесь же прототип
+    // известен точно.
+    if (da_fn_total)
+    {
+        struct row { const char* chunk; int line; unsigned long long count; };
+        xr_vector<row> rows;
+        const char* chunk = nullptr;
+        int line = 0;
+        unsigned long long count = 0;
+        for (int i = 0; da_fn_get(i, &chunk, &line, &count); ++i)
+            rows.push_back({ chunk, line, count });
+        std::sort(rows.begin(), rows.end(), [](const row& a, const row& b) { return a.count > b.count; });
+        Msg("~ [DA_LUAMEM] --- КТО СОЗДАЁТ ЗАМЫКАНИЯ (всего %llu%s) ---", da_fn_total,
+            da_fn_lost ? ", часть не поместилась в таблицу" : "");
+        const size_t top = rows.size() < 20 ? rows.size() : 20;
+        for (size_t i = 0; i < top; ++i)
+            Msg("~ [DA_LUAMEM]   %8llu  %5.1f%%  %s:%d", rows[i].count,
+                rows[i].count * 100.0 / da_fn_total, rows[i].chunk, rows[i].line);
+        if (frames > 0)
+            Msg("~ [DA_LUAMEM]   итого замыканий на кадр: %.0f", double(da_fn_total) / frames);
+    }
+
+    u64 big_total = 0;
+    for (size_t b = 0; b < DA_LUA_BIG; ++b)
+        big_total += s.big[b];
+    if (big_total)
+        Msg("~ [DA_LUAMEM]   крупнее %u Б: %llu блоков", (u32)DA_LUA_EXACT, (unsigned long long)big_total);
 }
 
 static void* __cdecl luabind_allocator(void* context, const void* pointer, size_t const size)
@@ -126,6 +513,10 @@ void CScriptEngine::reinit()
         if (m_profiler)
             m_profiler->OnDispose(m_virtual_machine);
 
+        // [DA_PORT] Кэш обёрток гасим ДО закрытия состояния: номера ссылок принадлежат ему, и
+        // после lua_close снимать их некуда. Сравнивать сохранённый lua_State* было бы ошибкой —
+        // аллокатор охотно отдаст новому состоянию тот же адрес.
+        da_cache_reset(nullptr);
         lua_close(m_virtual_machine);
         UnregisterState(m_virtual_machine);
     }
@@ -136,6 +527,20 @@ void CScriptEngine::reinit()
         return;
     }
     RegisterState(m_virtual_machine, this);
+    // [DA_PORT] Кэш обёрток включаем на новое состояние. Разрешён ровно один класс: у game_object
+    // деструктор (~CScriptGameObject) сам зовёт da_cache_forget, а без этого запись пережила бы
+    // объект и отдала бы обёртку от покойника, когда адрес достанется другому.
+    da_cache_reset(m_virtual_machine);
+    da_cache_enable_class("game_object");
+    // [DA_PORT] Счётчик мусора Lua, видимый из скриптов. Ради него профилировщик мусора получается
+    // ОБЁРТКАМИ, а не хуками: обёртка строится один раз при постановке, а не на каждый вызов, и в
+    // измеряемый счёт не попадает вовсе. Ровно этим замер мусора отличается от замера времени, где
+    // накладные расходы обёрток сравнимы с измеряемым (скрипты занимают 0.16 мс кадра).
+    //
+    // Ставится здесь, а не в exporter: состояние Lua пересоздаётся на каждой загрузке, и глобальное
+    // имя надо возвращать вместе с ним.
+    lua_pushcfunction(m_virtual_machine, da_lua_bytes_binding);
+    lua_setglobal(m_virtual_machine, "da_lua_bytes");
     if (strstr(Core.Params, "-_g"))
         file_header = file_header_new;
     else
@@ -162,6 +567,18 @@ void CScriptEngine::print_stack(lua_State* L)
 {
     if (L == nullptr)
         L = lua();
+
+    // [DA_PORT] Печать стека вызывается из обработчика ОТКАЗА, то есть в момент, когда состояние
+    // программы уже недостоверно. Если виртуальной машины нет (её снесли, отказ пришёл раньше её
+    // создания или из чужого потока), прежний код шёл в lua_isstring(nullptr) и падал ВТОРОЙ раз —
+    // прямо внутри разбора первого отказа. В логе тестера это выглядело так: заголовок «стек
+    // скрипта на момент отказа» напечатан, стека нет, дальше второе C0000005 уже в системном
+    // модуле. Диагностика обязана молчать, а не добивать отчёт.
+    if (!L)
+    {
+        Log("~ [DA_PORT] стек скрипта недоступен: виртуальная машина Lua не создана или уже снесена");
+        return;
+    }
 
     if (lua_isstring(L, -1))
     {
@@ -648,7 +1065,10 @@ CScriptEngine::~CScriptEngine()
     }
 
     if (m_virtual_machine)
+    {
+        da_cache_reset(nullptr); // [DA_PORT] см. reinit: гасим кэш до закрытия состояния
         lua_close(m_virtual_machine);
+    }
     while (!m_script_processes.empty())
         remove_script_process(m_script_processes.begin()->first);
 #ifdef DEBUG
@@ -680,7 +1100,13 @@ void CScriptEngine::lua_error(lua_State* L)
     print_output(L, "", LUA_ERRRUN);
     on_error(L);
 
-#if !XRAY_EXCEPTIONS
+// [DA_PORT] Условие обязано следовать за флагом LUABIND, а не за флагом движка.
+//
+// В отгружаемой сборке стоят ОБА флага сразу: LUABIND_NO_EXCEPTIONS (luabind собран без исключений)
+// и XRAY_EXCEPTIONS=1. Прежнее `#if !XRAY_EXCEPTIONS` из-за второго флага выбирало ветку `throw`,
+// а ловить этот бросок некому: `catch` в диспетчере luabind компилируется только под
+// `#ifndef LUABIND_NO_EXCEPTIONS` (make_function.hpp). Бросок ушёл бы в зону без обработчика.
+#if !XRAY_EXCEPTIONS || defined(LUABIND_NO_EXCEPTIONS)
     xrDebug::Fatal(DEBUG_INFO, "LUA error: %s", lua_tostring(L, -1));
 #else
     throw lua_tostring(L, -1);
@@ -722,7 +1148,7 @@ int CScriptEngine::lua_pcall_failed(lua_State* L)
     return LUA_ERRRUN;
 }
 
-#if !XRAY_EXCEPTIONS
+#if !XRAY_EXCEPTIONS || defined(LUABIND_NO_EXCEPTIONS)
 void CScriptEngine::lua_cast_failed(lua_State* L, const luabind::type_id& info)
 {
     string128 buf;
@@ -741,13 +1167,58 @@ void CScriptEngine::setup_callbacks()
     if (!debugger() || !debugger()->Active())
 #endif
     {
-#if !XRAY_EXCEPTIONS
+        // [DA_PORT] Оба обработчика ОБЯЗАНЫ быть выставлены, раз luabind собран без исключений.
+        //
+        // Прежнее условие `#if !XRAY_EXCEPTIONS` в нашей сборке ложно (XRAY_EXCEPTIONS=1), поэтому
+        // не выставлялся ни один. Для ошибки ВЫЗОВА это скрадывал обработчик pcall ниже — он
+        // регистрируется безусловно и печатает стек первым. А вот ошибка ПРИВЕДЕНИЯ ТИПА идёт мимо
+        // pcall: luabind зовёт cast_error (detail/call_shared.hpp), тот не находит обработчика и
+        // делает std::terminate() — в релизе assert вырезан, поэтому процесс исчезал БЕЗ единого
+        // сообщения и без стека.
+        //
+        // Воспроизведено на стенде: колбэк ai_stalker.update_best_weapon объявлен движком как
+        // luabind::functor<CScriptGameObject*>; стоило скрипту вернуть оттуда строку — игра
+        // пропадала, в логе ноль записей об ошибке. Это и есть класс «лог обрывается на пустом
+        // месте», приходивший от тестеров.
+#if !XRAY_EXCEPTIONS || defined(LUABIND_NO_EXCEPTIONS)
         luabind::set_error_callback(CScriptEngine::lua_error);
 #endif
 
-        luabind::set_pcall_callback([](lua_State* L) { lua_pushcfunction(L, CScriptEngine::lua_pcall_failed); });
+        // [DA_PORT] Обработчик ошибок для защищённого вызова — из реестра, а не заново каждый раз.
+        //
+        // ЧТО БЫЛО. Здесь стоял голый `lua_pushcfunction`, а luabind зовёт этот колбэк ПЕРЕД КАЖДЫМ
+        // защищённым вызовом из Lua в движок (`Externals/luabind/src/pcall.cpp:34-46`). Каждый
+        // `lua_pushcfunction` создаёт новый GCfuncC — 48 байт, которые тут же становятся мусором.
+        //
+        // ЦЕНА. Замер: 432 015 таких замыканий за 600 кадров, то есть **720 на кадр** — 99.4% всех
+        // C-замыканий и **52% всего мусора Lua** (935 КБ/сек из 2553). Найдено не чтением кода:
+        // гистограмма по типам объектов назвала GCfuncC, а гистограмма по указателю функции —
+        // конкретно эту. Две догадки «по размеру блока» до этого промахнулись.
+        //
+        // ЧТО СТАЛО. Замыкание строится один раз на состояние Lua и лежит в реестре под ключом-
+        // адресом статической переменной (числовой ключ брать нельзя: реестр раздаёт их luaL_ref).
+        // Горячий путь — один `lua_rawget`, ноль выделений.
+        //
+        // ⚠️ Контракт luabind: колбэк обязан оставить на стеке РОВНО ОДНО значение, дальше его
+        // `lua_insert` уводит под аргументы. Обе ветки ниже это соблюдают.
+        //
+        // Пересоздания состояния учитывать не нужно: `reinit()` делает новый lua_State с чистым
+        // реестром, и кэш восстановится сам на первом же вызове.
+        luabind::set_pcall_callback([](lua_State* L)
+        {
+            static const char da_pcall_key = 0; // ключом служит АДРЕС, значение неважно
+            lua_pushlightuserdata(L, (void*)&da_pcall_key);
+            lua_rawget(L, LUA_REGISTRYINDEX);
+            if (lua_isfunction(L, -1))
+                return; // горячий путь
+            lua_pop(L, 1);
+            lua_pushcfunction(L, CScriptEngine::lua_pcall_failed);
+            lua_pushlightuserdata(L, (void*)&da_pcall_key);
+            lua_pushvalue(L, -2);
+            lua_rawset(L, LUA_REGISTRYINDEX); // снимает ключ и копию, обработчик остаётся на стеке
+        });
     }
-#if !XRAY_EXCEPTIONS
+#if !XRAY_EXCEPTIONS || defined(LUABIND_NO_EXCEPTIONS)
     luabind::set_cast_failed_callback(CScriptEngine::lua_cast_failed);
 #endif
     lua_atpanic(lua(), CScriptEngine::lua_panic);

@@ -131,6 +131,21 @@ IC bool CProblemSolverAbstract::actual() const
 TEMPLATE_SPECIALIZATION
 IC void CProblemSolverAbstract::add_operator(const _operator_id_type& operator_id, _operator_ptr _op)
 {
+    // [DA_PORT] Предрезерв при первом добавлении.
+    //
+    // Операторы и вычислители лежат в СОРТИРОВАННЫХ векторах и добавляются вставкой в середину.
+    // Пока вектор пуст, каждая вставка удваивает ёмкость, то есть при наборе в три десятка
+    // операторов планировщик успевает переселить содержимое пять-шесть раз.
+    //
+    // Число взято по коду, а не с потолка: у планировщика обращения с оружием 31 вычислитель,
+    // у планировщика отряда и обработчика предметов по 4-10, у сталкера шесть точек добавления
+    // операторов. Тридцати двух хватает всем без единого переселения.
+    //
+    // ⚠️ Это разовая цена при СОЗДАНИИ планировщика, а не работа каждого кадра. Замером такое не
+    // видно и в достижения не записывается; правка сделана как чистая гигиена.
+    if (m_operators.empty())
+        m_operators.reserve(32);
+
     typename OPERATOR_VECTOR::iterator I = std::lower_bound(m_operators.begin(), m_operators.end(), operator_id);
     THROW((I == m_operators.end()) || ((*I).m_operator_id != operator_id));
 #ifdef DEBUG
@@ -203,6 +218,11 @@ TEMPLATE_SPECIALIZATION
 IC void CProblemSolverAbstract::add_evaluator(const condition_type& condition_id, _condition_evaluator_ptr evaluator)
 {
     THROW(evaluators().end() == evaluators().find(condition_id));
+
+    // [DA_PORT] Предрезерв при первом добавлении — разбор у add_operator.
+    if (m_evaluators.empty())
+        m_evaluators.reserve(32);
+
     m_evaluators.insert(std::make_pair(condition_id, evaluator));
 }
 

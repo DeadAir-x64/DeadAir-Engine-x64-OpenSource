@@ -36,7 +36,12 @@ void CHangingLamp::RespawnInit()
     Init();
     if (Visual())
     {
+        // [DA_PORT] Та же дыра, что ниже в TurnOff, но здесь не было даже VERIFY. Наличие визуала
+        // не значит, что он скелетный: модель лампы приходит из данных мода. В этом же файле,
+        // строкой 139, автор ровно это и проверяет — `if (smart_cast<IKinematics*>(Visual()))`.
         IKinematics* K = smart_cast<IKinematics*>(Visual());
+        if (!K)
+            return;
         K->LL_SetBonesVisible(u64(-1));
         K->CalculateBones_Invalidate();
         K->CalculateBones(TRUE);
@@ -313,8 +318,16 @@ void CHangingLamp::TurnOff()
         light_ambient->set_active(false);
     if (Visual())
     {
+        // [DA_PORT] Визуал есть — но он может быть НЕ СКЕЛЕТНЫМ.
+        //
+        // Условие выше проверяет только наличие визуала; автор про отсутствие знал. А приведение
+        // к IKinematics даёт ноль ещё и когда модель статическая — это дефект ДАННЫХ: секция лампы
+        // указывает на модель без скелета. VERIFY в релизе исчезает, дальше разыменование нуля.
+        //
+        // Без костей гасить нечего: свет уже выключен строками выше, выходим молча.
         IKinematics* K = smart_cast<IKinematics*>(Visual());
-        VERIFY(K);
+        if (!K)
+            return;
         K->LL_SetBoneVisible(light_bone, FALSE, TRUE);
         VERIFY2(K->LL_GetBonesVisible() != 0,
             make_string("can not Turn Off lamp: %s, visual %s - because all bones become invisible",

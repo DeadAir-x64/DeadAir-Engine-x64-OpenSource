@@ -127,7 +127,9 @@ void CRender::Calculate()
         const auto& entity_pos = spatial->spatial_sector_point();
         spatial->spatial_updatesector(dsgraph_main.detect_sector(entity_pos));
         const auto sector_id = spatial->GetSpatialData().sector_id;
-        if (sector_id == IRender_Sector::INVALID_SECTOR_ID)
+        // [DA_PORT] Границу массива секторов проверяем наравне с «недействительным» номером —
+        // см. разбор в r__dsgraph_build.cpp: номер приходит лучом по модели порталов, из данных.
+        if (sector_id == IRender_Sector::INVALID_SECTOR_ID || sector_id >= dsgraph_main.Sectors.size())
             continue; // disassociated from S/P structure
 
         VERIFY(spatial->GetSpatialData().type & STYPE_LIGHTSOURCE);

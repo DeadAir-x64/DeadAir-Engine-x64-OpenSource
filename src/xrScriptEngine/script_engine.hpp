@@ -53,6 +53,12 @@ enum class LuaMessageType : u32
     HookTailReturn = u32(-1),
 };
 
+// [DA_PORT] Разбор мусора Lua по размерам блоков: счётчик стоит в самом аллокаторе LuaJIT.
+// Отвечает на вопрос «откуда 3023 КБ/сек», который профилировщику по времени не виден — скрипты
+// занимают 0.16 мс кадра. Хуки при этом не ставятся, запись трасс JIT не глохнет.
+XRSCRIPTENGINE_API void da_lua_alloc_reset();
+XRSCRIPTENGINE_API void da_lua_alloc_dump(int frames);
+
 extern XRSCRIPTENGINE_API Flags32 g_LuaDebug;
 extern XRSCRIPTENGINE_API int g_LuaDumpDepth;
 
@@ -216,7 +222,8 @@ public:
     static int lua_pcall_failed(lua_State* L);
     // [DA_PORT] "-da_lua_trace" launch flag: whole-mod engine->script dispatch tracing
     static bool da_lua_trace();
-#if !XRAY_EXCEPTIONS
+// [DA_PORT] условие следует за флагом luabind, см. script_engine.cpp
+#if !XRAY_EXCEPTIONS || defined(LUABIND_NO_EXCEPTIONS)
     static void lua_cast_failed(lua_State* L, const luabind::type_id& info);
 #endif
     static void lua_hook_call(lua_State* L, lua_Debug* dbg);

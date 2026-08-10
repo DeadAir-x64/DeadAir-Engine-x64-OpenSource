@@ -229,6 +229,7 @@ public:
 
     /// MT stuff
     Task* m_calc_task{};
+    u32 m_da_calc_skips{};
 
     void DispatchMTCalc();
     void WaitCalcTask(); // [DA_PORT] дождаться расчёта травы перед выгрузкой или удалением

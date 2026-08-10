@@ -62,8 +62,11 @@ void CPHSimpleCharacter::UpdateDynamicDamage(dContact* c, u16 obj_material_idx, 
     // DeltaK=m1*m2*(v1-v2)^2/(2*(m1+m2))
     if (accepted_energy > 0.f)
     {
+        // [DA_PORT] Материала может не быть — см. разбор у GMLib.GetMaterialByIdx. Их пункт звучал
+        // как «nullptr check уменьшит вылеты при взаимодействии с трупами»; у трупа номер материала
+        // и правда выходит за диапазон. Без материала множителя отскока нет, значит и урона нет.
         SGameMtl* obj_material = GMLib.GetMaterialByIdx(obj_material_idx);
-        c_vel = dSqrt(accepted_energy / m_mass * 2.f) * obj_material->fBounceDamageFactor;
+        c_vel = obj_material ? dSqrt(accepted_energy / m_mass * 2.f) * obj_material->fBounceDamageFactor : 0.f;
     }
     else
         c_vel = 0.f;
@@ -140,12 +143,18 @@ IC void CPHSimpleCharacter::foot_material_update(u16 contact_material_idx, u16 f
 {
     if (m_elevator_state.UpdateMaterial(*p_lastMaterialIDX))
         return;
-    if (*p_lastMaterialIDX != u16(-1) &&
-        GMLib.GetMaterialByIdx(*p_lastMaterialIDX)->Flags.test(SGameMtl::flPassable) && !b_foot_mtl_check)
+    // [DA_PORT] Оба материала могут не найтись — см. разбор у GMLib.GetMaterialByIdx.
+    // ⚠️ Проверка на u16(-1) рядом уже стоит, но она ловит ОДНО негодное значение из многих:
+    // за границы вектора выводит любой номер >= размера, а не только «минус один».
+    const SGameMtl* const last_material =
+        (*p_lastMaterialIDX != u16(-1)) ? GMLib.GetMaterialByIdx(*p_lastMaterialIDX) : nullptr;
+    if (last_material && last_material->Flags.test(SGameMtl::flPassable) && !b_foot_mtl_check)
         return;
     b_foot_mtl_check = false;
 
     const SGameMtl* contact_material = GMLib.GetMaterialByIdx(contact_material_idx);
+    if (!contact_material)
+        return;
 
     if (contact_material->Flags.test(SGameMtl::flPassable))
     {

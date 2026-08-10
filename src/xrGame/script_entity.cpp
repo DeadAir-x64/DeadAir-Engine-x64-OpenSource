@@ -181,9 +181,16 @@ CScriptEntityAction* CScriptEntity::GetCurrentAction()
 void ActionCallback(IKinematics* tpKinematics)
 {
     // sounds
+    // [DA_PORT] См. разбор у VisualCallback (GameObject.cpp) — тот же шаблон в другом файле:
+    // параметр обратного вызова и результат приведения разыменовывались под мёртвым `VERIFY`.
+    if (!tpKinematics)
+        return;
+
     CScriptEntity* l_tpScriptMonster =
         smart_cast<CScriptEntity*>((CGameObject*)(tpKinematics->GetUpdateCallbackParam()));
     VERIFY(l_tpScriptMonster);
+    if (!l_tpScriptMonster)
+        return;
     if (!l_tpScriptMonster->GetCurrentAction())
         return;
     l_tpScriptMonster->vfUpdateSounds();

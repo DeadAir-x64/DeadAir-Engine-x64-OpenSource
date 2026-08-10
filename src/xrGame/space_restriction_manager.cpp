@@ -12,6 +12,8 @@
 #include "space_restriction_manager.h"
 #include "space_restriction_bridge.h"
 #include "Common/object_broker.h"
+#include "ai_space.h"
+#include "xrAICore/Navigation/level_graph.h"
 
 struct CSpaceRestrictionManager::CClientRestriction
 {
@@ -74,24 +76,36 @@ shared_str CSpaceRestrictionManager::out_restrictions(ALife::_OBJECT_ID id)
     return ("");
 }
 
+// [DA_PORT] Три чтения ЧЕРЕЗ end(), закрытые только отладочным VERIFY.
+//
+// VERIFY в релизе компилируется в ничто (см. xrDebug_macros.h), после чего `(*I).second` читает
+// память за концом контейнера. Незарегистрированный клиент — не выдумка: unrestrict() чуть ниже
+// удаляет запись, а обновление пути у уже снятого объекта приходит следующим кадром.
+//
+// Возвращаем то же, что означает отсутствие записи по смыслу класса: пустые наборы ограничений и
+// пустое ограничение. Это НЕ произвольное решение — обе перегрузки accessible() ниже уже трактуют
+// пустой указатель как «ограничений нет» и отвечают true.
 shared_str CSpaceRestrictionManager::base_in_restrictions(ALife::_OBJECT_ID id)
 {
     CLIENT_RESTRICTIONS::iterator I = m_clients->find(id);
-    VERIFY(m_clients->end() != I);
+    if (m_clients->end() == I)
+        return shared_str();
     return ((*I).second.m_base_in_restrictions);
 }
 
 shared_str CSpaceRestrictionManager::base_out_restrictions(ALife::_OBJECT_ID id)
 {
     CLIENT_RESTRICTIONS::iterator I = m_clients->find(id);
-    VERIFY(m_clients->end() != I);
+    if (m_clients->end() == I)
+        return shared_str();
     return ((*I).second.m_base_out_restrictions);
 }
 
 CSpaceRestrictionManager::CRestrictionPtr CSpaceRestrictionManager::restriction(ALife::_OBJECT_ID id)
 {
     CLIENT_RESTRICTIONS::iterator I = m_clients->find(id);
-    VERIFY(m_clients->end() != I);
+    if (m_clients->end() == I)
+        return nullptr;
     return ((*I).second.m_restriction);
 }
 
@@ -191,7 +205,33 @@ CSpaceRestrictionManager::CRestrictionPtr CSpaceRestrictionManager::restriction(
 u32 CSpaceRestrictionManager::accessible_nearest(ALife::_OBJECT_ID id, const Fvector& position, Fvector& result)
 {
     CRestrictionPtr client_restriction = restriction(id);
-    VERIFY(client_restriction);
+
+    // [DA_PORT] Единственный член класса, разыменовывавший указатель за отладочным VERIFY.
+    //
+    // Сюда приходят ТОЛЬКО после того, как accessible() ответила «нет». А accessible() для клиента
+    // без ограничений отвечает «да». Значит попасть сюда с пустым ограничением можно ровно одним
+    // способом: между двумя вызовами клиента сняли с учёта. В отладке ловил VERIFY, в релизе он
+    // исчезал и сессия кончалась разыменованием нуля.
+    //
+    // Что отдаём: у клиента без ограничений запрошенная точка и есть доступная — возвращаем её и
+    // вершину уровня под ней. Такой же приём стоит в control_path_builder_base_path.cpp:199.
+    //
+    // ⚠️ Сообщение однократное. Событие редкое, но если оно пошло потоком, лог не должен превратиться
+    // в спам — а знать, что оно вообще случилось, нужно: молчаливая запасная ветка прячет причину.
+    if (!client_restriction)
+    {
+        static bool reported = false;
+        if (!reported)
+        {
+            reported = true;
+            Msg("! [DA] accessible_nearest: клиент [%u] снят с учёта между проверкой и запросом, "
+                "считаем его неограниченным", (u32)id);
+        }
+
+        result = position;
+        return (ai().get_level_graph() ? ai().level_graph().vertex_id(position) : u32(-1));
+    }
+
     return (client_restriction->accessible_nearest(position, result));
 }
 

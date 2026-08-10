@@ -759,7 +759,23 @@ bool CUIActorMenu::ToBag(CUICellItem* itm, bool b_use_cursor_pos)
     CUIDragDropListEx* new_owner = NULL;
     if (b_use_cursor_pos)
     {
-        new_owner = CUIDragDropListEx::m_drag_item->BackList();
+        // [DA_PORT] Перетаскиваемого предмета может не быть, и его список — тоже.
+        //
+        // `m_drag_item` статический и живёт только во время перетаскивания. Признак того, что это
+        // настоящая величина, а не «всегда есть»: в самом интерфейсе его проверяют перед
+        // использованием ШЕСТЬ раз, а `BackList()` на ноль сверяет сам автор движка
+        // (`UIDragDropListEx.cpp:446`). Голыми остались ровно три места переноса — здесь и два в
+        // ToBelt. Стоящий ниже VERIFY в релизе пуст, то есть ноль уходил в `SetItem`.
+        //
+        // Достижимо и снаружи: ToSlot/ToBelt выведены в Lua (`UIActorMenu_script.cpp:137-138`) и
+        // берут b_use_cursor_pos от скрипта — вызов без перетаскивания даёт ровно этот ноль.
+        // Скрипты Dead Air их сегодня не зовут, но аддону ничто не мешает.
+        //
+        // Откат честный: берём тот же список, что и ветка без курсора. Это ровно то поведение,
+        // которое получил бы вызывающий, передав b_use_cursor_pos = false.
+        new_owner = CUIDragDropListEx::m_drag_item ? CUIDragDropListEx::m_drag_item->BackList() : nullptr;
+        if (!new_owner)
+            new_owner = GetListByType(iActorBag);
         VERIFY(GetListType(new_owner) == iActorBag);
     }
     else
@@ -831,7 +847,11 @@ bool CUIActorMenu::ToBelt(CUICellItem* itm, bool b_use_cursor_pos)
         CUIDragDropListEx* new_owner = NULL;
         if (b_use_cursor_pos)
         {
-            new_owner = CUIDragDropListEx::m_drag_item->BackList();
+            // [DA_PORT] См. разбор у ToBag: без перетаскивания m_drag_item — ноль. Откат тот же,
+            // что у ветки без курсора.
+            new_owner = CUIDragDropListEx::m_drag_item ? CUIDragDropListEx::m_drag_item->BackList() : nullptr;
+            if (!new_owner)
+                new_owner = m_pLists[eInventoryBeltList];
             VERIFY(new_owner == m_pLists[eInventoryBeltList]);
         }
         else
@@ -859,8 +879,14 @@ bool CUIActorMenu::ToBelt(CUICellItem* itm, bool b_use_cursor_pos)
 
         CUIDragDropListEx* belt_list = NULL;
         if (b_use_cursor_pos)
-            belt_list = CUIDragDropListEx::m_drag_item->BackList();
+            belt_list = CUIDragDropListEx::m_drag_item ? CUIDragDropListEx::m_drag_item->BackList() : nullptr;
         else
+            return false;
+
+        // [DA_PORT] Здесь отката нет и быть не может: вся ветка обмена держится на том, КУДА
+        // указывает курсор, а без перетаскивания этого «куда» не существует. Ветка без курсора
+        // строкой выше по той же причине просто выходит — выходим и мы.
+        if (!belt_list)
             return false;
 
         Ivector2 belt_cell_pos = belt_list->PickCell(GetUICursor().GetCursorPosition());

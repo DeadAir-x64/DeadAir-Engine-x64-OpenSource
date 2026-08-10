@@ -300,23 +300,78 @@ public:
         return it != materials.end() ? *it : nullptr;
     }
 
+    // [DA_PORT] Промахов по одному и тому же имени бывает много (материал кости ищется для каждой
+    // кости каждой модели), поэтому запись в лог придушена.
+    void da_report_missing_material(pcstr name, int id) const
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 10 || (da_hits % 500) == 0)
+        {
+            if (name)
+                Msg("! [DA] материал «%s» не найден в библиотеке (случаев %u)", name, da_hits);
+            else
+                Msg("! [DA] материал с номером %d не найден в библиотеке (случаев %u)", id, da_hits);
+        }
+    }
+
+    // [DA_PORT] Источник негодных номеров материала — вот он.
+    //
+    // При промахе `it == materials.end()`, и `u16(it - materials.begin())` даёт РОВНО `size()`,
+    // то есть первый номер за границей. `VERIFY` в релизе пуст, поэтому промах проходил молча и
+    // отравлял номер навсегда: у кости он оседает в `bd.game_mtl_idx` при загрузке модели и потом
+    // всплывает где угодно — в бликах линз, в подборе материала кости. Имя материала берётся из
+    // модели и из game_materials.xr, то есть из ДАННЫХ мода, а не из кода.
+    //
+    // ⭐ Соседи по классу — `GetMaterialID`, `GetMaterial`, `GetMaterialByID` — промах обрабатывают
+    // честно. Не обрабатывали только эти две.
     [[nodiscard]] u16 GetMaterialIdx(int ID)
     {
         const auto it = GetMaterialItByID(ID);
-        VERIFY(materials.end() != it);
+        if (materials.end() == it)
+        {
+            da_report_missing_material(nullptr, ID);
+            return u16(GAMEMTL_NONE_IDX);
+        }
         return u16(it - materials.begin());
     }
 
     [[nodiscard]] u16 GetMaterialIdx(pcstr name)
     {
         const auto it = GetMaterialIt(name);
-        VERIFY(materials.end() != it);
+        if (materials.end() == it)
+        {
+            da_report_missing_material(name, -1);
+            return u16(GAMEMTL_NONE_IDX);
+        }
         return u16(it - materials.begin());
     }
 
+    // [DA_PORT] Чтение за границами вектора вместо отказа.
+    //
+    // `VERIFY` в релизе пуст, и `materials[idx]` на негодном номере читает память за массивом —
+    // получается МУСОРНЫЙ указатель, по которому тут же берут поле. Номер материала приходит из
+    // данных и из физики (у трупа он вполне может оказаться вне диапазона), а не из кода.
+    //
+    // Ноль вместо мусора: падение становится детерминированным, а строка выше называет номер.
+    // Вызывающих, которые результат не проверяют, немного, и главный из них прикрыт отдельно —
+    // см. CPHSimpleCharacter::UpdateDynamicDamage.
+    //
+    // Найдено разбором журнала Monolith («UpdateDynamicDamage, nullptr check should reduce crashes
+    // when interacting with dead bodies»), причина проверена по своему коду и оказалась в КОРНЕ,
+    // а не в вызывающем.
     [[nodiscard]] SGameMtl* GetMaterialByIdx(u16 idx) const
     {
         VERIFY(idx < materials.size());
+        if (idx >= materials.size())
+        {
+            static u32 da_hits = 0;
+            ++da_hits;
+            if (da_hits <= 5 || (da_hits % 200) == 0)
+                Msg("! [DA] материал: номер %u при общем числе %u — отказ (случаев %u)", (u32)idx,
+                    (u32)materials.size(), da_hits);
+            return nullptr;
+        }
         return materials[idx];
     }
 

@@ -64,6 +64,17 @@ void TTestDepthCallback(bool& do_colide, bool bo1, dContact& c, SGameMtl* materi
     if (saved_callback)
         saved_callback(do_colide, bo1, c, material_1, material_2);
 
+    // [DA_PORT] Материал может не найтись — см. разбор у GMLib.GetMaterialByIdx.
+    //
+    // ⭐ Показательно, что рядом это ЗНАЮТ: `CPHActorCharacter::InitContact` и
+    // `CPHAICharacter::InitContact` проверяют оба указателя перед `Flags.test`. Здесь — нет,
+    // хотя приходят они из того же поиска по номеру.
+    //
+    // Без материала «проходима ли поверхность» неизвестно, а вся ветка ниже именно про это —
+    // значит правильный ответ «ничего не делаем».
+    if (!material_1 || !material_2)
+        return;
+
     if (do_colide && !material_1->Flags.test(SGameMtl::flPassable) && !material_2->Flags.test(SGameMtl::flPassable))
     {
         float& depth = c.geom.depth;

@@ -220,8 +220,10 @@ IC int dcTriListCollider::dSortTriPrimitiveCollide(
 						debug_output().DBG_DrawTri(Tr, V_array, color_xrgb(0, 255, 0));
 #endif
 					SGameMtl* material = GMLib.GetMaterialByIdx(Tr->material);
+                    // [DA_PORT] VERIFY исчезает в релизе, а следующей строкой шло разыменование.
+                    // Без материала треугольник считаем непроходимым — это осторожная сторона.
                     VERIFY(material);
-                    bool b_passable = !!material->Flags.test(SGameMtl::flPassable);
+                    bool b_passable = material && !!material->Flags.test(SGameMtl::flPassable);
                     bool contain_pos =
                         TriContainPoint(vertices[0], vertices[1], vertices[2], tri.norm, tri.side0, tri.side1, p);
                     bool b_pased = false;

@@ -64,3 +64,9 @@ void DA_AfterLoadTick();
 
 // [DA_PORT] Один раз за сессию выполняет команду из `-da_cmd "<команда>"`. См. run_headless.ps1.
 void DA_StartupCommandTick();
+
+// [DA_PORT] Окно замера счётчика выделений: сбросить сейчас, отчитаться через N кадров. Отдельно
+// от da_after_load, потому что у той одна ячейка и цепочку «сброс -> пауза -> отчёт» в неё не
+// уложить.
+void DA_AllocStatWindow(int frames, bool bench, bool quit);
+void DA_AllocStatTick();

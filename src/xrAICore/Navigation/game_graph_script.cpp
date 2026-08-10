@@ -12,8 +12,21 @@
 #include "AISpaceBase.hpp"
 
 #include "xrScriptEngine/script_space.hpp"
+#include "xrScriptEngine/da_lua_singleton.hpp"
+
+// [DA_PORT] Одна обёртка вместо новой на каждый вызов — шестой одиночка к пяти закрытым ранее.
+// Замер: 1078 обёрток CGameGraph за 300 кадров при том, что граф ОДИН И ТОТ ЖЕ. Скрипты зовут
+// game_graph() в горячих местах (smart_terrain:632 и :1513 — по разу на проверку смарта).
+// Кэш чинит себя сам сравнением указателей: на смене уровня граф пересоздаётся, и обёртка
+// перестроится, а не укажет в освобождённую память.
+static da_lua_singleton<const CGameGraph> s_da_game_graph;
 
 const CGameGraph* get_game_graph() { return &GEnv.AISpace->game_graph(); }
+
+static int da_lua_game_graph(lua_State* L)
+{
+    return s_da_game_graph.push(L, get_game_graph(), "game_graph");
+}
 const CGameGraph::CHeader* get_header(const CGameGraph* self_) { return (&self_->header()); }
 bool get_accessible1(const CGameGraph* self_, const u32& vertex_id) { return (self_->accessible(vertex_id)); }
 void get_accessible2(const CGameGraph* self_, const u32& vertex_id, bool value) { self_->accessible(vertex_id, value); }
@@ -40,13 +53,15 @@ void CGameGraph::script_register(lua_State* luaState)
     using namespace luabind;
     using namespace luabind::policy;
 
+    s_da_game_graph.reset(); // состояние Lua пересоздано — прежняя ссылка недействительна
+
     module(luaState)
     [
         class_<GameGraph::LEVEL_MAP::value_type>("GameGraph__LEVEL_MAP__value_type")
             .def_readonly("id", &GameGraph::LEVEL_MAP::value_type::first)
             .def_readonly("level", &GameGraph::LEVEL_MAP::value_type::second),
 
-        def("game_graph", &get_game_graph),
+        def("game_graph", &get_game_graph), // перекрывается ниже кэширующей версией
 
         class_<CGameGraph>("CGameGraph")
             .def("accessible", &get_accessible1)
@@ -83,4 +98,10 @@ void CGameGraph::script_register(lua_State* luaState)
             return p1.distance_to(p2);
         })
     ];
+
+    // [DA_PORT] Кэширующая версия ставится ПОСЛЕ module(): она перекрывает объявленную выше
+    // обычную. Так — потому что внутри module() глобальную функцию задать нельзя, а править
+    // порядок регистрации в чужом файле рискованнее, чем перекрыть готовое.
+    lua_pushcfunction(luaState, da_lua_game_graph);
+    lua_setglobal(luaState, "game_graph");
 }

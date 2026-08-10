@@ -46,6 +46,14 @@ class CPHElement : public CPhysicsElement,
     // ObjectContactCallbackFun*	temp_for_push_out;			//->to shell ??		//aux
     // u32							push_untill;				//->to shell ??		//st
     Flags8 m_flags; //
+    // [DA_PORT] Состояние заслона от нечисел из физики — ПООБЪЕКТНОЕ, а не общее.
+    //
+    // Первая версия дросселировала лог одним `static` на весь класс, и это было ошибкой:
+    // одно вечно сорванное тело затыкало сообщения обо ВСЕХ остальных, то есть прибор молчал
+    // ровно тогда, когда работы становилось больше. Заодно снимается общая изменяемая величина
+    // из-под замка расчёта костей — см. разбор у da_bones_lock.
+    u64 m_invalid_pose_report_step{};
+    u32 m_invalid_pose_contained{};
     enum
     {
         flActive = 1 << 0,

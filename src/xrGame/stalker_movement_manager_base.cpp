@@ -263,17 +263,40 @@ void stalker_movement_manager_base::setup_movement_params(stalker_movement_param
             (movement_params.m_path_type != MovementManager::ePathTypeGamePath) &&
             (movement_params.m_path_type != MovementManager::ePathTypeNoPath))
         {
-            if (!restrictions().accessible(level_path().dest_vertex_id()))
+            // [DA_PORT] Номер вершины проверяется ДО чтения её положения.
+            //
+            // `CLevelGraph::vertex()` в релизе — это `begin() + id` под мёртвым `VERIFY`, то есть
+            // при недопустимом номере читается память за массивом узлов. Вершина назначения сюда
+            // приходит из построителя пути и вполне может оказаться недействительной: путь не
+            // построился, цель снята, уровень сменился.
+            //
+            // ⚠️ Расплата приходит не здесь: из-за границ достаётся мусорная позиция, она уходит в
+            // ограничители и в детальный путь, и падает потом в стороне. Тот же механизм, что уже
+            // стоил нам разбора в реестре графа ALife.
+            //
+            // Найдено разбором журнала Monolith («setup_movement_params, check for validity of
+            // vertices»), причина проверена по своему коду.
+            const u32 da_dest = level_path().dest_vertex_id();
+            if (!ai().level_graph().valid_vertex_id(da_dest))
+            {
+                static u32 da_hits = 0;
+                ++da_hits;
+                if (da_hits <= 5 || (da_hits % 200) == 0)
+                    Msg("! [DA] движение [%s]: вершина назначения %u недействительна — цель не "
+                        "переносим (случаев %u)",
+                        object().cName().c_str(), da_dest, da_hits);
+            }
+            else if (!restrictions().accessible(da_dest))
             {
                 Fvector temp;
-                level_path().set_dest_vertex(restrictions().accessible_nearest(
-                    ai().level_graph().vertex_position(level_path().dest_vertex_id()), temp));
+                level_path().set_dest_vertex(
+                    restrictions().accessible_nearest(ai().level_graph().vertex_position(da_dest), temp));
                 detail().set_dest_position(temp);
             }
             else
             {
-                [[maybe_unused]] u32 vertex_id = level_path().dest_vertex_id();
-                Fvector vertex_position = ai().level_graph().vertex_position(level_path().dest_vertex_id());
+                [[maybe_unused]] u32 vertex_id = da_dest;
+                Fvector vertex_position = ai().level_graph().vertex_position(da_dest);
                 VERIFY2(restrictions().accessible(vertex_position) || show_restrictions(&restrictions()),
                     make_string("vertex_id[%d],position[%f][%f][%f],object[%s]", vertex_id, VPUSH(vertex_position),
                         object().cName().c_str()));

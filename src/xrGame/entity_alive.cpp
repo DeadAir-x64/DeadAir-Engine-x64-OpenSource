@@ -958,8 +958,22 @@ Fvector CEntityAlive::get_last_local_point_on_mesh(Fvector const& last_point, u1
     if (bone_id == u16(-1))
         return inherited::get_last_local_point_on_mesh(last_point, bone_id);
 
+    // [DA_PORT] Второй конец вылета «зрение видит уничтоженный объект».
+    //
+    // Первый конец закрыт 31.07 в CGameObject::get_last_local_point_on_mesh: там разыменовывался
+    // удалённый CForm, отсюда чтение по адресу 0x20. Но в ЭТУ ветку (bone_id задан) уходят раньше
+    // базовой, и здесь стоял VERIFY — а он исчезает в релизе, после чего Bone_GetAnimPos зовётся
+    // по нулю.
+    //
+    // 🔑 Признак того, что это настоящий пробел, а не паранойя: соседний метод в этом же файле,
+    // get_new_local_point_on_mesh, ровно ту же пустоту ПРОВЕРЯЕТ и уходит в базовую реализацию
+    // (строка 841). Автор про случай знал и в одном месте забыл.
+    //
+    // Уходим туда же, куда уходит сосед: базовая реализация не трогает скелет и сама защищена от
+    // отсутствующего CForm.
     IKinematics* const kinematics = smart_cast<IKinematics*>(Visual());
-    VERIFY(kinematics);
+    if (!kinematics)
+        return inherited::get_last_local_point_on_mesh(last_point, u16(-1));
 
     Fmatrix transform;
     kinematics->Bone_GetAnimPos(transform, bone_id, u8(-1), false);

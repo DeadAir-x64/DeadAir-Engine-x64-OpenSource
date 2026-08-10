@@ -1201,6 +1201,68 @@ void DA_AfterLoadTick()
     Console->Execute(g_after_load_cmd);
 }
 
+// [DA_PORT] ---- Окно замера счётчика выделений: da_alloc_stat <кадров> -------------------------
+//
+// Зачем отдельный механизм, а не пара команд руками. Число «выделений в секунду» имеет смысл
+// только применительно к окну, и окно это должно быть ИГРОВЫМ. Первый же прогон показал, чем
+// кончается небрежность: `load_last_save ; da_alloc_stat reset` отчитался за 3 секунды СТАРТА
+// движка, потому что load_last_save только ставит загрузку в очередь, а отчёт отработал сразу за
+// ним. Числа выглядели совершенно правдоподобно — 831 тысяча выделений в секунду — и относились
+// не к игре.
+//
+// Отложенная команда (da_after_load) для этого не годится: у неё одна ячейка, цепочку
+// «сбросить -> подождать -> напечатать» в неё не уложить.
+namespace
+{
+int g_alloc_stat_left = -1; // -1 = окно не открыто
+int g_alloc_stat_frames = 0; // ширина окна: нужна, чтобы отчитаться НА КАДР
+bool g_alloc_stat_bench = false;
+// ⭐ Выход сразу после отчёта. Без него прогон на стенде досиживает до таймаута: замер занимает
+// 11 секунд, а прогон стоил пяти минут ожидания впустую.
+bool g_alloc_stat_quit = false;
+}
+
+void DA_AllocStatWindow(int frames, bool bench, bool quit)
+{
+    da_alloc_stat_reset();
+    da_lua_alloc_reset(); // тем же окном: два отчёта дополняют друг друга и врозь бесполезны
+    g_alloc_stat_left = frames;
+    g_alloc_stat_frames = frames;
+    g_alloc_stat_bench = bench;
+    g_alloc_stat_quit = quit;
+    Msg("~ [DA_ALLOC] окно открыто: отчёт через %d кадров%s", frames,
+        bench ? ", следом замер цены операции" : "");
+}
+
+void DA_AllocStatTick()
+{
+    if (g_alloc_stat_left < 0)
+        return;
+    if (g_alloc_stat_left > 0)
+    {
+        --g_alloc_stat_left;
+        return;
+    }
+    g_alloc_stat_left = -1;
+    da_alloc_stat_dump(false, g_alloc_stat_frames);
+    // Разбор мусора Lua по размерам — из того же окна. Общий счётчик говорит, СКОЛЬКО операций
+    // прошло через xr_realloc; этот говорит, какие из них Lua и что за структуры за ними стоят.
+    da_lua_alloc_dump(g_alloc_stat_frames);
+    // Замер цены — сразу за отчётом и в этом же кадре: частоту он берёт из ТОГО ЖЕ окна, и
+    // разрывать их значит считать наносекунды по одному окну, а штуки по другому.
+    if (g_alloc_stat_bench)
+    {
+        g_alloc_stat_bench = false;
+        da_alloc_bench(g_alloc_stat_frames);
+    }
+    if (g_alloc_stat_quit)
+    {
+        g_alloc_stat_quit = false;
+        FlushLog();
+        Console->Execute("quit");
+    }
+}
+
 // [DA_PORT] ---- Команда из командной строки: -da_cmd "<консольная команда>" -------------------
 //
 // Нужен автотестам (da_port/tools/run_headless.ps1). Своего механизма «выполнить консольную

@@ -133,13 +133,43 @@ void CMovementManager::process_game_path()
         VERIFY(ai().game_graph().vertex(object().ai_location().game_vertex_id())->level_id() ==
             ai().game_graph().vertex(game_path().intermediate_vertex_id())->level_id());
 
-        u32 dest_level_vertex_id = ai().game_graph().vertex(game_path().intermediate_vertex_id())->level_vertex_id();
+        // [DA_PORT] Номер вершины УРОВНЯ приходит из графа ИГРЫ и проверялся нигде.
+        //
+        // Промежуточная вершина игрового графа хранит `level_vertex_id`, и это ДАННЫЕ: связка двух
+        // графов собирается компилятором уровня и вполне может указывать в пустоту (переход между
+        // уровнями, недостроенная сетка ИИ). Ниже этим номером трижды индексируют граф уровня, а
+        // `CLevelGraph::vertex()` в релизе — `begin() + id` под мёртвым `VERIFY`.
+        //
+        // Тот же класс, что уже закрыт в `setup_movement_params`: из-за границ достаётся мусорная
+        // позиция, уходит в ограничители и в построитель пути, и падает в стороне.
+        //
+        // Отказ от построения честнее: путь просто не строится в этом кадре, состояние остаётся
+        // прежним и попытка повторится. Найдено разбором журнала Monolith («Fixed potential crash
+        // in CMovementManager::process_game_path if dest_level_vertex_id is invalid»).
+        const u32 da_inter = game_path().intermediate_vertex_id();
+        if (!ai().game_graph().valid_vertex_id(da_inter))
+            break;
+
+        u32 dest_level_vertex_id = ai().game_graph().vertex(da_inter)->level_vertex_id();
+
+        if (!ai().level_graph().valid_vertex_id(dest_level_vertex_id))
+        {
+            static u32 da_hits = 0;
+            ++da_hits;
+            if (da_hits <= 5 || (da_hits % 200) == 0)
+                Msg("! [DA] путь [%s]: вершина уровня %u из точки графа %u недействительна — путь "
+                    "не строим (случаев %u)",
+                    object().cName().c_str(), dest_level_vertex_id, da_inter, da_hits);
+            break;
+        }
 
         if (!accessible(dest_level_vertex_id))
         {
             Fvector dest_pos;
             dest_level_vertex_id =
                 restrictions().accessible_nearest(ai().level_graph().vertex_position(dest_level_vertex_id), dest_pos);
+            if (!ai().level_graph().valid_vertex_id(dest_level_vertex_id))
+                break;
         }
 
         Fvector temp =

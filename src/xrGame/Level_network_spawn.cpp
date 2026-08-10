@@ -228,10 +228,16 @@ void CLevel::g_sv_Spawn(CSE_Abstract* E)
 
     if (da_spawn_failed)
     {
-        O->net_Destroy();
-        if (!GEnv.isDedicatedServer)
-            client_spawn_manager().clear(O->ID());
-        Objects.Destroy(O);
+        // [DA_PORT] Проверка на ноль: признак неудачи взводится И когда Objects.Create вернул
+        // ничего, а уборка ниже безусловно разыменовывает O. То есть на отказе фабрики игра падала
+        // прямо в обработчике отказа — там, где как раз пыталась пережить беду.
+        if (O)
+        {
+            O->net_Destroy();
+            if (!GEnv.isDedicatedServer)
+                client_spawn_manager().clear(O->ID());
+            Objects.Destroy(O);
+        }
         Msg("! Failed to spawn entity '%s'", E->s_name.c_str());
     }
     else

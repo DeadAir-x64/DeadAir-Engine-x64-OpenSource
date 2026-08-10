@@ -837,31 +837,55 @@ bool CActor::net_Relevant() // relevant for export to server
     };
 };
 
+// [DA_PORT] Имена костей здесь зашиты, но МОДЕЛЬ актёра задаёт мод, и она может их не содержать.
+// `LL_BoneID` на промахе возвращает `BI_NONE` (0xFFFF), а `LL_GetBoneInstance(0xFFFF)` не читает,
+// а ЗАПИСЫВАЕТ обработчик далеко за концом массива — порча чужой кучи с падением потом и не здесь.
+// Проверка внутри доступа (`VERIFY(bone_id < LL_BoneCount())`) в релизе пуста.
+static CBoneInstance* da_actor_bone(IKinematics* V, pcstr bone_name)
+{
+    const u16 bone_id = V->LL_BoneID(bone_name);
+    if (bone_id == BI_NONE || bone_id >= V->LL_BoneCount())
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 10 || (da_hits % 500) == 0)
+            Msg("! [DA] модель актёра: кости «%s» нет, обработчик не назначен (случаев %u)", bone_name, da_hits);
+        return nullptr;
+    }
+    return &V->LL_GetBoneInstance(bone_id);
+}
+
 void CActor::SetCallbacks()
 {
     IKinematics* V = smart_cast<IKinematics*>(Visual());
     VERIFY(V);
-    u16 spine0_bone = V->LL_BoneID("bip01_spine");
-    u16 spine1_bone = V->LL_BoneID("bip01_spine1");
-    u16 shoulder_bone = V->LL_BoneID("bip01_spine2");
-    u16 head_bone = V->LL_BoneID("bip01_head");
-    V->LL_GetBoneInstance(u16(spine0_bone)).set_callback(bctCustom, Spin0Callback, this);
-    V->LL_GetBoneInstance(u16(spine1_bone)).set_callback(bctCustom, Spin1Callback, this);
-    V->LL_GetBoneInstance(u16(shoulder_bone)).set_callback(bctCustom, ShoulderCallback, this);
-    V->LL_GetBoneInstance(u16(head_bone)).set_callback(bctCustom, HeadCallback, this);
+    if (!V)
+        return;
+
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_spine"))
+        bone->set_callback(bctCustom, Spin0Callback, this);
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_spine1"))
+        bone->set_callback(bctCustom, Spin1Callback, this);
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_spine2"))
+        bone->set_callback(bctCustom, ShoulderCallback, this);
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_head"))
+        bone->set_callback(bctCustom, HeadCallback, this);
 }
 void CActor::ResetCallbacks()
 {
     IKinematics* V = smart_cast<IKinematics*>(Visual());
     VERIFY(V);
-    u16 spine0_bone = V->LL_BoneID("bip01_spine");
-    u16 spine1_bone = V->LL_BoneID("bip01_spine1");
-    u16 shoulder_bone = V->LL_BoneID("bip01_spine2");
-    u16 head_bone = V->LL_BoneID("bip01_head");
-    V->LL_GetBoneInstance(u16(spine0_bone)).reset_callback();
-    V->LL_GetBoneInstance(u16(spine1_bone)).reset_callback();
-    V->LL_GetBoneInstance(u16(shoulder_bone)).reset_callback();
-    V->LL_GetBoneInstance(u16(head_bone)).reset_callback();
+    if (!V)
+        return;
+
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_spine"))
+        bone->reset_callback();
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_spine1"))
+        bone->reset_callback();
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_spine2"))
+        bone->reset_callback();
+    if (CBoneInstance* bone = da_actor_bone(V, "bip01_head"))
+        bone->reset_callback();
 }
 
 void CActor::OnChangeVisual()

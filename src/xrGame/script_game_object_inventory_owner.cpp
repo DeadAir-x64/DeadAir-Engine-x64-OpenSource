@@ -490,6 +490,20 @@ void CScriptGameObject::TransferMoney(u32 money, CScriptGameObject* pForWho)
     CInventoryOwner* pOtherOwner = smart_cast<CInventoryOwner*>(&pForWho->object());
     VERIFY(pOtherOwner);
 
+    // [DA_PORT] Оба приведения проверялись только `VERIFY`, то есть в релизе не проверялись.
+    //
+    // ⭐ Обратите внимание на несоответствие прямо здесь: пустой АРГУМЕНТ проверяется по-настоящему,
+    // с сообщением в лог (строка выше), а результат приведения — нет. Между тем объект приходит из
+    // скрипта мода, и владельцем инвентаря он быть не обязан: ящик, труп без инвентаря, аномалия.
+    //
+    // Найдено ДИФФОМ дерева Monolith (коммит c3550100, «safer transfer money script functions»).
+    if (!pOurOwner || !pOtherOwner)
+    {
+        GEnv.ScriptEngine->script_log(LuaMessageType::Error,
+            "transfer money: one of the objects is not an inventory owner");
+        return;
+    }
+
     if (pOurOwner->get_money() < money)
     {
         GEnv.ScriptEngine->script_log(LuaMessageType::Error, "Character does not have enough money");

@@ -162,12 +162,19 @@ bool CEntity::net_Spawn(CSE_Abstract* DC)
     {
         SetfHealth(E->get_health());
 
-        R_ASSERT2(!((E->get_killer_id() != ALife::_OBJECT_ID(-1)) && g_Alive()),
-            make_string(
-                "server entity [%s][%d] has an killer [%d] and not dead", E->name_replace(), E->ID, E->get_killer_id())
-                .c_str());
-
         m_killer_id = E->get_killer_id();
+
+        // [DA_PORT] Здесь стоял живой в релизе R_ASSERT2: «есть убийца, но существо живо» —
+        // и это был конец игры при ЗАГРУЗКЕ сейва. Сочетание достижимо честным путём: скрипты
+        // мода лечат и поднимают раненых (set_health), убийца при этом остаётся записанным.
+        // Противоречие снимается сбросом убийцы, а не отказом загружаться.
+        if ((m_killer_id != ALife::_OBJECT_ID(-1)) && g_Alive())
+        {
+            Msg("! [Entity] у живого [%s][%d] записан убийца [%d], запись сброшена", E->name_replace(), E->ID,
+                m_killer_id);
+            m_killer_id = ALife::_OBJECT_ID(-1);
+        }
+
         if (m_killer_id == ID())
             m_killer_id = ALife::_OBJECT_ID(-1);
     }

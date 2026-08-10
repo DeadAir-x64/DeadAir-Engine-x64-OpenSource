@@ -151,6 +151,17 @@ void CPHMovementControl::in_shedule_Update(u32 DT)
 void CPHMovementControl::Calculate(
     Fvector& vAccel, const Fvector& camDir, float /**ang_speed**/, float jump, float /**dt**/, bool /**bLight**/)
 {
+    // [DA_PORT] Физического персонажа может не быть, и соседние функции это ЗНАЮТ.
+    //
+    // ⭐ Двумя функциями выше стоит полная проверка `if (!m_character || !m_character->b_exist)`,
+    // ещё две проверяют указатель перед вызовом. Здесь — ни одной, хотя первая же строка его
+    // разыменовывает. Из 193 обращений к `m_character` в файле прикрыты четыре.
+    //
+    // Ноль здесь законен: физическая оболочка создаётся и уничтожается отдельно от управления
+    // движением — при уходе в офлайн, при смерти, в зазоре смены уровня.
+    if (!m_character)
+        return;
+
     Fvector previous_position;
     previous_position.set(vPosition);
     m_character->IPosition(vPosition);

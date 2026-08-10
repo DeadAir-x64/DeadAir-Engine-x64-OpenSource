@@ -133,7 +133,14 @@ void stalker_movement_params::cover_loophole_id(shared_str const& loophole_id)
         return;
     }
 
+    // [DA_PORT] И этот VERIFY мёртв в релизе, а укрытие разыменовывается ниже дважды. Ноль здесь —
+    // допустимое значение: соседняя ветка выше выставляет его сама.
     VERIFY(m_cover);
+    if (!m_cover || !m_cover->get_description())
+    {
+        m_cover_loophole = nullptr;
+        return;
+    }
 
     const auto predicate = [loophole_id](const smart_cover::loophole* loophole)
     {
@@ -143,8 +150,17 @@ void stalker_movement_params::cover_loophole_id(shared_str const& loophole_id)
     const auto& loopholes = m_cover->get_description()->loopholes();
     const auto i = std::find_if(loopholes.begin(), loopholes.end(), predicate);
 
-    VERIFY2(i != loopholes.end(),
-        make_string("loophole [%s] not present in smart_cover [%s]", loophole_id.c_str(), m_cover_id.c_str()));
+    // [DA_PORT] VERIFY2 исчезает в релизе, а следующей строкой разыменовывался end(): имя бойницы
+    // и описание укрытия берутся из конфигураций мода, поэтому промах — это правка данных, а не
+    // ошибка кода. Тот же класс, что `get_state()` у монстров: поиск в контейнере, чей результат
+    // не сверили с концом.
+    if (i == loopholes.end())
+    {
+        Msg("! [Smart cover] бойницы «%s» нет в укрытии «%s», выбор бойницы отменён", loophole_id.c_str(),
+            m_cover_id.c_str());
+        m_cover_loophole = nullptr;
+        return;
+    }
 
     m_cover_loophole = *i;
 }

@@ -78,7 +78,30 @@ CSE_ALifeSmartZone& CALifeMonsterBrain::smart_terrain()
 void CALifeMonsterBrain::process_task()
 {
     CALifeSmartTerrainTask* task = smart_terrain().task(&object());
-    THROW3(task, "smart terrain returned nil task, while npc is registered in it", smart_terrain().name_replace());
+
+    // [DA_PORT] Сообщение вместо броска.
+    //
+    // `THROW3` в нашей сборке ЖИВОЙ: `XRAY_EXCEPTIONS=1` задаётся CMake для всех конфигураций,
+    // кроме ReleaseMasterGold. Бросок доходит до `std::terminate`, потому что на пути MinGW нет ни
+    // одного обработчика, — игрок видит «Unexpected application termination», а собранный THROW3
+    // текст (в котором как раз названо умное место) не печатает никто.
+    //
+    // Ситуация при этом не катастрофическая: у существа просто нет задачи от умного места. Оно
+    // сохраняет прежнюю цель движения и попробует снова — это несравнимо лучше конца сессии.
+    //
+    // Найдено разбором журнала Monolith («ProfLander: Fix CALifeMonsterBrain::process_task
+    // segfault»), причина проверена по своему коду.
+    if (!task)
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 5 || (da_hits % 200) == 0)
+            Msg("! [DA] умное место [%s] не дало задачу существу [%s], хотя оно там числится — "
+                "цель движения оставлена прежней (случаев %u)",
+                smart_terrain().name_replace(), object().name_replace(), da_hits);
+        return;
+    }
+
     movement().path_type(MovementManager::ePathTypeGamePath);
     movement().detail().target(*task);
 }

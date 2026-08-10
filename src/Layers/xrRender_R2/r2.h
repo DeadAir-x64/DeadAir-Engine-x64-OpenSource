@@ -343,11 +343,15 @@ public:
     xr_vector<dxRender_Visual*> Visuals;
     CPSLibrary PSLibrary;
 
-    CDetailManager* Details;
-    CModelPool* Models;
-    CWallmarksEngine* Wallmarks;
+    // [DA_PORT] Обнуление при создании. Эти указатели заводятся не в конструкторе, а в level_Load,
+    // и xr_delete в level_Unload возвращает их в ноль. То есть НУЛЬ — законное состояние вне
+    // уровня, а вот до первой загрузки они были неопределёнными: конструктор CRender не трогает
+    // ни один из них. Проверка `if (Wallmarks)` в r2_R_render.cpp на мусоре прошла бы насквозь.
+    CDetailManager* Details{};
+    CModelPool* Models{};
+    CWallmarksEngine* Wallmarks{};
 
-    CRenderTarget* Target; // Render-target
+    CRenderTarget* Target{}; // Render-target
 
     CLight_DB Lights;
     CLight_Compute_XFORM_and_VIS LR;

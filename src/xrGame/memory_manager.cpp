@@ -451,6 +451,17 @@ void CMemoryManager::make_object_visible_somewhen(const CEntityAlive* enemy)
     visual().add_visible_object(enemy, .001f, true);
     MemorySpace::CVisibleObject* obj1 = object().memory().visual().visible_object(enemy);
     VERIFY(obj1);
+    // [DA_PORT] Второй поиск проверялся только `VERIFY`, то есть в релизе не проверялся.
+    //
+    // ⭐ Подпись дефекта видна не отходя: ПЕРВЫЙ поиск двумя строками выше прикрыт тернарным
+    // оператором (`obj ? obj->visible(mask) : false`), второй — нет. Между ними стоит
+    // `add_visible_object`, и предполагается, что после него запись обязана найтись; но это
+    // допущение, а не гарантия — добавление может не состояться.
+    //
+    // Найдено разбором журнала Monolith («Fixed potential nullptr crash in
+    // CMemoryManager::make_object_visible_somewhen»).
+    if (!obj1)
+        return;
     //	if (obj1)
     //		Msg						("[%6d] make_object_visible_somewhen [%s] =
     //%x",Device.dwTimeGlobal,*enemy->cName(),obj1->m_squad_mask.get());

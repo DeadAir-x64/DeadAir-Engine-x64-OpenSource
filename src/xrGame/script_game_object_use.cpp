@@ -38,8 +38,16 @@ CScriptGameObject::CScriptGameObject(CGameObject* game_object) : m_game_object(g
     R_ASSERT2(m_game_object, "Null actual object passed!");
 }
 
+extern "C" void da_cache_forget(const void* p);
+
 CScriptGameObject::~CScriptGameObject()
 {
+    // [DA_PORT] Снять запись из кэша обёрток. Это ЕДИНСТВЕННОЕ, что делает кэш безопасным: без
+    // этой строки запись пережила бы объект, а освободившийся адрес рано или поздно достался бы
+    // другому — и скрипт получил бы обёртку от покойника. Именно поэтому кэш включён только для
+    // тех классов, чей деструктор сюда приходит.
+    da_cache_forget(this);
+
     if (!m_door)
         return;
 

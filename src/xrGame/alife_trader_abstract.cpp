@@ -220,11 +220,24 @@ void add_offline_impl(
     {
         CSE_ALifeDynamicObject* child =
             smart_cast<CSE_ALifeDynamicObject*>(ai().alife().objects().object(saved_children[i], true));
-        R_ASSERT(child);
+        // [DA_PORT] То же, что в CSE_ALifeInventoryBox::add_offline: номер предмета мог протухнуть,
+        // пока владелец уходил в офлайн, а R_ASSERT здесь живой и в релизе.
+        if (!child)
+        {
+            Msg("! [ALife] инвентарь [%d]: предмета [%d] уже нет в реестре, пропущен", object->ID,
+                saved_children[i]);
+            continue;
+        }
         child->m_bOnline = false;
 
         CSE_ALifeInventoryItem* inventory_item = smart_cast<CSE_ALifeInventoryItem*>(child);
-        VERIFY2(inventory_item, "Non inventory item object has parent?!");
+        // [DA_PORT] VERIFY2 исчезает в релизе, а строчкой ниже результат приведения разыменовывался.
+        if (!inventory_item)
+        {
+            Msg("! [ALife] инвентарь [%d]: [%s] не является предметом инвентаря, пропущен", object->ID,
+                child->name_replace());
+            continue;
+        }
 #ifdef DEBUG
         //		if (psAI_Flags.test(aiALife))
         //			Msg					("[LSS] Destroying item
@@ -240,8 +253,9 @@ void add_offline_impl(
         if (!child->can_save())
         {
             object->alife().release(child);
-            --i;
-            --n;
+            // [DA_PORT] Здесь стояли `--i; --n;` — возврат цикла на тот же, уже отпущенный номер.
+            // Владельцев-торговцев спасал фильтр remove_non_savable_predicate в remove_online, но у
+            // ящиков фильтра нет, а код общий по смыслу. Убрано в обеих копиях.
             continue;
         }
 

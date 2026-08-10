@@ -31,6 +31,7 @@ import bisect
 import os
 import re
 import subprocess
+import gzip
 import struct
 import sys
 
@@ -76,15 +77,31 @@ class Module:
 
 
 def load_map(path):
-    """Разбор карты линковщика GNU ld: строки вида '0x00000001800012a0   Class::method'."""
+    """Разбор карты линковщика GNU ld: строки вида '0x00000001800012a0   Class::method'.
+
+    Принимает и сжатые карты (.map.gz): снимок символов (_archive_symbols.sh) хранит их именно так,
+    88 МБ карт ужимаются до 5.6 МБ, и держать их можно бессрочно."""
     syms = []
+    opener = gzip.open if path.endswith('.gz') else open
     try:
-        with open(path, encoding='utf-8', errors='replace') as f:
+        with opener(path, 'rt', encoding='utf-8', errors='replace') as f:
             for line in f:
                 m = re.match(r'\s*0x([0-9a-fA-F]{8,16})\s+(\S.*?)\s*$', line)
                 if m:
-                    name = m.group(2)
-                    if name.startswith('.') or ' ' in name.strip() and '(' not in name:
+                    name = m.group(2).strip()
+                    # Отсев не-символов. Прежний сторож пропускал строки объектных файлов, если в
+                    # пути были скобки, а у архивных членов вида "libfoo.a(bar.o)" они всегда есть.
+                    # Такие записи засоряют таблицу и перекрывают настоящий символ при поиске по
+                    # ближайшему адресу - то есть дают ЧУЖОЕ имя, что хуже отсутствия имени.
+                    if not name or name.startswith('.'):
+                        continue
+                    if '/' in name or chr(92) in name:      # путь к объектному файлу
+                        continue
+                    if name.startswith('0x'):                  # размер секции, а не имя
+                        continue
+                    if '=' in name:                            # присваивание вида "__ImageBase = 0x..."
+                        continue
+                    if ' ' in name and '(' not in name:        # прочий служебный текст
                         continue
                     syms.append((int(m.group(1), 16), name))
     except OSError:
@@ -190,9 +207,12 @@ def main():
         cand = os.path.join(args.symbols, mod.name)
         if os.path.exists(cand):
             mod.local = cand
-            mp = os.path.join(mapdir, os.path.splitext(mod.name)[0] + '.map')
-            if os.path.exists(mp):
-                mod.map_syms = load_map(mp)
+            base = os.path.join(mapdir, os.path.splitext(mod.name)[0] + '.map')
+            # снимок символов хранит карты сжатыми, каталог сборки — как есть
+            for mp in (base, base + '.gz'):
+                if os.path.exists(mp):
+                    mod.map_syms = load_map(mp)
+                    break
 
     # 3. кадры стека
     print()

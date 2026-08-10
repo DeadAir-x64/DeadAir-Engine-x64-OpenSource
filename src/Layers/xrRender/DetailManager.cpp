@@ -468,10 +468,54 @@ void CDetailManager::Render(CBackend& cmd_list)
 
     ZoneScoped;
 
+    // [DA_PORT] Прибор: сколько главный поток ЖДЁТ расчёт видимости травы.
+    //
+    // Зачем. Замер в живой игре дал траву 2.08 мс из 6.41 мс рендера - треть. Но расчёт видимости
+    // (dt_vis 0.82) идёт в задаче планировщика, то есть на рабочем потоке, и в кадр не входит.
+    // На критическом пути остаётся отрисовка (dt_rend) И ВОТ ЭТО ОЖИДАНИЕ - если задача не успела,
+    // кадр стоит ровно столько, сколько ей осталось. В прежних замерах оно спрятано внутри dt_rend
+    // и потому невидимо.
+    //
+    // Ответ решает, что делать дальше: околонулевое ожидание значит, что трогать нечего; заметное -
+    // что имеет смысл рисовать по данным ПРОШЛОГО кадра и не ждать вовсе (ценой двойного буфера).
+    //
+    // Отчёт печатается своим сообщением, а НЕ через статистику рендера: da_render_log на скрытом
+    // рабочем столе молчит, потому что вывод статистики висит на презентации кадра.
+    extern int ps_da_grass_dump;
+    const bool da_watch = ps_da_grass_dump > 0;
+    CTimer da_t;
+    if (da_watch)
+        da_t.Start();
+
     // [DA_PORT] Проверка на пустоту обязательна: задачу теперь снимают и в WaitCalcTask, поэтому
     // между сбросом устройства и первым DispatchMTCalc указателя может не быть вовсе.
     if (m_calc_task)
         TaskScheduler->Wait(*m_calc_task);
+
+    if (da_watch)
+    {
+        static double da_wait_sum = 0.0;
+        static float da_wait_max = 0.f;
+        static u32 da_frames = 0, da_waited = 0;
+
+        const float ms = da_t.GetElapsed_sec() * 1000.f;
+        da_wait_sum += ms;
+        if (ms > da_wait_max)
+            da_wait_max = ms;
+        ++da_frames;
+        if (ms > 0.05f)
+            ++da_waited; // сколько кадров реально ждали, а не проскочили
+
+        if (da_frames >= (u32)ps_da_grass_dump)
+        {
+            Msg("~ [DA_GRASS] за %u кадров: ожидание расчёта в среднем %.3f мс, худшее %.3f,"
+                " ждали в %u кадрах (%.0f%%), пропусков расчёта %u",
+                da_frames, da_wait_sum / da_frames, da_wait_max, da_waited,
+                100.0 * da_waited / da_frames, m_da_calc_skips);
+            da_wait_sum = 0.0; da_wait_max = 0.f; da_frames = 0; da_waited = 0;
+            m_da_calc_skips = 0;
+        }
+    }
 
     RImplementation.BasicStats.DetailRender.Begin();
     g_pGamePersistent->m_pGShaderConstants->m_blender_mode.w = 1.0f; //--#SM+#-- Флаг начала рендера травы [begin of grass render]
@@ -534,7 +578,10 @@ void CDetailManager::DispatchMTCalc()
     // Пропуск кадра здесь безвреден: кэш травы досчитается на следующем. Ждать нельзя - это главный
     // поток, и ожидание превратило бы гонку в подтормаживание.
     if (m_calc_active.load(std::memory_order_acquire))
+    {
+        ++m_da_calc_skips; // [DA_PORT] задача не успела к новому кадру — расчёт пропущен
         return;
+    }
 
     m_calc_active.store(true, std::memory_order_release);
     m_calc_task = &TaskScheduler->AddTask([this]

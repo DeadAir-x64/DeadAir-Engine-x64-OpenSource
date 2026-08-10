@@ -26,11 +26,25 @@ void CParticlesObject::Init(LPCSTR p_name, IRender_Sector::sector_id_t sector_id
     if (!GEnv.isDedicatedServer)
     {
         // create visual
+        // [DA_PORT] Система частиц не создалась. Это классический дефект ДАННЫХ: имени нет в
+        // particles.xr — снятый аддон, опечатка в секции, неполная установка. Движок отвечал на
+        // это разыменованием нуля (VERIFY исчезает в релизе), то есть вылетом без объяснения.
+        //
+        // 🔑 Что доказывает, что VERIFY здесь мало: ниже в ЭТОМ ЖЕ файле, в Name(), автор написал
+        // рядом с VERIFY(V) ещё и настоящую проверку `return (V) ? V->Name() : ""`. Он знал.
+        //
+        // Называем эффект в логе — иначе дефект данных остаётся невидимым, — и живём дальше без
+        // частиц: отсутствие эффекта не повод кончать сессию.
         renderable.visual = GEnv.Render->model_CreateParticles(p_name);
-        VERIFY(renderable.visual);
-        IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-        VERIFY(V);
-        time_limit = V->GetTimeLimit();
+        IParticleCustom* V = renderable.visual ? smart_cast<IParticleCustom*>(renderable.visual) : nullptr;
+        if (!V)
+        {
+            Msg("! [DA] система частиц '%s' не создана - её нет в particles.xr; объект останется без эффекта",
+                p_name ? p_name : "(без имени)");
+            time_limit = 1.0f;
+        }
+        else
+            time_limit = V->GetTimeLimit();
     }
     else
     {
@@ -118,7 +132,7 @@ const shared_str CParticlesObject::Name()
         return "";
 
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] проверка ниже по строке уже стоит — VERIFY здесь лишний, но безвреден
     return (V) ? V->Name() : "";
 }
 
@@ -129,7 +143,9 @@ void CParticlesObject::Play(bool bHudMode)
         return;
 
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+    if (!V)
+        return;
     if (bHudMode)
         V->SetHudMode(bHudMode);
 
@@ -146,7 +162,9 @@ void CParticlesObject::play_at_pos(const Fvector& pos, BOOL xform)
         return;
 
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+    if (!V)
+        return;
     Fmatrix m;
     m.translate(pos);
     V->UpdateParent(m, zero_vel, xform);
@@ -163,7 +181,9 @@ void CParticlesObject::Stop(BOOL bDefferedStop)
         return;
 
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+    if (!V)
+        return;
     V->Stop(bDefferedStop);
     m_bStopping = true;
 }
@@ -191,7 +211,9 @@ void CParticlesObject::shedule_Update(u32 _dt)
         {
             mt_dt = 0;
             IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-            VERIFY(V);
+            // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+            if (!V)
+                return;
             V->OnFrame(dt);
         }
         dwLastTime = Device.dwTimeGlobal;
@@ -209,7 +231,9 @@ void CParticlesObject::PerformAllTheWork(u32 _dt)
     if (dt)
     {
         IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-        VERIFY(V);
+        // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+        if (!V)
+            return;
         V->OnFrame(dt);
         dwLastTime = Device.dwTimeGlobal;
     }
@@ -224,7 +248,9 @@ void CParticlesObject::PerformAllTheWork_mt()
     if (0 == mt_dt)
         return; //???
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+    if (!V)
+        return;
     V->OnFrame(mt_dt);
     mt_dt = 0;
 }
@@ -235,7 +261,9 @@ void CParticlesObject::SetXFORM(const Fmatrix& m)
         return;
 
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+    if (!V)
+        return;
     V->UpdateParent(m, zero_vel, TRUE);
     renderable.xform.set(m);
     UpdateSpatial();
@@ -247,7 +275,9 @@ void CParticlesObject::UpdateParent(const Fmatrix& m, const Fvector& vel)
         return;
 
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+    if (!V)
+        return;
     V->UpdateParent(m, vel, FALSE);
     UpdateSpatial();
 }
@@ -281,7 +311,9 @@ void CParticlesObject::renderable_Render(u32 context_id, IRenderable* root)
     if (dt)
     {
         IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-        VERIFY(V);
+        // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+        if (!V)
+            return;
         V->OnFrame(dt);
         dwLastTime = Device.dwTimeGlobal;
     }
@@ -310,6 +342,8 @@ bool CParticlesObject::IsPlaying()
         return false;
 
     IParticleCustom* V = smart_cast<IParticleCustom*>(renderable.visual);
-    VERIFY(V);
+    // [DA_PORT] см. Init: системы частиц может не быть вовсе, если имени нет в particles.xr
+    if (!V)
+        return false;
     return !!V->IsPlaying();
 }

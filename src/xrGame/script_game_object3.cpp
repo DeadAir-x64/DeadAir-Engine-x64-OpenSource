@@ -1500,7 +1500,13 @@ bool CScriptGameObject::WeaponInGrenadeMode()
 
 void CScriptGameObject::SetBoneVisible(pcstr bone_name, bool bVisibility, bool bRecursive)
 {
-    IKinematics* k = object().Visual()->dcast_PKinematics();
+    // [DA_PORT] Проверяли РЕЗУЛЬТАТ, а не вход: `Visual()` сам бывает нулём, и разыменование
+    // происходило раньше стоящей ниже проверки `!k`. Объект сюда приходит ИЗ СКРИПТА, то есть
+    // гарантий на него нет никаких — а у соседнего биндинга (script_game_object.cpp:166) проверка
+    // ровно этого выражения уже стоит. Найдено разбором журнала Monolith («Fixed possible crash
+    // when using script functions for getting bone properties»).
+    IRenderVisual* visual = object().Visual();
+    IKinematics* k = visual ? visual->dcast_PKinematics() : nullptr;
 
     if (!k)
         return;
@@ -1515,7 +1521,9 @@ void CScriptGameObject::SetBoneVisible(pcstr bone_name, bool bVisibility, bool b
 
 bool CScriptGameObject::IsBoneVisible(pcstr bone_name)
 {
-    IKinematics* k = object().Visual()->dcast_PKinematics();
+    // [DA_PORT] См. разбор у SetBoneVisible.
+    IRenderVisual* visual = object().Visual();
+    IKinematics* k = visual ? visual->dcast_PKinematics() : nullptr;
 
     if (!k)
         return false;

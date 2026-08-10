@@ -84,15 +84,109 @@ IC bool RAYvsCYLINDER(const Fcylinder& c_cylinder, const Fvector& S, const Fvect
     return ((rp_res == Fcylinder::rpOriginOutside) || (!bCull && (rp_res == Fcylinder::rpOriginInside)));
 }
 
+// [DA_PORT] ---- Форма скелета без визуала --------------------------------------------------------
+//
+// Весь этот файл СТОКОВЫЙ — наших правок в нём не было ни одной, значит болеют все форки.
+//
+// Проблема одна на четыре места: `PKinematics(V)` сам ноль переживает (`return V ? ... : 0`), а вот
+// РЕЗУЛЬТАТ его разыменовывают без проверки, как и сам `Visual()`. Стоящие рядом `VERIFY` в релизе
+// пусты.
+//
+// Когда визуала нет: `CGameObject::net_Destroy` делает `cNameVisual_set(0)` — визуал освобождён, —
+// а из пространственной базы объект уходит СТРОКОЙ ПОЗЖЕ. В этом зазоре чужой запрос луча ещё
+// находит объект и спрашивает у него форму. Ровно тот же зазор, за который мы уже чинили
+// `Feel::Vision`, только с другого конца. Второй путь проще: у объекта визуал не скелетный —
+// это приходит из данных мода, а не из кода.
+//
+// ⚠️ Сообщение придушено по объектам и по времени: если такое началось, оно происходит каждый кадр
+// на каждый запрос, и лог перестанет быть читаемым ровно тогда, когда понадобится.
+// [DA_PORT] ---- Сколько потоков заходит в проверку луча по скелету -------------------------------
+//
+// Вопрос всплывал ТРИЖДЫ и каждый раз решался рассуждением, а не числом:
+//   - разбор «клинча» замка костей заключил, что вход сюда однопоточный (seqParallel идёт
+//     последовательным циклом, параллельный обсчёт частиц закомментирован);
+//   - разбор гонки формы столкновений утверждал обратное — «обновление объектов идёт на
+//     нескольких потоках»;
+//   - комментарий у da_query_cform в xrCDB прямо пишет «сюда приходят несколько рабочих потоков».
+//
+// От ответа зависит настоящее: BuildState правит общие поля формы (elements, bv_box, bv_sphere,
+// vis_mask, dwFrame) БЕЗ ЕДИНОГО ЗАМКА. Один поток — это безобидно; несколько — живая гонка,
+// где один чистит elements, а другой по ним идёт.
+//
+// Прибор считает РАЗНЫЕ потоки, а не вызовы: массив фиксированного размера, поиск линейный по
+// нескольким элементам. Замков нет намеренно — гонка на самом счётчике максимум потеряет запись,
+// а завести замок в горячей точке ради измерения значит измерять свой же замок.
+//
+// ✅ ОТВЕТ ПОЛУЧЕН: за 1800 кадров живого уровня — РОВНО ОДИН поток. Значит гонки за состояние
+// формы нет, а два утверждения об обратном (в разборе гонки формы и в комментарии da_query_cform)
+// были ошибкой: многопоточна регистрация «ворон», а не запросы. Прибор оставлен — он почти
+// бесплатен (запросов луча по скелетам около одного на кадр) и сам скажет, если мы когда-нибудь
+// разнесём запросы по потокам и тем самым взведём мину в BuildState.
+namespace
+{
+constexpr u32 DA_CFORM_MAX_THREADS = 32;
+std::atomic<u32> g_da_cform_threads[DA_CFORM_MAX_THREADS]{};
+std::atomic<u32> g_da_cform_thread_count{ 0 };
+
+void da_cform_note_thread()
+{
+    const u32 me = (u32)GetCurrentThreadId();
+    const u32 known = g_da_cform_thread_count.load(std::memory_order_relaxed);
+    for (u32 i = 0; i < known && i < DA_CFORM_MAX_THREADS; ++i)
+        if (g_da_cform_threads[i].load(std::memory_order_relaxed) == me)
+            return;
+
+    if (known >= DA_CFORM_MAX_THREADS)
+        return;
+
+    const u32 slot = g_da_cform_thread_count.fetch_add(1, std::memory_order_relaxed);
+    if (slot >= DA_CFORM_MAX_THREADS)
+        return;
+
+    g_da_cform_threads[slot].store(me, std::memory_order_relaxed);
+    Msg("~ [DA_CFORM_MT] проверка луча по скелету: НОВЫЙ поток [%u], всего разных потоков %u", me,
+        slot + 1);
+}
+
+u32 g_da_cform_reported_frame = 0;
+u32 g_da_cform_hits = 0;
+
+void da_cform_report(const char* where, IGameObject* owner)
+{
+    ++g_da_cform_hits;
+    if (Device.dwFrame - g_da_cform_reported_frame < 600 && g_da_cform_hits > 1)
+        return;
+
+    g_da_cform_reported_frame = Device.dwFrame;
+    Msg("! [DA] форма скелета (%s): у объекта [%s] визуал [%s] не даёт скелета — запрос отклонён "
+        "(случаев всего %u)",
+        where, owner ? owner->cName().c_str() : "нет объекта",
+        owner ? owner->cNameVisual().c_str() : "нет визуала", g_da_cform_hits);
+}
+} // namespace
+
 CCF_Skeleton::CCF_Skeleton(IGameObject* O) : ICollisionForm(O, cftObject)
 {
     // getVisData
     IRenderVisual* pVisual = O->Visual();
     VERIFY3(PKinematics(pVisual), "Can't create skeleton without Kinematics.", O->cNameVisual().c_str());
+    vis_mask = 0;
+
+    // [DA_PORT] Без визуала габаритов не построить. Форма остаётся пустой: `_RayQuery` ниже на
+    // такой выходит отказом, то есть объект просто не участвует в проверках столкновений — это
+    // честнее, чем падение в конструкторе.
+    if (!pVisual)
+    {
+        da_cform_report("создание", O);
+        bv_box.invalidate();
+        bv_sphere.P.set(0.f, 0.f, 0.f);
+        bv_sphere.R = 0.f;
+        return;
+    }
+
     // bv_box.set (K->vis.box);
     bv_box.set(pVisual->getVisData().box);
     bv_box.getsphere(bv_sphere.P, bv_sphere.R);
-    vis_mask = 0;
 }
 
 void CCF_Skeleton::BuildState()
@@ -100,6 +194,13 @@ void CCF_Skeleton::BuildState()
     dwFrame = Device.dwFrame;
     IRenderVisual* pVisual = owner->Visual();
     IKinematics* K = PKinematics(pVisual);
+    // [DA_PORT] См. разбор у конструктора. Оставляем состав как есть и выходим: старые элементы
+    // безвредны, потому что дальше по ним всё равно никто не пойдёт — _RayQuery выходит раньше.
+    if (!K)
+    {
+        da_cform_report("пересчёт", owner);
+        return;
+    }
     K->CalculateBones();
     const Fmatrix& L2W = owner->XFORM();
 
@@ -190,6 +291,12 @@ void CCF_Skeleton::BuildTopLevel()
 {
     dwFrameTL = Device.dwFrame;
     IRenderVisual* K = owner->Visual();
+    // [DA_PORT] См. разбор у конструктора.
+    if (!K)
+    {
+        da_cform_report("габариты", owner);
+        return;
+    }
     vis_data& vis = K->getVisData();
     Fbox& B = vis.box;
     bv_box.vMin.average(B.vMin);
@@ -204,6 +311,17 @@ void CCF_Skeleton::BuildTopLevel()
 bool CCF_Skeleton::_RayQuery(const collide::ray_defs& Q, collide::rq_results& R)
 {
     ZoneScoped;
+
+    // [DA_PORT] Единственная точка, через которую сюда вообще входят. Проверка здесь закрывает
+    // и габариты, и пересчёт, и чтение маски костей ниже — остальные три стоят на случай прямого
+    // вызова. См. полный разбор у конструктора.
+    da_cform_note_thread();
+
+    if (!PKinematics(owner->Visual()))
+    {
+        da_cform_report("запрос луча", owner);
+        return false;
+    }
 
     if (dwFrameTL != Device.dwFrame)
         BuildTopLevel();
@@ -225,7 +343,9 @@ bool CCF_Skeleton::_RayQuery(const collide::ray_defs& Q, collide::rq_results& R)
     else
     {
         IKinematics* K = PKinematics(owner->Visual());
-        if (K->LL_GetBonesVisible() != vis_mask)
+        // Сюда с нулём уже не попасть — проверка стоит на входе в _RayQuery, — но выражение то же
+        // самое, и оставлять его голым нельзя: разойдутся при первой же правке выше.
+        if (K && K->LL_GetBonesVisible() != vis_mask)
         {
             // Model changed between ray-picks
             dwFrame = Device.dwFrame - 1;

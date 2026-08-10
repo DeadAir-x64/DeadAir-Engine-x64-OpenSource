@@ -40,6 +40,22 @@ struct remove_non_savable_predicate
         VERIFY(object);
         CSE_ALifeObject* alife_object = smart_cast<CSE_ALifeObject*>(object);
         VERIFY(alife_object);
+
+        // [DA_PORT] Две проверки подряд, и обе в релизе не существуют.
+        //
+        // Предикат бежит по списку номеров при уходе объектов в офлайн. Номер может уже никого не
+        // находить (объект снесён в этом же кадре), а найденный объект может не быть объектом
+        // ALife — тогда `smart_cast` честно отдаёт ноль. Дальше `->can_save()` — виртуальный вызов
+        // по нулю.
+        //
+        // Отсутствующий или не-ALife объект в списке сохраняемых не нужен: отвечаем «убрать».
+        // Это ровно то, что сделал бы `can_save() == false`.
+        //
+        // Найдено ДИФФОМ дерева Monolith (коммит cec3db85, «proper fix for offline bolts») —
+        // в их журнале изменений этот пункт звучал совсем иначе.
+        if (!alife_object)
+            return true;
+
         return (!alife_object->can_save());
     }
 };

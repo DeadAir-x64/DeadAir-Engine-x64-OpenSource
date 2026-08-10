@@ -504,6 +504,71 @@ public:
     virtual void Execute(LPCSTR /*args*/) { DA_MemSnap(); }
 };
 
+// [DA_PORT] Счётчик выделений.
+//   da_alloc_stat        — напечатать накопленное с начала процесса (или с последнего сброса)
+//   da_alloc_stat reset  — напечатать и начать окно заново
+//   da_alloc_stat <N>       — сбросить молча и отчитаться через N кадров ← рабочий режим
+//   da_alloc_stat <N> bench — то же и следом замерить цену операции (кадр встанет на пару секунд)
+//   da_alloc_stat <N> quit  — и выйти сразу после отчёта: на стенде это экономит целый таймаут
+//
+// ⚠️ Мерить надо ТРЕТЬИМ. Первые два дают числа за окно, в которое попала загрузка уровня, а она
+// перекашивает всё: на старте движка получалось 831 тысяча выделений в секунду, и к игре это
+// отношения не имело. `da_alloc_stat 600` открывает окно с текущего кадра — числа получаются про
+// игру.
+class CCC_DaAllocStat : public IConsole_Command
+{
+public:
+    CCC_DaAllocStat(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR args)
+    {
+        if (args && xr_strlen(args))
+        {
+            if (strstr(args, "reset"))
+            {
+                da_alloc_stat_dump(true);
+                return;
+            }
+            const int frames = atoi(args);
+            if (frames > 0)
+            {
+                DA_AllocStatWindow(frames, strstr(args, "bench") != nullptr, strstr(args, "quit") != nullptr);
+                return;
+            }
+        }
+        da_alloc_stat_dump(false);
+    }
+};
+
+// [DA_PORT] Цена операции аллокатора. Зовётся ПОСЛЕ da_alloc_stat <N>: тогда наблюдённая частота
+// уже есть, и отчёт пересчитает её в миллисекунды на секунду игры.
+// ⚠️ Кадр на время замера встанет — это несколько секунд синтетической нагрузки.
+class CCC_DaAllocBench : public IConsole_Command
+{
+public:
+    CCC_DaAllocBench(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/) { da_alloc_bench(0); }
+};
+
+// [DA_PORT] Разбор мусора Lua по размерам блоков. Обычно печатается сам вместе с da_alloc_stat <N>;
+// отдельная команда нужна, когда окно уже открыто и хочется взглянуть посреди него.
+//   da_lua_mem        напечатать
+//   da_lua_mem reset  начать счёт заново
+class CCC_DaLuaMem : public IConsole_Command
+{
+public:
+    CCC_DaLuaMem(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR args)
+    {
+        if (args && xr_strlen(args) && strstr(args, "reset"))
+        {
+            da_lua_alloc_reset();
+            Msg("~ [DA_LUAMEM] счёт начат заново");
+            return;
+        }
+        da_lua_alloc_dump(0);
+    }
+};
+
 // [DA_PORT] Весь протокол одной командой: перезагружает последнее сохранение подряд нужное число
 // раз и печатает вывод. Руками это делается ровно так же, но легко сбиться — а перезапуск игры
 // обнуляет накопленное, потому что таблица живёт в памяти процесса.
@@ -2676,6 +2741,9 @@ void CCC_RegisterCommands()
     }
     CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
     CMD1(CCC_DaMemSnap, "da_mem_snap");   // [DA_PORT] снимок посреди игры: покадровые утечки
+    CMD1(CCC_DaAllocStat, "da_alloc_stat"); // [DA_PORT] счётчик выделений: нужен ли другой аллокатор
+    CMD1(CCC_DaAllocBench, "da_alloc_bench"); // [DA_PORT] цена операции: штуки -> миллисекунды
+    CMD1(CCC_DaLuaMem, "da_lua_mem"); // [DA_PORT] мусор Lua по размерам блоков
     {
         // [DA_PORT] Размытие при прицеливании и перезарядке. По умолчанию выключено: эффект
         // приходит из данных ствола (zoom_dof / reload_dof), нравится далеко не всем, а вернуть

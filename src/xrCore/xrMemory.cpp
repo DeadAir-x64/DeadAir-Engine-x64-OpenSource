@@ -320,10 +320,102 @@ void da_alloc_trap(size_t size)
 }
 } // namespace
 
+// [DA_PORT] Счётчик выделений: сколько их, каких размеров и из скольких потоков.
+//
+// ЗАЧЕМ. Вопрос «менять ли аллокатор» до сих пор решался рассуждением. Выигрыш mimalloc над
+// системным malloc берётся ровно из двух вещей: множества МЕЛКИХ выделений (у него для них
+// отдельный путь без блокировок) и состязания ПОТОКОВ за общую кучу. Обе величины измеримы, и без
+// них смена аллокатора — гадание, а цена её высока: под MinGW mimalloc придётся собирать из
+// исходников, в дереве лежат только MSVC-овские .lib.
+//
+// ⚠️ Устройство продиктовано тем, что мы ВНУТРИ аллокатора, и обычные приёмы здесь запрещены:
+//   • нельзя атомарные счётчики — общая строка кэша станет точкой состязания ровно там, где мы
+//     состязание и измеряем, то есть прибор подделает свой же ответ;
+//   • нельзя выделять память под учёт — это рекурсия в самих себя;
+//   • нельзя списки с удалением слота на выходе потока — получится висячий указатель в горячем
+//     пути, а платить за него будет не отладочная сборка, а игрок.
+// Отсюда: постоянный массив слотов, слот выдаётся потоку один раз атомарным счётчиком и уже
+// никогда не отбирается. Ценой одного лишнего указателя в TLS счёт становится неблокирующим.
+//
+// Цена в горячем пути: чтение указателя из TLS, два-три сложения и один интринсик старшего бита.
+// Против сотни с лишним тактов самого malloc это шум, поэтому выключателя нет: прибор, который
+// надо не забыть включить, к моменту нужды всегда выключен.
+namespace
+{
+constexpr u32 DA_ALLOC_SLOTS = 64;
+constexpr u32 DA_ALLOC_BUCKETS = 32; // до 2 ГБ одним блоком — с запасом
+
+struct da_alloc_slot
+{
+    u32 thread_id;
+    u64 alloc_calls, alloc_bytes;
+    u64 realloc_calls, realloc_bytes;
+    u64 free_calls;
+    u64 small_calls; // small_alloc: отдельный путь аллокатора, смешивать с обычным нельзя
+    u64 hist[DA_ALLOC_BUCKETS];
+};
+
+// Нулевая инициализация статикой: счёт идёт с первого же выделения, а они случаются задолго до
+// main() — в конструкторах глобальных объектов.
+da_alloc_slot g_da_slots[DA_ALLOC_SLOTS]{};
+std::atomic<u32> g_da_slot_next{ 0 };
+thread_local da_alloc_slot* g_da_slot = nullptr;
+// Отметка времени последнего сброса. ⚠️ Именно CPU::QPC, а не SDL_GetTicks: у тиков SDL начало
+// отсчёта привязано к инициализации своего таймера, и «сколько прошло» по ним читается как время
+// от старта подсистемы, а не от нашего сброса. QPC той же функцией меряет соседний код в этом же
+// файле (mem_compact), путать два источника незачем.
+u64 g_da_stat_since = 0;
+
+da_alloc_slot* da_slot_new()
+{
+    const u32 idx = g_da_slot_next.fetch_add(1, std::memory_order_relaxed);
+    // Последний слот — общий «прочие». Потоков больше шестидесяти четырёх быть не должно, но если
+    // станет, счёт не потеряется: он перестанет разделяться по потокам, о чём отчёт и скажет.
+    da_alloc_slot* slot = &g_da_slots[idx < DA_ALLOC_SLOTS ? idx : DA_ALLOC_SLOTS - 1];
+    slot->thread_id = (u32)SDL_ThreadID();
+    g_da_slot = slot;
+    return slot;
+}
+
+inline da_alloc_slot* da_slot()
+{
+    da_alloc_slot* slot = g_da_slot;
+    return slot ? slot : da_slot_new();
+}
+
+// Ведро по старшему значащему биту: границы — честные степени двойки, промаха на «некруглых»
+// размерах не бывает.
+inline u32 da_bucket(size_t size)
+{
+    if (!size)
+        return 0;
+#if defined(__GNUC__) || defined(__clang__)
+    const u32 bit = (u32)(63 - __builtin_clzll((unsigned long long)size));
+#elif defined(_MSC_VER)
+    unsigned long bit = 0;
+    _BitScanReverse64(&bit, (unsigned __int64)size);
+#else
+    u32 bit = 0;
+    for (size_t v = size; v >>= 1;)
+        ++bit;
+#endif
+    return (u32)bit < DA_ALLOC_BUCKETS ? (u32)bit : DA_ALLOC_BUCKETS - 1;
+}
+
+inline void da_count_alloc(size_t size)
+{
+    da_alloc_slot* slot = da_slot();
+    ++slot->alloc_calls;
+    slot->alloc_bytes += size;
+    ++slot->hist[da_bucket(size)];
+}
+} // namespace
+
 void* xrMemory::mem_alloc(size_t size)
 {
     const auto result = xr_internal_malloc(size);
     //TracyAlloc(result, size);
+    da_count_alloc(size); // [DA_PORT]
     da_alloc_trap(size); // [DA_PORT]
     return result;
 }
@@ -332,6 +424,7 @@ void* xrMemory::mem_alloc(size_t size, size_t alignment)
 {
     const auto result = xr_internal_malloc_aligned(size, alignment);
     //TracyAlloc(result, size);
+    da_count_alloc(size); // [DA_PORT]
     return result;
 }
 
@@ -339,6 +432,7 @@ void* xrMemory::mem_alloc(size_t size, const std::nothrow_t&) noexcept
 {
     const auto result = xr_internal_malloc_nothrow(size);
     //TracyAlloc(result, size);
+    da_count_alloc(size); // [DA_PORT]
     return result;
 }
 
@@ -346,6 +440,7 @@ void* xrMemory::mem_alloc(size_t size, size_t alignment, const std::nothrow_t&) 
 {
     const auto result = xr_internal_malloc_nothrow_aligned(size, alignment);
     //TracyAlloc(result, size);
+    da_count_alloc(size); // [DA_PORT]
     return result;
 }
 
@@ -353,12 +448,23 @@ void* xrMemory::small_alloc(size_t size) noexcept
 {
     const auto result = xr_internal_small_alloc(size);
     //TracyAllocN(result, size, "small alloc");
+    // [DA_PORT] Отдельной строкой: у аллокатора это отдельный путь (у mimalloc — без блокировок),
+    // и смешивать его с обычными выделениями значит потерять именно тот сигнал, ради которого
+    // всё считается.
+    {
+        da_alloc_slot* slot = da_slot();
+        ++slot->small_calls;
+        slot->alloc_bytes += size;
+        ++slot->hist[da_bucket(size)];
+    }
     return result;
 }
 
 void xrMemory::small_free(void* ptr) noexcept
 {
     //TracyFree(ptr);
+    if (ptr)
+        ++da_slot()->free_calls; // [DA_PORT]
     xr_internal_small_free(ptr);
 }
 
@@ -367,6 +473,15 @@ void* xrMemory::mem_realloc(void* ptr, size_t size)
     //TracyFree(ptr);
     const auto result = xr_internal_realloc(ptr, size);
     //TracyAllocN(result, size, "realloc");
+    // [DA_PORT] Здесь же проходит ВСЯ память LuaJIT: lua_newstate получает lua_alloc, а тот зовёт
+    // xr_realloc даже на первое выделение (ptr = nullptr). Ловушки da_alloc_trap в этом пути нет и
+    // никогда не было — она стоит только в mem_alloc.
+    {
+        da_alloc_slot* slot = da_slot();
+        ++slot->realloc_calls;
+        slot->realloc_bytes += size;
+        ++slot->hist[da_bucket(size)];
+    }
     return result;
 }
 
@@ -375,19 +490,275 @@ void* xrMemory::mem_realloc(void* ptr, size_t size, size_t alignment)
     //TracyFree(ptr);
     const auto result = xr_internal_realloc_aligned(ptr, size, alignment);
     //TracyAllocN(result, size, "realloc");
+    {
+        da_alloc_slot* slot = da_slot(); // [DA_PORT]
+        ++slot->realloc_calls;
+        slot->realloc_bytes += size;
+        ++slot->hist[da_bucket(size)];
+    }
     return result;
 }
 
 void xrMemory::mem_free(void* ptr)
 {
     //TracyFree(ptr);
+    // [DA_PORT] Пустые указатели не считаем: освобождение nullptr — не работа аллокатора, а в коде
+    // движка оно встречается сплошь и рядом и исказило бы долю освобождений.
+    if (ptr)
+        ++da_slot()->free_calls;
     xr_internal_free(ptr);
 }
 
 void xrMemory::mem_free(void* ptr, size_t alignment)
 {
     //TracyFree(ptr);
+    if (ptr)
+        ++da_slot()->free_calls; // [DA_PORT]
     xr_internal_free_aligned(ptr, alignment);
+}
+
+// [DA_PORT] Отчёт счётчика выделений (консоль: da_alloc_stat, с аргументом reset — сбросить окно).
+XRCORE_API void da_alloc_stat_dump(bool reset, int frames)
+{
+    // ⚠️ Снимаем всё в локальные переменные ДО первой печати. Msg выделяет память сам, и без
+    // снимка прибор досчитывал бы собственный вывод — ошибка того же класса, что уже была с
+    // буфером лога, всплывшим в таблице роста как «утечка» ([[level-graph-node-leak]]).
+    da_alloc_slot sum{};
+    struct thread_row { u32 id; u64 calls; };
+    thread_row rows[DA_ALLOC_SLOTS]{};
+    u32 used = g_da_slot_next.load(std::memory_order_relaxed);
+    if (used > DA_ALLOC_SLOTS)
+        used = DA_ALLOC_SLOTS;
+    for (u32 i = 0; i < used; ++i)
+    {
+        const da_alloc_slot& s = g_da_slots[i];
+        sum.alloc_calls += s.alloc_calls;
+        sum.alloc_bytes += s.alloc_bytes;
+        sum.realloc_calls += s.realloc_calls;
+        sum.realloc_bytes += s.realloc_bytes;
+        sum.free_calls += s.free_calls;
+        sum.small_calls += s.small_calls;
+        for (u32 b = 0; b < DA_ALLOC_BUCKETS; ++b)
+            sum.hist[b] += s.hist[b];
+        rows[i].id = s.thread_id;
+        rows[i].calls = s.alloc_calls + s.small_calls + s.realloc_calls;
+    }
+
+    const u64 now = CPU::QPC();
+    const float secs = (now > g_da_stat_since) ? float(double(now - g_da_stat_since) / double(CPU::qpc_freq)) : 0.0f;
+    const float per_s = secs > 0.01f ? 1.0f / secs : 0.0f;
+
+    Msg("~ [DA_ALLOC] окно %.1f с, потоков %u (слотов занято %u из %u)", secs, used, used, DA_ALLOC_SLOTS);
+    if (g_da_slot_next.load(std::memory_order_relaxed) > DA_ALLOC_SLOTS)
+        Msg("~ [DA_ALLOC] ⚠️ потоков было БОЛЬШЕ %u: лишние сведены в последний слот, "
+            "разбивка по потокам неполна", DA_ALLOC_SLOTS);
+
+    Msg("~ [DA_ALLOC] выделений    %12llu  %9.0f/с  %8.1f МБ  %7.1f МБ/с", (unsigned long long)sum.alloc_calls,
+        sum.alloc_calls * per_s, sum.alloc_bytes / 1048576.0, sum.alloc_bytes / 1048576.0 * per_s);
+    Msg("~ [DA_ALLOC] мелких       %12llu  %9.0f/с   (отдельный путь аллокатора)",
+        (unsigned long long)sum.small_calls, sum.small_calls * per_s);
+    Msg("~ [DA_ALLOC] перевыделен. %12llu  %9.0f/с  %8.1f МБ   (сюда идёт ВСЯ память LuaJIT)",
+        (unsigned long long)sum.realloc_calls, sum.realloc_calls * per_s, sum.realloc_bytes / 1048576.0);
+    Msg("~ [DA_ALLOC] освобождений %12llu  %9.0f/с", (unsigned long long)sum.free_calls, sum.free_calls * per_s);
+
+    // ⚠️ НА КАДР — главное число, и вот почему. «В секунду» зависит от того, сколько кадров машина
+    // успела, а стенд идёт на 27 кадрах против полутора-двух сотен в живой игре: одна и та же
+    // нагрузка читается там вшестеро меньшей. На кадр — величина той же природы, что и бюджет
+    // кадра, и сравнивается с ним напрямую.
+    if (frames > 0)
+        Msg("~ [DA_ALLOC] НА КАДР: %.0f операций (выделений %.0f, перевыделений %.0f, освобождений %.0f)",
+            double(sum.alloc_calls + sum.small_calls + sum.realloc_calls + sum.free_calls) / frames,
+            double(sum.alloc_calls + sum.small_calls) / frames, double(sum.realloc_calls) / frames,
+            double(sum.free_calls) / frames);
+
+    // Размеры. Границы выбраны не «по кругу», а по тому, что различает аллокатор: у mimalloc
+    // MI_SMALL_SIZE_MAX = 1024 байта, и всё, что ниже, идёт по быстрому пути без блокировок.
+    {
+        static const struct { u32 upto_bit; pcstr name; } ranges[] = {
+            { 5, "=<32" }, { 6, "=<64" }, { 7, "=<128" }, { 8, "=<256" }, { 9, "=<512" },
+            { 10, "=<1K" }, { 12, "=<4K" }, { 16, "=<64K" }, { 20, "=<1M" }, { 31, ">1M" },
+        };
+        string512 line;
+        xr_strcpy(line, "~ [DA_ALLOC] размеры: ");
+        u32 from = 0;
+        u64 upto_1k = 0;
+        u64 hist_total = 0;
+        for (u32 b = 0; b < DA_ALLOC_BUCKETS; ++b)
+            hist_total += sum.hist[b];
+        for (const auto& r : ranges)
+        {
+            u64 n = 0;
+            for (u32 b = from; b <= r.upto_bit && b < DA_ALLOC_BUCKETS; ++b)
+                n += sum.hist[b];
+            if (r.upto_bit <= 10)
+                upto_1k += n;
+            from = r.upto_bit + 1;
+            string64 piece;
+            xr_sprintf(piece, " %s %.1f%%", r.name, hist_total ? n * 100.0 / hist_total : 0.0);
+            xr_strcat(line, piece);
+        }
+        Msg("%s", line);
+        Msg("~ [DA_ALLOC] до 1 КБ: %.1f%% запросов — именно эту долю mimalloc уводит на путь "
+            "без блокировок; если она мала, менять аллокатор незачем",
+            hist_total ? upto_1k * 100.0 / hist_total : 0.0);
+    }
+
+    // Потоки. Второй сигнал: за общую кучу состязаются только те потоки, которые в неё ходят.
+    {
+        std::sort(rows, rows + used, [](const thread_row& a, const thread_row& b) { return a.calls > b.calls; });
+        u64 all = 0;
+        for (u32 i = 0; i < used; ++i)
+            all += rows[i].calls;
+        string512 line;
+        xr_strcpy(line, "~ [DA_ALLOC] по потокам:");
+        u64 shown = 0;
+        const u32 top = used < 4 ? used : 4;
+        for (u32 i = 0; i < top; ++i)
+        {
+            string64 piece;
+            xr_sprintf(piece, " %u %.1f%%,", rows[i].id, all ? rows[i].calls * 100.0 / all : 0.0);
+            xr_strcat(line, piece);
+            shown += rows[i].calls;
+        }
+        string64 rest;
+        xr_sprintf(rest, " прочие %.1f%%", all ? (all - shown) * 100.0 / all : 0.0);
+        xr_strcat(line, rest);
+        Msg("%s", line);
+        Msg("~ [DA_ALLOC] один поток тянет %.1f%% запросов. Чем ровнее раскладка, тем больше "
+            "смысла в аллокаторе с отдельной кучей на поток", all ? rows[0].calls * 100.0 / all : 0.0);
+    }
+
+    Msg("~ [DA_ALLOC] аллокатор сейчас: %s",
+#if defined(USE_MIMALLOC)
+        "mimalloc"
+#elif defined(USE_XR_ALIGNED_MALLOC)
+        "xr_aligned_malloc"
+#else
+        "системный malloc (USE_PURE_ALLOC)"
+#endif
+    );
+
+    if (reset)
+    {
+        da_alloc_stat_reset();
+        Msg("~ [DA_ALLOC] счётчики сброшены, окно начато заново");
+    }
+}
+
+// [DA_PORT] Цена одной операции аллокатора — замером, а не через справочную константу.
+//
+// ЗАЧЕМ. Счётчик даёт ЧИСЛО операций, а решение про аллокатор требует ВРЕМЕНИ. Перевести одно в
+// другое, подставив «ну, наносекунд сорок», — это выдать допущение за результат. Здесь время
+// меряется на этой самой сборке, этим самым аллокатором.
+//
+// ⚠️ Образец нагрузки выбран не «выделил-освободил в цикле»: так меряется лучший случай, когда
+// блок возвращается из горячего кэша сразу же. Настоящий движок держит десятки тысяч живых блоков
+// и трогает их вразнобой. Поэтому здесь установившийся режим: пул живых указателей, на каждом шаге
+// один освобождается и на его место приходит новый — как оно и происходит в игре.
+//
+// ⚠️ Замер ходит в xr_internal_* напрямую, мимо xrMemory, поэтому в счётчик он не попадает по
+// построению; слот всё равно снимается и восстанавливается — на случай, если макрос когда-нибудь
+// заведут через учитываемый путь. Прибор, попавший в собственную таблицу, у нас уже был: буфер
+// лога однажды прочитался как утечка.
+XRCORE_API void da_alloc_bench(int frames)
+{
+    constexpr u32 LIVE = 16384; // живых блоков: столько же порядком, сколько держит уровень
+    constexpr u32 ROUNDS = 400000;
+    static const size_t sizes[] = { 24, 32, 40, 56, 64, 96, 128 }; // из наблюдённой раскладки
+
+    // ⚠️ Наблюдённую частоту снимаем ДО замера, а не после. Сам замер занимает секунды, и если
+    // считать окно потом, эти секунды разбавят частоту и ответ выйдет заниженным.
+    double ops_per_sec = 0.0;
+    double ops_total = 0.0;
+    {
+        double ops = 0.0;
+        u32 used = g_da_slot_next.load(std::memory_order_relaxed);
+        if (used > DA_ALLOC_SLOTS)
+            used = DA_ALLOC_SLOTS;
+        for (u32 i = 0; i < used; ++i)
+        {
+            const da_alloc_slot& s = g_da_slots[i];
+            ops += double(s.alloc_calls + s.small_calls + s.realloc_calls + s.free_calls);
+        }
+        const u64 now = CPU::QPC();
+        const double window = (now > g_da_stat_since) ? double(now - g_da_stat_since) / double(CPU::qpc_freq) : 0.0;
+        ops_total = ops;
+        if (window > 0.5 && ops > 0.0)
+            ops_per_sec = ops / window;
+    }
+
+    da_alloc_slot* slot = da_slot();
+    const da_alloc_slot saved = *slot; // снимок: замер не должен попасть в отчёт
+
+    void** pool = (void**)xr_internal_malloc(LIVE * sizeof(void*));
+    if (!pool)
+    {
+        Msg("! [DA_ALLOC] замер не выполнен: не удалось выделить пул");
+        return;
+    }
+
+    u32 rnd = 123456789;
+    auto next = [&rnd]() { rnd = rnd * 1664525u + 1013904223u; return rnd; };
+
+    for (u32 i = 0; i < LIVE; ++i)
+        pool[i] = xr_internal_malloc(sizes[next() % std::size(sizes)]);
+
+    const u64 t0 = CPU::QPC();
+    for (u32 r = 0; r < ROUNDS; ++r)
+    {
+        const u32 slot_idx = next() % LIVE;
+        xr_internal_free(pool[slot_idx]);
+        pool[slot_idx] = xr_internal_malloc(sizes[next() % std::size(sizes)]);
+    }
+    const u64 t1 = CPU::QPC();
+
+    for (u32 i = 0; i < LIVE; ++i)
+        xr_internal_free(pool[i]);
+    xr_internal_free(pool);
+
+    *slot = saved;
+
+    const double secs = double(t1 - t0) / double(CPU::qpc_freq);
+    const double ns_pair = secs * 1e9 / double(ROUNDS);
+    Msg("~ [DA_ALLOC] цена операции: %.1f нс на пару «освободить+выделить» (%u повторов, %u живых блоков)",
+        ns_pair, ROUNDS, LIVE);
+
+    // Пересчёт в долю кадра — то, ради чего всё и меряется.
+    if (frames > 0 && ops_total > 0.0)
+    {
+        // Вот он, ответ на весь вопрос: сколько миллисекунд КАДРА уходит в аллокатор.
+        const double ms_frame = (ops_total / frames) * (ns_pair / 2.0) / 1e6;
+        Msg("~ [DA_ALLOC] ИТОГ: %.0f операций на кадр по %.1f нс = %.3f мс кадра", ops_total / frames,
+            ns_pair / 2.0, ms_frame);
+        Msg("~ [DA_ALLOC] при 60 кадрах это %.1f%% бюджета кадра, при 144 — %.1f%%", ms_frame / 16.67 * 100.0,
+            ms_frame / 6.94 * 100.0);
+        Msg("~ [DA_ALLOC] ⚠️ выигрыш от смены аллокатора — ДОЛЯ от этого числа, а не оно само: "
+            "другой аллокатор не убирает операции, а удешевляет их");
+    }
+    else if (ops_per_sec > 0.0)
+    {
+        const double ms_per_sec = ops_per_sec * (ns_pair / 2.0) / 1e6;
+        Msg("~ [DA_ALLOC] при наблюдённых %.0f операций/с это %.1f мс на секунду игры", ops_per_sec, ms_per_sec);
+        Msg("~ [DA_ALLOC] ⚠️ число кадров окна неизвестно — доля кадра не посчитана. "
+            "Мерить через `da_alloc_stat <кадров> bench`");
+    }
+    else
+        Msg("~ [DA_ALLOC] окно замера пусто: сперва `da_alloc_stat <кадров>`, потом сюда");
+}
+
+// [DA_PORT] Сброс без печати: нужен, чтобы окно замера начиналось чисто, а не с отчёта о том,
+// что было до него.
+XRCORE_API void da_alloc_stat_reset()
+{
+    for (u32 i = 0; i < DA_ALLOC_SLOTS; ++i)
+    {
+        da_alloc_slot& s = g_da_slots[i];
+        s.alloc_calls = s.alloc_bytes = s.realloc_calls = s.realloc_bytes = 0;
+        s.free_calls = s.small_calls = 0;
+        for (u32 b = 0; b < DA_ALLOC_BUCKETS; ++b)
+            s.hist[b] = 0;
+    }
+    g_da_stat_since = CPU::QPC();
 }
 
 // xr_strdup

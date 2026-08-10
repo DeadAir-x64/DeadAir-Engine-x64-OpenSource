@@ -162,3 +162,12 @@ XRCORE_API void* xr_realloc(void* ptr, size_t size);
 XRCORE_API pstr xr_strdup(pcstr string);
 
 XRCORE_API void log_vminfo();
+
+// [DA_PORT] Отчёт счётчика выделений: сколько их, каких размеров, из скольких потоков. Отвечает
+// числами на вопрос «даст ли что-нибудь смена аллокатора», который до сих пор решался на глаз.
+XRCORE_API void da_alloc_stat_dump(bool reset, int frames = 0);
+XRCORE_API void da_alloc_stat_reset();
+
+// [DA_PORT] Цена одной операции аллокатора замером на этой сборке, и пересчёт наблюдённой частоты
+// в миллисекунды на секунду игры. Без него счётчик даёт штуки, а решение требует времени.
+XRCORE_API void da_alloc_bench(int frames);

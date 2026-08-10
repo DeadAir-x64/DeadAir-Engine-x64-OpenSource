@@ -226,8 +226,14 @@ void TContactShotMark(CDB::TRI* T, dContactGeom* c)
             if (square_cam_dist < SQUARE_SOUND_EFFECT_DIST)
             {
                 SGameMtl* static_mtl = GMLib.GetMaterialByIdx(T->material);
+                // [DA_PORT] VERIFY исчезает в релизе, а следующей строкой шло разыменование.
+                // ⚠️ Просто дописать `static_mtl &&` в условие нельзя: на пустом материале управление
+                // ушло бы в `else`, то есть заиграл бы звук объекта. Без материала звука нет вовсе.
                 VERIFY(static_mtl);
-                if (!static_mtl->Flags.test(SGameMtl::flPassable))
+                if (!static_mtl)
+                {
+                }
+                else if (!static_mtl->Flags.test(SGameMtl::flPassable))
                 {
                     if (vel_cret > Pars::vel_cret_sound)
                     {
@@ -254,8 +260,12 @@ void TContactShotMark(CDB::TRI* T, dContactGeom* c)
             {
                 SGameMtl* static_mtl = GMLib.GetMaterialByIdx(T->material);
                 VERIFY(static_mtl);
-                LPCSTR ps_name = mtl_pair->CollideParticles[::Random.randI(0, mtl_pair->CollideParticles.size())].c_str();
-                play_particles<Pars>(vel_cret, data, c, b_invert_normal, static_mtl, ps_name);
+                if (static_mtl) // [DA_PORT] play_particles разыменовывает материал внутри
+                {
+                    LPCSTR ps_name =
+                        mtl_pair->CollideParticles[::Random.randI(0, mtl_pair->CollideParticles.size())].c_str();
+                    play_particles<Pars>(vel_cret, data, c, b_invert_normal, static_mtl, ps_name);
+                }
             }
         }
     }

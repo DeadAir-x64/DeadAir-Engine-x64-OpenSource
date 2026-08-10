@@ -72,6 +72,14 @@ public:
     void AddSkeletonWallmark(
         const Fmatrix* xf, CKinematics* obj, ref_shader& sh, const Fvector& start, const Fvector& dir, float size);
 
+    // [DA_PORT] Снять следы скелета, привязанные к конкретному визуалу.
+    //
+    // След хранит СЫРОЙ указатель на CKinematics (`m_Parent`), а живёт он в списке ДВИЖКА следов, а
+    // не в самом визуале. `CKinematics::ClearWallmarks()` чистит только список визуала — записи в
+    // движке остаются и на следующем кадре зовут `W->Parent()->RenderWallmark(...)` по
+    // освобождённой памяти. Стоящий там `try/catch` нарушение доступа не ловит.
+    void RemoveSkeletonWallmarks(const CKinematics* parent);
+
     // render
     void Render();
 

@@ -72,7 +72,37 @@ bool CWeaponMagazinedWGrenade::net_Spawn(CSE_Abstract* DC)
     iAmmoElapsed2 = weapon->a_elapsed_grenades.grenades_count;
     m_ammoType2 = weapon->a_elapsed_grenades.grenades_type;
 
-    m_DefaultCartridge2.Load(m_ammoTypes2[m_ammoType2].c_str(), m_ammoType2);
+    // [DA_PORT] Номер типа гранаты приходит ИЗ ДАННЫХ, а индексирует вектор без границы.
+    //
+    // `grenades_type` читается из сохранения вместе с самим стволом. Обновилась сборка, из
+    // конфигурации ушёл тип боеприпаса — и номер указывает мимо `m_ammoTypes2`. Чтение за
+    // границами вектора даёт мусорную `shared_str`, а `.c_str()` по ней — падение или, что хуже,
+    // молча загруженный «патрон» из случайной памяти.
+    //
+    // ⚠️ Тем же номером индексирует ещё и строка 818 (перезарядка подствольника) — поэтому чиним
+    // ЗДЕСЬ, у источника: приводим номер к годному один раз, и дальше он верен везде.
+    //
+    // Ноль — осмысленный запасной вариант: первый тип боеприпаса у ствола есть всегда, иначе
+    // подствольника у него нет вовсе.
+    //
+    // Найдено ДИФФОМ дерева Monolith («Print warning and set m_ammoType to 0 if m_ammoTypes[
+    // m_ammoType] is invalid»); у нас это тот же файл, где сегодня чинили размер магазина.
+    if (m_ammoTypes2.empty())
+    {
+        Msg("! [DA] у [%s] нет ни одного типа боеприпаса подствольника — загрузка патрона пропущена",
+            cNameSect().c_str());
+    }
+    else
+    {
+        if (m_ammoType2 >= m_ammoTypes2.size())
+        {
+            Msg("! [DA] у [%s] в сохранении тип гранаты %u при %u доступных — взят первый",
+                cNameSect().c_str(), (u32)m_ammoType2, (u32)m_ammoTypes2.size());
+            m_ammoType2 = 0;
+        }
+
+        m_DefaultCartridge2.Load(m_ammoTypes2[m_ammoType2].c_str(), m_ammoType2);
+    }
 
     if (!IsGameTypeSingle())
     {
@@ -792,6 +822,27 @@ void CWeaponMagazinedWGrenade::load(IReader& input_packet)
 
     u32 sz = 0;
     load_data(sz, input_packet);
+
+    // [DA_PORT] Число из пакета — это ДАННЫЕ, а не факт, и границы у него не было вовсе.
+    //
+    // Цикл ниже набивает магазин, пока не дойдёт до `sz`. Если сохранение битое или сделано сборкой
+    // с другой раскладкой пакета, `sz` приходит мусором — и `push_back` идёт миллиарды раз, пока не
+    // кончится память. Вылет при этом случается ВДАЛЕКЕ, в первом же неудачном выделении, и на
+    // оружие не показывает ничем.
+    //
+    // Потолок известен из конфигурации самого ствола: `ammo_mag_size` (`iMagazineSize2`). Больше
+    // подствольник вместить не может по определению, поэтому лишнее отбрасываем и называем ствол
+    // в логе — иначе непонятно, чей сейв испорчен.
+    //
+    // Найдено разбором журнала Monolith («Fixed Out Of Memory error due to abnormal size of
+    // underbarrel ammo in net packet»), причина проверена по своему коду.
+    const u32 da_limit = iMagazineSize2 > 0 ? u32(iMagazineSize2) : 0u;
+    if (sz > da_limit)
+    {
+        Msg("! [DA] в сохранении у [%s] подствольных патронов %u при вместимости %u — лишнее отброшено",
+            cNameSect().c_str(), sz, da_limit);
+        sz = da_limit;
+    }
 
     CCartridge l_cartridge;
     l_cartridge.Load(m_ammoTypes2[m_ammoType2].c_str(), m_ammoType2);

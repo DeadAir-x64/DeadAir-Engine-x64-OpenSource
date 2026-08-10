@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "pch_script.h"
+#include "xrScriptEngine/da_lua_singleton.hpp"
 
 #include "script_ini_file.h"
 #include "xrScriptEngine/Functor.hpp"
@@ -65,8 +66,18 @@ CScriptIniFile* reload_system_ini()
 }
 //Alundaio: END
 
+// DA: одна обёртка вместо новой на каждый вызов, см. da_lua_singleton.hpp
+static da_lua_singleton<CScriptIniFile> s_da_system_ini;
+
+static int da_lua_system_ini(lua_State* L)
+{
+    return s_da_system_ini.push(L, (CScriptIniFile*)pSettings, "system_ini");
+}
+
 void CScriptIniFile::script_register(lua_State* luaState)
 {
+    s_da_system_ini.reset();
+
     using namespace luabind;
     using namespace luabind::policy;
 
@@ -151,4 +162,8 @@ void CScriptIniFile::script_register(lua_State* luaState)
 
             def("create_ini_file", &create_ini_file, adopt<0>())
     ];
+
+    // DA: перекрываем биндинг luabind своей функцией с кэшем обёртки
+    lua_pushcfunction(luaState, &da_lua_system_ini);
+    lua_setglobal(luaState, "system_ini");
 }

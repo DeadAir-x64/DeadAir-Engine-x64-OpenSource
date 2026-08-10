@@ -13,12 +13,43 @@ CUIWindow::CUIWindow(pcstr window_name) : m_windowName(window_name)
 
 CUIWindow::~CUIWindow()
 {
-    VERIFY(!(GetParent() && IsAutoDelete()));
-
     CUIWindow* parent = GetParent();
     bool ad = IsAutoDelete();
     if (parent && !ad)
         parent->CUIWindow::DetachChild(this);
+    else if (parent)
+    {
+        // [DA_PORT] Самоудаляющееся окно уничтожили в обход DetachChild.
+        //
+        // Было `VERIFY(!(GetParent() && IsAutoDelete()))` — то есть УТВЕРЖДЕНИЕ, что так не бывает,
+        // и в релизе от него не остаётся ничего. Держится оно на допущении: раз окно с самоудалением
+        // умирает только внутри DetachChild, а тот перед удалением уже вынул нас из списка и обнулил
+        // родителя, то сюда с живым родителем не попасть.
+        //
+        // Допущение ложное: удалить дочернее окно напрямую (xr_delete у поля в деструкторе
+        // владельца) ничто не мешает, и тогда у родителя в m_ChildWndList остаётся указатель на
+        // освобождённую память. Следующий же Draw() пройдёт по списку и дёрнет IsShown() у
+        // покойника — виртуальный вызов по чужой памяти, вылет далеко от места ошибки.
+        //
+        // ⚠️ Позвать здесь DetachChild НЕЛЬЗЯ: он увидит IsAutoDelete() и сделает xr_delete(this)
+        // из нашего же деструктора. Ровно поэтому в исходнике стоял пропуск, а не проверка. Поэтому
+        // снимаем себя со списка вручную — без удаления.
+        auto& siblings = parent->m_ChildWndList;
+        const auto it = std::find(siblings.begin(), siblings.end(), this);
+        if (it != siblings.end())
+        {
+            if (parent->m_pMouseCapturer == this)
+                parent->SetCapture(this, false);
+
+            siblings.erase(it);
+
+            const shared_str self_name = WindowName();
+            Msg("~ [DA] интерфейс: самоудаляющееся окно [%s] снесли мимо DetachChild — снято со "
+                "списка родителя, висячего указателя не осталось",
+                self_name.c_str() ? self_name.c_str() : "без имени");
+        }
+        SetParent(NULL);
+    }
 
     DetachAll();
 }
@@ -90,7 +121,21 @@ void CUIWindow::DetachChild(CUIWindow* pChild)
 
     //.	SafeRemoveChild			(pChild);
     auto it = std::find(m_ChildWndList.begin(), m_ChildWndList.end(), pChild);
-    R_ASSERT(it != m_ChildWndList.end());
+    // [DA_PORT] Сообщение вместо R_ASSERT: он живёт в релизе, то есть это был гарантированный
+    // вылет у игрока. Отцепить не своего ребёнка — ошибка вызывающего, но последствий у неё нет:
+    // ниже мы бы обнулили ЧУЖОМУ окну родителя и, чего доброго, удалили его. Выйти — единственное
+    // безопасное действие, а строка называет виновника.
+    if (it == m_ChildWndList.end())
+    {
+        // shared_str держим в переменных: WindowName() отдаёт КОПИЮ, а у пустой строки c_str()
+        // возвращает ноль — и то и другое ломает %s.
+        const shared_str child_name = pChild->WindowName();
+        const shared_str self_name = WindowName();
+        Msg("! [DA] интерфейс: окно [%s] отцепляют от [%s], но в списке детей его нет — пропущено",
+            child_name.c_str() ? child_name.c_str() : "без имени",
+            self_name.c_str() ? self_name.c_str() : "без имени");
+        return;
+    }
     m_ChildWndList.erase(it);
 
     pChild->SetParent(NULL);

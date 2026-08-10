@@ -110,18 +110,62 @@ CSE_ALifeDynamicObject* CALifeObjectRegistry::get_object(IReader& file_stream)
     }
 #endif
     // create entity
-    CSE_Abstract* tpSE_Abstract = F_entity_Create(s_name);
-    R_ASSERT2(tpSE_Abstract, "Can't create entity.");
+    //
+    // [DA_PORT] Пропавшая секция больше не отменяет весь сейв.
+    //
+    // Было: `F_entity_Create(s_name)` + `R_ASSERT2(tpSE_Abstract, "Can't create entity.")`. Оба
+    // конца фатальны в релизе, и падает раньше даже не утверждение: F_entity_Create первым делом
+    // зовёт `pSettings->r_clsid(section, "class")`, а `CInifile::r_section` на отсутствующей секции
+    // делает `xrDebug::Fatal` прямо внутри чтения конфигурации.
+    //
+    // ⚠️ Отсюда и обманчивость симптома: игрок видел «Can't find section 'xxx'» — сообщение
+    // РАЗБОРЩИКА КОНФИГОВ, без единого намёка на то, что это загрузка сохранения. А само
+    // утверждение движка, если бы до него дошло, не называло даже секции: «Can't create entity.»
+    // и всё.
+    //
+    // Случай при этом бытовой: игрок обновил сборку, из конфигурации ушёл предмет — и все прежние
+    // сохранения перестают открываться. Пропустить один объект несравнимо лучше: владелец
+    // отсутствующего предмета уже умеет обходиться без него (см. разбор в alife_simulator_base2.cpp),
+    // а обход детей при сохранении и так пропускает то, чего нет в реестре.
+    //
+    // ⚠️ Пакет обновления читается ВСЕГДА, даже когда объект пропущен: он идёт следом в том же
+    // потоке, и не вычитав его, мы сдвинем чтение для всех оставшихся объектов сейва.
+    CSE_Abstract* tpSE_Abstract = nullptr;
+    if (!pSettings->section_exist(s_name))
+    {
+        Msg("! [DA] сохранение ссылается на секцию [%s], которой в конфигурации больше нет — "
+            "объект пропущен",
+            s_name);
+    }
+    else if (!pSettings->line_exist(s_name, "class"))
+    {
+        Msg("! [DA] у секции [%s] нет ключа class — объект пропущен", s_name);
+    }
+    else
+    {
+        tpSE_Abstract = F_entity_Create(s_name, true);
+        if (!tpSE_Abstract)
+            Msg("! [DA] секция [%s] на месте, но её класса нет в фабрике сущностей — объект пропущен",
+                s_name);
+    }
+
     CSE_ALifeDynamicObject* tpALifeDynamicObject = smart_cast<CSE_ALifeDynamicObject*>(tpSE_Abstract);
-    R_ASSERT2(tpALifeDynamicObject, "Non-ALife object in the saved game!");
-    tpALifeDynamicObject->Spawn_Read(tNetPacket);
+    if (tpSE_Abstract && !tpALifeDynamicObject)
+    {
+        Msg("! [DA] объект секции [%s] в сохранении не является объектом ALife — пропущен", s_name);
+        F_entity_Destroy(tpSE_Abstract);
+    }
+
+    if (tpALifeDynamicObject)
+        tpALifeDynamicObject->Spawn_Read(tNetPacket);
 
     // Update
     tNetPacket.B.count = file_stream.r_u16();
     file_stream.r(tNetPacket.B.data, tNetPacket.B.count);
     tNetPacket.r_begin(u_id);
     R_ASSERT2(M_UPDATE == u_id, "Invalid packet ID (!= M_UPDATE)");
-    tpALifeDynamicObject->UPDATE_Read(tNetPacket);
+    if (tpALifeDynamicObject)
+        tpALifeDynamicObject->UPDATE_Read(tNetPacket);
 
     return (tpALifeDynamicObject);
 }
@@ -138,13 +182,26 @@ void CALifeObjectRegistry::load(IReader& file_stream)
 
     CSE_ALifeDynamicObject** I = objects;
     CSE_ALifeDynamicObject** E = objects + count;
+    // [DA_PORT] get_object теперь имеет право вернуть ноль — см. разбор пропавшей секции там же.
+    // Число пропусков считаем отдельно: строка «загружено N объектов» не должна врать, а
+    // расхождение с записанным в сейве count — единственное, по чему видно, что игрок потерял
+    // часть мира при обновлении сборки.
+    u32 skipped = 0;
     for (; I != E; ++I)
     {
         *I = get_object(file_stream);
+        if (!*I)
+        {
+            ++skipped;
+            continue;
+        }
         add(*I);
     }
 
-    Msg("* %d objects are successfully loaded", count);
+    Msg("* %d objects are successfully loaded", count - skipped);
+    if (skipped)
+        Msg("! [DA] при загрузке пропущено объектов: %u из %u (секции отсутствуют в конфигурации)",
+            skipped, count);
 }
 
 // [DA_PORT] ---- Санитар реестра ALife -------------------------------------------------------------

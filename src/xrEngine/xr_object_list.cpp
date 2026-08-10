@@ -50,10 +50,17 @@ CObjectList::CObjectList()
 
 CObjectList::~CObjectList()
 {
-    R_ASSERT(objects_active.empty());
-    R_ASSERT(objects_sleeping.empty());
-    R_ASSERT(destroy_queue.empty());
-    //. R_ASSERT ( map_NETID.empty() );
+    // [DA_PORT] Здесь стояли три R_ASSERT, и это была мина: R_ASSERT в релизе НЕ вырезается
+    // (xrDebug_macros.h), он зовёт xrDebug::Fail. То есть непустой список при разрушении —
+    // гарантированный вылет вместо тихого выхода из игры.
+    //
+    // Причина непустой очереди найдена и закрыта в Unload() (см. там). Но проверку оставляем
+    // сообщением, а не утверждением: в деструкторе сделать уже ничего нельзя, сессия кончается,
+    // и превращать диагностируемую утечку в вылет — худшее из решений. Сообщение при этом
+    // сохраняет ровно ту диагностику, ради которой утверждения и стояли.
+    if (!objects_active.empty() || !objects_sleeping.empty() || !destroy_queue.empty())
+        Msg("! [DA] CObjectList уничтожается непустым: активных %u, спящих %u, в очереди %u",
+            (u32)objects_active.size(), (u32)objects_sleeping.size(), (u32)destroy_queue.size());
 }
 
 IGameObject* CObjectList::FindObjectByName(shared_str name)
@@ -652,7 +659,16 @@ return (it==map_NETID.end())?0:it->second;
 */
 void CObjectList::Load()
 {
-    R_ASSERT(/*map_NETID.empty() &&*/ objects_active.empty() && destroy_queue.empty() && objects_sleeping.empty());
+    // [DA_PORT] То же, что в деструкторе: R_ASSERT здесь означал вылет НА ВХОДЕ В УРОВЕНЬ, если
+    // предыдущий оставил остатки. Причина закрыта в Unload(), но если остаток всё же пришёл —
+    // назвать его и начать уровень с чистого листа лучше, чем не пустить игрока в игру.
+    if (!objects_active.empty() || !objects_sleeping.empty() || !destroy_queue.empty())
+    {
+        Msg("! [DA] загрузка уровня при непустых списках: активных %u, спящих %u, в очереди %u - "
+            "остатки прошлого уровня, очищаем",
+            (u32)objects_active.size(), (u32)objects_sleeping.size(), (u32)destroy_queue.size());
+        destroy_queue.clear();
+    }
 }
 
 void CObjectList::Unload()
@@ -688,6 +704,32 @@ void CObjectList::Unload()
 #endif
         O->net_Destroy();
         Destroy(O);
+    }
+
+    // [DA_PORT] Очередь уничтожения обязана опустеть ЗДЕСЬ, и вот почему.
+    //
+    // Оба цикла выше зовут setDestroy(true), а он (CGameObject::setDestroy) кладёт объект в
+    // destroy_queue. Следом объект уничтожается и возвращается в пул — а запись в очереди
+    // остаётся, и это уже ВИСЯЧИЙ указатель. Destroy() очередь не трогает: он убирает объект из
+    // ворон, активных и спящих, и только.
+    //
+    // Чем это кончалось: R_ASSERT(destroy_queue.empty()) в Load() следующего уровня и в
+    // ~CObjectList. R_ASSERT в релизе ЖИВ (xrDebug_macros.h), то есть это был гарантированный
+    // фатал у игрока — при том что причина уже названа строкой «objects-leaked» выше.
+    //
+    // Почему очистить, а не слить как обычно: штатный слив в Update уведомляет всех живых
+    // (net_Relcase, звук, колбэки, интерфейс) — здесь уведомлять некого, весь уровень уходит, а
+    // объекты уже уничтожены. Каждая запись очереди указывает ровно на то, что мы только что
+    // снесли: объект попадает в очередь только через setDestroy, а из списков его убирает лишь
+    // Destroy(), значит к этой строке в очереди нет ничего, кроме обработанного.
+    //
+    // ⚠️ Это НЕ маскировка утечки: сама утечка названа выше по имени и числу объектов. Здесь
+    // чинится второе следствие — испорченная очередь.
+    if (!destroy_queue.empty())
+    {
+        Msg("~ [DA] очередь уничтожения при выгрузке: %u записей на уже снесённые объекты, очищена",
+            (u32)destroy_queue.size());
+        destroy_queue.clear();
     }
 }
 

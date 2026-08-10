@@ -1020,14 +1020,35 @@ void CRenderDevice::ProcessEvent(const SDL_Event& event)
             {
                 UpdateWindowRects();
 
-                if (static_cast<int>(psDeviceMode.Width) == event.window.data1 &&
-                    static_cast<int>(psDeviceMode.Height) == event.window.data2)
-                    break; // we don't need to reset device if resolution wasn't really changed
+                // [DA_PORT] В эксклюзивном полноэкранном размер задаём МЫ, а не оконный менеджер.
+                //
+                // При переключении режима SDL успевает прислать событие со СТАРЫМ (или рабочего
+                // стола) размером. Ниже это число безоговорочно записывается в psDeviceMode и
+                // дёргает Reset — то есть чужое устаревшее значение подменяет выбранное игроком
+                // разрешение и вдобавок вызывает ВТОРОЙ сброс устройства подряд: первый уже сделан
+                // штатной сменой режима.
+                //
+                // Второй сброс нам дороже, чем движку вообще: на нём пересоздаётся вся цепочка
+                // целей отрисовки апскейлера. Один раз мы уже поплатились за Reset не в том месте —
+                // см. разбор вылета до меню при откате апскейлера.
+                //
+                // ⚠️ Заслон уже, чем у соседей: они выходят из обработчика целиком, мы гасим только
+                // перезапись разрешения и сброс. Уведомление ImGui о смене размера площадки ниже
+                // остаётся — оно про раскладку интерфейса, а не про устройство.
+                //
+                // ⚠️ Проверено ЧТЕНИЕМ: стенд гоняет игру в окне на скрытом рабочем столе, смену
+                // эксклюзивного полноэкранного там не воспроизвести.
+                const bool exclusive_fullscreen = psDeviceMode.WindowStyle == rsFullscreen;
 
-                psDeviceMode.Width = event.window.data1;
-                psDeviceMode.Height = event.window.data2;
+                if (!exclusive_fullscreen &&
+                    !(static_cast<int>(psDeviceMode.Width) == event.window.data1 &&
+                        static_cast<int>(psDeviceMode.Height) == event.window.data2))
+                {
+                    psDeviceMode.Width = event.window.data1;
+                    psDeviceMode.Height = event.window.data2;
 
-                Reset();
+                    Reset();
+                }
             }
             if (viewport)
                 viewport->PlatformRequestResize = true;

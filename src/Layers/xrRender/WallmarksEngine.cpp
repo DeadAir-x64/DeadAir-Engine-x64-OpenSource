@@ -68,6 +68,42 @@ CWallmarksEngine::~CWallmarksEngine()
     hGeom.destroy();
 }
 
+// [DA_PORT] Снятие следов скелета вместе с их визуалом. Разбор — в заголовке.
+//
+// Обходим все ячейки: след привязан к шейдеру, а не к объекту, поэтому следы одного визуала могут
+// лежать в разных ячейках. Заводить обратный указатель «визуал → его следы» дороже: следов на кадр
+// единицы, а поле в каждом CKinematics платится всегда.
+void CWallmarksEngine::RemoveSkeletonWallmarks(const CKinematics* parent)
+{
+    if (!parent)
+        return;
+
+    u32 removed = 0;
+    for (auto& slot : marks)
+    {
+        if (!slot)
+            continue;
+
+        auto& items = slot->skeleton_items;
+        const auto tail = std::remove_if(items.begin(), items.end(),
+            [parent](const intrusive_ptr<CSkeletonWallmark>& w) { return w && w->Parent() == parent; });
+
+        if (tail != items.end())
+        {
+            removed += u32(std::distance(tail, items.end()));
+            items.erase(tail, items.end());
+        }
+    }
+
+    if (removed)
+    {
+        static u32 da_total = 0;
+        da_total += removed;
+        if (da_total <= 5 || (da_total % 500) == 0)
+            Msg("~ [DA] следы скелета сняты вместе с визуалом: %u (всего %u)", removed, da_total);
+    }
+}
+
 void CWallmarksEngine::clear()
 {
     {

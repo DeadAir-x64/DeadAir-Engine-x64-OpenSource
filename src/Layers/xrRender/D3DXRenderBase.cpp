@@ -374,6 +374,7 @@ xrImTextureData D3DXRenderBase::GetImGuiTextureId(pcstr texture_name)
 // the swamps at 400+, with every render sub-counter reading zero on both, so the difference has to be
 // in something the overlay shows but nobody could copy down accurately.
 int ps_da_render_log = 0;
+int ps_da_grass_dump = 0; // [DA_PORT] период отчёта об ожидании травы, кадров
 
 void D3DXRenderBase::DumpStatistics(IGameFont& font, IPerformanceAlert* alert)
 {

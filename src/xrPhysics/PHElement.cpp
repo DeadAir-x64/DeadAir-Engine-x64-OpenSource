@@ -983,18 +983,31 @@ void CPHElement::BonesCallBack(CBoneInstance* B)
     {
         B->mTransform = _valid(previous_transform) ? previous_transform : Fidentity;
 
+        ++m_invalid_pose_contained;
+
         // Раз в триста шагов симуляции (порядка пяти секунд), иначе сорванное тело зальёт лог
         // построчно на каждом кадре. Своего таймера у xrPhysics нет, считаем шагами мира.
-        static u64 last_report = 0;
+        //
+        // ⛔ Дросселирование ПООБЪЕКТНОЕ. Прежняя версия держала здесь один `static` на весь
+        // класс — и одно сорванное тело затыкало сообщения обо всех остальных.
+        //
+        // Первое срабатывание печатается СРАЗУ, не дожидаясь окна: со счётчиком от нуля условие
+        // `now - last > 300` в первые пять секунд игры не выполняется вовсе, и ранние срывы
+        // пропадали молча.
         const u64 now = ph_world ? ph_world->StepsNum() : 0;
-        if (now - last_report > 300)
+        if (m_invalid_pose_contained == 1 || now - m_invalid_pose_report_step > 300)
         {
-            last_report = now;
+            m_invalid_pose_report_step = now;
             IPhysicsShellHolder* owner = PhysicsRefObject();
+            IKinematics* kinematics = m_shell ? m_shell->PKinematics() : nullptr;
+            // ⚠️ LL_BoneName_dbg возвращает НОЛЬ, если кость не нашлась в карте имён —
+            // подставлять его в %s напрямую нельзя.
+            LPCSTR bone = kinematics ? kinematics->LL_BoneName_dbg(m_SelfID) : nullptr;
             Msg("! [DA_PORT] физика вернула нечисло в кость, положение оставлено прежним: объект "
-                "'%s', визуал '%s'",
+                "'%s', визуал '%s', кость '%s', удержано случаев %u",
                 owner ? owner->ObjectName() : "неизвестен",
-                owner ? owner->ObjectNameVisual() : "неизвестен");
+                owner ? owner->ObjectNameVisual() : "неизвестен", bone ? bone : "без имени",
+                m_invalid_pose_contained);
         }
         return;
     }

@@ -929,6 +929,22 @@ void CKinematics::RenderWallmark(intrusive_ptr<CSkeletonWallmark> wm, FVF::LIT*&
 
 void CKinematics::ClearWallmarks()
 {
+    // [DA_PORT] Чистим ОБА списка, а не только свой.
+    //
+    // Раньше здесь снимался лишь список самого визуала, а движок следов держит собственный — с
+    // сырым указателем `m_Parent` на нас. После нашей смерти он на следующем кадре зовёт
+    // `W->Parent()->RenderWallmark(...)` по освобождённой памяти; стоящий там `try/catch`
+    // нарушение доступа не ловит.
+    //
+    // Метод зовётся и из `Spawn()`, и из `Depart()`, то есть на обоих концах жизни визуала —
+    // лучшего места для снятия нет.
+    //
+    // Найдено разбором журнала Monolith («Removal of skeleton wallmarks on object's net_destroy,
+    // fixes floating wallmarks in the air or stretched wallmarks»): у них симптом был визуальный,
+    // но указатель повисает одинаково.
+    if (RImplementation.Wallmarks)
+        RImplementation.Wallmarks->RemoveSkeletonWallmarks(this);
+
     //  for (auto it=wallmarks.begin(); it!=wallmarks.end(); it++)
     //      xr_delete   (*it);
     wallmarks.clear();

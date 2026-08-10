@@ -12,6 +12,7 @@
 #include "memory_space.h"
 #include "memory_space_impl.h"
 #include "xrCommon/xr_vector.h"
+#include "xrScriptEngine/script_space_forward.hpp"
 
 
 class CCustomMonster;
@@ -52,6 +53,21 @@ private:
     RAW_VISIBLES m_visible_objects;
     VISIBLES* m_objects;
     NOT_YET_VISIBLES m_not_yet_visible_objects;
+
+    // [DA_PORT] Разрешённая ссылка на скриптовый обработчик видимости.
+    //
+    // Прежде имя "visual_memory_manager.get_visible_value" разрешалось СТРОКОЙ на каждый вызов, а
+    // CScriptEngine::object() ищет его линейным обходом таблицы через lua_next со сравнением строк.
+    // Замер: 1.18 мкс на разрешение. Держим найденное здесь и разрешаем один раз на объект.
+    //
+    // ⛔ Почему поле объекта, а не общий статик: functor наследует luabind::object, а тот держит
+    // ссылку в реестре КОНКРЕТНОГО состояния Lua и снимает её в деструкторе. Состояние
+    // пересоздаётся на каждой загрузке уровня и сейва (CScriptEngine::reinit), поэтому статик
+    // пережил бы lua_close и снял ссылку в уже закрытом состоянии. Объекты памяти умирают вместе
+    // с NPC, то есть ДО перезапуска движка скриптов, — здесь деструктор отработает по живому.
+    // mutable: get_visible_value объявлена const, а разрешение имени ленивое
+    mutable luabind::functor<float>* m_da_visible_value{};
+    mutable bool m_da_visible_value_checked{};
 
     // [DA_PORT] Когда мёртвому объекту в следующий раз считать видимость по-настоящему.
     //

@@ -243,11 +243,26 @@ void CSE_ALifeInventoryBox::add_offline(
     {
         CSE_ALifeDynamicObject* child =
             smart_cast<CSE_ALifeDynamicObject*>(ai().alife().objects().object(saved_children[i], true));
-        R_ASSERT(child);
+        // [DA_PORT] Список детей — это номера, а не указатели: пока ящик уходил в офлайн, любой из
+        // них мог быть отпущен на стороне (уборка тел, скриптовый alife():release). Прежде здесь
+        // стоял R_ASSERT — живой в релизе, то есть просроченный номер был не пропуском предмета, а
+        // концом игры. Теперь пропускаем с записью в лог.
+        if (!child)
+        {
+            Msg("! [ALife] содержимое ящика [%d]: предмета [%d] уже нет в реестре, пропущен", ID,
+                saved_children[i]);
+            continue;
+        }
         child->m_bOnline = false;
 
         CSE_ALifeInventoryItem* inventory_item = smart_cast<CSE_ALifeInventoryItem*>(child);
-        VERIFY2(inventory_item, "Non inventory item object has parent?!");
+        // [DA_PORT] VERIFY2 исчезает в релизе, а строчкой ниже результат приведения разыменовывался.
+        if (!inventory_item)
+        {
+            Msg("! [ALife] содержимое ящика [%d]: [%s] не является предметом инвентаря, пропущен", ID,
+                child->name_replace());
+            continue;
+        }
 #ifdef DEBUG
         //		if (psAI_Flags.test(aiALife))
         //			Msg					("[LSS] Destroying item
@@ -262,8 +277,10 @@ void CSE_ALifeInventoryBox::add_offline(
         if (!child->can_save())
         {
             object->alife().release(child);
-            --i;
-            --n;
+            // [DA_PORT] Здесь стояли `--i; --n;`. Список saved_children — константная ссылка, из неё
+            // никто ничего не удаляет, поэтому `--i` с последующим `++i` возвращал цикл на ТОТ ЖЕ
+            // номер. На втором заходе предмет уже отпущен, поиск в реестре давал ноль — и следующей
+            // строкой был R_ASSERT. То есть один несохраняемый предмет в ящике ронял игру.
             continue;
         }
         child->clear_client_data();

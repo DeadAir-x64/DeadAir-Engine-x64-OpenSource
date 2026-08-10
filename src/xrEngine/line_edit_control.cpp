@@ -275,6 +275,16 @@ void line_edit_control::clear_inserted() { m_inserted[0] = m_inserted[1] = 0; m_
 bool line_edit_control::empty_inserted() const { return m_inserted_pos == 0; }
 void line_edit_control::set_edit(pcstr str)
 {
+    // [DA_PORT] Сюда приходит строка ИЗ СКРИПТА: `CUICustomEdit::SetText` экспортирован в Lua, а
+    // luabind отдаёт на месте nil обычный нулевой указатель. В моде такой вызов живой — в меню
+    // настроек `axr_main_options` текст поля берётся из конфигурации (`config:r_value`), и на
+    // отсутствующем ключе с пустым значением по умолчанию приходит nil.
+    //
+    // ⭐ Соседняя проверка: `CUILines::SetText` ноль обрабатывает (`if (text && text[0] != 0)`).
+    // Не обрабатывал только этот путь. Правка взята из Anomaly 1.5.2.
+    if (!str)
+        str = "";
+
     size_t str_size = xr_strlen(str);
     clamp<size_t>(str_size, 0, m_buffer_size - 1);
     strncpy_s(m_edit_str, m_buffer_size, str, str_size);

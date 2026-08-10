@@ -28,8 +28,22 @@ bool object_position_valid(const CEntity* entity)
 
 Fvector get_bone_position(IGameObject* object, LPCSTR bone_name)
 {
-    u16 bone_id = smart_cast<IKinematics*>(object->Visual())->LL_BoneID(bone_name);
-    CBoneInstance& bone = smart_cast<IKinematics*>(object->Visual())->LL_GetBoneInstance(bone_id);
+    IKinematics* kinematics = smart_cast<IKinematics*>(object->Visual());
+    const u16 bone_id = kinematics->LL_BoneID(bone_name);
+
+    // [DA_PORT] Имя кости приходит от вызывающего (описания монстров), а на промахе LL_BoneID даёт
+    // BI_NONE (0xFFFF) — чтение матрицы далеко за концом массива костей. Без кости берём положение
+    // самого объекта: это ближайший осмысленный ответ.
+    if (bone_id == BI_NONE || bone_id >= kinematics->LL_BoneCount())
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 10 || (da_hits % 500) == 0)
+            Msg("! [DA] кости «%s» в модели нет, взято положение объекта (случаев %u)", bone_name, da_hits);
+        return (object->Position());
+    }
+
+    CBoneInstance& bone = kinematics->LL_GetBoneInstance(bone_id);
 
     Fmatrix global_transform;
     global_transform.mul(object->XFORM(), bone.mTransform);

@@ -118,6 +118,8 @@ private:
     // best item/ammo selection members
 public:
     bool m_item_actuality;
+    // DA: кадр, в котором лучший предмет уже пересчитан (см. update_best_item_info)
+    u32 m_da_best_item_frame;
     CInventoryItem* m_best_item_to_kill;
     float m_best_item_value;
     CInventoryItem* m_best_ammo;

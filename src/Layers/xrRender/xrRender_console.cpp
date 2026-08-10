@@ -1507,6 +1507,8 @@ void xrRender_initconsole()
         // 450 к/с это 27 тысяч. Прежний предел молча обрезал команду, и замер заканчивался на
         // четвёртой секунде — в отчёте это выглядело как «данных нет», а не как упёртый лимит.
         CMD4(CCC_DaDebugInteger, "da_render_log", &ps_da_render_log, 0, 200000);
+        extern int ps_da_grass_dump;
+        CMD4(CCC_DaDebugInteger, "da_grass_dump", &ps_da_grass_dump, 0, 200000); // [DA_PORT] период, кадров
         CMD1(CCC_DaFrame, "da_frame");
         // [DA_PORT] Замер по каскадам солнца: da_sun_log N печатает N кадров подряд. Против
         // мерцания целой тени на улице — см. комментарий в render_phase_sun.cpp::calculate.

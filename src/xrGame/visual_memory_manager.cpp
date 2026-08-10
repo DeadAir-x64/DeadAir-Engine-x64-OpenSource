@@ -106,11 +106,16 @@ void CVisualMemoryManager::initialize()
     m_max_object_count = 128;
     m_enabled = true;
     m_objects = 0;
+    m_da_visible_value = nullptr;
+    m_da_visible_value_checked = false;
 }
 
 CVisualMemoryManager::~CVisualMemoryManager()
 {
     clear_delayed_objects();
+
+    // [DA_PORT] Освобождать ДО раннего выхода ниже: он срабатывает у всех, кроме клиента зрения.
+    xr_delete(m_da_visible_value);
 
     if (!m_client)
         return;
@@ -337,9 +342,17 @@ float CVisualMemoryManager::get_visible_value(const CGameObject* game_object,
         return (current_state().m_visibility_threshold);
 
     //Alundaio: hijack not_yet_visible_object to lua
-    luabind::functor<float> funct;
-    if (GEnv.ScriptEngine->functor("visual_memory_manager.get_visible_value", funct))
-        return (funct(m_object ? m_object->lua_game_object() : nullptr, game_object ? game_object->lua_game_object() : nullptr, time_delta, current_state().m_time_quant, luminocity, current_state().m_velocity_factor, object_velocity, distance, object_distance, always_visible_distance));
+    // [DA_PORT] Имя разрешается один раз за жизнь объекта, а не на каждый вызов (см. заголовок).
+    if (!m_da_visible_value_checked)
+    {
+        m_da_visible_value_checked = true;
+        luabind::functor<float> funct;
+        if (GEnv.ScriptEngine->functor("visual_memory_manager.get_visible_value", funct))
+            m_da_visible_value = xr_new<luabind::functor<float>>(funct);
+    }
+
+    if (m_da_visible_value)
+        return ((*m_da_visible_value)(m_object ? m_object->lua_game_object() : nullptr, game_object ? game_object->lua_game_object() : nullptr, time_delta, current_state().m_time_quant, luminocity, current_state().m_velocity_factor, object_velocity, distance, object_distance, always_visible_distance));
     //-Alundaio
 
     return (time_delta / current_state().m_time_quant * luminocity *
