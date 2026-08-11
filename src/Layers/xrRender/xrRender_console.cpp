@@ -1695,6 +1695,14 @@ void xrRender_initconsole()
         extern int ps_da_hom_enabled;
         CMD4(CCC_DaDebugInteger, "r__hom", &ps_da_hom_enabled, 0, 1);
     }
+#ifdef USE_DX11
+    {
+        // [DA_PORT] выключатель пакетной отрисовки деревьев — она сортирует список отрисовки и
+        // удаляет из него нарисованное, поэтому для разбора пропавшей геометрии нужна ручка.
+        extern int ps_da_tree_batch;
+        CMD4(CCC_DaDebugInteger, "r__tree_batch", &ps_da_tree_batch, 0, 1);
+    }
+#endif
     CMD3(CCC_Mask, "r2_shadow_cascede_zcul", &ps_r2_ls_flags_ext, R2FLAGEXT_SUN_ZCULLING);
     CMD3(CCC_Mask, "r2_shadow_cascede_old", &ps_r2_ls_flags_ext, R2FLAGEXT_SUN_OLD);
 

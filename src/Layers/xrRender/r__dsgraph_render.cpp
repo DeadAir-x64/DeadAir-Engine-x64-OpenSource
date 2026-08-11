@@ -35,6 +35,9 @@ ICF float calcLOD(float ssa /*fDistSq*/, float /*R*/)
 // ⚠️ Отключается САМО, без ручки: если в текущем шейдере нет констант tree_instance_*, функция
 // возвращает false и список остаётся нетронутым. Так что игрок со старыми шейдерами просто рисует
 // по-старому, а не получает чёрный экран.
+// [DA_PORT] Вне безымянного пространства имён: ручку регистрирует консоль (xrRender_console.cpp).
+int ps_da_tree_batch = 1;
+
 namespace
 {
 constexpr u32 da_tree_batch_capacity = 64; // столько же в tree_instance.h — расходиться нельзя
@@ -159,6 +162,15 @@ void da_tree_batch_note(pcstr reason)
 
 bool da_render_tree_batches(CBackend& cmd_list, mapNormalItems& items)
 {
+    // [DA_PORT] Ручка для чистого теста: r__tree_batch 0 возвращает одиночную отрисовку.
+    //
+    // Пакетирование не просто рисует иначе — оно СОРТИРУЕТ список и УДАЛЯЕТ из него всё, что
+    // нарисовало пачками. Любая правка, меняющая состав списка отрисовки, обязана иметь выключатель:
+    // иначе «пропал объект под определённым углом» приходится разбирать рассуждением, а не заменой
+    // одной величины. Ровно так же сделано у программного отсечения (r__hom).
+    if (!ps_da_tree_batch)
+        return false;
+
     R_constant* instance_data{};
     R_constant* instance_control{};
     if (!da_tree_instance_constants(cmd_list, instance_data, instance_control))
