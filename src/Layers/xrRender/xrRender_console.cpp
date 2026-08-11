@@ -1703,6 +1703,15 @@ void xrRender_initconsole()
         CMD4(CCC_DaDebugInteger, "r__tree_batch", &ps_da_tree_batch, 0, 1);
     }
 #endif
+    {
+        // [DA_PORT] зонд разбора статики: da_vis_dump <кадров> пишет, какая проверка сняла визуал.
+        extern int ps_da_portal_frustum;
+        CMD4(CCC_DaDebugInteger, "r__portal_frustum", &ps_da_portal_frustum, 0, 1);
+        extern int ps_da_vis_dump;
+        extern float ps_da_vis_radius;
+        CMD4(CCC_DaDebugInteger, "da_vis_dump", &ps_da_vis_dump, 0, 10);
+        CMD4(CCC_DaDebugFloat, "da_vis_radius", &ps_da_vis_radius, 5.f, 300.f);
+    }
     CMD3(CCC_Mask, "r2_shadow_cascede_zcul", &ps_r2_ls_flags_ext, R2FLAGEXT_SUN_ZCULLING);
     CMD3(CCC_Mask, "r2_shadow_cascede_old", &ps_r2_ls_flags_ext, R2FLAGEXT_SUN_OLD);
 

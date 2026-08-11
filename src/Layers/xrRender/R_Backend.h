@@ -132,9 +132,13 @@ private:
 #   error No graphics API selected or enabled!
 #endif
 
+    // [DA_PORT] Имя вершинного шейдера нужно И В РЕЛИЗЕ. Отказ создания разметки вершин делает
+    // объект невидимым молча, и без имени виновника его приходится искать перебором — сегодня это
+    // стоило целого дня. Цена постоянного поля — одно присваивание указателя на смену шейдера.
+    LPCSTR vs_name{ nullptr };
+
 #ifdef DEBUG
     LPCSTR ps_name;
-    LPCSTR vs_name;
     LPCSTR gs_name;
 #   if defined(USE_DX11)
     LPCSTR hs_name;

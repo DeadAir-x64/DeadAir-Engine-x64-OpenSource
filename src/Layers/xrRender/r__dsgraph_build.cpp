@@ -237,14 +237,92 @@ void R_dsgraph_structure::insert_dynamic(IRenderable* root, dxRender_Visual* pVi
 #endif
 }
 
+// [DA_PORT] Зонд разбора статики: почему объект не доехал до списка отрисовки.
+//
+// Десять механизмов отсечения проверены рассуждением, все отпали, три раза виновник был назван
+// неверно. Дальше гадать дороже, чем измерить: зонд пишет по каждому визуалу рядом с камерой, какая
+// именно строка его сняла — или что он добавлен.
+//
+// ⚠️ Печатает и СВОДКУ за кадр. Это не украшение: стенд сцену не рисует (доказано меткой в отрисовке
+// травы), и без сводки «зонд молчит» неотличимо от «объект не отсекается». Нет сводки — значит этот
+// путь на стенде не проходят вовсе, и мерить надо в живой игре.
+int ps_da_portal_frustum = 1; // 0 = обходить статику камерной пирамидой
+int ps_da_vis_dump = 0; // сколько кадров писать; сбрасывается сам при взведении
+float ps_da_vis_radius = 60.f; // метров от камеры
+
+namespace
+{
+// 🪤 Первая версия считала кадры потоковой переменной и уменьшала счётчик прямо в зонде. Разбор
+// списка идёт на НЕСКОЛЬКИХ рабочих потоках, поэтому первый же поток съедал единицу и гасил зонд
+// до единой записи: `da_vis_dump 1` давал пустоту, неотличимую от «объект не отсекается».
+// Теперь взведение атомарное и по НОМЕРАМ кадров, а не по количеству срабатываний.
+std::atomic<u32> da_vis_until{ 0 };
+std::atomic<u32> da_vis_seen{ 0 };
+std::atomic<u32> da_vis_dropped{ 0 };
+std::atomic<u32> da_vis_reported{ 0 };
+
+bool da_vis_armed()
+{
+    const int want = ps_da_vis_dump;
+    if (want > 0)
+    {
+        ps_da_vis_dump = 0;
+        const u32 until = Device.dwFrame + u32(want);
+        da_vis_until.store(until, std::memory_order_relaxed);
+        da_vis_seen.store(0, std::memory_order_relaxed);
+        da_vis_dropped.store(0, std::memory_order_relaxed);
+        da_vis_reported.store(0, std::memory_order_relaxed);
+        Msg("~ [DA_VIS] зонд взведён: кадры %u..%u, радиус %.0f м", Device.dwFrame, until, ps_da_vis_radius);
+    }
+
+    const u32 until = da_vis_until.load(std::memory_order_relaxed);
+    if (until == 0)
+        return false;
+    if (Device.dwFrame <= until)
+        return true;
+
+    // Кадры вышли — один раз подвести итог. Он и отвечает на вопрос «зонд молчал или не работал».
+    if (da_vis_reported.exchange(1, std::memory_order_relaxed) == 0)
+        Msg("~ [DA_VIS] зонд снят: визуалов в радиусе %u, из них снято %u",
+            da_vis_seen.load(std::memory_order_relaxed), da_vis_dropped.load(std::memory_order_relaxed));
+    da_vis_until.store(0, std::memory_order_relaxed);
+    return false;
+}
+
+// ⚠️ Первая версия не писала ФАЗУ, и это обесценило целый прогон: `insert_static` вызывается и для
+// основного прохода, и для теневого, а в теневом у части материалов элемента шейдера нет ШТАТНО.
+// Без номера фазы 156 снятий нельзя ни обвинить, ни оправдать. Пишем фазу и МИРОВЫЕ координаты —
+// по ним объект опознаётся однозначно, в отличие от радиуса.
+void da_vis_say(dxRender_Visual* v, float dist, u32 phase, pcstr what)
+{
+    da_vis_dropped.fetch_add(1, std::memory_order_relaxed);
+    Msg("~ [DA_VIS] фаза %u  тип %2u  R %7.2f  d %6.2f  xyz %.1f %.1f %.1f  %s", phase, (u32)v->Type,
+        v->vis.sphere.R, dist, v->vis.sphere.P.x, v->vis.sphere.P.y, v->vis.sphere.P.z, what);
+}
+} // namespace
+
 void R_dsgraph_structure::insert_static(dxRender_Visual* pVisual)
 {
     ZoneScoped;
 
     CRender& RI = RImplementation;
 
+    float da_dist = 0.f;
+    bool da_watch = da_vis_armed();
+    if (da_watch)
+    {
+        da_dist = Device.vCameraPosition.distance_to(pVisual->vis.sphere.P);
+        da_watch = da_dist <= ps_da_vis_radius;
+        if (da_watch)
+            da_vis_seen.fetch_add(1, std::memory_order_relaxed);
+    }
+
     if (pVisual->vis.marker[context_id] == marker)
+    {
+        if (da_watch)
+            da_vis_say(pVisual, da_dist, o.phase, "СНЯТ: уже помечен в этом проходе");
         return;
+    }
     pVisual->vis.marker[context_id] = marker;
 
 #if RENDER == R_R1
@@ -256,7 +334,11 @@ void R_dsgraph_structure::insert_static(dxRender_Visual* pVisual)
     float distSQ;
     float SSA = CalcSSA(distSQ, pVisual->vis.sphere.P, pVisual);
     if (SSA <= r_ssaDISCARD)
+    {
+        if (da_watch)
+            da_vis_say(pVisual, da_dist, o.phase, "СНЯТ: площадь на экране ниже порога (r_ssaDISCARD)");
         return;
+    }
 
     // Distortive geometry should be marked and R2 special-cases it
     // a) Allow to optimize RT order
@@ -275,9 +357,21 @@ void R_dsgraph_structure::insert_static(dxRender_Visual* pVisual)
     // Select shader
     ShaderElement* sh = RImplementation.rimp_select_sh_static(pVisual, distSQ, o.phase);
     if (nullptr == sh)
+    {
+        if (da_watch)
+            da_vis_say(pVisual, da_dist, o.phase, "СНЯТ: у шейдера нет элемента для этой фазы/дальности");
         return;
+    }
     if (!o.pmask[sh->flags.iPriority / 2])
+    {
+        if (da_watch)
+            da_vis_say(pVisual, da_dist, o.phase, "СНЯТ: маска приоритетов прохода");
         return;
+    }
+    if (da_watch)
+        Msg("~ [DA_VIS] ДОБАВЛЕН фаза %u  тип %2u  R %7.2f  d %6.2f  xyz %.1f %.1f %.1f", o.phase,
+            (u32)pVisual->Type, pVisual->vis.sphere.R, da_dist, pVisual->vis.sphere.P.x,
+            pVisual->vis.sphere.P.y, pVisual->vis.sphere.P.z);
 
     // strict-sorting selection
     if (sh->flags.bStrictB2F)
@@ -637,9 +731,69 @@ void R_dsgraph_structure::add_static(dxRender_Visual* pVisual, const CFrustum& v
     vis_data& vis = pVisual->vis;
 
     // Check frustum visibility and calculate distance to visual's center
+    const u32 da_planes_in = planes; // [DA_PORT] testSAABB портит маску — сохраняем вход для зонда
     const EFC_Visible VIS = view.testSAABB(vis.sphere.P, vis.sphere.R, vis.box.data(), planes);
     if (fcvNone == VIS)
+    {
+        // [DA_PORT] Зонд отказа по пирамиде видимости.
+        //
+        // Замер показал: объект, видимый на экране, снимается ИМЕННО здесь — в основном проходе его
+        // нет, а в теневом есть (у теневого своя пирамида, от солнца). Отсюда и целая тень при
+        // пропавшем объекте. Осталось назвать, ЧТО именно не сходится: сфера, ящик или плоскость.
+        //
+        // Маску порчей объяснить нельзя: сюда она приходит по значению, а нулевая маска даёт
+        // «видим», а не «не видим» — то есть ложного отказа из неё не получается.
+        if (da_vis_armed())
+        {
+            const float d = Device.vCameraPosition.distance_to(vis.sphere.P);
+            if (d <= ps_da_vis_radius)
+            {
+                da_vis_dropped.fetch_add(1, std::memory_order_relaxed);
+                const float* mM = vis.box.data();
+                Msg("~ [DA_VIS] ОТКАЗ ПИРАМИДЫ фаза %u  xyz %.1f %.1f %.1f  R %.2f  d %.2f  маска %u  "
+                    "ящик [%.1f %.1f %.1f]..[%.1f %.1f %.1f]  камера %.1f %.1f %.1f",
+                    o.phase, vis.sphere.P.x, vis.sphere.P.y, vis.sphere.P.z, vis.sphere.R, d, da_planes_in,
+                    mM[0], mM[1], mM[2], mM[3], mM[4], mM[5], Device.vCameraPosition.x,
+                    Device.vCameraPosition.y, Device.vCameraPosition.z);
+
+                u32 bit = 1;
+                for (u32 i = 0; i < view.p_count; ++i, bit <<= 1)
+                {
+                    if (!(da_planes_in & bit))
+                        continue;
+                    const float cls = view.planes[i].classify(vis.sphere.P);
+                    if (cls > vis.sphere.R)
+                    {
+                        Msg("~ [DA_VIS]   плоскость %u отвергла ПО СФЕРЕ: удаление %.2f > радиус %.2f "
+                            "(нормаль %.2f %.2f %.2f)",
+                            i, cls, vis.sphere.R, view.planes[i].n.x, view.planes[i].n.y, view.planes[i].n.z);
+                        break;
+                    }
+                    // ⚠️ AABB_OverlapPlane звать нельзя: она встроенная и тянет frustum_aabb_remap,
+                    // который из xrCDB не экспортирован — линковка падает. Считаем сами: ящик
+                    // целиком за плоскостью, если даже самая «дальняя по нормали» его вершина
+                    // остаётся снаружи.
+                    if (_abs(cls) < vis.sphere.R)
+                    {
+                        const Fvector& n = view.planes[i].n;
+                        Fvector far_corner;
+                        far_corner.x = (n.x >= 0.f) ? mM[3] : mM[0];
+                        far_corner.y = (n.y >= 0.f) ? mM[4] : mM[1];
+                        far_corner.z = (n.z >= 0.f) ? mM[5] : mM[2];
+                        const float cls_box = n.dotproduct(far_corner) + view.planes[i].d;
+                        if (cls_box > 0.f)
+                        {
+                            Msg("~ [DA_VIS]   плоскость %u отвергла ПО ЯЩИКУ: дальняя вершина %.2f > 0 "
+                                "(центр %.2f, радиус %.2f, нормаль %.2f %.2f %.2f)",
+                                i, cls_box, cls, vis.sphere.R, n.x, n.y, n.z);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         return;
+    }
 
     if (o.use_hom && !RImplementation.HOM.visible(vis))
         return;
@@ -849,6 +1003,28 @@ void R_dsgraph_structure::build_subspace()
 
             const auto &children = static_cast<FHierrarhyVisual*>(root)->children;
 
+            // [DA_PORT] Ручка r__portal_frustum 0 — обходить статику ПИРАМИДОЙ ПРОХОДА, а не
+            // портальными.
+            //
+            // Замер довёл пропажу объекта до этой точки: три сегмента мачты снимаются проверкой по
+            // пирамиде, плоскостью с осевой нормалью (-0.99 -0.01 0.11), их ящик снаружи на ПЯТЬ
+            // САНТИМЕТРОВ при расстоянии 54 м. Осевая нормаль — почерк портала, а не камеры:
+            // боковая плоскость камеры при 67° выглядела бы как (±0.83 · 0.55).
+            //
+            // Обход порталов у нас дословно совпадает с оригиналом (вплоть до аргументов
+            // CreateFromPortal), формулы порогов тоже, а в оригинальном 32-битном движке объект на
+            // месте. Значит расходится не код обхода, а то, какие пирамиды в итоге получает сектор.
+            // Ручка отвечает на это одним переключением: если с камерной пирамидой объект
+            // возвращается — сужение портальное, и чинить надо там.
+            //
+            // ⚠️ Отсечение по порталам — это то, ради чего в помещениях не рисуется весь уровень.
+            // Ручка отладочная, для постоянного использования не предназначена.
+            if (!ps_da_portal_frustum)
+            {
+                add_static(root, o.view_frustum, o.view_frustum.getMask());
+                continue;
+            }
+
             for (u32 v_it = 0; v_it < sector->r_frustums.size(); v_it++)
             {
 #if 0
@@ -953,13 +1129,48 @@ void R_dsgraph_structure::build_subspace()
                 continue;
             }
 
+            // [DA_PORT] Зонд ВТОРОГО пути. Первая версия стояла только на статике уровня, и это
+            // оказалось половиной конвейера: объекты игры идут сюда, через список отрисовываемых и
+            // ПРОСТРАНСТВЕННУЮ сферу — она хранится отдельно от сферы модели и может с ней
+            // разойтись. Без этой ветки «объекта нет в дампе» читалось как «он не отсекается».
+            float da_d_dyn = 0.f;
+            bool da_watch_dyn = da_vis_armed();
+            if (da_watch_dyn)
+            {
+                da_d_dyn = Device.vCameraPosition.distance_to(spatial->GetSpatialData().sphere.P);
+                da_watch_dyn = da_d_dyn <= ps_da_vis_radius;
+                if (da_watch_dyn)
+                    da_vis_seen.fetch_add(1, std::memory_order_relaxed);
+            }
+
             if (PortalTraverser.i_marker != sector->r_marker)
+            {
+                if (da_watch_dyn)
+                {
+                    da_vis_dropped.fetch_add(1, std::memory_order_relaxed);
+                    Msg("~ [DA_VIS] ОБЪЕКТ фаза %u  xyz %.1f %.1f %.1f  R %.2f  d %.2f  СНЯТ: сектор %u не "
+                        "помечен обходом",
+                        o.phase, spatial->GetSpatialData().sphere.P.x, spatial->GetSpatialData().sphere.P.y,
+                        spatial->GetSpatialData().sphere.P.z, spatial->GetSpatialData().sphere.R, da_d_dyn,
+                        sector_id);
+                }
                 continue; // inactive (untouched) sector
+            }
+
+            bool da_any_frustum = false;
             for (u32 v_it = 0; v_it < sector->r_frustums.size(); v_it++)
             {
                 const CFrustum& view = sector->r_frustums[v_it];
                 if (!view.testSphere_dirty(spatial->GetSpatialData().sphere.P, spatial->GetSpatialData().sphere.R))
                     continue;
+                if (da_watch_dyn && !da_any_frustum)
+                {
+                    da_any_frustum = true;
+                    Msg("~ [DA_VIS] ОБЪЕКТ фаза %u  xyz %.1f %.1f %.1f  R %.2f  d %.2f  ПРОШЁЛ пирамиду %u из %u",
+                        o.phase, spatial->GetSpatialData().sphere.P.x, spatial->GetSpatialData().sphere.P.y,
+                        spatial->GetSpatialData().sphere.P.z, spatial->GetSpatialData().sphere.R, da_d_dyn, v_it,
+                        (u32)sector->r_frustums.size());
+                }
 
                 if (o.is_main_pass)
                 {
@@ -1004,6 +1215,17 @@ void R_dsgraph_structure::build_subspace()
 
                     renderable->renderable_Render(context_id, nullptr);
                 }
+            }
+
+            // [DA_PORT] Ни одна пирамида сектора объект не приняла — это и есть «пропал».
+            if (da_watch_dyn && !da_any_frustum)
+            {
+                da_vis_dropped.fetch_add(1, std::memory_order_relaxed);
+                Msg("~ [DA_VIS] ОБЪЕКТ фаза %u  xyz %.1f %.1f %.1f  R %.2f  d %.2f  СНЯТ: ни одна из %u "
+                    "пирамид сектора %u не приняла",
+                    o.phase, spatial->GetSpatialData().sphere.P.x, spatial->GetSpatialData().sphere.P.y,
+                    spatial->GetSpatialData().sphere.P.z, spatial->GetSpatialData().sphere.R, da_d_dyn,
+                    (u32)sector->r_frustums.size(), sector_id);
             }
         }
 

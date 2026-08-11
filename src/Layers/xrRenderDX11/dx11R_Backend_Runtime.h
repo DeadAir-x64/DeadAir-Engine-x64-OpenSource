@@ -205,9 +205,7 @@ ICF void CBackend::set_VS(ID3DVertexShader* _vs, LPCSTR _n)
         HW.pContext->VSSetShader(vs);
 #endif
 
-#ifdef DEBUG
-        vs_name = _n;
-#endif
+        vs_name = _n; // [DA_PORT] и в релизе тоже — см. R_Backend.h
     }
 }
 
@@ -565,10 +563,112 @@ IC void CBackend::ApplyVertexLayout()
 
     if (it == layouts.end())
     {
-        ID3DInputLayout* pLayout;
+        // ⛔ [DA_PORT] Отказ создания разметки был НЕВИДИМ, и объект просто переставал рисоваться.
+        //
+        // `CHK_DX` в релизной сборке раскрывается в голый вызов (xrDebug_macros.h): результат
+        // выбрасывается. Указатель при этом не инициализирован, а дальше он БЕЗУСЛОВНО клался в
+        // кэш — то есть ноль оседал там навсегда для этой пары «объявление вершин + сигнатура
+        // шейдера», и каждый следующий кадр привязывал пустую разметку. Слой проверки DirectX
+        // называет это так: «Vertex Shader expects application provided input data, but no Input
+        // Assembler object is bound», и вызов отрисовки тихо не рисует ничего.
+        //
+        // Замер на живой сцене: 127 таких сообщений за один заход, а причина — три отказа
+        // CreateInputLayout: шейдер требует NORMAL/0, TANGENT/0, TEXCOORD/1, которых нет в
+        // объявлении. Ровно тот же класс, что «VERIFY исчезает в релизе», только в рендере.
+        ID3DInputLayout* pLayout = nullptr;
 
-        CHK_DX(HW.pDevice->CreateInputLayout(&decl->dx11_dcl_code[0], decl->dx11_dcl_code.size() - 1,
-            m_pInputSignature->GetBufferPointer(), m_pInputSignature->GetBufferSize(), &pLayout));
+        const HRESULT hr = HW.pDevice->CreateInputLayout(&decl->dx11_dcl_code[0],
+            decl->dx11_dcl_code.size() - 1, m_pInputSignature->GetBufferPointer(),
+            m_pInputSignature->GetBufferSize(), &pLayout);
+
+        // [DA_PORT] Достройка недостающей развёртки — ТОЛЬКО для семейства `_lmh`.
+        //
+        // Что не сходится: материал заявляет карту освещения (третья текстура начинается с `lmap`),
+        // поэтому блендер выбирает вариант `_lmh`, а геометрия приходит в формате повершинно
+        // освещённой — `COLOR0` и ОДНА развёртка. Вариант `-hq`, который берётся вблизи, читает
+        // `TEXCOORD1`, которого в этом формате нет. DirectX 11 требует точного совпадения и
+        // отказывает; DirectX 9 в оригинальном 32-битном движке недостающие входы читал нулями —
+        // поэтому там мачта на месте, а у нас пропадала.
+        //
+        // ⭐ Выбор шейдера сверен с оригинальными исходниками (определение карты освещения, склейка
+        // имени, суффикс `-hq`) — совпадает дословно. Расхождения в нашем коде нет, несогласованы
+        // данные уровня. Поэтому чиним не выбор, а привязку.
+        //
+        // ⚠️ Ограничено `_lmh` намеренно: сломанных пар в кадре четыре, но остальные три (наш
+        // `da_water_velocity` и теневой `shadow_direct_base_aref`) разбираются отдельно — общая
+        // починка скрыла бы их.
+        //
+        // Довод в пользу безопасности: эти вызовы СЕЙЧАС не рисуют ничего. Хуже стать не может, а
+        // затронуты только уже сломанные пары. Недостающая развёртка берётся с той же позиции, что
+        // и базовая: карта освещения будет выбираться по базовой развёртке. Для повершинно
+        // освещённой геометрии она смысла не несёт, зато форма и положение мачты верные.
+        if ((FAILED(hr) || !pLayout) && vs_name && strstr(vs_name, "_lmh"))
+        {
+            xr_vector<D3D_INPUT_ELEMENT_DESC> patched;
+            patched.reserve(decl->dx11_dcl_code.size() + 1);
+
+            bool has_tc1 = false;
+            const D3D_INPUT_ELEMENT_DESC* tc0 = nullptr;
+            for (size_t i = 0; i + 1 < decl->dx11_dcl_code.size(); ++i)
+            {
+                const auto& e = decl->dx11_dcl_code[i];
+                patched.push_back(e);
+                if (!e.SemanticName || xr_strcmp(e.SemanticName, "TEXCOORD") != 0)
+                    continue;
+                if (e.SemanticIndex == 0)
+                    tc0 = &decl->dx11_dcl_code[i];
+                else if (e.SemanticIndex == 1)
+                    has_tc1 = true;
+            }
+
+            if (!has_tc1 && tc0)
+            {
+                D3D_INPUT_ELEMENT_DESC extra = *tc0;
+                extra.SemanticIndex = 1;
+                patched.push_back(extra);
+
+                ID3DInputLayout* patched_layout = nullptr;
+                if (SUCCEEDED(HW.pDevice->CreateInputLayout(&patched[0], (UINT)patched.size(),
+                        m_pInputSignature->GetBufferPointer(), m_pInputSignature->GetBufferSize(),
+                        &patched_layout)) &&
+                    patched_layout)
+                {
+                    static u32 da_fixed = 0;
+                    if (++da_fixed <= 3)
+                        Msg("* [DA] шейдеру «%s» дописана развёртка TEXCOORD1 поверх базовой — "
+                            "геометрия без карты освещения снова рисуется (случаев %u)",
+                            vs_name, da_fixed);
+                    pLayout = patched_layout;
+                }
+            }
+        }
+
+        if (FAILED(hr) && !pLayout)
+        {
+            // Кэшируем и отказ тоже: повторять заведомо безнадёжный вызов каждый кадр дороже,
+            // чем помнить о нём. Но теперь он НАЗВАН — с перечнем того, что объявление даёт.
+            static u32 da_hits = 0;
+            ++da_hits;
+            if (da_hits <= 10)
+            {
+                string512 semantics{};
+                for (size_t i = 0; i + 1 < decl->dx11_dcl_code.size(); ++i)
+                {
+                    const auto& e = decl->dx11_dcl_code[i];
+                    if (!e.SemanticName)
+                        continue;
+                    string64 one;
+                    xr_sprintf(one, "%s%u ", e.SemanticName, e.SemanticIndex);
+                    xr_strcat(semantics, one);
+                }
+                // ⭐ Имя шейдера — самое важное в этой строке: по перечню семантик видно, чего НЕ
+                // хватает, а по имени — КТО требует. Без него отказ приходится искать перебором.
+                Msg("! [DA] разметка вершин НЕ СОЗДАНА (0x%08x): вызовы шейдера «%s» рисуют пустоту. "
+                    "Объявление даёт: %s(случаев %u)",
+                    (u32)hr, vs_name ? vs_name : "(без имени)", semantics, da_hits);
+            }
+            pLayout = nullptr;
+        }
 
         it = layouts.insert(std::pair<ID3DBlob*, ID3DInputLayout*>(m_pInputSignature, pLayout)).first;
     }

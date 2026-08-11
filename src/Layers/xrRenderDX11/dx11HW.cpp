@@ -137,10 +137,27 @@ void CHW::CreateDevice(SDL_Window* sdlWnd)
     // which is why these faults show up as a wrong picture rather than an error, and why guessing at
     // them is hopeless. Requires the "Graphics Tools" optional Windows feature; without it device
     // creation with this flag fails, so the failure is caught and the flag dropped rather than fatal.
+    // ⛔ [DA_PORT] Ключ командной строки обязателен, консольной ручки НЕ ХВАТАЕТ.
+    //
+    // Слой читается ЗДЕСЬ, при создании устройства, то есть до того как консоль вообще существует.
+    // А `r__d3d_debug` заведён как отладочная ручка (CCC_DaDebugInteger) и по нашей же правке в
+    // user.ltx не сохраняется. Получалось замкнутое кольцо: задать в консоли можно, но включается
+    // он только на старте, а до старта задать негде — перезапуск значение терял. Инструмент был
+    // недостижим при живой на вид ручке, и это выяснилось только когда он понадобился по делу.
+    const bool da_debug_param = strstr(Core.Params, "-d3d_debug") != nullptr;
+    if (da_debug_param)
+    {
+        // ⚠️ Поднять ИМЕННО переменную, а не только флаг создания устройства. Слив сообщений
+        // (da_d3d_debug_drain) сторожится этой же переменной, и первая версия ключа её не трогала:
+        // слой включался, исправно копил сообщения, а печатать их было некому. Один источник
+        // истины — одна строка ниже; иначе половина проводки живёт, а половина молчит.
+        ::ps_r__d3d_debug = 1;
+    }
     if (::ps_r__d3d_debug)
     {
         createDeviceFlags |= D3D_CREATE_DEVICE_DEBUG;
-        Msg("* [DA_PORT] D3D11 validation layer requested (r__d3d_debug)");
+        Msg("* [DA_PORT] D3D11 validation layer requested (%s)",
+            da_debug_param ? "-d3d_debug" : "r__d3d_debug");
     }
 
     HRESULT R;
