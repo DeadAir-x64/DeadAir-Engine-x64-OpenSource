@@ -71,8 +71,16 @@ def write_log(path, frames, modules=None):
 
 
 def run_tool(log, symbols):
+    # Кодировку задаём с ОБЕИХ сторон, иначе проверки по русским подстрокам врут.
+    # Без этого Python в дочернем процессе печатает в cp1251 (кодовая страница консоли), а мы
+    # читаем как utf-8 — русский текст превращается в кашу, подстрока не находится, и тест
+    # объявляет провалившимися ровно те проверки, где сообщение на русском. Функциональные
+    # проверки при этом проходят: имена функций латиницей. Четыре ложных провала так и выглядели.
+    env = dict(os.environ)
+    env['PYTHONIOENCODING'] = 'utf-8'
     r = subprocess.run([sys.executable, os.path.join(TOOLS, 'symbolicate.py'), log,
-                        '--symbols', symbols], capture_output=True, text=True, errors='replace')
+                        '--symbols', symbols], capture_output=True, text=True,
+                       encoding='utf-8', errors='replace', env=env)
     return r.stdout + r.stderr
 
 

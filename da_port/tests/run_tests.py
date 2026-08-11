@@ -13,6 +13,8 @@
   actor_calls — методы db.actor: нет биндинга или за ним заглушка;
   options   — ключи opt_* без единого читателя;
   gamedata  — da_gamedata в репозитории против развёрнутого в игре;
+  release_shipping — всё правленое уехало в отгрузку, и ровно то, что мы проверяли;
+  loop_vars — осиротевший счётчик после перевода перебора ALife на индекс;
   unit      — поведение конкретных функций на моках движка.
 
 Интерпретатор собирается из Externals/LuaJIT при первом запуске (нужен mingw32-make из msys2)
@@ -94,8 +96,11 @@ def run_lua(script, extra_env=None):
     env['DA_SCRIPTS'] = LOOSE_SCRIPTS
     if extra_env:
         env.update(extra_env)
+    # Читаем вывод как UTF-8 явно: без этого Python берёт кодовую страницу консоли (cp866/cp1251),
+    # и весь русский текст отчёта приезжает кашей. Мелочь на вид, но однажды ровно эта каша
+    # спрятала четыре ложных провала в test_symbolicate — сравнение шло по русским подстрокам.
     rc = subprocess.run([LUAJIT, script], env=env, capture_output=True, text=True,
-                        errors='replace', cwd=TESTS)
+                        encoding='utf-8', errors='replace', cwd=TESTS)
     out = (rc.stdout or '') + (rc.stderr or '')
     sys.stdout.write(out if out.endswith('\n') or not out else out + '\n')
     return rc.returncode == 0
@@ -418,6 +423,180 @@ def check_gamedata():
     return not problems
 
 
+def _same_content(a, b):
+    """Одинаковы ли файлы по существу: без оглядки на перевод строки и BOM.
+
+    Сравнивать сырые байты нельзя. Отгрузка приезжает к игроку архивом с GitHub, где хранятся
+    блобы репозитория (LF), а рабочая копия на Windows лежит с CRLF — побайтовая сверка объявила
+    бы разошедшимися все 742 текстовых файла и утопила настоящее расхождение в шуме.
+    """
+    def norm(p):
+        data = open(p, 'rb').read()
+        if data.startswith(b'\xef\xbb\xbf'):
+            data = data[3:]
+        while b'\r\r\n' in data:
+            data = data.replace(b'\r\r\n', b'\r\n')
+        return data.replace(b'\r\n', b'\n').replace(b'\r', b'\n').rstrip()
+    return norm(a) == norm(b)
+
+
+# Разделы, которые уезжают игроку. Скомпилированный кэш шейдеров сюда НЕ входит: он порождаемый,
+# его расхождение стоит перекомпиляции при первом запуске, а не ошибки.
+SHIPPED_DIRS = ('scripts', 'configs', 'shaders', 'meshes', 'sounds', 'textures')
+
+
+def check_release_shipping():
+    """Всё, что мы правили, обязано уехать игроку — и ровно в том виде, в каком мы это проверяли.
+
+    ⛔ Проверка написана по следам 11.08.2026, когда выпуск ушёл тестерам НЕПОЛНЫМ. Движок уехал
+    целиком, а из правок по Lua — ничего: последний коммит игровых файлов был 09.08 в 04:46, а
+    восемнадцать скриптов правились после, с 09.08 13:48 по 11.08 01:14. Люди уже качали сборку,
+    где не было ни ускорения КПК (18.5 -> 2.1 мс), ни кэша condlist, ни семи защит от пустых
+    значений. Соседняя проверка `gamedata` этого не видела: она сторожит связку игра <-> xray-16,
+    а до каталога ОТГРУЗКИ цепочка не доходила.
+
+    Три дерева и два правила:
+      оригинал мода (`extracted`) -> игра (loose gamedata) -> отгрузка (репозиторий обновления)
+      1. файл в игре отличается от оригинала мода (или его там нет вовсе) => обязан быть в отгрузке
+         с тем же содержимым. Иначе правка до игрока не доедет;
+      2. файл в отгрузке обязан быть и в игре, с тем же содержимым. Иначе игроки получают то, чего
+         мы не проверяли, — так и вышло с тремя скриптами (bind_monster, sim_board, xr_motivator).
+
+    ⚠️ Направление решается СОДЕРЖИМЫМ, а не датой. `sim_squad_scripted.script` в игре имел дату
+    СВЕЖЕЕ репозиторной, но при этом потерял защиту от освобождённого отряда — дата соврала.
+
+    Каталог отгрузки задаётся через DA_UPDATE_REPO; без него проверка пропускается, чтобы тесты
+    оставались рабочими на машине без репозитория обновления.
+    """
+    ship_root = os.environ.get('DA_UPDATE_REPO', os.path.join(os.path.dirname(REPO), '..',
+                                                              'DeadAir_Update'))
+    ship_root = os.path.normpath(os.path.join(ship_root, 'gamedata'))
+    orig_root = os.path.join(os.path.dirname(REPO), 'extracted')
+    game_root = os.path.join(GAME, 'gamedata')
+
+    if not os.path.isdir(ship_root):
+        report('release_shipping', True, 'пропущено: нет каталога отгрузки (DA_UPDATE_REPO)')
+        return True
+
+    # Файлы, которые сознательно НЕ отгружаются. Каждая строка — путь от gamedata и причина.
+    skip = set()
+    excl = os.path.join(TESTS, 'lint', 'not_shipped.txt')
+    if os.path.exists(excl):
+        for line in open(excl, encoding='utf-8'):
+            line = line.split('--')[0].strip()
+            if line:
+                skip.add(line.replace('/', os.sep).lower())
+
+    missing, stale, untested = [], [], []
+    ours = 0
+    for sub in SHIPPED_DIRS:
+        gdir = os.path.join(game_root, sub)
+        if not os.path.isdir(gdir):
+            continue
+        for dirpath, _, filenames in os.walk(gdir):
+            for name in filenames:
+                full = os.path.join(dirpath, name)
+                rel = os.path.relpath(full, game_root)
+                if rel.lower() in skip:
+                    continue
+                orig = os.path.join(orig_root, rel)
+                # не наше: копия оригинала мода лежит рядом просто для чтения
+                if os.path.exists(orig) and _same_content(orig, full):
+                    continue
+                ours += 1
+                shipped = os.path.join(ship_root, rel)
+                if not os.path.exists(shipped):
+                    missing.append(rel)
+                elif not _same_content(shipped, full):
+                    stale.append(rel)
+
+    for dirpath, _, filenames in os.walk(ship_root):
+        for name in filenames:
+            rel = os.path.relpath(os.path.join(dirpath, name), ship_root)
+            if rel.lower() in skip or rel.split(os.sep)[0] not in SHIPPED_DIRS:
+                continue
+            in_game = os.path.join(game_root, rel)
+            if not os.path.exists(in_game):
+                untested.append(rel)
+
+    for rel in missing:
+        print('         %s: правлено у нас, в отгрузке НЕТ' % rel)
+    for rel in stale:
+        print('         %s: в отгрузке СТАРАЯ версия' % rel)
+    for rel in untested:
+        print('         %s: отгружается, а в игре нет — значит не проверено' % rel)
+
+    problems = len(missing) + len(stale) + len(untested)
+    report('release_shipping', not problems, 'наших файлов: %d, расхождений: %d' % (ours, problems))
+    return not problems
+
+
+def check_loop_vars():
+    """Осиротевшая переменная цикла после перевода перебора ALife на индекс.
+
+    ⛔ Перевод `for i=1,65534 do sim:object(i)` на `for da_id in pairs(db.offline_objects)`
+    переименовывает счётчик, и тело обязано переехать вместе с ним. В `xr_effects.script`
+    (`on_init_bounty_hunt`) три строки остались на старом `i`: снаружи цикла это ГЛОБАЛ, то есть
+    пустое значение. `table.insert(valid_targets, nil)` не падает и ничего не кладёт, поэтому
+    список оставался пустым, и задача «охота за головами» молча не получала цели — ни ошибки, ни
+    строки в логе. Дефект прожил в дереве до сверки перед выпуском.
+
+    Ищем ровно этот класс: имя счётчика в теле НЕ совпадает с именем цикла и нигде в теле не
+    объявлено. Проверка узкая намеренно — широкая давала бы ложные срабатывания на `i` из
+    объемлющих циклов, а цена ложного срабатывания здесь выше цены пропуска.
+    """
+    loop_re = re.compile(r'^(\s*)for\s+(\w+)\s+in\s+pairs\(db\.offline_objects\)')
+    suspect = ('i', 'k', 'n', 'index')
+    problems = []
+    loops = 0
+
+    for fn in sorted(os.listdir(LOOSE_SCRIPTS)):
+        if not fn.endswith('.script'):
+            continue
+        data = open(os.path.join(LOOSE_SCRIPTS, fn), 'rb').read()
+        try:
+            text = data.decode('utf-8')
+        except UnicodeDecodeError:
+            text = data.decode('cp1251', errors='replace')
+        lines = text.replace('\r\n', '\n').split('\n')
+
+        for num, line in enumerate(lines):
+            m = loop_re.match(line)
+            if not m:
+                continue
+            loops += 1
+            var, indent = m.group(2), len(m.group(1))
+            body = []
+            for j in range(num + 1, len(lines)):
+                cur = lines[j]
+                if cur.strip() and (len(cur) - len(cur.lstrip())) <= indent \
+                        and cur.strip().startswith('end'):
+                    break
+                body.append((j + 1, cur))
+
+            declared = {var}
+            for _, cur in body:
+                for mm in re.finditer(r'\blocal\s+([\w, ]+)', cur):
+                    declared.update(x.strip() for x in mm.group(1).split(','))
+                for mm in re.finditer(r'\bfor\s+([\w, ]+?)\s*(?:=|in)\b', cur):
+                    declared.update(x.strip() for x in mm.group(1).split(','))
+
+            for ln, cur in body:
+                code = cur.split('--')[0]
+                for old in suspect:
+                    if old in declared:
+                        continue
+                    if re.search(r'(?<![\w.:])' + old + r'(?![\w])', code):
+                        problems.append('%s:%d цикл по «%s», в теле осталось «%s»'
+                                        % (fn, ln, var, old))
+                        break
+
+    for p in problems:
+        print('         %s' % p)
+    report('loop_vars', not problems, 'переведённых переборов: %d' % loops)
+    return not problems
+
+
 def load_baseline(name):
     path = os.path.join(TESTS, 'lint', name)
     if not os.path.exists(path):
@@ -471,6 +650,8 @@ def main():
     check_options()
     check_dialog_functions()
     check_gamedata()
+    check_release_shipping()
+    check_loop_vars()
     check_python_units()
 
     if not ensure_luajit():

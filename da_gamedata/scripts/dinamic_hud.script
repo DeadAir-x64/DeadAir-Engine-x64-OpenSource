@@ -283,6 +283,21 @@ function reset_blurs(blur, k)
 	blur_k = k
 end
 
+-- [DA_PORT] Один переиспользуемый прямоугольник вместо нового на каждую итерацию.
+--
+-- Цикл ниже — 4x10 = сорок проходов, и каждый строил `Frect()`. Это сорок обёрток luabind по
+-- 128 байт КАЖДЫЙ КАДР: замер назвал эту функцию первой среди всех источников обёрток —
+-- 12 000 штук за 300 кадров, 13.6% всех создаваемых в игре.
+--
+-- Переиспользовать безопасно: движок принимает прямоугольник ПО ЗНАЧЕНИЮ
+-- (`SetWndRect(CUIWindow*, Frect)`, ui_export_script.cpp) и копирует его в SetTextureRect —
+-- ссылку на наш объект никто не держит.
+--
+-- Нулевой держим отдельно: он не меняется вовсе, значит и присваивать в него нечего.
+local da_rect_zero = Frect():set(0,0,0,0)
+local da_rect_wnd  = Frect()
+local da_rect_tex  = Frect()
+
 function set_blurs(enabled,rect)
 	
 	local hud = get_hud()
@@ -302,7 +317,7 @@ function set_blurs(enabled,rect)
 	if not enabled then
 		for i,t in ipairs(blurs) do
 			for ii,st in ipairs(t) do
-				st:SetWndRect(Frect():set(0,0,0,0))
+				st:SetWndRect(da_rect_zero)
 			end
 		end
 		return
@@ -325,13 +340,13 @@ function set_blurs(enabled,rect)
 	for i=1,4 do
 		for ii=1,10 do
 			if (i == tm and ii == n1) then
-				blurs[tm][n1]:SetWndRect(Frect():set(rect.x,rect.y,rect.w,rect.h))
-				blurs[tm][n1]:SetTextureRect(Frect():set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
+				blurs[tm][n1]:SetWndRect(da_rect_wnd:set(rect.x,rect.y,rect.w,rect.h))
+				blurs[tm][n1]:SetTextureRect(da_rect_tex:set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
 			elseif (i == tmn and ii == n2) then
-				blurs[tmn][n2]:SetWndRect(Frect():set(rect.x,rect.y,rect.w,rect.h))
-				blurs[tmn][n2]:SetTextureRect(Frect():set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
+				blurs[tmn][n2]:SetWndRect(da_rect_wnd:set(rect.x,rect.y,rect.w,rect.h))
+				blurs[tmn][n2]:SetTextureRect(da_rect_tex:set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
 			else
-				blurs[i][ii]:SetWndRect(Frect():set(0,0,0,0))
+				blurs[i][ii]:SetWndRect(da_rect_zero)
 			end
 		end
 	end
