@@ -38,6 +38,10 @@ static ULONG da_device_refs()
 
 
 
+// [DA_PORT] Текстура проекции налобного луча. Имя взято из ветки TorchType 2 в xr_actor.script —
+// автор писал её ровно под налобный фонарь.
+#define DA_TORCH_SPOT_TEXTURE "internal" DELIMITER "torch1"
+
 void CRender::level_Load(IReader* fs)
 {
     ZoneScoped;
@@ -165,6 +169,19 @@ void CRender::level_Load(IReader* fs)
     Msg("* [DA_PORT] level_Load: готово | ссылок на устройство: %u", (u32)da_device_refs());
     b_loaded = TRUE;
 
+    // [DA_PORT] Прогрев прожектора налобного фонаря — разбор у m_da_torch_spot_warm в r2.h.
+    //
+    // Имя текстуры взято из ветки TorchType 2 в xr_actor.script, то есть ровно то, которым луч
+    // пользуется на самом деле. Если текстуры нет, create просто отдаст пустышку — прогрев тогда
+    // не состоится, но и вреда не будет.
+    if (Target)
+    {
+        string256 warm_name;
+        strconcat(sizeof(warm_name), warm_name, "r2" DELIMITER "accum_spot_", DA_TORCH_SPOT_TEXTURE);
+        m_da_torch_spot_warm.create(Target->b_accum_spot, warm_name, DA_TORCH_SPOT_TEXTURE);
+        Msg("* [DA_PORT] прожектор фонаря прогрет: %s", warm_name);
+    }
+
 #if RENDER == R_R4
     // [DA_PORT] Манифест прогрева сохраняем и ЗДЕСЬ, а не только при выходе с уровня.
     //
@@ -207,6 +224,9 @@ void CRender::Unload3DFluid()
 
 void CRender::level_Unload()
 {
+    // [DA_PORT] Прогрев держал ссылку на шейдер и текстуру — отпускаем вместе с уровнем.
+    m_da_torch_spot_warm.destroy();
+
     ZoneScoped;
 
     if (!g_pGameLevel)
