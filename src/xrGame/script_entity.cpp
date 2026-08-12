@@ -524,7 +524,7 @@ bool CScriptEntity::bfAssignMovement(CScriptEntityAction* tpEntityAction)
             THROW2(ai().level_graph().valid_vertex_id(vertex_id), S);
         }
 #endif
-        m_monster->movement().level_path().set_dest_vertex(vertex_id);
+        m_monster->movement().level_path().set_dest_vertex(vertex_id, "script_entity/по позиции");
         break;
     }
     case CScriptMovementAction::eGoalTypePathNodePosition:
@@ -532,7 +532,8 @@ bool CScriptEntity::bfAssignMovement(CScriptEntityAction* tpEntityAction)
         VERIFY(ai().level_graph().valid_vertex_id(l_tMovementAction.m_tNodeID));
         m_monster->movement().set_path_type(MovementManager::ePathTypeLevelPath);
         m_monster->movement().detail().set_dest_position(l_tMovementAction.m_tDestinationPosition);
-        m_monster->movement().level_path().set_dest_vertex(l_tMovementAction.m_tNodeID);
+        m_monster->movement().level_path().set_dest_vertex(
+            l_tMovementAction.m_tNodeID, "script_entity/m_tNodeID из действия скрипта");
         break;
     }
     case CScriptMovementAction::eGoalTypeNoPathPosition:

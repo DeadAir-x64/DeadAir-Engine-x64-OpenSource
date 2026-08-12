@@ -550,6 +550,9 @@ CRenderTarget::CRenderTarget()
     {
         CBlender_light_occq b_occq;
         s_occq.create(&b_occq, "r2" DELIMITER "occq");
+        // [DA_PORT] Шейдер переноса кэшированной статики. Создаётся всегда: он крошечный, а
+        // проверять его наличие в горячем цикле ламп дороже, чем держать.
+        s_da_smap_blit.create("da_smap_blit");
     }
 
     // DIRECT (spot)
@@ -585,6 +588,31 @@ CRenderTarget::CRenderTarget()
         // otherwise - create texture with specified HW_smap_FORMAT
         const auto num_slices = RImplementation.o.support_rt_arrays ? R__NUM_SUN_CASCADES : 1;
         rt_smap_depth.create(r2_RT_smap_depth, smapsize, smapsize, depth_format, 1, num_slices, flags);
+
+        // [DA_PORT] Вторая копия атласа — под статику ламп. Выделяется ТОЛЬКО при включённом кэше.
+        //
+        // Прожекторы пишут в срез 0 основного атласа (phase_smap_spot_clear/_rect ставят
+        // set_slice_write(0)), поэтому копии хватает односрезовой: каскады солнца сюда не попадают.
+        //
+        // ⚠️ Ручка читается ЗДЕСЬ, то есть на создании целей отрисовки. Включение на ходу само по
+        // себе памяти не выделит — нужен перезапуск видео. Отрисовка это проверяет по valid() и
+        // говорит вслух, а не молчит.
+        //
+        // Размер печатаем всегда: молчаливое выделение десятков мегабайт видеопамяти — это то, за
+        // что потом ищут причину полдня.
+        extern int ps_r__smap_cache_lights;
+        extern int ps_r__smap_cache_atlas;
+        if (ps_r__smap_cache_lights)
+        {
+            // Больше рабочего НАМЕРЕННО: там лампы укладываются по пачкам, здесь должны поместиться
+            // все сразу и навсегда. Подробности — у ручки r__smap_cache_atlas.
+            const u32 st_size = smapsize * u32(_max(1, ps_r__smap_cache_atlas));
+            rt_da_smap_static.create(r2_RT_da_smap_static, st_size, st_size, depth_format, 1, 1, flags);
+            const u32 bpp = (depth_format == D3DFMT_D16) ? 2 : 4;
+            Msg("* [DA] теневой атлас статики выделен: %ux%u (рабочий %ux%u), ~%u МБ видеопамяти",
+                st_size, st_size, smapsize, smapsize, (st_size * st_size * bpp) >> 20);
+        }
+
         rt_smap_rain.create(r2_RT_smap_rain, options.rain_smapsize, options.rain_smapsize, depth_format);
         if (options.minmax_sm)
         {

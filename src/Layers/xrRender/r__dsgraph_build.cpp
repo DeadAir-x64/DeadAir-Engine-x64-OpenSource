@@ -20,6 +20,15 @@ using namespace R_dsgraph;
 // Scene graph actual insertion and sorting ////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 float r_ssaDISCARD;
+
+// [DA_PORT] Сколько объектов сняли по экранной площади -- чтобы порог настраивался по числу, а не
+// по ощущению. Считается только когда взведён разбор очереди (da_geom_dump): в обычном кадре это
+// атомарный инкремент на каждый снятый объект, а снимаются они сотнями.
+//
+// Отчёт печатает РАЗНИЦУ с прошлым разом, поэтому обнулять счётчик не нужно: построение списков
+// идёт из рабочих потоков и до отчёта, и любое обнуление из главного пришлось бы к чужому моменту.
+std::atomic<u32> g_da_ssa_discarded{ 0 };
+extern int ps_da_geom_dump;
 float r_ssaDONTSORT;
 float r_ssaLOD_A, r_ssaLOD_B;
 float r_ssaGLOD_start, r_ssaGLOD_end;
@@ -140,7 +149,11 @@ void R_dsgraph_structure::insert_dynamic(IRenderable* root, dxRender_Visual* pVi
     float distSQ;
     float SSA = CalcSSA(distSQ, Center, pVisual);
     if (SSA <= r_ssaDISCARD)
+    {
+        if (ps_da_geom_dump > 0)
+            g_da_ssa_discarded.fetch_add(1, std::memory_order_relaxed);
         return;
+    }
 
     // Distortive geometry should be marked and R2 special-cases it
     // a) Allow to optimize RT order
@@ -337,6 +350,8 @@ void R_dsgraph_structure::insert_static(dxRender_Visual* pVisual)
     {
         if (da_watch)
             da_vis_say(pVisual, da_dist, o.phase, "СНЯТ: площадь на экране ниже порога (r_ssaDISCARD)");
+        if (ps_da_geom_dump > 0)
+            g_da_ssa_discarded.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -993,7 +1008,7 @@ void R_dsgraph_structure::build_subspace()
     static_geo_tasks.resize(PortalTraverser.r_sectors.size());
 #endif
 
-    if (psDeviceFlags.test(rsDrawStatic))
+    if (psDeviceFlags.test(rsDrawStatic) && !o.skip_static)
     {
         for (u32 s_it = 0; s_it < PortalTraverser.r_sectors.size(); s_it++)
         {
@@ -1058,7 +1073,28 @@ void R_dsgraph_structure::build_subspace()
     if (collect_dynamic_any)
     {
         // Traverse object database
-        g_pGamePersistent->SpatialSpace.q_frustum(lstRenderables, o.spatial_traverse_flags, o.spatial_types, o.view_frustum);
+        // [DA_PORT] Либо дерево, либо готовый список -- разбор у o.dyn_source.
+        if (o.dyn_source)
+        {
+            lstRenderables.clear();
+            lstRenderables.reserve(o.dyn_source->size());
+            const u32 base_mask = o.view_frustum.getMask();
+            for (ISpatial* S : *o.dyn_source)
+            {
+                SpatialData& sd = S->GetSpatialData();
+                if (0 == (sd.type & o.spatial_types))
+                    continue;
+                Fvector sC = sd.sphere.P;
+                u32 tmask = base_mask;
+                if (fcvNone == o.view_frustum.testSphere(sC, sd.sphere.R, tmask))
+                    continue;
+                lstRenderables.push_back(S);
+            }
+        }
+        else
+        {
+            g_pGamePersistent->SpatialSpace.q_frustum(lstRenderables, o.spatial_traverse_flags, o.spatial_types, o.view_frustum);
+        }
 
         if (o.spatial_traverse_flags & ISpatial_DB::O_ORDERED) // this should be inside of query functions
         {

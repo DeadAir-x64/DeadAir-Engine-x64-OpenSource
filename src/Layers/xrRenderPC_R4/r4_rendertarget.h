@@ -94,6 +94,18 @@ public:
     ref_rt rt_smap_rain;
     ref_rt rt_smap_depth_minmax; //	is used for min/max sm
 
+    // [DA_PORT] Теневой атлас ламп, в котором лежит ТОЛЬКО статика.
+    //
+    // Промышленная схема кэширования теней (Unreal, Flax, Unity HDRP) хранит две копии глубины:
+    // статику и динамику. Статику рисуют редко и переиспользуют, динамику — каждый кадр поверх
+    // скопированной статики. Так кэш не может «протухнуть»: движущийся сталкер под лампой всегда
+    // свежий, а стены не перерисовываются.
+    //
+    // Пустой указатель, пока кэш выключен: текстура размером с основной атлас стоит десятки
+    // мегабайт видеопамяти, и платить за выключенную возможность незачем. valid() — признак того,
+    // что кэшировать вообще есть куда.
+    ref_rt rt_da_smap_static;
+
     //	Igor: for async screenshots
     ID3DTexture2D* t_ss_async; // 32bit		(r,g,b,a) is situated in the system memory
 
@@ -105,6 +117,8 @@ public:
 private:
     // OCCq
     ref_shader s_occq;
+    // [DA_PORT] Перенос кэшированной статики лампы в рабочий атлас. См. da_smap_blit.ps.
+    ref_shader s_da_smap_blit;
 
     // Accum
     ref_shader s_accum_mask;
@@ -330,7 +344,29 @@ public:
     void phase_smap_direct(CBackend& cmd_list, light *L, u32 sub_phase);
     void phase_smap_direct_tsh(CBackend& cmd_list, light *L, u32 sub_phase);
     void phase_smap_spot_clear(CBackend& cmd_list);
-    void phase_smap_spot(CBackend& cmd_list, light* L);
+    // [DA_PORT] Очистка ОДНОЙ ячейки атласа вместо всей текстуры — фундамент под кэш теней ламп.
+    // [DA_PORT] to_static — рисовать/чистить в атласе СТАТИКИ, а не в рабочем.
+    void phase_smap_spot_clear_rect(CBackend& cmd_list, light* L, bool to_static = false);
+    // [DA_PORT] Атлас статики -> рабочий, ЦЕЛИКОМ и один раз за кадр. Возвращает успех.
+    bool da_smap_restore_static();
+    // [DA_PORT] Залить атлас статики единицей. Обязателен один раз после создания целей: копия
+    // восстанавливает атлас ЦЕЛИКОМ, и в ячейках без кэшированной лампы иначе оказался бы мусор.
+    void da_smap_static_clear(CBackend& cmd_list);
+    // [DA_PORT] Есть ли атлас статики. Проверять ТОЛЬКО так.
+    //
+    // 🪤 `ref_rt::operator->` возвращает указатель БЕЗ проверки на ноль (xr_resource.h). При
+    // выключенном кэше цель не создаётся, и обращение `rt_da_smap_static->valid()` разыменовывает
+    // пустой указатель — то есть падение у всех, кто кэш не включал. Сначала сам указатель, потом
+    // содержимое.
+    bool da_smap_static_ok() { return !!rt_da_smap_static && rt_da_smap_static->valid(); }
+    // [DA_PORT] Перенести статику лампы из её постоянного места в атласе статики в место,
+    // которое она заняла в рабочем атласе В ЭТОМ кадре. Возвращает успех.
+    bool da_smap_blit_static(CBackend& cmd_list, light* L);
+    // [DA_PORT] Поколение атласа статики. Растёт при каждой заливке, то есть при пересоздании
+    // целей отрисовки. Лампа хранит своё; несовпадение — кэш пережил vid_restart и негоден.
+    u32 da_static_gen{ 1 };
+    bool da_static_ready{ false };
+    void phase_smap_spot(CBackend& cmd_list, light* L, bool to_static = false);
     void phase_smap_spot_tsh(CBackend& cmd_list, light* L);
     void phase_accumulator(CBackend& cmd_list);
     void phase_vol_accumulator(CBackend& cmd_list);

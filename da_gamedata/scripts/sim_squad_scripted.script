@@ -419,7 +419,11 @@ function sim_squad_scripted:generic_update()
 	end
 	
 	-- Find a new target
-	local target = SIMBOARD:get_squad_target(self) or SIMBOARD:get_squad_target(self,false,true)
+	-- [DA_PORT] Было: get_squad_target(self) or get_squad_target(self,false,true).
+	-- Сигнатура одна - simulation_board:get_squad_target(squad), лишние аргументы движок
+	-- отбрасывает, поэтому запасной вызов делает ту же работу и возвращает тот же ответ.
+	-- Полный обход всех целей симуляции выполнялся дважды подряд впустую.
+	local target = SIMBOARD:get_squad_target(self)
 	if not (target) then
 		--printf("squad %s has no target",self:name())
 		self:on_reach_target(self)

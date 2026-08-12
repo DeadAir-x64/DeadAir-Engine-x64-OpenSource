@@ -54,14 +54,39 @@ MotionID CStalkerAnimationManager::global_critical_hit()
                             object().inventory().ActiveItem()->object().cName().c_str() :
                             "no active item"));
 
-    u32 animation_slot = weapon->animation_slot();
-    VERIFY(animation_slot >= 1);
-    VERIFY(animation_slot <= 3);
+    // [DA_PORT] Три отказа вместо трёх VERIFY, которых в релизе нет.
+    //
+    // Здесь вылетала игра: разыменование нуля в CStalkerAnimationPair::select_animation при
+    // критическом попадании в сталкера. Индекс набора анимаций считается умножением на слот
+    // оружия, и ни одно из слагаемых в релизе не проверено:
+    //
+    //   * weapon может быть пустым — активный предмет не обязан быть оружием, а VERIFY2 выше
+    //     исчезает, и следующая же строка разыменовывает ноль;
+    //   * animation_slot приходит из конфига оружия. У модовых стволов он вполне может выйти за
+    //     1..3, и тогда 6 * (slot - 1) уводит индекс за массив;
+    //   * critical_wound_type() имеет значение critical_wound_type_dummy = u32(-1), и с ним
+    //     индекс становится огромным.
+    //
+    // Границы массива проверяем по факту, а не по формуле: имена анимаций (global_names) и код
+    // живут в разных файлах, и подгонять здесь константу под тамошний список значило бы завести
+    // второе место, которое надо не забыть поправить.
+    //
+    // Отказ безопасен: play_global() на пустом MotionID сбрасывает состояние и возвращает false —
+    // сталкер просто не проигрывает анимацию критического попадания. Это уже штатный исход, им же
+    // заканчивается ветка «не ранен критически» в начале функции.
+    if (!weapon)
+        return (MotionID());
 
-    return (global().select(m_data_storage->m_part_animations.A[eBodyStateStand]
-                                .m_global.A[object().critical_wound_type() + 6 * (animation_slot - 1)]
-                                .A,
-        &object().critical_wound_weights()));
+    const u32 animation_slot = weapon->animation_slot();
+    if (animation_slot < 1 || animation_slot > 3)
+        return (MotionID());
+
+    const auto& global_animations = m_data_storage->m_part_animations.A[eBodyStateStand].m_global.A;
+    const u32 index = object().critical_wound_type() + 6 * (animation_slot - 1);
+    if (index >= global_animations.size())
+        return (MotionID());
+
+    return (global().select(global_animations[index].A, &object().critical_wound_weights()));
 }
 
 MotionID CStalkerAnimationManager::assign_global_animation(bool& animation_movement_controller)

@@ -67,6 +67,27 @@ void FProgressive::Load(const char* N, IReader* data, u32 dwFlags)
 #endif
 }
 
+// [DA_PORT] Разбор см. в заголовке. Повторяет выбор окна из Render (ветка без быстрой геометрии),
+// но ничего не рисует и не меняет last_lod.
+void FProgressive::da_lod_window(float LOD, u32& out_ibase, u32& out_tris) const
+{
+    out_ibase = iBase;
+    out_tris = dwPrimitives;
+    if (!nSWI.sw || !nSWI.count)
+        return;
+
+    clamp(LOD, 0.f, 1.f);
+    int lod_id = iFloor((1.f - LOD) * float(nSWI.count - 1) + 0.5f);
+    if (lod_id < 0)
+        lod_id = 0;
+    if (lod_id >= int(nSWI.count))
+        lod_id = int(nSWI.count) - 1;
+
+    const FSlideWindow& SW = nSWI.sw[lod_id];
+    out_ibase = iBase + SW.offset;
+    out_tris = SW.num_tris;
+}
+
 void FProgressive::Render(CBackend& cmd_list, float LOD, bool use_fast_geo)
 {
 #if RENDER != R_R1

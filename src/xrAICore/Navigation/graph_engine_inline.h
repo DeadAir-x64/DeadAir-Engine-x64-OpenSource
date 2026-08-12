@@ -9,6 +9,23 @@
 #pragma once
 #include "xrCore/Threading/ScopeLock.hpp"
 
+// [DA_PORT] Сбор распределения обойдённых узлов — ТОЛЬКО для поиска по графу уровня.
+//
+// Через эти же перегрузки ходят поиск по графу игры и решатель GOAP; смешивать их в одну
+// гистограмму бессмысленно, у них другие масштабы. Разделение по типу графа делается на этапе
+// компиляции, поэтому в чужих поисках не остаётся даже проверки.
+template <typename _Graph>
+IC void da_record_level_search(bool success, u32 visited_nodes)
+{
+    if constexpr (std::is_same_v<_Graph, CLevelGraph>)
+        da_lp_record(success, visited_nodes);
+    else
+    {
+        (void)success;
+        (void)visited_nodes;
+    }
+}
+
 inline CGraphEngine::CGraphEngine(u32 max_vertex_count)
 {
     m_algorithm = xr_new<CAlgorithm>(max_vertex_count);
@@ -53,6 +70,7 @@ inline bool CGraphEngine::search(const _Graph& graph, const _index_type& start_n
     path_manager.setup(&graph, &m_algorithm->data_storage(), node_path, start_node, dest_node, parameters);
     bool successfull = m_algorithm->find(path_manager);
     PathTimer.End();
+    da_record_level_search<_Graph>(successfull, m_algorithm->data_storage().get_visited_node_count());
     return successfull;
     STOP_PROFILE
     STOP_PROFILE
@@ -72,6 +90,7 @@ inline bool CGraphEngine::search(const _Graph& graph, const _index_type& start_n
     path_manager.setup(&graph, &m_algorithm->data_storage(), node_path, start_node, dest_node, parameters);
     bool successfull = m_algorithm->find(path_manager);
     PathTimer.End();
+    da_record_level_search<_Graph>(successfull, m_algorithm->data_storage().get_visited_node_count());
     return successfull;
     STOP_PROFILE
     STOP_PROFILE

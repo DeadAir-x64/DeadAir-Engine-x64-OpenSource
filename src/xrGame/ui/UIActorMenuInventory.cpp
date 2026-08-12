@@ -739,8 +739,13 @@ bool CUIActorMenu::ToSlot(CUICellItem* itm, bool force_place, u16 slot_id)
         bool result = ToSlot(itm, false, slot_id);
         if (b_own_item && result && slot_id == DETECTOR_SLOT)
         {
+            // [DA_PORT] Приведение проверяется. Слот детектора занимает не только CCustomDetector:
+            // конфиг Dead Air кладёт в один слот предметы РАЗНЫХ классов (в слот шлема, например,
+            // и E_HLMET, и D_FLARE), а сюда приходит всё, чей BaseSlot совпал. Для не-детектора
+            // smart_cast даёт ноль, и вызов метода по нулю ронял игру прямо на перетаскивании.
             CCustomDetector* det = smart_cast<CCustomDetector*>(iitem);
-            det->ToggleDetector(g_player_hud->attached_item(0) != NULL);
+            if (det)
+                det->ToggleDetector(g_player_hud->attached_item(0) != NULL);
         }
 
         return result;
@@ -1348,6 +1353,9 @@ void CUIActorMenu::PropertiesBoxForUsing(PIItem item, bool& b_show)
 {
     pcstr act_str = nullptr;
     CGameObject* GO = smart_cast<CGameObject*>(item);
+    // [DA_PORT] Соседние ветки этого же меню приведение проверяют, эта — не проверяла.
+    if (!GO)
+        return;
     shared_str section_name = GO->cNameSect();
 
     //ability to set eat string from settings

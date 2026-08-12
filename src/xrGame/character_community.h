@@ -51,6 +51,9 @@ public:
 
     static void set_relation(CHARACTER_COMMUNITY_INDEX from, CHARACTER_COMMUNITY_INDEX to, CHARACTER_GOODWILL goodwill);
 
+    // [DA_PORT] Вернуть таблицу отношений к исходной из конфига. См. character_community.cpp.
+    static void da_reset_relations();
+
     static float sympathy(CHARACTER_COMMUNITY_INDEX);
 
     static void DeleteIdToIndexData();

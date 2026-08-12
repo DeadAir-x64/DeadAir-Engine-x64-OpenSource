@@ -15,6 +15,7 @@
 #include "MainMenu.h"
 #include "object_factory.h"
 #include "alife_object_registry.h"
+#include "character_community.h"
 #include "xrEngine/XR_IOConsole.h"
 
 #ifdef DEBUG
@@ -28,6 +29,11 @@ CALifeSimulator::CALifeSimulator(IPureServer* server, shared_str* command_line)
     : CALifeSimulatorBase(server, alife_section), CALifeUpdateManager(server, alife_section),
       CALifeInteractionManager(server, alife_section)
 {
+    // [DA_PORT] Таблица отношений группировок статическая и переживает новую игру, если её не сбросить.
+    // Сюда попадают ОБА пути — и «новая игра», и загрузка, — и это намеренно: см. character_community.cpp.
+    CHARACTER_COMMUNITY::da_reset_relations();
+    Msg("* [DA] отношения группировок сброшены к конфигу на старте игры");
+
     // XXX: why do we need to reinitialize script engine?
     if (!strstr(Core.Params, "-keep_lua"))
     {

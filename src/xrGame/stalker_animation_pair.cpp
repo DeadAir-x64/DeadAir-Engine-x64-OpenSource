@@ -254,7 +254,28 @@ void CStalkerAnimationPair::select_animation(const ANIM_VECTOR& array, const ANI
 
 MotionID CStalkerAnimationPair::select(const ANIM_VECTOR& array, const ANIMATION_WEIGHTS* weights)
 {
-    VERIFY(!array.empty());
+    // [DA_PORT] Пустой список анимаций — отказ, а не разыменование нуля.
+    //
+    // Ниже стоял только VERIFY, а он в релизе разворачивается в пустоту, и пустой список проходил
+    // насквозь. Дальше обе ветки select_animation упираются в array[0]: без весов это
+    // array[Random.randI(0)], с весами — цикл не делает ни шага и берётся тот же нулевой элемент.
+    // У пустого xr_vector данные лежат по нулевому адресу, отсюда и «чтение по адресу 0».
+    //
+    // Живой вылет: сталкер получил критическое попадание, global_critical_hit() выбрал набор
+    // анимаций по типу ранения и слоту оружия, набор оказался пуст — падение в CCustomMonster::
+    // UpdateCL. Второй конец прикрыт в global_critical_hit (проверка слота и границ массива).
+    //
+    // Пустой MotionID здесь безопасен: play_global() его штатно обрабатывает — сбрасывает
+    // состояние и возвращает false, то есть анимация просто не проигрывается.
+    //
+    // m_array сбрасываем в ноль намеренно: если список наполнится позже, следующий вызов обязан
+    // выбрать заново, а не отдать запомненный отказ по короткому пути ниже.
+    if (array.empty())
+    {
+        m_array = nullptr;
+        m_array_animation = MotionID();
+        return (m_array_animation);
+    }
 
     if (m_array == &array)
     {

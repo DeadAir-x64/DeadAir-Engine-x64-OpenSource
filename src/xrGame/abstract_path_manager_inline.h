@@ -125,8 +125,31 @@ IC const typename CPathManagerTemplate::PATH& CPathManagerTemplate::path() const
 TEMPLATE_SPECIALIZATION
 IC _vertex_id_type CPathManagerTemplate::dest_vertex_id() const { return (m_dest_vertex_id); }
 TEMPLATE_SPECIALIZATION
-IC void CPathManagerTemplate::set_dest_vertex(const _vertex_id_type vertex_id)
+IC void CPathManagerTemplate::set_dest_vertex(const _vertex_id_type vertex_id, const char* da_from)
 {
+    // [DA_PORT] Прибор: кто назначает целью НУЛЕВУЮ вершину уровня.
+    //
+    // В Баре трое сталкеров Долга ищут дорогу в вершину 0 — дальний угол карты, метров за 530, —
+    // и упираются в потолок поиска ~849 раз за заход. Ноль там не «цель не выставлена»: незаданная
+    // цель это u32(-1), её ловит проверка в build_path, и она не срабатывала ни разу. Значит ноль
+    // положили осознанно, и вопрос ровно один — где.
+    //
+    // Мест, откуда назначается цель уровня, шесть, и по логу их не различить: сообщение об упоре
+    // печатается уже в поиске, к тому времени вызвавшего не видно. Поэтому метку места передаём
+    // сюда явным аргументом. Нулевая вершина сама по себе законна, поэтому это не отказ и не
+    // защита — только запись в лог, чтобы следующий заход назвал виновника вместо догадок.
+    //
+    // ⚠️ Метка ставится ТОЛЬКО на путях уровня. Для графа игры вершина 0 — обычная точка, и там
+    // da_from не передаётся, иначе лог зальёт ложными срабатываниями.
+    if (da_from && vertex_id == _vertex_id_type(0))
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 10 || (da_hits % 500) == 0)
+            Msg("! [DA] целью пути уровня назначена вершина 0, место вызова [%s] (случаев %u)", da_from,
+                da_hits);
+    }
+
     VERIFY(check_vertex(vertex_id));
     m_actuality = m_actuality && (dest_vertex_id() == vertex_id);
     m_dest_vertex_id = vertex_id;

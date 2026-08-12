@@ -370,7 +370,7 @@ bool cmp_pass(const T& left, const T& right)
     return left->first < right->first;
 }
 
-void R_dsgraph_structure::render_graph(u32 _priority)
+void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, bool da_keep)
 {
     PIX_EVENT_CTX(cmd_list, dsgraph_render_graph);
     RImplementation.BasicStats.Primitives.Begin(); // XXX: Refactor a bit later
@@ -388,6 +388,14 @@ void R_dsgraph_structure::render_graph(u32 _priority)
         for (u32 iPass = 0; iPass < SHADER_PASSES_MAX; ++iPass)
         {
             auto& map = mapNormalPasses[_priority][iPass];
+
+            // [DA_PORT] Статика не нужна (её берут из кэша) — но список обязаны забрать, см. заголовок.
+            if (da_part == da_graph_dynamic_only)
+            {
+                map.clear();
+                invalidate_pass_item_cache(_priority, iPass);
+                continue;
+            }
 
             map.get_any_p(nrmPasses);
             std::sort(nrmPasses.begin(), nrmPasses.end(), cmp_pass<mapNormal_T::value_type*>);
@@ -418,12 +426,16 @@ void R_dsgraph_structure::render_graph(u32 _priority)
 
                     item.pVisual->Render(cmd_list, LOD, o.phase == CRender::PHASE_SMAP);
                 }
-                items.clear();
+                if (!da_keep)
+                    items.clear();
 
             }
             nrmPasses.clear();
-            map.clear();
-            invalidate_pass_item_cache(_priority, iPass); // [DA_PORT] карта очищена — указатель мёртв
+            if (!da_keep)
+            {
+                map.clear();
+                invalidate_pass_item_cache(_priority, iPass); // [DA_PORT] карта очищена — указатель мёртв
+            }
         }
     }
 
@@ -438,6 +450,14 @@ void R_dsgraph_structure::render_graph(u32 _priority)
         for (u32 iPass = 0; iPass < SHADER_PASSES_MAX; ++iPass)
         {
             auto& map = mapMatrixPasses[_priority][iPass];
+
+            // [DA_PORT] Симметрично: рисуем только статику, но список динамики всё равно забираем.
+            if (da_part == da_graph_static_only)
+            {
+                map.clear();
+                invalidate_pass_item_cache(_priority, iPass);
+                continue;
+            }
 
             map.get_any_p(matPasses);
             std::sort(matPasses.begin(), matPasses.end(), cmp_pass<mapMatrix_T::value_type*>);

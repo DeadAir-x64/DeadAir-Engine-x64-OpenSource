@@ -39,6 +39,139 @@ void CLevelGraph::Initialize(const char* filePath)
     m_column_length = iFloor((box.vMax.x - box.vMin.x) / header().cell_size() + EPS_L + 1.5f);
     m_access_mask.assign(header().vertex_count(), true);
     unpack_xz(vertex_position(box.vMax), m_max_x, m_max_z);
+
+    da_build_components();
+}
+
+// [DA_PORT] Компоненты связности графа: отказ «туда не дойти» за одно сравнение.
+//
+// ЗАЧЕМ. Неудачный поиск пути дороже удачного: чтобы заключить «дороги нет», A* обязан обойти
+// ВСЁ достижимое. Замер на болотах: три сталкера с недостижимой целью давали три поиска за кадр
+// и 12.3 мс на троих при кадре 13 мс. Отступ после серии неудач лечит частоту, но не причину —
+// сталкер всё равно платит за первый заход и ждёт вместо того, чтобы сразу знать ответ.
+//
+// Приём стандартный: у каждой вершины хранится номер её компоненты («island id»), и вопрос
+// «дойду ли» для разных компонент решается сравнением двух чисел. Так делают Unity, Unreal
+// (Recast) и Godot.
+//
+// ⚠️ ПОЧЕМУ ЭТО ТОЛЬКО ПРЕДФИЛЬТР. Проходимость у нас зависит ещё и от рестрикторов, а они
+// доступность только ОТНИМАЮТ. Значит:
+//   разные компоненты  => не дойти НИКОГДА, отказ верен всегда;
+//   одна компонента    => искать всё равно надо, дорогу мог перекрыть рестриктор.
+// Ложных отказов при таком порядке не бывает — а это единственная ошибка, которая была бы
+// дорогой: NPC отказался бы идти туда, куда дойти можно.
+//
+// ⚠️ Связи обходятся как НЕОРИЕНТИРОВАННЫЕ. Если у пары вершин ссылка окажется односторонней,
+// объединение по обоим направлениям даст компоненту БОЛЬШЕ настоящей достижимости — то есть
+// ошибка снова в безопасную сторону: лишний поиск, но не лишний отказ.
+void CLevelGraph::da_build_components()
+{
+    m_da_components_ready = false;
+
+    const u32 count = header().vertex_count();
+    if (!count)
+        return;
+
+    CTimer timer;
+    timer.Start();
+
+    constexpr u16 none = u16(-1);
+
+    // Система непересекающихся множеств, а не обход в ширину.
+    //
+    // 🪤 Обход по ссылкам идёт ПО НАПРАВЛЕНИЮ, и при односторонней связи u->v он развалил бы одну
+    // компоненту на две в зависимости от того, с какой вершины начали: пометив v первой, мы никогда
+    // не дошли бы до u, и `da_unreachable(u, v)` соврал бы ОТКАЗОМ — ровно той ошибкой, которой
+    // здесь допускать нельзя. Объединение множеств симметрично по построению, поэтому вопрос
+    // направления снимается целиком.
+    xr_vector<u32> parent(count);
+    for (u32 i = 0; i < count; ++i)
+        parent[i] = i;
+
+    // Поиск корня со сжатием пути вдвое: без рекурсии и без второго прохода.
+    auto find = [&parent](u32 x)
+    {
+        while (parent[x] != x)
+        {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    };
+
+    for (u32 v_id = 0; v_id < count; ++v_id)
+    {
+        const CLevelVertex* v = vertex(v_id);
+        for (int i = 0; i < 4; ++i)
+        {
+            const u32 neighbour = v->link(i);
+            if (!valid_vertex_id(neighbour))
+                continue;
+
+            const u32 a = find(v_id);
+            const u32 b = find(neighbour);
+            if (a != b)
+                parent[a > b ? a : b] = (a < b ? a : b); // к меньшему корню — порядок устойчив
+        }
+    }
+
+    m_da_component.assign(count, none);
+
+    u32 components = 0;
+    xr_vector<u32> root_to_id(count, u32(-1));
+    for (u32 v_id = 0; v_id < count; ++v_id)
+    {
+        const u32 root = find(v_id);
+        if (root_to_id[root] == u32(-1))
+        {
+            if (components >= none)
+            {
+                // Столько компонент на игровом уровне не бывает; если случилось — данные не те,
+                // и правильнее отключить проверку целиком, чем раздавать неверные отказы.
+                Msg("! [DA] граф уровня: компонент связности больше %u — проверка достижимости "
+                    "выключена", u32(none));
+                m_da_component.clear();
+                return;
+            }
+            root_to_id[root] = components++;
+        }
+        m_da_component[v_id] = u16(root_to_id[root]);
+    }
+
+    m_da_components_ready = true;
+
+    // Размеры печатаются не для красоты: по ним видно, осмысленно ли разбиение. Здоровая картина -
+    // одна огромная компонента и горстка крошечных островков (площадка за забором, балкон, кусок
+    // геометрии без выхода). Если бы граф развалился на две сопоставимые половины, это означало бы
+    // ошибку в обходе, а не устройство уровня, и отказы пошли бы там, где дорога есть.
+    xr_vector<u32> sizes(components, 0);
+    for (const u16 id : m_da_component)
+        if (id != none)
+            ++sizes[id];
+    std::sort(sizes.begin(), sizes.end(), [](u32 a, u32 b) { return a > b; });
+
+    string256 top{};
+    for (u32 i = 0; i < components && i < 6; ++i)
+    {
+        string64 one;
+        xr_sprintf(one, "%s%u", i ? " / " : "", sizes[i]);
+        xr_strcat(top, one);
+    }
+
+    Msg("* [DA_PORT] граф уровня: %u вершин, компонент связности %u [%s], за %.1f мс (%u КБ)", count,
+        components, top, timer.GetElapsed_sec() * 1000.f, u32(count * sizeof(u16) / 1024));
+}
+
+u32 CLevelGraph::da_component_count() const
+{
+    if (!m_da_components_ready)
+        return 0;
+
+    u16 max_id = 0;
+    for (const u16 id : m_da_component)
+        if (id != u16(-1) && id > max_id)
+            max_id = id;
+    return u32(max_id) + 1;
 }
 
 CLevelGraph::~CLevelGraph()

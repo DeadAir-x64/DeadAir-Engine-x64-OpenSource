@@ -21,6 +21,9 @@
 #include "xrEngine/xr_object.h"
 
 #include "Layers/xrRender/FBasicVisual.h"
+#include "Layers/xrRender/FVisual.h"      // [DA_PORT] dwPrimitives для разбора очереди
+#include "Layers/xrRender/FTreeVisual.h"
+#include "Layers/xrRender/FProgressive.h" // [DA_PORT] окно LOD для оценки склейки
 
 // [DA_PORT] Defined in the engine (device.cpp). Declared out here, not inside the function that uses it:
 // an extern inside namespace xray::render::render_r4 would be looking for a symbol in that namespace.
@@ -42,6 +45,30 @@ static void da_restore_demoted_lights()
         L->flags.bShadow = true;
     s_demoted.clear();
 }
+
+// [DA_PORT] Разбор очереди отрисовки. Сам он определён ниже, рядом с прямым проходом, а зовётся и
+// отсюда, из основного -- поэтому объявлен заранее.
+extern int ps_da_geom_dump;
+extern std::atomic<u32> g_da_ssa_discarded;
+
+// [DA_PORT] Приборы фазы света живут в r2_R_lights.cpp, отчёт печатается здесь.
+extern int ps_da_light_prof;
+extern double g_da_lp_wait;
+extern double g_da_lp_smap;
+extern double g_da_lp_accum;
+extern u32 g_da_lp_lights;
+extern u32 g_da_lp_accums;
+extern u32 g_da_lp_waves;
+extern u32 g_da_lp_starved;
+extern u32 g_da_lp_free_ctx;
+extern u32 g_da_lp_max_flight;
+extern u32 g_da_lp_queued;
+extern u32 g_da_lc_drawn, g_da_lc_empty;
+extern u32 g_da_lc_drawn_size_min, g_da_lc_drawn_size_max;
+extern u32 g_da_lc_empty_size_min, g_da_lc_empty_size_max;
+extern double g_da_lc_drawn_dist, g_da_lc_empty_dist;
+extern u32 g_da_lc_cached, g_da_lc_cached_special;
+static void da_dump_pass(R_dsgraph_structure& dsgraph, u32 priority, pcstr tag);
 
 
 void CRender::RenderMenu()
@@ -154,6 +181,7 @@ void CRender::Render()
     //.	VERIFY					(g_pGameLevel && g_pGameLevel->pHUD);
     auto& dsgraph = get_imm_context();
     DA_GPU_FRAME_BEGIN();
+    DA_GPU_ZONE_BEGIN(z_prepare);
 
     //******* Z-prefill calc - DEFERRER RENDERER
     if (ps_r2_ls_flags.test(R2FLAG_ZFILL))
@@ -192,12 +220,16 @@ void CRender::Render()
     // Sync point
     BasicStats.WaitS.Begin();
     {
+        DA_GPU_ZONE_BEGIN(z_wait_fence);
         q_sync_point.Wait(ps_r2_wait_sleep, ps_r2_wait_timeout);
+        DA_GPU_ZONE_END(z_wait_fence);
     }
     BasicStats.WaitS.End();
     q_sync_point.End();
 
+    DA_GPU_ZONE_BEGIN(z_wait_cull);
     r_main.sync();
+    DA_GPU_ZONE_END(z_wait_cull);
 
     if (ps_r2_ls_flags.test(R2FLAG_ZFILL))
     {
@@ -211,6 +243,8 @@ void CRender::Render()
     {
         Target->phase_scene_prepare();
     }
+
+    DA_GPU_ZONE_END(z_prepare);
 
     BOOL split_the_scene_to_minimize_wait = FALSE;
     if (ps_r2_ls_flags.test(R2FLAG_EXP_SPLIT_SCENE))
@@ -243,6 +277,12 @@ void CRender::Render()
         DA_GPU_ZONE_BEGIN(z_gbuffer);
         // level, SPLIT
         Target->phase_scene_begin();
+        // [DA_PORT] Разбор основного прохода -- ДО отрисовки: render_graph очищает списки.
+        if (ps_da_geom_dump > 0)
+        {
+            da_dump_pass(dsgraph, 0, "DA_GEOM");
+            --ps_da_geom_dump;
+        }
         dsgraph.render_graph(0);
         Target->disable_aniso();
         DA_GPU_ZONE_END(z_gbuffer);
@@ -253,6 +293,7 @@ void CRender::Render()
 #endif
 
     //******* Occlusion testing of volume-limited light-sources
+    DA_GPU_ZONE_BEGIN(z_occq);
     Target->phase_occq();
     LP_normal.clear();
     LP_pending.clear();
@@ -427,6 +468,8 @@ void CRender::Render()
     LP_normal.sort();
     LP_pending.sort();
 
+    DA_GPU_ZONE_END(z_occq);
+
     //******* Main render :: PART-1 (second)
     if (split_the_scene_to_minimize_wait)
     {
@@ -458,6 +501,7 @@ void CRender::Render()
         DA_GPU_ZONE_END(z_gbuffer2);
     }
 
+    DA_GPU_ZONE_BEGIN(z_wmarks);
     if (g_pGameLevel->pHUD && g_pGameLevel->pHUD->RenderActiveItemUIQuery())
     {
         Target->phase_wallmarks();
@@ -500,6 +544,8 @@ void CRender::Render()
         PIX_EVENT(MARK_MSAA_EDGES);
         Target->mark_msaa_edges();
     }
+
+    DA_GPU_ZONE_END(z_wmarks);
 
     r_rain.sync();
 
@@ -596,6 +642,33 @@ void CRender::Render()
     // [DA_PORT] Свет отрисован - возвращаем флаг тем, у кого его занял бюджет теней.
     da_restore_demoted_lights();
 
+    // [DA_PORT] Отчёт приборов фазы света. Печатается ПОСЛЕ обоих заходов render_lights (обычного
+    // и по видимости), иначе половина работы осталась бы за кадром отчёта.
+    if (ps_da_light_prof > 0)
+    {
+        Msg("~ [DA_LIGHT] ламп со тенью %u, накоплений %u | ожидание списков %5.2f мс | "
+            "теневые карты %5.2f мс | накопление %5.2f мс | всего %5.2f мс | волн %u, нехваток %u, свободно контекстов %u, макс. в работе %u | обходов запущено %u",
+            g_da_lp_lights, g_da_lp_accums, g_da_lp_wait, g_da_lp_smap, g_da_lp_accum,
+            g_da_lp_wait + g_da_lp_smap + g_da_lp_accum, g_da_lp_waves, g_da_lp_starved, g_da_lp_free_ctx, g_da_lp_max_flight, g_da_lp_queued);
+        Msg("~ [DA_LIGHT] рисуются: %u шт, ячейка %u..%u пикс, среднее расстояние %.0f м | "
+            "пустые: %u шт, ячейка %u..%u пикс, среднее расстояние %.0f м",
+            g_da_lc_drawn, g_da_lc_drawn == 0 ? 0 : g_da_lc_drawn_size_min, g_da_lc_drawn_size_max,
+            g_da_lc_drawn ? g_da_lc_drawn_dist / g_da_lc_drawn : 0.0,
+            g_da_lc_empty, g_da_lc_empty == 0 ? 0 : g_da_lc_empty_size_min, g_da_lc_empty_size_max,
+            g_da_lc_empty ? g_da_lc_empty_dist / g_da_lc_empty : 0.0);
+        Msg("~ [DA_LIGHT] кэш статики годен у %u ламп, из них с содержимым мимо кэша: %u", g_da_lc_cached,
+            g_da_lc_cached_special);
+        g_da_lc_cached = g_da_lc_cached_special = 0;
+        g_da_lc_drawn = g_da_lc_empty = 0;
+        g_da_lc_drawn_size_min = g_da_lc_empty_size_min = 0xFFFFFFFF;
+        g_da_lc_drawn_size_max = g_da_lc_empty_size_max = 0;
+        g_da_lc_drawn_dist = g_da_lc_empty_dist = 0.0;
+
+        g_da_lp_wait = g_da_lp_smap = g_da_lp_accum = 0.0;
+        g_da_lp_lights = g_da_lp_accums = g_da_lp_waves = g_da_lp_starved = g_da_lp_free_ctx = g_da_lp_max_flight = g_da_lp_queued = 0;
+        --ps_da_light_prof;
+    }
+
     // Postprocess
     {
         DA_GPU_ZONE_END(z_lights);
@@ -611,18 +684,249 @@ void CRender::Render()
 
     // [DA_PORT] Remember this frame's camera for the next one. Temporal effects reproject a pixel into
     // the previous frame from its depth and this matrix.
+    DA_GPU_ZONE_BEGIN(z_tail);
     extern Fmatrix g_da_prev_VP;
     g_da_prev_VP = ::g_da_taa_unjittered_VP;
 
+    DA_GPU_ZONE_END(z_tail);
     DA_GPU_FRAME_END();
 
     VERIFY(dsgraph.mapDistort.empty());
 }
 
+// [DA_PORT] Разовый разбор прямого прохода: da_forward_dump 1.
+//
+// Повод: замер показал у прямого прохода 509 вызовов отрисовки на 11 тысяч треугольников -- по два
+// десятка треугольников на вызов, 0.79 мс процессора и НОЛЬ на видеокарте. То есть работа, которой
+// видеокарта не замечает, а процессор на неё тратит шестую часть своего времени в рендере. Прежде
+// чем что-то с этим делать, надо знать, ЧТО там рисуется, а по числу вызовов этого не видно.
+//
+// Печатается гистограмма по пиксельным шейдерам: у каждого -- сколько элементов и пример визуала.
+// Имя шейдера названо первым потому, что вызов рвётся именно на смене прохода: элементы одного и
+// того же шейдера уже сгруппированы, и если их много при малом числе треугольников -- это кандидат
+// на объединение, а если шейдеров много по одному элементу -- объединять нечего.
+int ps_da_forward_dump = 0;
+
+// [DA_PORT] То же самое для основного прохода: da_geom_dump 1.
+int ps_da_geom_dump = 0;
+
+// [DA_PORT] Приборы частиц живут в ParticleEffect.cpp -- в ЭТОМ же пространстве имён, поэтому
+// extern объявлен здесь, а не в глобальной области: та же грабля, что с ps_da_gpu_log.
+extern int ps_da_particle_prof;
+extern double g_da_pp_lock;
+extern double g_da_pp_fill;
+extern double g_da_pp_draw;
+extern u32 g_da_pp_calls;
+extern u32 g_da_pp_parts;
+extern u32 g_da_pp_far[4];
+extern u32 g_da_pp_far_p[4];
+extern float g_da_pp_dmin;
+extern float g_da_pp_dmax;
+extern u32 g_da_pp_xform;
+extern int ps_da_particle_dist;
+extern u32 g_da_pp_skipped;
+
+// [DA_PORT] Имя визуала (dbg_name) живёт под #ifdef DEBUG и в отгружаемой сборке его нет, поэтому
+// в отчёте стоит ТИП визуала: он есть всегда и для нашей задачи говорит больше имени -- частицы,
+// деревья и скелеты объединяются по-разному, а имя одного примера про весь список не скажет.
+static pcstr da_visual_type_name(u32 t)
+{
+    switch (t)
+    {
+    case MT_NORMAL: return "статика";
+    case MT_HIERRARHY: return "иерархия";
+    case MT_PROGRESSIVE: return "прогрессивная";
+    case MT_SKELETON_ANIM: return "скелет анимир.";
+    case MT_SKELETON_RIGID: return "скелет жёсткий";
+    case MT_SKELETON_GEOMDEF_PM: return "скелет geom PM";
+    case MT_SKELETON_GEOMDEF_ST: return "скелет geom ST";
+    case MT_PARTICLE_EFFECT: return "частицы (эффект)";
+    case MT_PARTICLE_GROUP: return "частицы (группа)";
+    case MT_LOD: return "LOD";
+    case MT_TREE_ST: return "дерево ST";
+    case MT_TREE_PM: return "дерево PM";
+    default: return "?";
+    }
+}
+
+// [DA_PORT] Число треугольников визуала -- только для тех типов, у которых оно лежит на виду.
+//
+// Нужно, чтобы отличить «много мелочи» от «мало, но крупное»: и то и другое даёт одинаковое число
+// вызовов отрисовки, а лечится противоположно. Скелеты и частицы считают иначе, для них ноль --
+// и это честнее, чем подставить неверное число.
+// [DA_PORT] Тот же расчёт LOD, что в r__dsgraph_render.cpp: там он ICF и наружу не виден, а
+// разбору очереди нужен ровно он, иначе окно прогрессивной геометрии выберется не то.
+extern float r_ssaGLOD_start, r_ssaGLOD_end;
+
+static float da_calc_lod(float ssa)
+{
+    return _sqrt(clampr((ssa - r_ssaGLOD_end) / (r_ssaGLOD_start - r_ssaGLOD_end), 0.f, 1.f));
+}
+
+static IRender_Mesh* da_visual_mesh(dxRender_Visual* V)
+{
+    if (!V)
+        return nullptr;
+    switch (V->Type)
+    {
+    case MT_NORMAL:
+    case MT_PROGRESSIVE: return static_cast<Fvisual*>(V);
+    case MT_TREE_ST:
+    case MT_TREE_PM: return static_cast<FTreeVisual*>(V);
+    // Скелеты сюда НЕ идут: они рисуются со своей матрицей и набором костей, склеивать их
+    // диапазонами нельзя. Частицы и LOD'ы считают геометрию иначе.
+    default: return nullptr;
+    }
+}
+
+static u32 da_visual_tris(dxRender_Visual* V)
+{
+    IRender_Mesh* M = da_visual_mesh(V);
+    return M ? M->dwPrimitives : 0;
+}
+
+// [DA_PORT] Разбор очереди отрисовки по шейдерам. priority 0 -- основной проход (G-буфер),
+// priority 1 -- прямой, тот, что рисуется внутри combine.
+//
+// Что именно надо увидеть: вызов отрисовки рвётся на смене прохода, поэтому важно не только
+// сколько элементов, но и по скольким проходам они разложены. Много элементов в НЕМНОГИХ проходах
+// -- состояние уже общее, и остаётся только склеить отрисовку. Много проходов по паре элементов --
+// склеивать нечего, там платят за переключение состояний, и лечение другое.
+static void da_dump_pass(R_dsgraph_structure& dsgraph, u32 priority, pcstr tag)
+{
+    struct entry
+    {
+        u32 items = 0;   // всего элементов
+        u32 stat = 0;    // из них статика (рисуется без своей матрицы)
+        u32 runs = 0;    // во сколько вызовов статика сложилась бы объединением диапазонов
+        u32 passes = 0;
+        u32 tris = 0;
+        pcstr sample = "";
+    };
+    xr_map<shared_str, entry> hist;
+    u32 total_items = 0, total_passes = 0, total_tris = 0, total_stat = 0, total_runs = 0;
+
+    // [DA_PORT] Сколько вызовов останется, если склеить соседние диапазоны индексов.
+    //
+    // Считаем ВОЗМОЖНОЕ, а не желаемое: два элемента сливаются в один вызов только если у них
+    // общая геометрия (один вершинный и индексный буфер, одна разметка) и их диапазоны индексов
+    // идут встык. Ни инстансинга, ни правки шейдеров это не требует -- потому и меряем первым
+    // делом: если склейка даёт мало, браться за более дорогие приёмы незачем.
+    //
+    // Скелеты в счёт не идут: у каждого своя матрица и свои кости.
+    xr_vector<std::pair<const void*, std::pair<u32, u32>>> ranges; // геометрия -> (iBase, iCount)
+
+    const auto account = [&](SPass* P, auto& items, bool is_static)
+    {
+        const shared_str name = (P && P->ps) ? P->ps->cName : shared_str("(без шейдера)");
+        entry& e = hist[name];
+        e.items += u32(items.size());
+        ++e.passes;
+        for (const auto& it : items)
+            e.tris += da_visual_tris(it.pVisual);
+        if (!items.empty() && items[0].pVisual)
+            e.sample = da_visual_type_name(items[0].pVisual->Type);
+        total_items += u32(items.size());
+        ++total_passes;
+
+        if (!is_static)
+            return;
+
+        ranges.clear();
+        for (const auto& it : items)
+        {
+            IRender_Mesh* M = da_visual_mesh(it.pVisual);
+            if (!M || !M->rm_geom)
+                continue;
+
+            // Диапазон берём тот, что рисуется НА САМОМ ДЕЛЕ. У прогрессивной геометрии он зависит
+            // от LOD: постоянные iBase/iCount показали бы стык там, где его нет, и завысили склейку.
+            u32 ibase = M->iBase;
+            u32 tris = M->dwPrimitives;
+            if (it.pVisual->Type == MT_PROGRESSIVE)
+            {
+                const float lod = da_calc_lod(it.ssa);
+                static_cast<FProgressive*>(it.pVisual)->da_lod_window(lod, ibase, tris);
+            }
+            ranges.emplace_back(M->rm_geom._get(), std::make_pair(ibase, tris * 3));
+        }
+        if (ranges.empty())
+            return;
+
+        std::sort(ranges.begin(), ranges.end(), [](const auto& a, const auto& b)
+            {
+                if (a.first != b.first)
+                    return std::less<const void*>{}(a.first, b.first);
+                return a.second.first < b.second.first;
+            });
+
+        u32 runs = 1;
+        for (size_t i = 1; i < ranges.size(); ++i)
+        {
+            const bool same_geom = ranges[i].first == ranges[i - 1].first;
+            const bool adjacent = ranges[i].second.first == ranges[i - 1].second.first + ranges[i - 1].second.second;
+            if (!same_geom || !adjacent)
+                ++runs;
+        }
+        e.stat += u32(ranges.size());
+        e.runs += runs;
+        total_stat += u32(ranges.size());
+        total_runs += runs;
+    };
+
+    for (u32 iPass = 0; iPass < SHADER_PASSES_MAX; ++iPass)
+    {
+        xr_vector<R_dsgraph::mapNormal_T::value_type*> passes;
+        dsgraph.mapNormalPasses[priority][iPass].get_any_p(passes);
+        for (const auto& it : passes)
+            account(it->first, it->second, true);
+
+        xr_vector<R_dsgraph::mapMatrix_T::value_type*> mpasses;
+        dsgraph.mapMatrixPasses[priority][iPass].get_any_p(mpasses);
+        for (const auto& it : mpasses)
+            account(it->first, it->second, false);
+    }
+
+    for (const auto& kv : hist)
+        total_tris += kv.second.tris;
+
+    Msg("~ [%s] проходов %u, элементов %u, треугольников %u (верхняя оценка, без учёта LOD)", tag,
+        total_passes, total_items, total_tris);
+    Msg("~ [%s] статики %u -> склеилось бы в %u вызовов (динамика и скелеты в счёт не идут)", tag, total_stat,
+        total_runs);
+
+    // [DA_PORT] Разница с прошлым отчётом = снято за этот кадр. Счётчик растёт из рабочих потоков
+    // ещё на построении списков, до нас, поэтому обнулять его отсюда было бы не к месту.
+    if (priority == 0)
+    {
+        static u32 prev = 0;
+        const u32 cur = g_da_ssa_discarded.load(std::memory_order_relaxed);
+        Msg("~ [%s] снято по экранной площади: %u (порог %.1f пикс.)", tag, cur - prev, ps_r__ssaDISCARD);
+        prev = cur;
+    }
+
+    // Порядок по числу элементов: интересен тот шейдер, что даёт больше всего вызовов, а не тот,
+    // что оказался первым по алфавиту.
+    xr_vector<std::pair<shared_str, entry>> rows(hist.begin(), hist.end());
+    std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.second.items > b.second.items; });
+    for (const auto& kv : rows)
+        Msg("~ [%s]   %-34s проходов %3u  элементов %4u  статики %4u -> %4u  тр. %6u  %s", tag, kv.first.c_str(),
+            kv.second.passes, kv.second.items, kv.second.stat, kv.second.runs, kv.second.tris, kv.second.sample);
+}
+
+static void da_dump_forward_pass(R_dsgraph_structure& dsgraph) { da_dump_pass(dsgraph, 1, "DA_FWD"); }
+
 void CRender::render_forward()
 {
     ZoneScoped;
     auto& dsgraph = get_imm_context();
+
+    if (ps_da_forward_dump > 0)
+    {
+        // Печатаем ДО отрисовки: render_graph очищает списки, после него смотреть уже нечего.
+        da_dump_forward_pass(dsgraph);
+        --ps_da_forward_dump;
+    }
 
     //******* Main render - second order geometry (the one, that doesn't support deffering)
     //.todo: should be done inside "combine" with estimation of of luminance, tone-mapping, etc.
@@ -631,8 +935,38 @@ void CRender::render_forward()
         dsgraph.mapLOD.clear();
         dsgraph.render_graph(1); // normal level, secondary priority
         dsgraph.PortalTraverser.fade_render(); // faded-portals
+        // [DA_PORT] Строго сортированная геометрия -- отдельной зоной. Пакетировать её нельзя по
+        // определению: порядок задан расстоянием, значит каждый объект идёт своим вызовом. Если
+        // мелкие вызовы постобработки родом отсюда, это увидно будет прямо в отчёте.
+        DA_GPU_ZONE_BEGIN(z_sorted);
         dsgraph.render_sorted(); // strict-sorted geoms
+        DA_GPU_ZONE_END(z_sorted);
         g_pGamePersistent->Environment().RenderLast(); // rain/thunder-bolts
+    }
+
+    // [DA_PORT] Отчёт приборов частиц -- ПОСЛЕ отрисовки, иначе считать было бы нечего.
+    if (ps_da_particle_prof > 0)
+    {
+        Msg("~ [DA_PART] эффектов %u, частиц %u | блокировка буфера %5.2f мс | сборка %5.2f мс | "
+            "отрисовка %5.2f мс | всего %5.2f мс",
+            g_da_pp_calls, g_da_pp_parts, g_da_pp_lock, g_da_pp_fill, g_da_pp_draw,
+            g_da_pp_lock + g_da_pp_fill + g_da_pp_draw);
+        Msg("~ [DA_PART] дальше 50 м: %u эфф / %u част | 100 м: %u / %u | 150 м: %u / %u | 200 м: %u / %u",
+            g_da_pp_far[0], g_da_pp_far_p[0], g_da_pp_far[1], g_da_pp_far_p[1], g_da_pp_far[2],
+            g_da_pp_far_p[2], g_da_pp_far[3], g_da_pp_far_p[3]);
+        Msg("~ [DA_PART] расстояние: ближайший %.1f м, дальний %.1f м | с преобразованием %u из %u | "
+            "порог %d м, отсечено %u",
+            g_da_pp_dmin, g_da_pp_dmax, g_da_pp_xform, g_da_pp_calls, ps_da_particle_dist, g_da_pp_skipped);
+        g_da_pp_lock = g_da_pp_fill = g_da_pp_draw = 0.0;
+        g_da_pp_calls = g_da_pp_parts = g_da_pp_xform = g_da_pp_skipped = 0;
+        g_da_pp_dmin = 1e9f;
+        g_da_pp_dmax = 0.f;
+        for (int b = 0; b < 4; ++b)
+        {
+            g_da_pp_far[b] = 0;
+            g_da_pp_far_p[b] = 0;
+        }
+        --ps_da_particle_prof;
     }
 }
 

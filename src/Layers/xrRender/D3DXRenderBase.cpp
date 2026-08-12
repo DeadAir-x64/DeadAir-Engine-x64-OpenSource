@@ -18,6 +18,9 @@
 
 namespace xray::render::RENDER_NAMESPACE
 {
+// [DA_PORT] Причины отказа кэша теневых карт ламп — считаются в r2_R_lights.cpp.
+extern u32 g_da_smap_reject[];
+
 #ifdef USE_RENDERDOC
 RENDERDOC_API_1_0_0* g_renderdoc_api;
 #endif
@@ -403,10 +406,29 @@ void D3DXRenderBase::DumpStatistics(IGameFont& font, IPerformanceAlert* alert)
         // map (r2_R_lights.cpp: phase_smap_spot -> render_graph), so the scene is drawn 1 + l_shadowed
         // times. On a level full of lamps that, not the level's geometry, is the cost.
         Msg("~ [DA_LIGHTS] total %u | visible %u | shadowed %u | unshadowed %u | smaps used %d, merged %d, "
-            "clipped %d",
+            "clipped %d, cached %d",
             RImplementation.Stats.l_total, RImplementation.Stats.l_visible, RImplementation.Stats.l_shadowed,
             RImplementation.Stats.l_unshadowed, RImplementation.Stats.s_used, RImplementation.Stats.s_merged,
-            RImplementation.Stats.s_finalclip);
+            RImplementation.Stats.s_finalclip, RImplementation.Stats.s_cached);
+
+        // [DA_PORT] Причины, по которым кэш теневой карты лампы не сработал. Без них "cached 0"
+        // не отличить от "чинить нечего": может, ламп не осталось, а может, отпечаток движущихся
+        // сбрасывается каждый кадр.
+        {
+            extern u32 g_da_smap_static_hit;
+            extern u32 g_da_smap_static_draw;
+            const u32 total = g_da_smap_static_hit + g_da_smap_static_draw;
+            Msg("~ [DA_LIGHTS] статика ламп: взято из кэша %u из %u (%.0f%%), нарисовано %u",
+                g_da_smap_static_hit, total, total ? 100.f * float(g_da_smap_static_hit) / float(total) : 0.f,
+                g_da_smap_static_draw);
+            g_da_smap_static_hit = g_da_smap_static_draw = 0;
+        }
+        Msg("~ [DA_LIGHTS] почему статику рисовали: выключен %u | слоты %u | впервые %u | срок %u | место %u"
+            " | сдвиг %u | поколение %u",
+            g_da_smap_reject[0], g_da_smap_reject[1], g_da_smap_reject[2], g_da_smap_reject[3],
+            g_da_smap_reject[4], g_da_smap_reject[5], g_da_smap_reject[6]);
+        for (int i = 0; i < 7; ++i)
+            g_da_smap_reject[i] = 0;
 
         if (--ps_da_render_log == 0)
             Msg("~ [DA_RENDER] ---- done ----");

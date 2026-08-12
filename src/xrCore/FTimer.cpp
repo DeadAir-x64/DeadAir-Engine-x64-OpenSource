@@ -36,6 +36,43 @@ XRCORE_API u32 g_da_oh_throws = 0;
 XRCORE_API double g_da_lpb_ms = 0.0;
 XRCORE_API u32 g_da_lpb_calls = 0;
 
+XRCORE_API u32 g_da_lp_nodes_ok[DA_LP_BUCKETS] = {};
+XRCORE_API u32 g_da_lp_nodes_fail[DA_LP_BUCKETS] = {};
+XRCORE_API u32 g_da_lp_max_ok = 0;
+XRCORE_API u32 g_da_lp_max_fail = 0;
+XRCORE_API u64 g_da_lp_sum_ok = 0;
+XRCORE_API u64 g_da_lp_sum_fail = 0;
+
+XRCORE_API u32 g_da_lp_last_visited = 0;
+
+XRCORE_API void da_lp_record(bool success, u32 visited_nodes)
+{
+    g_da_lp_last_visited = visited_nodes;
+
+    u32 bucket = 0;
+    if (visited_nodes >= 65536) bucket = 6;
+    else if (visited_nodes >= 16384) bucket = 5;
+    else if (visited_nodes >= 4096) bucket = 4;
+    else if (visited_nodes >= 1024) bucket = 3;
+    else if (visited_nodes >= 256) bucket = 2;
+    else if (visited_nodes >= 64) bucket = 1;
+
+    if (success)
+    {
+        ++g_da_lp_nodes_ok[bucket];
+        g_da_lp_sum_ok += visited_nodes;
+        if (visited_nodes > g_da_lp_max_ok)
+            g_da_lp_max_ok = visited_nodes;
+    }
+    else
+    {
+        ++g_da_lp_nodes_fail[bucket];
+        g_da_lp_sum_fail += visited_nodes;
+        if (visited_nodes > g_da_lp_max_fail)
+            g_da_lp_max_fail = visited_nodes;
+    }
+}
+
 void CStatTimer::FrameStart()
 {
     accum = Duration();

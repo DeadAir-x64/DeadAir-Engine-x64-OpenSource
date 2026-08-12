@@ -131,8 +131,46 @@ GameGraph::_GRAPH_ID CMovementManager::game_dest_vertex_id() const
 
 void CMovementManager::set_level_dest_vertex(u32 const& level_vertex_id)
 {
+    // [DA_PORT] Прибор второго шага: КТО назначает нулевую вершину.
+    //
+    // Метка места вызова у set_dest_vertex показала, что ноль приходит именно сюда. Но у самой
+    // этой функции около двадцати пяти вызывающих — боевые действия сталкера, ALife-задачи,
+    // построитель пути монстров, биндинг Lua. Различать их метками пришлось бы во всех, поэтому
+    // берём адрес возврата и переводим его в «модуль + смещение»: имя восстанавливается по карте
+    // линковщика из снимка символов той же сборки.
+    //
+    // ⚠️ На релизной сборке адрес возврата врёт: межмодульная оптимизация подставляет вызовы, и
+    // возврат укажет на чужую функцию. Прибор рассчитан на ОТЛАДОЧНУЮ сборку (-Og), где подстановки
+    // почти нет. Идиома взята из отчёта о замыканиях Lua (xrScriptEngine/script_engine.cpp).
+    if (level_vertex_id == 0)
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 10 || (da_hits % 500) == 0)
+        {
+            pcstr mod = "?";
+            uintptr_t rva = 0;
+#if defined(XR_PLATFORM_WINDOWS)
+            void* const ret = __builtin_return_address(0);
+            HMODULE hm = nullptr;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    (LPCSTR)ret, &hm) &&
+                hm)
+            {
+                static string_path path;
+                GetModuleFileNameA(hm, path, sizeof(path));
+                pcstr slash = strrchr(path, 0x5C); // 0x5C = обратная косая
+                mod = slash ? slash + 1 : path;
+                rva = (uintptr_t)ret - (uintptr_t)hm;
+            }
+#endif
+            Msg("! [DA] цель уровня = вершина 0 у [%s], вызвано из %s+0x%llX (случаев %u)",
+                object().cName().c_str(), mod, (unsigned long long)rva, da_hits);
+        }
+    }
+
     VERIFY2(restrictions().accessible(level_vertex_id), object().cName().c_str());
-    level_path().set_dest_vertex(level_vertex_id);
+    level_path().set_dest_vertex(level_vertex_id, "movement_manager::set_level_dest_vertex");
     m_path_actuality = m_path_actuality && level_path().actual();
 }
 
@@ -142,6 +180,12 @@ void CMovementManager::update_path()
 {
     if (!enabled() || wait_for_distributed_computation())
         return;
+
+    // [DA_PORT] Потолок обойдённых узлов обновляется здесь, а не в конструкторе: иначе ручка
+    // da_path_max_nodes действовала бы только на тех, кто заспавнился после её изменения, и
+    // подбирать значение в живой игре было бы нельзя. Стоит одна запись в кадр на объект.
+    extern int ps_da_path_max_nodes;
+    m_base_level_selector->max_visited_node_count = u32(ps_da_path_max_nodes);
 
     START_PROFILE("Build Path::update")
 
@@ -178,7 +222,8 @@ void CMovementManager::update_path()
             {
                 Fvector temp;
                 level_path().set_dest_vertex(restrictions().accessible_nearest(
-                    ai().level_graph().vertex_position(level_path().dest_vertex_id()), temp));
+                    ai().level_graph().vertex_position(level_path().dest_vertex_id()), temp),
+                    "movement_manager::update_path/accessible_nearest");
                 detail().set_dest_position(temp);
             }
             else

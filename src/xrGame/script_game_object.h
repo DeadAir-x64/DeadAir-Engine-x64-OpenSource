@@ -577,7 +577,8 @@ public:
     void set_patrol_path(LPCSTR path_name, const EPatrolStartType patrol_start_type,
         const EPatrolRouteType patrol_route_type, bool random);
     void inactualize_patrol_path();
-    void set_dest_level_vertex_id(u32 level_vertex_id);
+    // [DA_PORT] Именно u64: скрипт присылает сюда 4294967296 — см. .cpp
+    void set_dest_level_vertex_id(u64 level_vertex_id);
     void set_dest_game_vertex_id(GameGraph::_GRAPH_ID game_vertex_id);
     void set_movement_selection_type(ESelectionType selection_type);
     u32 level_vertex_id() const;

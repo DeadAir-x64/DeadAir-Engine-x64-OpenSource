@@ -55,6 +55,12 @@ private:
     CHeader* m_header; // level graph header
     CLevelGraphManager* m_nodes; // contains nodes array
     xr_vector<bool> m_access_mask;
+
+    // [DA_PORT] Номер компоненты связности на каждую вершину — чтобы отказ «туда не дойти»
+    // стоил сравнение двух чисел, а не полный поиск. Подробности в da_build_components().
+    xr_vector<u16> m_da_component;
+    bool m_da_components_ready{};
+
     GameGraph::_LEVEL_ID m_level_id; // unique level identifier
     u32 m_row_length;
     u32 m_column_length;
@@ -67,6 +73,7 @@ public:
 private:
     u32 vertex(const Fvector& position) const;
     u32 da_vertex_slow(const Fvector& position) const; // [DA_PORT] прежний перебор, для сверки
+    void da_build_components(); // [DA_PORT] компоненты связности, один обход при загрузке
     u32 guess_vertex_id(u32 const& current_vertex_id, Fvector const& position) const;
 
 public:
@@ -105,6 +112,18 @@ public:
     IC void clear_mask_no_check(u32 vertex_id);
 
     IC bool is_accessible(const u32 vertex_id) const;
+
+    // [DA_PORT] Заведомо ли недостижима вторая вершина из первой. Только УВЕРЕННОЕ «нет»:
+    // при любом сомнении отвечает false, и вызывающий идёт искать как раньше.
+    ICF bool da_unreachable(u32 from_vertex_id, u32 to_vertex_id) const
+    {
+        if (!m_da_components_ready)
+            return false;
+        if (!valid_vertex_id(from_vertex_id) || !valid_vertex_id(to_vertex_id))
+            return false;
+        return m_da_component[from_vertex_id] != m_da_component[to_vertex_id];
+    }
+    u32 da_component_count() const;
     IC void level_id(const GameGraph::_LEVEL_ID& level_id);
     IC u32 max_x() const;
     IC u32 max_z() const;

@@ -157,6 +157,7 @@ struct render_sun : public i_render_phase
     {
         Fmatrix xform;          // матрица, с которой снята лежащая в слоте карта
         Fvector cam_pos;        // где стояла камера в тот момент
+        Fvector cam_dir;        // и КУДА она смотрела — объём каскада строится по её пирамиде
         Fvector sun_dir;        // куда светило солнце
         u32 time_ms{ 0 };       // время последней отрисовки, миллисекунды
         bool valid{ false };    // есть ли в слоте что-то пригодное
@@ -302,6 +303,7 @@ public:
         s32 s_used;
         s32 s_merged;
         s32 s_finalclip;
+        s32 s_cached; // [DA_PORT] ламп, чья теневая карта переиспользована с прошлого кадра
         u32 ic_total;
         u32 ic_culled;
 
@@ -315,6 +317,7 @@ public:
             s_used = 0;
             s_merged = 0;
             s_finalclip = 0;
+            s_cached = 0;
             ic_total = 0;
             ic_culled = 0;
         }

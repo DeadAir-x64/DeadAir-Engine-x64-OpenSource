@@ -251,7 +251,8 @@ void stalker_movement_manager_base::setup_movement_params(stalker_movement_param
         if (!restrictions().accessible(*movement_params.desired_position()))
         {
             Fvector temp;
-            level_path().set_dest_vertex(restrictions().accessible_nearest(*movement_params.desired_position(), temp));
+            level_path().set_dest_vertex(restrictions().accessible_nearest(*movement_params.desired_position(), temp),
+                "stalker/желаемая позиция недоступна");
             detail().set_dest_position(temp);
         }
         else
@@ -290,7 +291,8 @@ void stalker_movement_manager_base::setup_movement_params(stalker_movement_param
             {
                 Fvector temp;
                 level_path().set_dest_vertex(
-                    restrictions().accessible_nearest(ai().level_graph().vertex_position(da_dest), temp));
+                    restrictions().accessible_nearest(ai().level_graph().vertex_position(da_dest), temp),
+                    "stalker/прежняя цель недоступна");
                 detail().set_dest_position(temp);
             }
             else
@@ -804,6 +806,42 @@ void stalker_movement_manager_base::check_for_bad_path(stalker_movement_params& 
 
 void stalker_movement_manager_base::set_level_dest_vertex(u32 const& level_vertex_id)
 {
+    // [DA_PORT] Прибор третьего шага. Тот же снимок адреса возврата, но этажом выше.
+    //
+    // Прибор в CMovementManager::set_level_dest_vertex показал одного и того же вызывающего для
+    // ВСЕХ случаев — им оказалось это самое переопределение, которое лишь передаёт вызов базовому
+    // и сбрасывает укрытие. Полезного в таком ответе ничего: настоящий источник ещё выше. Здесь
+    // адрес возврата указывает уже на него.
+    //
+    // ⚠️ Читать только с ОТЛАДОЧНОЙ сборки: на релизной подстановка вызовов уводит адрес возврата
+    // в чужую функцию. Расшифровка: nm -C по той же DLL, ближайший символ ниже адреса.
+    if (level_vertex_id == 0)
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 10 || (da_hits % 500) == 0)
+        {
+            pcstr mod = "?";
+            uintptr_t rva = 0;
+#if defined(XR_PLATFORM_WINDOWS)
+            void* const ret = __builtin_return_address(0);
+            HMODULE hm = nullptr;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    (LPCSTR)ret, &hm) &&
+                hm)
+            {
+                static string_path path;
+                GetModuleFileNameA(hm, path, sizeof(path));
+                pcstr slash = strrchr(path, 0x5C); // 0x5C = обратная косая
+                mod = slash ? slash + 1 : path;
+                rva = (uintptr_t)ret - (uintptr_t)hm;
+            }
+#endif
+            Msg("! [DA] ИСТОЧНИК нулевой цели у [%s]: %s+0x%llX (случаев %u)", object().cName().c_str(), mod,
+                (unsigned long long)rva, da_hits);
+        }
+    }
+
     inherited::set_level_dest_vertex(level_vertex_id);
     m_target.cover_id("");
 }

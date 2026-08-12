@@ -85,6 +85,9 @@ void render_sun::init()
 u32 ps_da_smap_cache = 100;    // 0 = выключено; N = сколько МИЛЛИСЕКУНД карта живёт без перерисовки
 // [DA_PORT] u32, а не int, потому что настройку показывает список в меню (CCC_Token хранит u32).
 int ps_da_smap_cache_near = 0; // 1 = кэшировать и ближний каскад (только для замеров)
+// [DA_PORT] Порог поворота камеры в ГРАДУСАХ, за которым кэш каскада считается негодным.
+// 0 = не смотреть на поворот вовсе, то есть прежнее поведение с дырой (см. da_smap_should_render).
+int ps_da_smap_cache_dir = 3;
 u32 g_da_smap_skipped = 0;     // сколько отрисовок пропущено с последнего замера
 u32 g_da_smap_skipped_by[R__NUM_SUN_CASCADES] = {}; // и то же по каскадам — какой кэшируется реально
 u32 g_da_smap_drawn_by[R__NUM_SUN_CASCADES] = {};   // сколько раз каскад всё же перерисовали
@@ -114,8 +117,33 @@ bool render_sun::da_smap_should_render(u32 cascade_ind, const Fmatrix& /*fresh_x
     // Поворот солнца — через длину хорды между направлениями, а не через acos скалярного
     // произведения: у почти сонаправленных векторов acos теряет точность и выдаёт мусор порядка
     // 0.03 градуса из воздуха. На этом мы уже обжигались в пробе камеры.
-    const float chord = sun->direction.distance_to(c.sun_dir);
-    if (rad2deg(2.f * asinf(chord > 2.f ? 1.f : chord * 0.5f)) > 0.05f)
+    const auto angle_between = [](const Fvector& a, const Fvector& b)
+    {
+        const float chord = a.distance_to(b);
+        return rad2deg(2.f * asinf(chord > 2.f ? 1.f : chord * 0.5f));
+    };
+
+    if (angle_between(sun->direction, c.sun_dir) > 0.05f)
+        return true;
+
+    // ⛔ ПОВОРОТ КАМЕРЫ. Условия не было, и это дыра, а не экономия.
+    //
+    // Объём каскада строится по ЛУЧАМ ПИРАМИДЫ камеры (light_cuboid.view_frustum_rays плюс
+    // vCameraPosition), то есть зависит от направления взгляда. Стоя на месте и просто повернувшись,
+    // игрок получал прежний объём: сдвига позиции нет, солнце не двигалось, время не вышло — кэш
+    // считался годным. Только что открывшаяся часть кадра при этом лежит ВНЕ запасённого объёма, и
+    // теневых данных для неё нет.
+    //
+    // Найдено не у себя: Dead Air: Refined взял этот кэш у нас и 08.08.2026 ВЫКЛЮЧИЛ его целиком,
+    // назвав причину дословно — «годность кэша никогда не проверяет направление взгляда, поэтому
+    // любой поворот или шаг применял солнечный свет через устаревший объём и чернил только что
+    // открывшуюся часть кадра». Мы вместо отключения дописываем недостающее условие: минус 57% на
+    // фазе слишком дороги, чтобы отказываться от них из-за одной забытой проверки.
+    //
+    // Порог — ручкой da_smap_cache_dir в градусах; 0 возвращает прежнее (дырявое) поведение
+    // точь-в-точь, это нужно для сравнения A/B.
+    if (ps_da_smap_cache_dir > 0 &&
+        angle_between(Device.vCameraDirection, c.cam_dir) > float(ps_da_smap_cache_dir))
         return true;
 
     return false;
@@ -349,6 +377,7 @@ void render_sun::calculate()
         {
             m_smap_cache[cascade_ind].xform = cull_xform[cascade_ind];
             m_smap_cache[cascade_ind].cam_pos = Device.vCameraPosition;
+            m_smap_cache[cascade_ind].cam_dir = Device.vCameraDirection;
             m_smap_cache[cascade_ind].sun_dir = sun->direction;
             m_smap_cache[cascade_ind].time_ms = Device.dwTimeGlobal;
             m_smap_cache[cascade_ind].valid = true;

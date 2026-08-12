@@ -62,6 +62,31 @@ public:
         stack.clear();
         cpoint.clear();
     }
+    // [DA_PORT] Занять КОНКРЕТНЫЙ прямоугольник, если он свободен.
+    //
+    // Нужно для закрепления ячейки за лампой. Иначе упаковка «первый подходящий» раскладывает
+    // атлас заново каждый кадр, и содержимое прошлого кадра переиспользовать нельзя. Замер:
+    // при подписи на весь набор ламп совпадений было НОЛЬ из 106 — состав меняется сам собой,
+    // видимость мигает по запросам перекрытия. Значит держать место надо полампово.
+    BOOL push_at(SMAP_Rect& R, u32 _size, const Ivector2& at)
+    {
+        if (_size > psize || _size <= 4)
+            return false;
+        if (at.x < 0 || at.y < 0)
+            return false;
+        if (u32(at.x) + _size > psize || u32(at.y) + _size > psize)
+            return false;
+
+        Ivector2 p = at;
+        R.setup(p, _size);
+        for (SMAP_Rect& busy : stack)
+            if (busy.intersect(R))
+                return false;
+
+        _add(R);
+        return true;
+    }
+
     BOOL push(SMAP_Rect& R, u32 _size)
     {
         VERIFY(_size <= psize && _size > 4);

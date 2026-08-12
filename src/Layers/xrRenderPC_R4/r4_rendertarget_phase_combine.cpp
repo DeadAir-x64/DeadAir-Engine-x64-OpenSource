@@ -2,6 +2,7 @@
 #include "xrEngine/IGame_Persistent.h"
 #include "xrEngine/Environment.h"
 #include "Layers/xrRender/dxEnvironmentRender.h"
+#include "da_gpu_timer.h" // [DA_PORT] зоны неба и прямого прохода внутри combine
 
 // [DA_PORT] Разовый срез G-буфера (xr_ioc_cmd.cpp). Объявляем ВНЕ пространства имён: extern внутри
 // xray::render искал бы символ в нём же — та самая грабля, что уже описана у соседних глобалов.
@@ -76,11 +77,14 @@ void CRenderTarget::phase_combine()
         // RCache.set_ColorWriteEnable					();
         //	Moved to shader!
         // RCache.set_Z(FALSE);
+        // [DA_PORT] Небо с облаками -- своей зоной внутри combine, см. da_gpu_timer.h.
+        g_da_gpu_timer.zone_begin(da_gpu_timer::z_sky);
         g_pGamePersistent->Environment().RenderSky();
 
         //	Igor: Render clouds before compine without Z-test
         //	to avoid siluets. HOwever, it's a bit slower process.
         g_pGamePersistent->Environment().RenderClouds();
+        g_da_gpu_timer.zone_end(da_gpu_timer::z_sky);
 
         //	Moved to shader!
         // RCache.set_Z(TRUE);
@@ -302,7 +306,10 @@ void CRenderTarget::phase_combine()
         RCache.set_ColorWriteEnable();
         //	TODO: DX11: CHeck this!
         // g_pGamePersistent->Environment().RenderClouds	();
+        // [DA_PORT] Прямой проход -- своей зоной: внутри него сортированная геометрия, вложенная.
+        g_da_gpu_timer.zone_begin(da_gpu_timer::z_forward);
         RImplementation.render_forward();
+        g_da_gpu_timer.zone_end(da_gpu_timer::z_forward);
 
         // [DA_PORT] До интерфейса: он рисуется следом и тоже оставил бы след в трафарете, а метить
         // реактивным интерфейс незачем. Проход сам возвращает цель и гасит трафарет.

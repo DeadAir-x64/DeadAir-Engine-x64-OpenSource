@@ -935,6 +935,20 @@ void CLevel::script_register(lua_State* luaState)
         {
             // Original luabind converts 4294967295 (which is u32(-1)) to 4294967296
             const u32 id = ai().level_graph().vertex_id(position);
+            // [DA_PORT] Прибор: откуда берётся нулевая вершина у схемы кражи тайника.
+            //
+            // Доказано, что ноль приходит в поиск пути готовым из axr_npc_steal_box, а не считается
+            // в accessible_nearest (оба её выхода под метками, ни одна не сработала). Осталось
+            // одно звено: схема запоминает вершину тайника как раз через level.vertex_id. Печатаем
+            // запрошенную точку — по ней сразу видно, настоящее это место или нулевой вектор.
+            if (id == 0)
+            {
+                static u32 da_hits = 0;
+                ++da_hits;
+                if (da_hits <= 8 || (da_hits % 2000) == 0)
+                    Msg("! [DA] level.vertex_id вернул 0 для точки (%.2f, %.2f, %.2f) (случаев %u)", VPUSH(position),
+                        da_hits);
+            }
             return id == u32(-1) ? id + 1 : id; // reproduce original behaviour
         }),
         def("game_id", &GameID),

@@ -29,6 +29,28 @@ private:
     // [DA_PORT] Consecutive failures, for the hopeless case - see process().
     u32 m_consecutive_fails{};
 
+    // [DA_PORT] Собственный отступ, отдельно от штатного m_last_fail_time.
+    //
+    // Раньше отступ выражался через штатное поле: `m_last_fail_time = now + 2000 - 500`. Знак
+    // оказался не тот. Сторож ниже сравнивает с `m_last_fail_time + 2000`, поэтому молчание
+    // длилось до now+3500 вместо задуманных 500 мс - в семь раз дольше, чем написано в
+    // комментарии рядом. Отдельное поле убирает и арифметику со смещениями, и её главную
+    // ловушку: `now - 1500` на беззнаковом в первые полторы секунды сеанса заворачивается в
+    // огромное число, и отступ становится вечным.
+    u32 m_da_backoff_until{};
+
+    enum
+    {
+        da_backoff_ms = u32(500),
+        da_fails_before_backoff = u32(20),
+    };
+
+    IC bool da_backing_off() const
+    {
+        return Device.dwTimeGlobal < m_last_fail_time + time_to_wait_after_fail ||
+            Device.dwTimeGlobal < m_da_backoff_until;
+    }
+
 private:
     enum
     {
@@ -64,10 +86,23 @@ public:
 
     void register_to_process()
     {
-        m_object->m_wait_for_distributed_computation = true;
-        if (Device.dwTimeGlobal < m_last_fail_time + time_to_wait_after_fail)
+        // [DA_PORT] Флаг взводится, ТОЛЬКО если задача действительно поставлена в очередь.
+        //
+        // Прежний порядок - взвести, потом проверить отступ - оставлял флаг взведённым на раннем
+        // выходе. И это не задержка, а ЗАЩЁЛКА: читает флаг ровно одно место,
+        // CMovementManager::update_path, и при взведённом оно выходит сразу; а register_to_process
+        // зовётся только оттуда, и снимает флаг только process_impl, которого в этой ветке нет.
+        // Дальше NPC не пересчитывает путь ВООБЩЕ - до смены рестрикторов или уничтожения.
+        //
+        // Наша правка про повторные неудачи впервые завела сюда сталкеров: штатный отступ они
+        // выключают (use_delay_after_fail(false)), поэтому раньше сторож у них не срабатывал.
+        if (da_backing_off())
+        {
+            m_object->m_wait_for_distributed_computation = false;
             return;
+        }
 
+        m_object->m_wait_for_distributed_computation = true;
         Device.seqParallel.push_back(fastdelegate::FastDelegate0<>(this, &CLevelPathBuilder::process));
     }
 
@@ -102,7 +137,7 @@ public:
 
     void process()
     {
-        if (Device.dwTimeGlobal < m_last_fail_time + time_to_wait_after_fail)
+        if (da_backing_off())
             return;
 
         // [DA_PORT] Counted because this is the last unmeasured occupant of the parallel sequence, and
@@ -144,8 +179,8 @@ public:
         // open up.
         if (m_object->level_path().failed())
         {
-            if (++m_consecutive_fails >= 20)
-                m_last_fail_time = Device.dwTimeGlobal + time_to_wait_after_fail - 500;
+            if (++m_consecutive_fails >= da_fails_before_backoff)
+                m_da_backoff_until = Device.dwTimeGlobal + da_backoff_ms;
         }
         else
             m_consecutive_fails = 0;

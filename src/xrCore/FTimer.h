@@ -203,6 +203,26 @@ extern XRCORE_API u32 g_da_oh_alive;
 extern XRCORE_API u32 g_da_oh_throws;
 extern XRCORE_API double g_da_lpb_ms;
 extern XRCORE_API u32 g_da_lpb_calls;
+
+// [DA_PORT] Сколько узлов обходит поиск пути по уровню — отдельно для удачных и неудачных.
+//
+// Зачем: у поиска ЕСТЬ потолок (max_visited_node_count, по умолчанию 65500), но он выкручен так
+// высоко, что безнадёжный поиск успевает обойти полграфа. Опустить его наугад нельзя — срежем
+// настоящие дальние маршруты. Поэтому сперва распределение, потом число.
+//
+// Гистограмма по степеням двойки: [0..63], [64..255], [256..1К], [1К..4К], [4К..16К], [16К..64К],
+// [64К и выше]. Считается всегда: это один инкремент на поиск.
+#define DA_LP_BUCKETS 7
+extern XRCORE_API u32 g_da_lp_nodes_ok[DA_LP_BUCKETS];
+extern XRCORE_API u32 g_da_lp_nodes_fail[DA_LP_BUCKETS];
+extern XRCORE_API u32 g_da_lp_max_ok;
+extern XRCORE_API u32 g_da_lp_max_fail;
+extern XRCORE_API u64 g_da_lp_sum_ok;
+extern XRCORE_API u64 g_da_lp_sum_fail;
+// Сколько узлов обошёл ПОСЛЕДНИЙ поиск. Нужен на стороне игры: потолок живёт там, и только там
+// можно сказать, упёрлись мы в него или честно исчерпали достижимое.
+extern XRCORE_API u32 g_da_lp_last_visited;
+XRCORE_API void da_lp_record(bool success, u32 visited_nodes);
 class XRCORE_API CStatTimer
 {
     using Duration = CTimerBase::Duration;

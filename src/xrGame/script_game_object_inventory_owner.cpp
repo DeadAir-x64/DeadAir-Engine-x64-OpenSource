@@ -1087,12 +1087,36 @@ u32 CScriptGameObject::accessible_nearest(const Fvector& position, Fvector& resu
             if (ai().level_graph().valid_vertex_id(vertex))
             {
                 result = position;
+                // [DA_PORT] Ранний выход тоже под прибором: без этого нулевой ответ прошёл бы мимо
+                // метки на позднем возврате, и вывод «ноль пришёл готовым» опирался бы на веру.
+                if (vertex == 0)
+                {
+                    static u32 da_hits = 0;
+                    ++da_hits;
+                    if (da_hits <= 5 || (da_hits % 1000) == 0)
+                        Msg("! [DA] accessible_nearest (ранний выход) вернул вершину 0 для [%s] (случаев %u)",
+                            object().cName().c_str(), da_hits);
+                }
                 return vertex;
             }
         }
         return (u32(-1));
     }
-    return (monster->movement().restrictions().accessible_nearest(position, result));
+    // [DA_PORT] Прибор: различить два источника нулевой вершины назначения.
+    //
+    // utils.send_to_nearest_accessible_vertex либо отдаёт дальше уже имеющийся номер, либо берёт
+    // его здесь. Стек Lua показывает только итог, поэтому метим ответ этой ветки: если ноль
+    // печатается тут — виновата она, если только на приёме — значит номер пришёл готовым из схемы.
+    const u32 da_answer = monster->movement().restrictions().accessible_nearest(position, result);
+    if (da_answer == 0)
+    {
+        static u32 da_hits = 0;
+        ++da_hits;
+        if (da_hits <= 5 || (da_hits % 1000) == 0)
+            Msg("! [DA] accessible_nearest вернул вершину 0 для [%s] (случаев %u)", object().cName().c_str(),
+                da_hits);
+    }
+    return da_answer;
 }
 
 void CScriptGameObject::enable_attachable_item(bool value)

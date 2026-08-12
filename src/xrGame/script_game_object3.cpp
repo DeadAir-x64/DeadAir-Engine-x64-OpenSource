@@ -481,7 +481,30 @@ void CScriptGameObject::inactualize_game_path()
         stalker->movement().game_path().make_inactual();
 }
 
-void CScriptGameObject::set_dest_level_vertex_id(u32 level_vertex_id)
+// [DA_PORT] «Вершина не найдена» приезжала сюда как НОЛЬ, и это стоило нам шторма поиска пути.
+//
+// ЦЕПОЧКА, каждое звено проверено по коду и по логу:
+//   1. xr_animpoint.script берёт вершину точки, где NPC должен стоять:
+//        self.position_vertex = level.vertex_id(self.position)
+//   2. если smart_cover стоит вне сетки ИИ, CLevelGraph::vertex_id возвращает u32(-1)
+//      (level_graph.cpp, «return (u32(-1))»);
+//   3. наш биндинг level.vertex_id СОЗНАТЕЛЬНО отдаёт в Lua 4294967296 вместо 4294967295 —
+//      так вело себя исходное luabind, и сравнения в скриптах мода на это опираются;
+//   4. проверка в скрипте — «if not (position_vertex)» — ловит только nil, а 4294967296 истинно;
+//   5. параметр здесь был u32, и 4294967296 при сужении даёт РОВНО НОЛЬ;
+//   6. вершина 0 допустима, поэтому проверка ниже пропускала её без единого слова.
+//
+// Дальше NPC честно шёл в вершину 0 — дальний угол карты, полкилометра, — поиск обходил 12288
+// узлов, не находил дороги и запускался заново каждый кадр: ~849 отказов за один заход в Бар.
+// Виноваты оказались ровно те, кто ДОЛЖЕН стоять на месте: сидящие у костров и на постах.
+//
+// ПОЧЕМУ ПРАВКА ЗДЕСЬ. Чинить level.vertex_id нельзя — на его 4294967296 завязаны сравнения в
+// скриптах мода. Чинить скрипт можно, но это файл мода: уедет всем и потребует выпуска. Принимающая
+// же сторона обязана не молчать при негодном номере — она и не молчит теперь.
+//
+// Тип параметра u64 — чтобы значение доехало целым и было отвергнуто, а не превратилось в ноль
+// по дороге. Для законных номеров вершин ничего не меняется.
+void CScriptGameObject::set_dest_level_vertex_id(u64 level_vertex_id)
 {
     CAI_Stalker* stalker = smart_cast<CAI_Stalker*>(&object());
     if (!stalker)
@@ -489,8 +512,16 @@ void CScriptGameObject::set_dest_level_vertex_id(u32 level_vertex_id)
             LuaMessageType::Error, "CAI_Stalker : cannot access class member set_dest_level_vertex_id!");
     else
     {
-        if (!ai().level_graph().valid_vertex_id(level_vertex_id))
+        if (level_vertex_id > u64(u32(-1)) || !ai().level_graph().valid_vertex_id(u32(level_vertex_id)))
         {
+            // Сообщение живое и в релизе: молчаливый отказ здесь и был причиной того, что дефект
+            // прожил незамеченным. Печатаем редко — событие повторяется каждый кадр.
+            static u32 da_hits = 0;
+            ++da_hits;
+            if (da_hits <= 5 || (da_hits % 1000) == 0)
+                Msg("! [DA] скрипт назначил [%s] негодную вершину назначения %llu — цель не ставим "
+                    "(случаев %u)",
+                    stalker->cName().c_str(), (unsigned long long)level_vertex_id, da_hits);
 #ifdef DEBUG
             GEnv.ScriptEngine->script_log(LuaMessageType::Error,
                 "CAI_Stalker : invalid vertex id being setup by action %s!",
@@ -498,7 +529,27 @@ void CScriptGameObject::set_dest_level_vertex_id(u32 level_vertex_id)
 #endif
             return;
         }
-        if (!stalker->movement().restrictions().accessible(level_vertex_id))
+        const u32 da_vertex_id = u32(level_vertex_id);
+
+        // [DA_PORT] Прибор: КАКОЙ скрипт присылает нулевую вершину.
+        //
+        // Версия «скрипт шлёт 4294967296, а u32 обрезает его в ноль» ОПРОВЕРГНУТА опытом: после
+        // расширения параметра до u64 отказ не сработал ни разу, а нули пошли по-прежнему. Значит
+        // приходит настоящий ноль, и адрес вызова тут уже не поможет — вызывающий один и тот же
+        // биндинг. Нужен стек Lua, он назовёт файл и строку мода.
+        if (da_vertex_id == 0)
+        {
+            static u32 da_hits = 0;
+            ++da_hits;
+            if (da_hits <= 3)
+            {
+                Msg("! [DA] скрипт ставит [%s] цель в вершину 0 — стек Lua ниже (случай %u):",
+                    stalker->cName().c_str(), da_hits);
+                GEnv.ScriptEngine->print_stack();
+            }
+        }
+
+        if (!stalker->movement().restrictions().accessible(da_vertex_id))
         {
             GEnv.ScriptEngine->script_log(LuaMessageType::Error,
                 "! you are trying to setup destination for the stalker %s, which is not accessible by its restrictors "
@@ -507,7 +558,7 @@ void CScriptGameObject::set_dest_level_vertex_id(u32 level_vertex_id)
                 Level().space_restriction_manager().out_restrictions(stalker->ID()).c_str());
             return;
         }
-        stalker->movement().set_level_dest_vertex(level_vertex_id);
+        stalker->movement().set_level_dest_vertex(da_vertex_id);
     }
 }
 

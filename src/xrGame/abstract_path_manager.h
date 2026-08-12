@@ -49,7 +49,8 @@ public:
     IC void make_inactual();
     IC void set_evaluator(_VertexEvaluator* evaluator);
     IC const _VertexEvaluator* evaluator() const;
-    IC void set_dest_vertex(const _vertex_id_type vertex_id);
+    // [DA_PORT] da_from — метка места вызова, только для диагностики. См. .._inline.h
+    IC void set_dest_vertex(const _vertex_id_type vertex_id, const char* da_from = nullptr);
     IC _vertex_id_type dest_vertex_id() const;
     IC virtual bool completed() const;
     IC bool failed() const;

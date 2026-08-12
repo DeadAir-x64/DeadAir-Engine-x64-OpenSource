@@ -59,6 +59,8 @@ namespace xray::render::RENDER_NAMESPACE
 #define     r2_RT_smap_depth    "$user$smap_depth"  // --- directional
 #define     r2_RT_smap_rain     "$user$smap_rain"
 #define     r2_RT_smap_depth_minmax "$user$smap_depth_minmax"
+// [DA_PORT] Вторая копия теневого атласа: в ней живёт ТОЛЬКО статика ламп. См. r2_rendertarget.cpp.
+#define     r2_RT_da_smap_static "$user$da_smap_static"
 
 #define     r2_async_ss         "$user$async_ss"
 

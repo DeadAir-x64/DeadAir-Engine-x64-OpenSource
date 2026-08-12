@@ -196,6 +196,34 @@ int g_normalize_upgrade_mouse_sens = 0;
 // 0 возвращает прежнее поведение точь-в-точь.
 float ps_da_ik_dist = 15.f;
 
+// [DA_PORT] Отказ по компонентам связности графа уровня. 0 возвращает прежнее поведение
+// точь-в-точь: каждый безнадёжный запрос снова идёт в полный поиск.
+int ps_da_path_islands = 1;
+
+// [DA_PORT] Потолок обойдённых узлов для поиска пути ПО УРОВНЮ.
+//
+// Штатное значение 65500 — фактически «без предела»: безнадёжный поиск честно обходит полграфа,
+// прежде чем сдаться. Замеры по двум уровням, по 1500 кадров:
+//
+//   болота (532К вершин):  удачных 173, максимум 1701 узел, среднее 124;
+//                          неудачных 114, из них 113 в 16К..64К, среднее 64961.
+//   Юпитер (1.49М вершин): удачных 402, максимум 4919 узлов, среднее 207;
+//                          неудачных НОЛЬ.
+//
+// 🪤 Первое значение было 8192 — по одним болотам, где худший удачный поиск занял 1701 узел, и
+// запас казался почти пятикратным. Юпитер показал 4919, а Затон, самый большой уровень игры
+// (1 851 251 вершина), — 8753. То есть 8192 уже сегодня отрезал бы честный маршрут.
+//
+// ⛔ Оценка «по числу вершин» здесь НЕ работает: линейная экстраполяция обещала для Затона 6100,
+// вышло 8753 — промах на 43% ВНИЗ. Каждый новый уровень давал максимум выше предыдущего, так что
+// настоящего худшего случая мы, скорее всего, ещё не видели.
+//
+// 12288 — 1.4× над измеренным максимумом. Запас скромный СОЗНАТЕЛЬНО: отказ по исчерпанию бюджета
+// теперь не тихий, ниже стоит строка в лог. Пока она у тестеров не появляется, число можно
+// опускать; появится — поднимем по факту, а не по запасу «на всякий случай». 65500 возвращает
+// прежнее поведение точь-в-точь.
+int ps_da_path_max_nodes = 12288;
+
 // [DA_PORT] Как часто пересчитывать видимость МЁРТВЫХ объектов, в миллисекундах.
 //
 // После боя фаза «память» съедала 83% обновления сталкеров: каждый NPC гонял проверку линии
@@ -515,6 +543,68 @@ public:
 // перекашивает всё: на старте движка получалось 831 тысяча выделений в секунду, и к игре это
 // отношения не имело. `da_alloc_stat 600` открывает окно с текущего кадра — числа получаются про
 // игру.
+// [DA_PORT] Распределение обойдённых узлов в поиске пути по уровню.
+//
+// Ради одного числа: max_visited_node_count у пути по уровню стоит 65500, и безнадёжный поиск
+// честно обходит десятки тысяч вершин, прежде чем сдаться. Опускать этот потолок наугад нельзя —
+// срежем настоящие дальние маршруты. Смотрим, сколько узлов на самом деле нужно УДАЧНОМУ поиску,
+// и ставим потолок выше его хвоста.
+//
+//   da_path_stat        — напечатать накопленное
+//   da_path_stat reset  — напечатать и обнулить
+class CCC_DaPathStat : public IConsole_Command
+{
+public:
+    CCC_DaPathStat(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+
+    virtual void Execute(LPCSTR args)
+    {
+        static const char* const names[DA_LP_BUCKETS] = {
+            "0..63", "64..255", "256..1К", "1К..4К", "4К..16К", "16К..64К", "64К+"
+        };
+
+        u32 total_ok = 0, total_fail = 0;
+        for (u32 i = 0; i < DA_LP_BUCKETS; ++i)
+        {
+            total_ok += g_da_lp_nodes_ok[i];
+            total_fail += g_da_lp_nodes_fail[i];
+        }
+
+        Msg("~ [DA] поиск пути по уровню: удачных %u, неудачных %u", total_ok, total_fail);
+        if (!total_ok && !total_fail)
+        {
+            Msg("~ [DA]   поисков не было — походите, пока NPC живут рядом");
+            return;
+        }
+
+        Msg("~ [DA]   %-10s %10s %10s", "узлов", "удачно", "неудачно");
+        u32 run_ok = 0;
+        for (u32 i = 0; i < DA_LP_BUCKETS; ++i)
+        {
+            run_ok += g_da_lp_nodes_ok[i];
+            const float pct = total_ok ? 100.f * float(run_ok) / float(total_ok) : 0.f;
+            Msg("~ [DA]   %-10s %10u %10u   (удачных накопленным итогом %.1f%%)", names[i],
+                g_da_lp_nodes_ok[i], g_da_lp_nodes_fail[i], pct);
+        }
+
+        Msg("~ [DA]   потолок удачного %u, среднее %u", g_da_lp_max_ok,
+            total_ok ? u32(g_da_lp_sum_ok / total_ok) : 0u);
+        Msg("~ [DA]   потолок неудачного %u, среднее %u", g_da_lp_max_fail,
+            total_fail ? u32(g_da_lp_sum_fail / total_fail) : 0u);
+        extern int ps_da_path_max_nodes;
+        Msg("~ [DA]   потолок сейчас: da_path_max_nodes %d (штатный 65500)", ps_da_path_max_nodes);
+
+        if (args && xr_strlen(args) && strstr(args, "reset"))
+        {
+            ZeroMemory(g_da_lp_nodes_ok, sizeof(g_da_lp_nodes_ok));
+            ZeroMemory(g_da_lp_nodes_fail, sizeof(g_da_lp_nodes_fail));
+            g_da_lp_max_ok = g_da_lp_max_fail = 0;
+            g_da_lp_sum_ok = g_da_lp_sum_fail = 0;
+            Msg("~ [DA]   счётчики обнулены");
+        }
+    }
+};
+
 class CCC_DaAllocStat : public IConsole_Command
 {
 public:
@@ -2742,6 +2832,7 @@ void CCC_RegisterCommands()
     CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
     CMD1(CCC_DaMemSnap, "da_mem_snap");   // [DA_PORT] снимок посреди игры: покадровые утечки
     CMD1(CCC_DaAllocStat, "da_alloc_stat"); // [DA_PORT] счётчик выделений: нужен ли другой аллокатор
+    CMD1(CCC_DaPathStat, "da_path_stat"); // [DA_PORT] сколько узлов обходит поиск пути по уровню
     CMD1(CCC_DaAllocBench, "da_alloc_bench"); // [DA_PORT] цена операции: штуки -> миллисекунды
     CMD1(CCC_DaLuaMem, "da_lua_mem"); // [DA_PORT] мусор Lua по размерам блоков
     {
@@ -3025,6 +3116,8 @@ void CCC_RegisterCommands()
     // [DA_PORT] Дальность, за которой не считается подгонка стоп к рельефу (инверсная кинематика
     // ног). Разбор — в CCharacterPhysicsSupport::in_UpdateCL. 0 возвращает прежнее поведение.
     CMD4(CCC_Float, "ph_ik_dist", &ps_da_ik_dist, 0.f, 300.f);
+    CMD4(CCC_Integer, "da_path_islands", &ps_da_path_islands, 0, 1);
+    CMD4(CCC_Integer, "da_path_max_nodes", &ps_da_path_max_nodes, 256, 65500);
     CMD4(CCC_Integer, "ai_dead_vision_ms", &ps_da_dead_vision_ms, 0, 10000);
     CMD4(CCC_Integer, "da_memory_dump", &ps_da_memory_dump, 0, 2000);
     CMD1(CCC_PHFps, "ph_frequency");
