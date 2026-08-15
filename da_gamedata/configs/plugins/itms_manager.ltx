@@ -1,0 +1,516 @@
+[backpack_stash]
+enable = true
+allow_in_base = true
+map_spot = treasure
+enable_news_tip = true
+enable_ui = true
+
+[sleeping_bag]
+enable = true
+dangerous_sleep = false			;Enable hostile squads to hunt actor if he sleeps in unsafe area ; DISABLED AS FAULTY (NO SAFE SPOTS)
+unsafe_radius = 10000			;Distance in which hostile squads will be drawn to actor if he sleeps in unsafe area
+use_placeable = true			;Places sleeping bag at actor location instead of using item directly
+have_at_start = false 			;player starts with sleeping bag in inventory
+
+[sleeping_bag_sections]
+itm_sleepbag
+sleep_bag
+
+[sleeping_bag_ph_sections]
+ph_sleepbag = itm_sleepbag
+
+[actor_backpack]
+enable = true
+actor_backpack_always_have = false	;Force actor to always have this item
+map_spot = treasure
+quick_slot = slot_4					;Slot forced if actor_backpack_always_have is true
+
+[art_containers]
+af_iam
+af_aac
+af_aam
+lead_box
+
+[repair_mod_tools]   ;Add sections that will open repair ui
+sharpening_stones
+sharpening_stones_2
+sharpening_stones_3
+sharpening_stones_4
+steel_wool
+; [DA_PORT] Секций steel_wool_2 и grease_2 не существует НИГДЕ — проверено по всем конфигам,
+; они встречаются только здесь. Строки мёртвые: белый список сверяется по имени секции, а
+; несуществующее имя не совпадёт ни с чем. Закомментированы, чтобы проверка целостности
+; (da_port/tests/unit/test_repair_kits.py) видела настоящие опечатки, а не эти две.
+; Сами steel_wool и grease оставлены как есть: секции существуют. Применить их всё равно
+; нельзя — они class = II_ATTCH, то есть запчасти, а не расходники.
+;steel_wool_2
+grease
+;grease_2
+cleaning_kit_p
+cleaning_kit_p_2
+cleaning_kit_p_3
+cleaning_kit_s
+cleaning_kit_s_2
+cleaning_kit_s_3
+cleaning_kit_r
+cleaning_kit_r_2
+cleaning_kit_r_3
+toolkit_p
+toolkit_s
+toolkit_r
+repairkit_p
+repairkit_s
+repairkit_r
+sewing_kit_b
+sewing_kit_b_2
+sewing_kit_b_3
+sewing_kit_b_4
+sewing_kit_a
+sewing_kit_a_2
+sewing_kit_a_3
+sewing_kit_a_4
+sewing_kit_h
+glue_b
+glue_b_2
+glue_a
+glue_a_2
+glue_e
+glue_e_2
+armor_repair_fa
+armor_repair_fa_2
+helmet_repair_kit
+armor_repair_pro
+
+; ===================================================================================
+; [DA_PORT] Ступени многозарядных наборов.
+;
+; Симптом: набор для шлемов (или для пистолетов) исчезает со звуком применения, а окно
+; выбора предмета и материалов не появляется вовсе.
+;
+; Причина: окно ремонта открывает itms_manager по списку НИЖЕ, и в нём были только базовые
+; секции. Ступени _2/_3/_4 мы завели отдельно (у автора наборы были помечены ;xN, но самих
+; секций он не создал), а сюда вписать забыли. Секция не в списке -> окно не открывается,
+; при этом движок предмет уже съел: у наборов max_uses = 1 и remove_after_use = true.
+;
+; Отсюда правило: завёл секцию расходуемого набора — впиши её СЮДА, иначе она молча пропадает.
+; Пустая тара _0 сюда НЕ идёт намеренно: это не набор, а запчасть (class = S_PDA).
+; ===================================================================================
+toolkit_p_2
+toolkit_p_3
+toolkit_p_4
+toolkit_s_2
+toolkit_s_3
+toolkit_s_4
+toolkit_r_2
+toolkit_r_3
+toolkit_r_4
+sewing_kit_h_2
+sewing_kit_h_3
+sewing_kit_h_4
+armor_repair_pro_2
+armor_repair_pro_3
+armor_repair_pro_4
+helmet_repair_kit_2
+helmet_repair_kit_3
+
+[cooking_mod_tools]   ;Add sections that will open repair ui
+;fieldcooker
+;wood_stove
+
+[mutant_loot_drop_sections]
+;РјСѓС‚Р°РЅС‚       ;СЃСЂРµРґРЅРёР№ РґРѕС…РѕРґ СЃ РЅРµРіРѕ (Р±РµР· СѓС‡РµС‚Р° РјСЏСЃР° Рё С…Р»Р°РјР°)
+
+tushkano      ;100
+crow          ;150
+dog           ;300
+flesh         ;450
+boar          ;600
+cat           ;500
+pseudodog     ;700
+snork         ;600
+zombie        ;400
+fracture      ;1200
+psy_dog       ;2500
+bloodsucker   ;2500
+burer         ;4000
+controller    ;7200
+gigant        ;6500
+chimera       ;9000
+
+;;------ Mutant Loot Sections [section,amount,chance]
+
+[tushkano]
+mutant_part_tushkano_head, 1, 0.11
+mutant_part_tushkano_meat, 1, 0.15
+
+[crow]
+mutant_part_crow_beak, 1, 0.33
+
+[dog]
+mutant_part_dog_liver, 1, 0.10
+mutant_part_dog_heart, 1, 0.10
+mutant_part_dog_tail, 1, 0.16
+mutant_part_dog_meat, 2, 0.1
+
+[flesh]
+hide_flesh, 1, 0.1
+mutant_part_flesh_eye, 1, 0.16
+mutant_part_flesh_meat, 2, 0.2
+af_thorn, 1, 0.03
+
+[boar]
+hide_boar, 1, 0.1
+mutant_part_boar_leg, 2, 0.1
+mutant_part_boar_tusk, 1, 0.05
+mutant_part_boar_chop, 2, 0.2
+af_thorn, 1, 0.04
+af_crystal_thorn, 1, 0.005
+
+[cat]
+mutant_part_cat_thyroid, 2, 0.1
+mutant_part_cat_claw, 1, 0.05
+mutant_part_cat_tail, 1, 0.1
+
+[pseudodog]
+hide_pseudodog, 1, 0.1
+mutant_part_psevdodog_tail, 1, 0.11
+mutant_part_psevdodog_meat, 2, 0.1
+mutant_part_psevdodog_fang, 1, 0.05
+af_thorn, 1, 0.03
+af_crystal_thorn, 1, 0.005
+
+[snork]
+mutant_part_snork_leg, 2, 0.1
+mutant_part_snork_mask, 1, 0.1
+mutant_part_snork_hand, 2, 0.2
+
+;СЃРЅРѕСЂРєРё - Р±С‹РІС€РёР№ РІРѕРµРЅРЅС‹Р№ РїРµСЂСЃРѕРЅР°Р»
+ammo_9x18_fmj, 1, 0.08
+ammo_5.45x39_fmj, 1, 0.05
+ammo_7.62x39_fmj, 1, 0.05
+
+salicidic_acid, 1, 0.01
+morphine, 1, 0.01
+medkit, 1, 0.02
+medkit_army, 1, 0.01
+antirad, 1, 0.04
+batteries_ccell, 1, 0.01
+swiss, 1, 0.01
+picture_woman, 1, 0.01
+roubles, 5, 0.04
+
+glue_b, 1, 0.01
+grease, 1, 0.01
+armor_repair_fa, 1, 0.01
+glue_a, 1, 0.01
+cleaning_kit_p, 1, 0.01
+cleaning_kit_s, 1, 0.01
+cleaning_kit_r, 1, 0.01
+steel_wool, 1, 0.01
+textile_patch_b, 1, 0.01
+textile_patch_m, 1, 0.01
+sharpening_stones, 1, 0.01
+spareparts, 1, 0.04
+
+[zombie]
+mutant_part_zombi_hand, 2, 0.15
+
+dok_7, 1,0.04
+dok_8, 1,0.04
+lab_diary_1, 1,0.04
+lab_diary_2, 1,0.04
+lab_diary_3, 1,0.04
+
+roubles, 5, 0.1
+old_book, 1, 0.04
+grooming, 1, 0.01
+book1, 1, 0.15
+book2, 1, 0.15
+picture_woman, 1, 0.01
+mirror, 1, 0.01
+
+[fracture]
+mutant_part_fracture_hand, 1, 0.33
+
+dok_7, 1,0.04
+dok_8, 1,0.04
+lab_diary_1, 1,0.04
+lab_diary_2, 1,0.04
+lab_diary_3, 1,0.04
+
+bandage, 3, 0.01
+medkit, 2, 0.03
+antirad, 1, 0.02
+drug_anabiotic, 1, 0.001
+roubles, 5, 0.05
+
+jewelry_box, 1, 0.001
+picture_woman, 1, 0.01
+ammo_bad, 10, 0.01
+swiss, 1, 0.01
+headlamp, 1, 0.01
+mirror, 1, 0.01
+device_flashlight, 1, 0.01
+flashlight_broken, 1, 0.01
+batteries, 1, 0.005
+batteries_dead, 3, 0.02
+batteries_ccell, 1, 0.005
+tarpaulin, 1, 0.02
+rope, 1, 0.03
+synthrope, 1, 0.03
+radio, 1, 0.01
+radio2, 1, 0.01
+
+mutant_part_boar_leg, 3, 0.01
+mutant_part_dog_tail, 2, 0.04
+mutant_part_flesh_eye, 2, 0.01
+mutant_part_psevdodog_tail, 1, 0.01
+mutant_part_snork_leg, 2, 0.01
+mutant_part_tushkano_head, 2, 0.02
+
+mutant_part_rat_corpse, 4, 0.05
+mutant_part_flesh_meat, 2, 0.02
+mutant_part_boar_chop, 2, 0.02
+mutant_part_dog_meat, 2, 0.04
+mutant_part_psevdodog_meat, 3, 0.01
+mutant_part_krovosos_meat, 1, 0.002
+mutant_part_snork_hand, 2, 0.01
+mutant_part_tushkano_meat, 2, 0.05
+mutant_part_chimera_meat, 1, 0.001
+
+meat_tushkano, 1, 0.01
+meat_flesh, 1, 0.01
+meat_boar, 1, 0.01
+meat_snork, 1, 0.15
+
+[psy_dog]
+hide_psy_dog, 1, 0.3
+mutant_part_psy_dog_brain, 1, 0.33
+mutant_part_psevdodog_fang, 1, 0.33
+mutant_part_psevdodog_tail, 1, 0.33
+mutant_part_psevdodog_meat, 1, 0.1
+af_crystal_thorn, 1, 0.03
+
+[bloodsucker]
+hide_bloodsucker, 1, 0.1
+mutant_part_krovosos_jaw, 1, 0.33
+mutant_part_krovosos_heart, 1, 0.33
+mutant_part_krovosos_meat, 2, 0.2
+
+[burer]
+hide_burer, 1, 0.15
+mutant_part_burer_hand, 2, 0.15
+mutant_part_burer_brain, 1, 0.33
+
+dok_7, 1,0.05
+dok_8, 1,0.05
+lab_diary_1, 1,0.05
+lab_diary_2, 1,0.05
+lab_diary_3, 1,0.05
+
+;РїСЂРёРїР°СЃС‹
+mutant_part_rat_corpse, 4, 0.05
+mutant_part_boar_leg, 1, 0.05
+mutant_part_dog_tail, 1, 0.05
+mutant_part_flesh_eye, 1, 0.01
+mutant_part_psevdodog_tail, 1, 0.01
+mutant_part_snork_leg, 1, 0.03
+mutant_part_tushkano_head, 1, 0.05
+mutant_part_krovosos_jaw, 1, 0.001
+mutant_part_flesh_meat, 2, 0.04
+mutant_part_boar_chop, 2, 0.04
+mutant_part_dog_meat, 2, 0.15
+mutant_part_psevdodog_meat, 2, 0.05
+mutant_part_krovosos_meat, 1, 0.01
+mutant_part_snork_hand, 2, 0.05
+mutant_part_tushkano_meat, 2, 0.2
+mutant_part_chimera_meat, 1, 0.001
+mutant_part_dog_liver, 1, 0.05
+mutant_part_dog_heart, 1, 0.05
+
+[controller]
+mutant_part_controller_glass, 1, 0.75
+mutant_part_controller_hand, 2, 0.15
+hide_controller, 1, 0.33
+
+dok_7, 1,0.15
+dok_8, 1,0.15
+lab_diary_1, 1,0.15
+lab_diary_2, 1,0.15
+lab_diary_3, 1,0.15
+
+bandage, 1, 0.1
+
+mutant_part_rat_corpse, 2, 0.2
+mutant_part_boar_leg, 1, 0.05
+mutant_part_dog_tail, 1, 0.05
+mutant_part_flesh_eye, 1, 0.01
+mutant_part_psevdodog_tail, 1, 0.01
+mutant_part_snork_leg, 1, 0.03
+mutant_part_tushkano_head, 1, 0.05
+mutant_part_flesh_meat, 1, 0.04
+mutant_part_boar_chop, 1, 0.04
+mutant_part_dog_meat, 1, 0.15
+mutant_part_psevdodog_meat, 2, 0.05
+mutant_part_krovosos_meat, 1, 0.01
+mutant_part_snork_hand, 1, 0.05
+mutant_part_tushkano_meat, 1, 0.2
+mutant_part_chimera_meat, 1, 0.001
+mutant_part_dog_liver, 1, 0.05
+mutant_part_dog_heart, 1, 0.05
+
+[gigant]
+hide_pseudogiant, 1, 0.33
+mutant_part_pseudogigant_hand, 1, 0.33
+mutant_part_pseudogigant_eye, 2, 0.5
+
+af_sea_urchin, 1, 0.05
+af_blood, 1, 0.01
+af_mincer_meat, 1, 0.01
+
+grooming,               1, 0.01
+ammo_bad,               3, 0.1
+mirror,                 1, 0.01
+headlamp,               1, 0.01
+swiss,                  1, 0.01
+roubles,                5, 0.02
+flashlight_broken,      1, 0.01
+grease,                 1, 0.03
+steel_wool,             1, 0.01
+grenade_f1,             1, 0.01
+grenade_rgd5,           1, 0.01
+
+[chimera]
+hide_chimera, 3, 0.1
+mutant_part_chimera_claw, 3, 0.3
+mutant_part_chimera_heart, 1, 0.75
+mutant_part_chimera_meat, 2, 0.55
+af_sea_urchin, 1, 0.04
+
+
+[stackable]
+drug_charcoal
+drug_coagulant
+drug_psy_blockade
+drug_antidot
+drug_radioprotector
+mre
+ration_ru
+ration_ukr
+mint
+mineral_water
+flask
+tea
+bottle_metal
+vodka_quality
+vodka
+caffeine
+akvatab
+tobacco
+hand_rolling_tobacco
+cigarettes_lucky
+cigarettes_russian
+cigarettes
+cigar1
+cigar2
+cigar3
+glue_b
+glue_a
+glue_e
+armor_repair_fa
+helmet_repair_kit
+cleaning_kit_p
+cleaning_kit_s
+cleaning_kit_r
+toolkit_p
+toolkit_s
+toolkit_r
+repairkit_p
+repairkit_s
+repairkit_r
+sewing_kit_b
+sewing_kit_a
+sharpening_stones
+explo_balon_gas
+explo_jerrycan_fuel
+kerosene
+charcoal
+
+[actor_backpack_keep_items]
+;drx_sl_quest_item_1
+;drx_sl_quest_item_2
+;drx_sl_quest_item_3
+rebirth
+salicidic_acid
+morphine
+bandage
+medkit
+medkit_scientic
+medkit_army
+antirad
+stimpack
+stimpack_army
+stimpack_scientic
+drug_anabiotic
+wpn_upd
+bad_psy_helmet
+decoder
+good_psy_helmet
+lx8_service_instruction
+main_story_1_quest_case
+main_story_2_lab_x18_documents
+main_story_3_lab_x16_documents
+main_story_4_lab_x10_documents
+main_story_5_lab_x8_documents
+main_story_6_jup_ug_documents
+main_story_7_mon_con_documents
+radio_connections_pda
+
+[not_artefact]
+af_surge
+af_frames
+af_grid
+af_freon
+af_cooler
+af_ironplate		  
+af_kevlar
+af_plates
+af_camelbak
+af_iam
+af_aac
+af_aam
+hide_chimera
+hide_pseudogiant
+hide_psy_dog
+hide_pseudodog
+hide_burer
+hide_controller
+hide_bloodsucker
+hide_boar
+hide_flesh
+lead_box
+kit_hunt
+backpack_light
+backpack_heavy
+airtank
+exobackpack
+lead_box_closed
+lead_box_closed
+af_belt
+af_ruck
+
+[can_repair]
+af_surge
+af_frames
+af_grid
+af_freon
+af_cooler
+af_ironplate		  
+af_kevlar
+af_plates
+af_camelbak
+kit_hunt
+backpack_light
+backpack_heavy
+airtank
+exobackpack

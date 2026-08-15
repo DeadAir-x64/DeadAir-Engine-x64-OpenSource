@@ -32,6 +32,10 @@ extern ENGINE_API Fmatrix g_da_taa_unjittered_VP;
 // [DA_PORT] Разовый дамп очередей, рисуемых после G-буфера, см. r__emissive_probe.
 extern ENGINE_API int ps_r__emissive_probe;
 
+// [DA_PORT] ВНЕ пространства имён: extern внутри xray::render искал бы символ в нём же — грабля
+// уже описана у соседних глобалов в r4_rendertarget_phase_combine.cpp.
+extern ENGINE_API int ps_r__light_map;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // [DA_PORT] Лампы, у которых бюджет теней снял флаг bShadow на этот кадр. Флаг - постоянное свойство
@@ -285,6 +289,12 @@ void CRender::Render()
         }
         dsgraph.render_graph(0);
         Target->disable_aniso();
+        // [DA_PORT] Снимок альбедо для карты кадра — ЗДЕСЬ, пока rt_Color ещё альбедо. Разбор у
+        // da_map_capture_gbuffer: в phase_combine эта же цель занята под готовый кадр.
+#if RENDER == R_R4
+        if (::ps_r__light_map > 0)
+            Target->da_map_capture_gbuffer();
+#endif
         DA_GPU_ZONE_END(z_gbuffer);
     }
 #ifdef USE_OGL

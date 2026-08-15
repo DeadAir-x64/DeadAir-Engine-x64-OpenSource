@@ -124,6 +124,12 @@ void CLevel::IR_OnKeyboardPress(int key)
     if (Device.dwPrecacheFrame)
         return;
 
+    // [DA_PORT] Подгонка положения оружия стрелками во время прицеливания — разбор у
+    // da_tune_keys_handle в player_hud.cpp. Стоит до всего прочего, иначе стрелки уйдут игре.
+    extern bool da_tune_keys_handle(int scancode);
+    if (da_tune_keys_handle(key))
+        return;
+
     bool b_ui_exist = !!CurrentGameUI();
 
     EGameActions _curr = GetBindedAction(key);
@@ -551,6 +557,13 @@ void CLevel::IR_OnKeyboardHold(int key)
     // стоящего актёра и засоряли лог в обычной игре. Отчёты про паузу и «не жив» сняты по той же
     // причине: пауза в меню — норма, и строка про неё была ложной тревогой.
     //
+    // [DA_PORT] Удержание стрелки — плавный сдвиг. См. IR_OnKeyboardPress.
+    {
+        extern bool da_tune_keys_handle(int scancode);
+        if (da_tune_keys_handle(key))
+            return;
+    }
+
     // Эта остаётся: взведённый флаг блокировки — всегда аномалия, в норме её в логе нет.
     if (g_bDisableAllInput)
     {

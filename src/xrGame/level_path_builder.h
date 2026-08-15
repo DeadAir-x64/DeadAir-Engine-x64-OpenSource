@@ -68,6 +68,20 @@ public:
     IC void setup(
         const u32& start_vertex_id, const u32& dest_vertex_id, bool extrapolate_path, const Fvector* precise_position)
     {
+        // [DA_PORT] Сменился запрос — это уже НЕ та же неудача, отступ снимаем.
+        //
+        // Отступ задуман против одной безнадёжной цели, а счётчик жил у объекта и переживал смену
+        // цели. Сталкер, двадцать раз не дошедший до недостижимого места, при переключении на
+        // достижимое ещё до полусекунды стоял впустую — ровно там, где отступ должен молчать.
+        //
+        // Сверено с Dead Air Refined: они пришли к тому же отступу независимо и с теми же числами,
+        // но сброс при смене запроса у них был, а у нас нет.
+        if (start_vertex_id != m_start_vertex_id || dest_vertex_id != m_dest_vertex_id)
+        {
+            m_consecutive_fails = 0;
+            m_da_backoff_until = 0;
+        }
+
         VERIFY(ai().level_graph().valid_vertex_id(start_vertex_id));
         m_start_vertex_id = start_vertex_id;
 

@@ -272,6 +272,12 @@ void CMainMenu::Activate(bool bActivate)
             {
                 Device.seqFrame.Remove(g_pGameLevel);
             }
+
+            // ⛔ [DA_PORT] Уровень снимается с отрисовки ВМЕСТЕ с кадровым списком, и разводить их
+            // нельзя. Попытка оставить сцену видимой за меню (живой предпросмотр ползунков) дала
+            // вылет: `render_main::calculate` на рабочем потоке пошёл по устаревшей пространственной
+            // структуре и разыменовал мусор в `insert_dynamic`. Отрисовка опирается на то, что
+            // кадровое обновление уровня в этом кадре ПРОШЛО, — без него она читает прошлые данные.
             Device.seqRender.Remove(g_pGameLevel);
             CCameraManager::ResetPP();
         };
@@ -305,6 +311,7 @@ void CMainMenu::Activate(bool bActivate)
             {
                 Device.seqFrame.Add(g_pGameLevel);
             }
+
             Device.seqRender.Add(g_pGameLevel);
         };
         if (m_Flags.test(flRestoreConsole))

@@ -192,6 +192,166 @@ void CHUDManager::RenderActiveItemUI()
 // Подгонять модель на глаз бесполезно: не видно ни где стоит камера относительно модели, ни куда
 // уехала голова, ни какая модель вообще надета. Здесь всё это числами, в системе координат самой
 // модели — то есть ровно в тех величинах, которыми правку и задавать.
+// [DA_PORT] Экранный отчёт прибора увода прицела — команда da_aim_debug 1. Разбор, что именно
+// меряется и почему, — у объявления переменных в player_hud.cpp.
+//
+// Читать так: строка «догон» показывает, работает ли выравнивание отстающего вектора. Если она
+// говорит СНЯТ и счётчик кадров растёт, а угол при этом уползает вверх — версия подтверждается:
+// вектор замер, а камера ушла. Если увод на экране есть, а угол мал — версия НЕВЕРНА, и смещение
+// приходит откуда-то ещё; тогда смотреть надо на пару обзоров внизу.
+// [DA_PORT] Перекодировка UTF-8 -> cp1251 для ЭКРАННОГО вывода.
+//
+// Исходники движка в UTF-8, а игровые шрифты рисуют cp1251 — русские подписи на экране выходили
+// кашей вида «PSPµC» при совершенно правильных числах. Я сперва решил, что дело в шрифте, и
+// подменил его на русский; не помогло, потому что портятся не глифы, а БАЙТЫ.
+//
+// В лог писать ничего не надо: файл читается как UTF-8 и там всё в порядке. Портится только экран.
+static pcstr da_cp1251(pcstr utf8, char* out, size_t out_sz)
+{
+    size_t o = 0;
+    for (const u8* p = (const u8*)utf8; *p && o + 1 < out_sz;)
+    {
+        if (*p < 0x80) { out[o++] = char(*p++); continue; }
+        u32 cp = 0;
+        if ((*p & 0xE0) == 0xC0 && p[1]) { cp = ((*p & 0x1Fu) << 6) | (p[1] & 0x3Fu); p += 2; }
+        else if ((*p & 0xF0) == 0xE0 && p[1] && p[2])
+        { cp = ((*p & 0x0Fu) << 12) | ((p[1] & 0x3Fu) << 6) | (p[2] & 0x3Fu); p += 3; }
+        else { ++p; continue; }
+
+        if (cp >= 0x0410 && cp <= 0x044F) out[o++] = char(cp - 0x0410 + 0xC0); // А..я
+        else if (cp == 0x0401) out[o++] = char(0xA8); // Ё
+        else if (cp == 0x0451) out[o++] = char(0xB8); // ё
+        else if (cp == 0x2014 || cp == 0x2013) out[o++] = '-';
+        else if (cp == 0x00AB) out[o++] = '"';
+        else if (cp == 0x00BB) out[o++] = '"';
+        else if (cp == 0x2192) out[o++] = '>';
+        else out[o++] = '?'; // стрелки, значки и прочее в cp1251 не лезут
+    }
+    out[o] = 0;
+    return out;
+}
+
+static void DaRenderAimStats()
+{
+    extern int g_da_aim_debug;
+    if (!g_da_aim_debug || !g_pGameLevel)
+        return;
+
+    extern bool g_da_aim_allowed;
+    extern u32 g_da_aim_frozen_frames;
+    extern float g_da_aim_angle_deg, g_da_aim_angle_deg_max;
+    extern float g_da_aim_shift, g_da_aim_shift_max;
+    extern float g_da_aim_tendto, g_da_aim_power;
+    extern u8 g_da_aim_offset_idx;
+    extern ENGINE_API float psHUD_FOV;
+    extern ENGINE_API float g_hud_fov_current;
+    extern ENGINE_API float g_fov;
+
+    // ⚠️ Именно русский шрифт. pFontArial14 кириллицу не знает, и первый же замер пришёл нечитаемым:
+    // цифры видны, подписи — каша. Соседний отчёт по телу тем и страдает, но там подписи латиницей.
+    CGameFont* pFont = UI().Font().pFontLetterica16Russian;
+    if (!pFont)
+        return;
+
+    float x = 20.0f, y = 320.0f;
+    const float step = 18.0f;
+    pFont->SetAligment(CGameFont::alLeft);
+
+    string512 line;
+    string512 da_buf;
+    pFont->SetColor(0xFFFFE080);
+    pFont->Out(x, y, da_cp1251("[DA] УВОД ПРИЦЕЛА   da_aim_debug 1", da_buf, sizeof(da_buf))); y += step;
+
+    // Главное: работает ли догон и сколько кадров подряд он стоит.
+    pFont->SetColor(g_da_aim_allowed ? 0xFF80FF80 : 0xFFFF6060);
+    xr_sprintf(line, "догон инерции : %s   кадров подряд стоит: %u",
+        g_da_aim_allowed ? "ВЗВЕДЁН" : "СНЯТ", g_da_aim_frozen_frames);
+    pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+
+    pFont->SetColor(0xFFFFFFFF);
+    xr_sprintf(line, "угол взгляд-вектор: %6.2f град   ПИК за сессию: %6.2f", g_da_aim_angle_deg,
+        g_da_aim_angle_deg_max);
+    pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+
+    xr_sprintf(line, "сдвиг оружия      : %6.4f м      ПИК за сессию: %6.4f", g_da_aim_shift,
+        g_da_aim_shift_max);
+    pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+
+    xr_sprintf(line, "скорость догона %.3f   сила %.3f   смещение прицела idx %u", g_da_aim_tendto,
+        g_da_aim_power, u32(g_da_aim_offset_idx));
+    pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+
+    // Доля прицеливания. Красным — расхождение флагов оружия и актёра либо доля, застрявшая
+    // ненулевой при опущенном оружии: тогда прицельное смещение применяется от бедра.
+    {
+        extern float g_da_zoom_factor;
+        extern bool g_da_zoom_weapon, g_da_zoom_actor;
+        extern u8 g_da_zoom_idx;
+        const bool da_stuck = (!g_da_zoom_weapon && g_da_zoom_factor > EPS) || (g_da_zoom_weapon != g_da_zoom_actor);
+        pFont->SetColor(da_stuck ? 0xFFFF6060 : 0xFF80FF80);
+        xr_sprintf(line, "доля прицеливания %.3f   оружие в прицеле: %s   актёр целится: %s   idx %u%s",
+            g_da_zoom_factor, g_da_zoom_weapon ? "да " : "нет", g_da_zoom_actor ? "да " : "нет",
+            u32(g_da_zoom_idx), da_stuck ? "   <-- ЗАСТРЯЛА" : "");
+        pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+    }
+
+    // ⭐ Главная строка при подгонке прицела: куда смотрит дуло относительно центра экрана.
+    // Пуля летит ровно в центр (CActor::g_fireParams), поэтому «мушка совпала» = оба числа в нуле.
+    {
+        extern float g_da_muzzle_yaw, g_da_muzzle_pitch;
+        extern Fvector g_da_aim_offset_delta;
+        const bool ok = _abs(g_da_muzzle_yaw) < 0.05f && _abs(g_da_muzzle_pitch) < 0.05f;
+        pFont->SetColor(ok ? 0xFF80FF80 : 0xFFFFE080);
+        xr_sprintf(line, "ДУЛО от центра: гориз %+.3f  верт %+.3f (град)%s", g_da_muzzle_yaw,
+            g_da_muzzle_pitch, ok ? "   <-- СОВПАЛО" : "");
+        pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+
+        xr_sprintf(line, "поправка прицела (стрелки в прицеливании): %+.4f %+.4f %+.4f",
+            g_da_aim_offset_delta.x, g_da_aim_offset_delta.y, g_da_aim_offset_delta.z);
+        pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+    }
+
+    // ⭐ Куда РЕАЛЬНО ушли пули относительно перекрестия. Среднее по серии: случайный разброс в нём
+    // гасится, систематический увод — нет.
+    {
+        extern float g_da_shot_last_yaw, g_da_shot_last_pitch;
+        extern float g_da_shot_sum_yaw, g_da_shot_sum_pitch;
+        extern u32 g_da_shot_count;
+        extern float g_da_shot_disp_deg, g_da_shot_origin_right, g_da_shot_origin_up;
+
+        if (g_da_shot_count)
+        {
+            const float my = g_da_shot_sum_yaw / float(g_da_shot_count);
+            const float mp = g_da_shot_sum_pitch / float(g_da_shot_count);
+            const bool centred = _abs(my) < 0.05f && _abs(mp) < 0.05f;
+            pFont->SetColor(centred ? 0xFF80FF80 : 0xFFFF6060);
+            xr_sprintf(line, "ВЫСТРЕЛ: последний %+.3f/%+.3f | СРЕДНЕЕ по %u: %+.3f/%+.3f град%s",
+                g_da_shot_last_yaw, g_da_shot_last_pitch, g_da_shot_count, my, mp,
+                centred ? "   <-- в перекрестие" : "   <-- УВОД");
+            pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+
+            pFont->SetColor(0xFFFFFFFF);
+            xr_sprintf(line, "разброс ствола %.3f град | пуля стартует от глаза вправо %+.4f вверх %+.4f м",
+                g_da_shot_disp_deg, g_da_shot_origin_right, g_da_shot_origin_up);
+            pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+        }
+    }
+
+    // Вторая версия: несогласованная пара обзоров. HUD рисуется своей проекцией, и при узком
+    // hud_fov постоянное смещение ствола даёт на экране куда больший увод.
+    pFont->SetColor(0xFF90C0FF);
+    xr_sprintf(line, "обзор: мир %.1f град | HUD %.3f x %.1f = %.1f град (множитель сейчас %.3f)",
+        g_fov, psHUD_FOV, g_fov, g_hud_fov_current * g_fov, g_hud_fov_current);
+    pFont->Out(x, y, da_cp1251(line, da_buf, sizeof(da_buf))); y += step;
+
+    // ⛔ Строка про «перевод HUD->мир» убрана намеренно, не забыта.
+    //
+    // Она мерила отношение проекций в TransformDirFromWorldToHud и горела красным «расхождение
+    // -27%». Но эту версию я потом сам же и снял: та функция к стрельбе не относится вовсе, её
+    // зовёт только отладочный подгонщик ImGui (player_hud_tune.cpp). Индикатор остался и продолжал
+    // уводить разбор не туда — прибор, который врёт про важность, хуже отсутствующего.
+}
+
 static void DaRenderFpBodyStats()
 {
     if (!g_da_fp_body_debug || !g_pGameLevel)
@@ -325,6 +485,7 @@ void CHUDManager::RenderUI()
     }
 
     DaRenderFpBodyStats(); // [DA_PORT] отчёт по перволичному телу, da_fp_body_debug
+    DaRenderAimStats(); // [DA_PORT] прибор увода прицела, da_aim_debug
 }
 
 void CHUDManager::OnEvent(EVENT E, u64 P1, u64 P2) {}

@@ -295,8 +295,105 @@ int ps_da_light_dyn_shared = 1;
 
 static xr_vector<ISpatial*> g_da_light_dyn;
 
+// [DA_PORT] Разбор источников света: печать и поштучная изоляция.
+//
+// Повод: чёрный клин с ПРЯМЫМИ краями на земле вечером. Прямые края означают объём источника, а
+// не тень предмета, и наш же комментарий в r2_R_render.cpp описывает этот симптом дословно —
+// «свет ложится клином во весь экран, ровная диагональная граница». Там причиной были чужие
+// матрицы у выброшенной из бюджета лампы; здесь бюджет не при чём (проверено: клин остаётся и
+// без потолка, и с потолком в единицу), значит источник другой.
+//
+// Прибор даёт две вещи, которых не даёт ни один лог:
+//   da_light_dump N — N кадров подряд печатает КАЖДЫЙ накопленный источник с его числами;
+//   da_light_only N — накапливает ТОЛЬКО источник номер N, остальные пропускает.
+// Второе и есть разделяющий опыт: номер, при котором клин остаётся один на экране, называет
+// виновника точно, без рассуждений о том, что «похоже на фонарь».
+//
+// Нумерация сквозная за кадр и стабильна, пока не меняется состав света в кадре: порядок обхода
+// списков фиксирован. Стоять при переборе нужно неподвижно.
+// da_light_max N — накапливать только источники с номерами 1..N. Это и есть рабочая ручка: поштучная
+// изоляция дефект НЕ воспроизводит (проверено — при любом одиночном номере клин пропадает), значит
+// он рождается во взаимодействии источников, а такое ловится только границей «до какого номера ещё
+// чисто». Признак монотонный, поэтому номер ищется делением пополам за шесть шагов, а не перебором.
+int ps_da_light_dump = 0;
+int ps_da_light_only = 0;
+int ps_da_light_max = 0;
+
+// [DA_PORT] Лечение чёрных клиньев от ламп: у объёма, задетого ближней плоскостью, трафаретная
+// разметка отключается. Разбор — в r3_rendertarget_accum_spot.cpp. 0 возвращает прежнее поведение.
+// ⛔ ПО УМОЛЧАНИЮ ВЫКЛЮЧЕНО. Первая версия этой правки отменяла разметку трафаретом и лампы
+// засветили сквозь стены; вторая (снятие метки после источника) в игре ещё не подтверждена.
+// Пока не подтверждена — в свет не вмешиваемся вовсе: при нуле обе функции накопления работают
+// в точности как заводские, отличие ровно одно — возвращаемое значение enable_scissor теперь
+// сохраняется в переменную, а не отбрасывается.
+int ps_da_light_nearfix = 0;
+static u32 g_da_light_idx = 0;
+
+static pcstr da_light_type(u32 t)
+{
+    switch (t)
+    {
+    case IRender_Light::POINT: return "точка";
+    case IRender_Light::SPOT: return "конус";
+    case IRender_Light::OMNIPART: return "сектор";
+    case IRender_Light::REFLECTED: return "отражён";
+    default: return "?";
+    }
+}
+
+// Возвращает false, если источник нужно пропустить (изоляция da_light_only).
+static bool da_light_step(const light* L, pcstr where)
+{
+    ++g_da_light_idx;
+
+    if (ps_da_light_dump > 0)
+    {
+        // Пересечение объёма источника с БЛИЖНЕЙ ПЛОСКОСТЬЮ камеры. Расчёт слово в слово тот же,
+        // что в CRenderTarget::enable_scissor, только здесь он ничего не меняет, а печатается.
+        //
+        // Признак ключевой. Разметка объёма трафаретом идёт в два прохода: задние грани ставят
+        // метку источника, передние возвращают её в 0x01. Когда камера внутри объёма (или он задет
+        // ближней плоскостью), ПЕРЕДНИЕ грани обрезаются и второй проход не выполняется — метка
+        // остаётся. Следующие источники проверяют трафарет как «ref <= значение», своя метка у них
+        // больше, проверка не проходит, и они в эту область не светят. Получается ровно то, что
+        // видно: тёмная область с прямыми краями по силуэту ЧУЖОГО объёма, и только там, где свет
+        // ламп — единственный источник освещения, то есть ночью.
+        //
+        // Класс известный: это стандартная беда трафаретных объёмов в отложенном затенении, её
+        // разбирают в статьях по deferred lighting (см. hacksoflife, gamedev.net). Штатное лечение —
+        // при пересечении ближней плоскости не оптимизировать трафаретом вовсе.
+        bool near_hit = false;
+        {
+            const Fmatrix& M = Device.mFullTransform;
+            Fvector4 pl;
+            pl.x = -(M._14 + M._13);
+            pl.y = -(M._24 + M._23);
+            pl.z = -(M._34 + M._33);
+            pl.w = -(M._44 + M._43);
+            const float denom = -1.0f / _sqrt(_sqr(pl.x) + _sqr(pl.y) + _sqr(pl.z));
+            pl.mul(denom);
+            Fplane P;
+            P.n.set(pl.x, pl.y, pl.z);
+            P.d = pl.w;
+            near_hit = (P.classify(L->spatial.sphere.P) - L->spatial.sphere.R) <= 0.f;
+        }
+
+        Msg("~ [DA_LIGHT] #%02u %-14s %-7s тень %d | xyz %.1f %.1f %.1f | радиус %.1f | конус %.2f "
+            "| цвет %.2f %.2f %.2f | атлас %ux%u+%u | не-снимать %d | БЛИЖНЯЯ ПЛОСКОСТЬ %d",
+            g_da_light_idx, where, da_light_type(L->flags.type), L->flags.bShadow ? 1 : 0, L->position.x,
+            L->position.y, L->position.z, L->range, L->cone, L->color.r, L->color.g, L->color.b, L->X.S.size,
+            L->X.S.posX, L->X.S.posY, L->flags.bNeverDemote ? 1 : 0, near_hit ? 1 : 0);
+    }
+
+    if (ps_da_light_max > 0 && g_da_light_idx > u32(ps_da_light_max))
+        return false;
+
+    return !(ps_da_light_only > 0 && u32(ps_da_light_only) != g_da_light_idx);
+}
+
 void CRender::render_lights(light_Package& LP)
 {
+    g_da_light_idx = 0;
     // [DA_PORT] Общая выборка динамики -- один раз на всю фазу. Разбор у ps_da_light_dyn_shared.
     g_da_light_dyn.clear();
     if (ps_da_light_dyn_shared && !LP.v_shadowed.empty())
@@ -853,7 +950,8 @@ void CRender::render_lights(light_Package& LP)
             L2->vis_update();
             if (L2->vis.visible)
             {
-                Target->accum_point(cmd_list, L2);
+                if (da_light_step(L2, "точка"))
+                    Target->accum_point(cmd_list, L2);
                 render_indirect(L2);
             }
         }
@@ -869,6 +967,8 @@ void CRender::render_lights(light_Package& LP)
             if (L2->vis.visible)
             {
                 LR.compute_xf_spot(L2);
+                const bool da_take = da_light_step(L2, "конус без тени");
+                if (da_take)
                 {
                     CTimer ta;
                     const bool pa = ps_da_light_prof > 0;
@@ -893,6 +993,7 @@ void CRender::render_lights(light_Package& LP)
             PIX_EVENT(ACCUM_SPOT);
             for (light* p_light : L_spot_s)
             {
+                if (da_light_step(p_light, "конус с тенью"))
                 {
                     CTimer ta;
                     const bool pa = ps_da_light_prof > 0;
@@ -928,7 +1029,8 @@ void CRender::render_lights(light_Package& LP)
             if (p_light->vis.visible)
             {
                 render_indirect(p_light);
-                Target->accum_point(cmd_list, p_light);
+                if (da_light_step(p_light, "точка (остаток)"))
+                    Target->accum_point(cmd_list, p_light);
             }
         }
         Lvec.clear();
@@ -946,6 +1048,7 @@ void CRender::render_lights(light_Package& LP)
             {
                 LR.compute_xf_spot(p_light);
                 render_indirect(p_light);
+                if (da_light_step(p_light, "конус (остаток)"))
                 {
                     CTimer ta;
                     const bool pa = ps_da_light_prof > 0;
@@ -961,6 +1064,12 @@ void CRender::render_lights(light_Package& LP)
             }
         }
         Lvec.clear();
+    }
+
+    if (ps_da_light_dump > 0)
+    {
+        Msg("~ [DA_LIGHT] ---- кадр %u закончен, источников накоплено: %u ----", Device.dwFrame, g_da_light_idx);
+        --ps_da_light_dump;
     }
 }
 

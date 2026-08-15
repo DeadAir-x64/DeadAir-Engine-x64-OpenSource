@@ -25,13 +25,16 @@ struct str_container_impl
         ZeroMemory(buffer, sizeof(buffer));
     }
 
-    str_value* find(str_value* value, const char* str) const
+    // [DA_PORT] Поиск принимает crc и длину, а не «узел». Раньше вызывающая сторона собирала
+    // поддельный str_value на стеке в массиве char — с атомарным полем так делать нельзя: запись в
+    // неинициализированную память под атомарный тип не определена стандартом.
+    str_value* find(u32 crc, u32 length, const char* str) const
     {
-        str_value* candidate = buffer[value->dwCRC % buffer_size];
+        str_value* candidate = buffer[crc % buffer_size];
         while (candidate)
         {
-            if (candidate->dwCRC == value->dwCRC && candidate->dwLength == value->dwLength &&
-                !memcmp(candidate->value, str, value->dwLength))
+            if (candidate->dwCRC == crc && candidate->dwLength == length &&
+                !memcmp(candidate->value, str, length))
             {
                 return candidate;
             }
@@ -58,7 +61,9 @@ struct str_container_impl
             while (*current != nullptr)
             {
                 str_value* value = *current;
-                if (!value->dwReference)
+                // Оживить узел может только dock() под тем же замком, что удерживается здесь,
+                // поэтому увиденный ноль не может быть перехвачен параллельно.
+                if (!value->dwReference.load(std::memory_order_acquire))
                 {
                     *current = value->next;
                     xr_free(value);
@@ -98,7 +103,8 @@ struct str_container_impl
             str_value* value = buffer[i];
             while (value)
             {
-                fprintf(f, "ref[%4u]-len[%3u]-crc[%8X] : %s\n", value->dwReference, value->dwLength, value->dwCRC,
+                fprintf(f, "ref[%4u]-len[%3u]-crc[%8X] : %s\n",
+                    value->dwReference.load(std::memory_order_relaxed), value->dwLength, value->dwCRC,
                     value->value);
                 value = value->next;
             }
@@ -113,7 +119,8 @@ struct str_container_impl
             string4096 temp;
             while (value)
             {
-                xr_sprintf(temp, sizeof(temp), "ref[%4u]-len[%3u]-crc[%8X] : %s\n", value->dwReference, value->dwLength,
+                xr_sprintf(temp, sizeof(temp), "ref[%4u]-len[%3u]-crc[%8X] : %s\n",
+                    value->dwReference.load(std::memory_order_relaxed), value->dwLength,
                     value->dwCRC, value->value);
                 f->w_string(temp);
                 value = value->next;
@@ -130,7 +137,7 @@ struct str_container_impl
             while (value)
             {
                 ++count;
-                bytes += (value->dwReference - 1) * (value->dwLength + 1);
+                bytes += (value->dwReference.load(std::memory_order_relaxed) - 1) * (value->dwLength + 1);
                 value = value->next;
             }
         }
@@ -159,15 +166,10 @@ str_value* str_container::dock(pcstr value) const
     const auto s_len_with_zero = s_len + 1;
     VERIFY(sizeof(str_value) + s_len_with_zero < 4096);
 
-    // setup find structure
-    char header[sizeof(str_value)];
-    str_value* sv = (str_value*)header;
-    sv->dwReference = 0;
-    sv->dwLength = static_cast<u32>(s_len);
-    sv->dwCRC = crc32(value, s_len);
+    const u32 s_crc = crc32(value, s_len);
 
     // search
-    result = impl->find(sv, value);
+    result = impl->find(s_crc, static_cast<u32>(s_len), value);
 
 #ifdef DEBUG
     const bool is_leaked_string = !xr_strcmp(value, "enter leaked string here");
@@ -191,9 +193,9 @@ str_value* str_container::dock(pcstr value) const
         }
 #endif // DEBUG
 
-        result->dwReference = 0;
-        result->dwLength = sv->dwLength;
-        result->dwCRC = sv->dwCRC;
+        result->dwReference.store(0, std::memory_order_relaxed);
+        result->dwLength = static_cast<u32>(s_len);
+        result->dwCRC = s_crc;
         CopyMemory(result->value, value, s_len_with_zero);
 
         impl->insert(result);

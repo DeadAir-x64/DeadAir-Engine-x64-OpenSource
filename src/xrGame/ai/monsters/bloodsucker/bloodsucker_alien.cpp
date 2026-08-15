@@ -199,15 +199,20 @@ void CBloodsuckerAlien::activate()
     if (m_active)
         return;
 
-    VERIFY(Actor());
-    m_object->CControlledActor::install(Actor());
+    // [DA_PORT] Проверка вместо VERIFY: он исчезает в отгружаемой сборке, и ниже шли бы вызовы по
+    // нулю. Без актёра «пришельцу» захватывать нечего — состояние просто не поднимается.
+    CActor* actor = Actor();
+    if (!actor)
+        return;
+
+    m_object->CControlledActor::install(actor);
     m_object->CControlledActor::dont_need_turn();
 
     if (!m_object->EnemyMan.get_enemy())
-        m_object->EnemyMan.add_enemy(Actor());
+        m_object->EnemyMan.add_enemy(actor);
 
     //.	Actor()->inventory().setSlotsBlocked			(true);
-    Actor()->SetWeaponHideState(INV_STATE_BLOCK_ALL, true);
+    actor->SetWeaponHideState(INV_STATE_BLOCK_ALL, true);
 
     // hide crosshair
     m_crosshair_show = !!psHUD_Flags.is(HUD_CROSSHAIR_RT);
@@ -218,10 +223,10 @@ void CBloodsuckerAlien::activate()
 #pragma warning(push)
 #pragma warning(disable : 4826) // XXX: Do something with that cheap ID generation, remove warning
     m_effector_pp = xr_new<CAlienEffectorPP>(m_object->pp_vampire_effector, EFFECTOR_ID_GEN(EEffectorPPType));
-    Actor()->Cameras().AddPPEffector(m_effector_pp);
+    actor->Cameras().AddPPEffector(m_effector_pp);
 
     m_effector = xr_new<CAlienEffector>(EFFECTOR_ID_GEN(ECamEffectorType), m_object);
-    Actor()->Cameras().AddCamEffector(m_effector);
+    actor->Cameras().AddCamEffector(m_effector);
 #pragma warning(pop)
 
     // make invisible
@@ -238,19 +243,32 @@ void CBloodsuckerAlien::deactivate()
 
     m_object->CControlledActor::release();
 
-    Actor()->SetWeaponHideState(INV_STATE_BLOCK_ALL, false);
+    // ⛔ [DA_PORT] Тот же случай, что в cleanup() состояния высасывания, и по тому же пути:
+    // deactivate() зовут при гибели и уничтожении кровососа, а там актёра может уже не быть.
+    // VERIFY внутри Actor() в отгружаемой сборке отсутствует, поэтому проверяем сами.
+    //
+    // Что БЕЗ актёра всё равно обязано выполниться: снятие управления (выше), возврат прицела и
+    // обнуление указателей на эффекторы. Иначе повторный захват попытается создать их поверх
+    // прежних, а `m_active` останется взведённым навсегда.
+    CActor* actor = Actor();
+
+    if (actor)
+        actor->SetWeaponHideState(INV_STATE_BLOCK_ALL, false);
     if (m_crosshair_show)
         psHUD_Flags.set(HUD_CROSSHAIR_RT, TRUE);
 
 #pragma warning(push)
 #pragma warning(disable : 4826) // XXX: Do something with that cheap ID generation, remove warning
     // Stop camera effector
-    Actor()->Cameras().RemoveCamEffector(EFFECTOR_ID_GEN(ECamEffectorType));
+    if (actor)
+        actor->Cameras().RemoveCamEffector(EFFECTOR_ID_GEN(ECamEffectorType));
     m_effector = 0;
 
     // Stop postprocess effector
-    Actor()->Cameras().RemovePPEffector(EFFECTOR_ID_GEN(EEffectorPPType));
-    m_effector_pp->Destroy();
+    if (actor)
+        actor->Cameras().RemovePPEffector(EFFECTOR_ID_GEN(EEffectorPPType));
+    if (m_effector_pp)
+        m_effector_pp->Destroy();
     m_effector_pp = 0;
 #pragma warning(pop)
 

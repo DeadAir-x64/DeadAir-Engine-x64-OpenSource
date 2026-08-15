@@ -450,6 +450,51 @@ void CShootingObject::FireBullet(const Fvector& pos, const Fvector& shot_dir, fl
     Fvector dir;
     random_dir(dir, shot_dir, fire_disp);
 
+    // [DA_PORT] ПРИБОР ВЫСТРЕЛА. Панель da_aim_debug, строка «ВЫСТРЕЛ».
+    //
+    // Зачем среднее, а не последний выстрел. По коду пуля обязана лететь ровно в перекрестие:
+    // CActor::g_fireParams подменяет и точку, и направление на камеру, а перекрестие рисуется
+    // проекцией точки на той же оси. Значит расхождение может дать только разброс — а он случайный
+    // и в среднем гасится. Систематический увод в среднем НЕ гасится. Один выстрел этих двух
+    // случаев не различает, поэтому копим среднее по серии.
+    //
+    // Заодно меряем, откуда пуля стартует относительно глаза: если не из нуля, то на близкой
+    // дистанции попадание уедет от перекрестия просто из-за параллакса.
+    {
+        extern float g_da_shot_last_yaw, g_da_shot_last_pitch;
+        extern float g_da_shot_sum_yaw, g_da_shot_sum_pitch;
+        extern u32 g_da_shot_count;
+        extern float g_da_shot_disp_deg, g_da_shot_origin_right, g_da_shot_origin_up;
+
+        const float fz = dir.dotproduct(Device.vCameraDirection);
+        if (fz > EPS)
+        {
+            g_da_shot_last_yaw = rad2deg(atan2f(dir.dotproduct(Device.vCameraRight), fz));
+            g_da_shot_last_pitch = rad2deg(atan2f(dir.dotproduct(Device.vCameraTop), fz));
+            g_da_shot_sum_yaw += g_da_shot_last_yaw;
+            g_da_shot_sum_pitch += g_da_shot_last_pitch;
+            ++g_da_shot_count;
+        }
+        g_da_shot_disp_deg = rad2deg(fire_disp);
+
+        Fvector o;
+        o.sub(pos, Device.vCameraPosition);
+        g_da_shot_origin_right = o.dotproduct(Device.vCameraRight);
+        g_da_shot_origin_up = o.dotproduct(Device.vCameraTop);
+
+        // Сводку пишем В ЛОГ сами, каждые 10 выстрелов. Панель рисуется только на экране, и разбор
+        // раз за разом упирался в то, что снимок либо тёмный, либо не доходит. Файл читается всегда.
+        extern int g_da_aim_debug;
+        if (g_da_aim_debug && g_da_shot_count && (g_da_shot_count % 10) == 0)
+        {
+            Msg("~ [DA_PORT] ВЫСТРЕЛЫ: %u шт | СРЕДНЕЕ отклонение от перекрестия %+.3f / %+.3f град "
+                "| разброс ствола %.3f град | старт от глаза вправо %+.4f вверх %+.4f м",
+                g_da_shot_count, g_da_shot_sum_yaw / float(g_da_shot_count),
+                g_da_shot_sum_pitch / float(g_da_shot_count), g_da_shot_disp_deg,
+                g_da_shot_origin_right, g_da_shot_origin_up);
+        }
+    }
+
     m_vCurrentShootDir = dir;
     m_vCurrentShootPos = pos;
     m_iCurrentParentID = parent_id;

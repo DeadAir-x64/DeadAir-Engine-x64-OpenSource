@@ -600,6 +600,7 @@ bool CWeapon::net_Spawn(CSE_Abstract* DC)
     m_ammoType = E->ammo_type;
     // [DA_PORT] pick the malfunction mask back up from the server object, which is what carried it
     // through the save or through the weapon's time offline.
+    da_wpn_mask_note(this, E->condition_type, "объект появился в мире");
     m_weapon_condition_type = E->condition_type;
     SetState(E->wpn_state);
     SetNextState(E->wpn_state);
@@ -680,6 +681,39 @@ void CWeapon::net_Export(NET_Packet& P)
     P.w_u32(m_weapon_condition_type); // [DA_PORT] malfunction mask - see CSE_ALifeItemWeapon
 }
 
+// [DA_PORT] Прибор: кто меняет маску поломок.
+//
+// Жалоба: снять обвес с оружия, поднятого с трупа NPC, -- и все поломки исчезают, остаётся только
+// износ. Чтение кода корень не нашло: снятие обвеса маску не трогает (CWeaponMagazined::Detach
+// правит только флаги и зовёт InitAddons, а тот занят прицеливанием), скрипты обнуляют её ровно в
+// одном месте -- при полном ремонте у механика, -- и оружие нигде не пересоздаётся.
+//
+// Писать маску могут три места, и одно из них подозрительно: net_Import берёт её от СЕРВЕРА. А
+// ставит её скрипт (death_manager -> items_condition.break_weapon) в объект в мире. Если серверный
+// объект о поломках не узнал, любое обновление вернёт ноль -- и снятие обвеса как раз шлёт по сети
+// порождение аддона.
+//
+// Прибор пишет каждое ИЗМЕНЕНИЕ: ствол, старое и новое значение, источник. Обнуление непустой маски
+// помечается отдельно -- это и есть предмет жалобы.
+void da_wpn_mask_note(CWeapon* w, u32 next, pcstr who)
+{
+    if (!w)
+        return;
+    const u32 prev = w->m_weapon_condition_type;
+    if (prev == next)
+        return;
+
+    // Поток сообщений ограничен: маска меняется и штатно (появление объекта, загрузка), а лог нужен
+    // читаемый. Обнуление непустой не ограничиваем -- ради него всё и заведено.
+    static u32 shown = 0;
+    const bool wiped = (prev != 0) && (next == 0);
+    if (!wiped && ++shown > 64)
+        return;
+
+    Msg("%s [DA_WPN] %s: маска поломок %u -> %u (%s)", wiped ? "!" : "~",
+        w->cNameSect().c_str(), prev, next, who);
+}
+
 void CWeapon::net_Import(NET_Packet& P)
 {
     inherited::net_Import(P);
@@ -709,7 +743,10 @@ void CWeapon::net_Import(NET_Packet& P)
 
     // [DA_PORT] must mirror CSE_ALifeItemWeapon::UPDATE_Write exactly - an unread field here would
     // shift every byte after it and desync the whole packet.
-    P.r_u32(m_weapon_condition_type);
+    u32 da_mask_from_net = 0;
+    P.r_u32(da_mask_from_net);
+    da_wpn_mask_note(this, da_mask_from_net, "прислано сервером (net_Import)");
+    m_weapon_condition_type = da_mask_from_net;
 
     if (H_Parent() && H_Parent()->Remote())
     {
@@ -1852,11 +1889,60 @@ bool CWeapon::ready_to_kill() const
         !IsMisfire() && ((GetState() == eIdle) || (GetState() == eFire) || (GetState() == eFire2)) && GetAmmoElapsed());
 }
 
+// [DA_PORT] Прибор доли прицеливания. Печатается панелью da_aim_debug (HUDManager.cpp).
+//
+// Зачем именно эти три числа. Прицельное смещение (aim_hud_offset_*) применяется НЕ переключателем,
+// а долей m_fZoomRotationFactor от 0 до 1. Застрянь она в единице при опущенном оружии — всё
+// прицельное смещение будет применено от бедра, а для Абакана это (-0.092, 0.07, -0.1), то есть
+// около 10 см. Ровно такой сдвиг и видно на экране.
+//
+// Почему это подозреваемый №1: доля живёт в объекте оружия, НЕ сохраняется и обнуляется в
+// конструкторе. Загрузка сейва пересоздаёт оружие — и увод пропадает. Замеры при этом остаются
+// теми же, что и показали три снятых дампа.
+//
+// ⚠️ Условие входа ниже смотрит на IsZoomed() (флаг ОРУЖИЯ), а приращение — на IsZoomAimingMode()
+// (флаг АКТЁРА). Разойдись они — оружие уже не в прицеле, а актёр ещё «целится» — и доля пойдёт
+// ВВЕРХ вместо спуска к нулю. Прибор ловит именно это расхождение.
+int g_da_zoom_probe = 0;
+float g_da_zoom_factor = 0.f;
+bool g_da_zoom_weapon = false;
+bool g_da_zoom_actor = false;
+u8 g_da_zoom_idx = 0;
+
+// ПИКОВЫЕ значения — чтобы замер не зависел от того, поймал ли игрок нужный момент.
+//
+// Первая пара дампов это и показала: оба сняты в прицеливании, где доля обязана быть единицей, и
+// застревание там принципиально не видно. Застрять она может ТОЛЬКО при опущенном оружии, а поймать
+// такой миг вручную — лотерея. Поэтому запоминаем максимум доли, наблюдённый при !IsZoomed(), и
+// число кадров, когда флаги оружия и актёра расходились. Один дамп в любой момент теперь отвечает на
+// вопрос за всю сессию.
+float g_da_zoom_hip_peak = 0.f;
+u32 g_da_zoom_mismatch_frames = 0;
+
+// [DA_PORT] Живая поправка к прицельному смещению. Прибавляется РОВНО ТАМ, где применяется значение
+// из конфига, поэтому система координат совпадает по построению — переводить ничего не надо.
+//
+// Так пришлось сделать после осечки: я пересчитал замеренное отклонение дула из системы КАМЕРЫ и
+// вписал в aim_hud_offset_pos, который применяется в системе САМОГО ОРУЖИЯ (mulB_43 ниже). Оружие
+// уехало через пол-экрана. Единственный надёжный способ — двигать там же, где движок читает конфиг.
+Fvector g_da_aim_offset_delta = { 0.f, 0.f, 0.f };
+
 void CWeapon::UpdateHudAdditonal(Fmatrix& trans)
 {
     CActor* pActor = smart_cast<CActor*>(H_Parent());
     if (!pActor)
         return;
+
+    // Замер ДО условия: интересен как раз случай, когда флаги разошлись и в блок не заходят.
+    g_da_zoom_factor = m_zoom_params.m_fZoomRotationFactor;
+    g_da_zoom_weapon = !!IsZoomed();
+    g_da_zoom_actor = !!pActor->IsZoomAimingMode();
+    g_da_zoom_idx = GetCurrentHudOffsetIdx();
+
+    if (!g_da_zoom_weapon)
+        g_da_zoom_hip_peak = _max(g_da_zoom_hip_peak, g_da_zoom_factor);
+    if (g_da_zoom_weapon != g_da_zoom_actor)
+        ++g_da_zoom_mismatch_frames;
 
     if ((IsZoomed() && m_zoom_params.m_fZoomRotationFactor <= 1.f) ||
         (!IsZoomed() && m_zoom_params.m_fZoomRotationFactor > 0.f))
@@ -1869,6 +1955,7 @@ void CWeapon::UpdateHudAdditonal(Fmatrix& trans)
         Fvector curr_offs, curr_rot;
         curr_offs = hi->m_measures.m_hands_offset[0][idx]; // pos,aim
         curr_rot = hi->m_measures.m_hands_offset[1][idx]; // rot,aim
+        curr_offs.add(g_da_aim_offset_delta); // [DA_PORT] живая поправка, см. выше
         curr_offs.mul(m_zoom_params.m_fZoomRotationFactor);
         curr_rot.mul(m_zoom_params.m_fZoomRotationFactor);
 

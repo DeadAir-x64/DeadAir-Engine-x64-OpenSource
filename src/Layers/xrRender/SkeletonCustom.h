@@ -4,6 +4,8 @@
 #include "xrCore/Animation/Bone.hpp"
 #include "Include/xrRender/Kinematics.h"
 
+#include <atomic>
+
 class CInifile;
 class CBoneData;
 struct SEnumVerticesCallback;
@@ -167,8 +169,24 @@ protected:
     accel* bone_map_P; // bones associations (shared) - sorted by name-pointer
 
     BOOL Update_Visibility;
-    u32 UCalc_Time;
-    s32 UCalc_Visibox;
+
+    // [DA_PORT] Признак «поза уже посчитана» — АТОМАРНАЯ пара «эпоха + время» вместо голого u32.
+    //
+    // Зачем понадобилось. Ранний выход `if (Device.dwTimeGlobal == UCalc_Time) return;` читал
+    // UCalc_Time БЕЗ замка, пока другой поток писал его под замком, — это гонка сама по себе. Но
+    // дороже другое: после ЗАХВАТА замка проверка не повторялась. Два потока, прошедшие ранний
+    // выход одновременно, оба считали одну и ту же позу целиком. Теперь проверка делается второй
+    // раз уже под замком, и второй поток уходит без работы.
+    //
+    // Эпоха отделяет «устарело по времени» от «сброшено принудительно»: CalculateBones_Invalidate
+    // раньше писал `UCalc_Time = 0`, то есть подделывал время. Счётчик эпох выражает это прямо, и
+    // поза публикуется только если за время расчёта её никто не сбросил (обработчик может).
+    //
+    // Найдено не у себя: Dead Air Refined, коммит bcf4893c от 15.08.2026.
+    std::atomic<u64> UCalc_PublishedState{};
+    std::atomic<u32> UCalc_Epoch{1};
+    bool UCalc_InProgress{}; // трогается только под замком, атомик не нужен
+    std::atomic<s32> UCalc_Visibox{};
 
     Flags64 visimask;
 

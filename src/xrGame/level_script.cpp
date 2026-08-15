@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "pch_script.h"
+#include "xrEngine/XR_IOConsole.h" // [DA_PORT] da_console_silent: команда без записи в лог
 #include "Level.h"
 #include "Actor.h"
 #include "script_game_object.h"
@@ -718,6 +719,166 @@ void jump_to_level(const Fvector& m_position, u32 m_level_vertex_id, GameGraph::
     Level().Send(p, net_flags(TRUE));
 }
 
+// [DA_PORT] ---- Подгонка положения оружия из скриптов -------------------------------------------
+//
+// Зачем. Положение оружия в руках задано в конфиге каждого ствола и вручную; менять его игроку
+// нечем, а 93 файла ради вкуса не правят. В Anomaly эту задачу закрыли не настройкой в меню, а
+// выводом подгонки В СКРИПТЫ: мод строит свой интерфейс и пишет значения прямо в движок. Под эти
+// вызовы написаны десятки готовых дополнений (GAMMA, Aydins UI и прочие).
+//
+// ⭐ Имена и порядок доводов повторяют Anomaly ДОСЛОВНО — `hud_adjust.enabled/set_vector/set_value`,
+// `off` 0=положение 1=поворот. Это сделано ради совместимости: чужое дополнение должно заработать
+// без правок. Отступишь в имени или в порядке — и смысл затеи теряется.
+//
+// ⛔ Но их реализацию я НЕ повторяю в одном: у них `m_adjust_offset[off][idx]` пишется значениями
+// прямо из Lua, БЕЗ ЕДИНОЙ ПРОВЕРКИ. Скрипт с опечаткой в индексе пишет мимо массива — то есть
+// портит чужую память, а проявится это когда угодно и где угодно. Мы этот класс дефектов ловили
+// весь порт; повторять его сознательно нельзя. Здесь границы проверяются, а выход за них
+// НАЗЫВАЕТСЯ в логе.
+//
+// ⚠️ Честная граница охвата. У Anomaly десять состояний руки (`m_adjust_offset[2][10]`), у нас
+// три: обычное, прицел, подствольник (`hud_item_measures::m_hands_offset[2][3]`). Индексы 3..9
+// писать НЕКУДА, и притворяться, что они приняты, было бы хуже отказа. Такой вызов отвергается с
+// понятной строкой, а не молча.
+//
+// Карта индексов (та же, что у них):
+//   0..2  — смещение рук по состояниям: обычное, прицел, подствольник
+//   10    — точка выстрела
+//   11    — точка вылета гильзы
+//   12    — положение самого предмета
+//   20    — экран устройства (у нас НЕТ, отвергается)
+
+#include "player_hud.h"
+
+static attachable_hud_item* da_adjust_item()
+{
+    if (!g_player_hud)
+        return nullptr;
+    // Ведущая рука; если пусто — вторая. Ровно так же выбирает наш подгонщик и сам player_hud.
+    if (attachable_hud_item* i0 = g_player_hud->attached_item(0))
+        return i0;
+    return g_player_hud->attached_item(1);
+}
+
+static void da_adjust_complain(pcstr what, int off, int idx)
+{
+    static u32 said = 0;
+    if (++said <= 10)
+        Msg("! [DA_PORT] hud_adjust: %s (off %d, idx %d) — вызов отвергнут, память не тронута "
+            "(случаев %u)",
+            what, off, idx, said);
+}
+
+void da_hud_adjust_enabled(bool state)
+{
+    // Признак «идёт подгонка» держит наш штатный подгонщик; отдельного состояния не заводим, чтобы
+    // не было двух источников правды. Скрипту он нужен лишь для того, чтобы игра не мешала
+    // настройке (не убирала руки и не перебивала позу).
+    extern int ps_da_hud_adjust;
+    ps_da_hud_adjust = state ? 1 : 0;
+    Msg("~ [DA_PORT] hud_adjust: режим подгонки %s", state ? "включён" : "выключен");
+}
+
+void da_hud_adjust_set_vector(int off, int idx, float x, float y, float z)
+{
+    if (off < 0 || off > 1)
+    {
+        da_adjust_complain("off бывает только 0 (положение) или 1 (поворот)", off, idx);
+        return;
+    }
+
+    attachable_hud_item* item = da_adjust_item();
+    if (!item)
+    {
+        da_adjust_complain("в руках ничего нет", off, idx);
+        return;
+    }
+
+    hud_item_measures& m = item->m_measures;
+    const Fvector v{ x, y, z };
+
+    if (idx >= 0 && idx < 3)
+        m.m_hands_offset[off][idx] = v;
+    else if (idx == 10)
+        m.m_fire_point_offset = v;
+    else if (idx == 11)
+        m.m_shell_point_offset = v;
+    else if (idx == 12)
+        m.m_item_attach[off] = v;
+    else if (idx >= 3 && idx <= 9)
+        da_adjust_complain("состояний руки у нас три (0..2), а не десять как в Anomaly", off, idx);
+    else if (idx == 20)
+        da_adjust_complain("экрана устройства у нас нет", off, idx);
+    else
+        da_adjust_complain("неизвестный индекс", off, idx);
+}
+
+void da_hud_adjust_set_value(pcstr name, float val)
+{
+    if (!name)
+        return;
+
+    // Из четырёх имён Anomaly у нас есть смысл только у масштаба прикреплённого предмета: три
+    // множителя приближения относятся к их системе прицелов, которой в этом дереве нет.
+    // Неизвестное имя НАЗЫВАЕТСЯ — молчаливый пропуск здесь хуже всего: настройка «не работает»,
+    // и искать это в скрипте будут долго.
+    Msg("~ [DA_PORT] hud_adjust: значение «%s» = %.4f — в этом движке не применяется", name, val);
+}
+
+// ⭐ Наше добавление сверх Anomaly: чтение. У них API односторонний, и интерфейс не может показать
+// текущее значение — только помнить, что сам записал. При перезапуске или смене ствола это
+// расходится с действительностью.
+Fvector da_hud_adjust_get_vector(int off, int idx)
+{
+    Fvector out{};
+    if (off < 0 || off > 1)
+        return out;
+
+    attachable_hud_item* item = da_adjust_item();
+    if (!item)
+        return out;
+
+    const hud_item_measures& m = item->m_measures;
+    if (idx >= 0 && idx < 3)
+        out = m.m_hands_offset[off][idx];
+    else if (idx == 10)
+        out = m.m_fire_point_offset;
+    else if (idx == 11)
+        out = m.m_shell_point_offset;
+    else if (idx == 12)
+        out = m.m_item_attach[off];
+    return out;
+}
+
+// ⭐ Второе добавление, из практики CS2: там к трём смещениям идёт `viewmodel_presetpos`, и у него
+// есть отдельное состояние «своё» плюс возврат к набору по умолчанию. Без возврата настройка
+// односторонняя: испортил — перезаписывай руками или переустанавливай мод.
+void da_hud_adjust_reset()
+{
+    if (attachable_hud_item* item = da_adjust_item())
+    {
+        item->reload_measures();
+        Msg("~ [DA_PORT] hud_adjust: положение возвращено к значениям из конфига ствола");
+    }
+    else
+        Msg("! [DA_PORT] hud_adjust: возвращать нечего — в руках ничего нет");
+}
+
+// [DA_PORT] Выполнить консольную команду БЕЗ записи в историю и лог.
+//
+// Нужно живым ползункам подгонки (ui_da_tune.script): значение уезжает в команду на каждое
+// движение мыши, а обычный `console:execute` кладёт каждую такую строку в лог. За одну сессию
+// настройки это тысячи строк. Лог у нас — основной инструмент разбора вылетов, засорять его ради
+// интерфейса нельзя.
+//
+// Живёт здесь, а не в биндинге консоли: тот лежит в xrEngine, а xrEngine — исполняемый файл.
+// Ради одной функции гонять игрокам новый .exe незачем, xrGame и так уезжает.
+void da_console_silent(pcstr command)
+{
+    if (Console && command)
+        Console->ExecuteCommand(command, false);
+}
+
 // XXX nitrocaster: one can export enum like class, without defining dummy type
 template<typename T>
 struct EnumCallbackType {};
@@ -935,21 +1096,39 @@ void CLevel::script_register(lua_State* luaState)
         {
             // Original luabind converts 4294967295 (which is u32(-1)) to 4294967296
             const u32 id = ai().level_graph().vertex_id(position);
-            // [DA_PORT] Прибор: откуда берётся нулевая вершина у схемы кражи тайника.
+
+            // ⛔ [DA_PORT] КОРЕНЬ ШТОРМА ПОИСКА ПУТИ: «вершины нет» превращалось в «вершина 0».
             //
-            // Доказано, что ноль приходит в поиск пути готовым из axr_npc_steal_box, а не считается
-            // в accessible_nearest (оба её выхода под метками, ни одна не сработала). Осталось
-            // одно звено: схема запоминает вершину тайника как раз через level.vertex_id. Печатаем
-            // запрошенную точку — по ней сразу видно, настоящее это место или нулевой вектор.
-            if (id == 0)
+            // Было: `return id == u32(-1) ? id + 1 : id;` при типе возврата u64. Выглядит как
+            // расширение до 4294967296, а считается В 32 БИТАХ: обе стороны сложения — unsigned
+            // int, 0xFFFFFFFF + 1 даёт 0 по модулю 2^32, и уже НОЛЬ расширяется до u64. То есть
+            // отсутствие вершины отдавалось скрипту как вершина 0 — настоящий узел в дальнем углу
+            // карты, за полкилометра.
+            //
+            // Дальше цепочка разворачивалась сама: скриптовые проверки мода написаны в расчёте на
+            // «0 == пусто» (`if (vid < 4294967295)`, `if not (npc and box and vid)`), а в Lua ноль
+            // ИСТИНЕН и меньше предела — поэтому ни одна из трёх не срабатывала. Сталкер получал
+            // недостижимую цель и искал к ней путь заново каждый кадр; неудачный поиск обходит всю
+            // достижимую часть сетки и стоит дороже удачного.
+            //
+            // Замысел исходной строки верен и сохранён: старый luabind отдавал u32(-1) как
+            // 4294967296, и проверки мода рассчитаны именно на это число. Чиним не замысел, а
+            // разрядность — складываем уже в 64 битах.
+            //
+            // 🪤 Прибор, стоявший здесь, молчал ИМЕННО поэтому: он проверял `id`, то есть ВХОД
+            // (0xFFFFFFFF), а не то, что уходит в скрипт. Три захода подряд он давал «ноль отсюда
+            // не приходит», и это уводило поиск в сторону. Проверять надо возвращаемое значение.
+            const u64 answer = (id == u32(-1)) ? u64(id) + 1 : u64(id);
+
+            if (answer == 0)
             {
                 static u32 da_hits = 0;
                 ++da_hits;
                 if (da_hits <= 8 || (da_hits % 2000) == 0)
-                    Msg("! [DA] level.vertex_id вернул 0 для точки (%.2f, %.2f, %.2f) (случаев %u)", VPUSH(position),
+                    Msg("! [DA] level.vertex_id отдаёт 0 для точки (%.2f, %.2f, %.2f) (случаев %u)", VPUSH(position),
                         da_hits);
             }
-            return id == u32(-1) ? id + 1 : id; // reproduce original behaviour
+            return answer;
         }),
         def("game_id", &GameID),
         def("ray_pick", &ray_pick)
@@ -962,8 +1141,21 @@ void CLevel::script_register(lua_State* luaState)
         def("get_points", &get_actor_points)
     ];
 
+    // [DA_PORT] Подгонка положения оружия из скриптов. Имена и порядок доводов — как в Anomaly,
+    // ради совместимости с их дополнениями; get_vector и reset — наше добавление. Разбор целиком —
+    // у определений выше по файлу.
+    module(luaState, "hud_adjust")
+    [
+        def("enabled", &da_hud_adjust_enabled),
+        def("set_vector", &da_hud_adjust_set_vector),
+        def("set_value", &da_hud_adjust_set_value),
+        def("get_vector", &da_hud_adjust_get_vector),
+        def("reset", &da_hud_adjust_reset)
+    ];
+
     module(luaState)
     [
+        def("da_console_silent", &da_console_silent),
         def("command_line", &command_line),
         def("IsGameTypeSingle", (bool (*)())&IsGameTypeSingle),
         def("IsDynamicMusic", &IsDynamicMusic),

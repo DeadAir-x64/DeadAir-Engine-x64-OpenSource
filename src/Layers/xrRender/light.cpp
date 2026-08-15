@@ -70,6 +70,7 @@ void light::set_texture(LPCSTR name)
         s_spot.destroy();
         s_point.destroy();
         s_volumetric.destroy();
+        s_volumetric_unshadowed.destroy();
         return;
     }
 
@@ -82,6 +83,7 @@ void light::set_texture(LPCSTR name)
 
 #if (RENDER != R_R3) && (RENDER != R_R4) && (RENDER != R_GL)
     s_volumetric.create("accum_volumetric", name);
+    s_volumetric_unshadowed.create("accum_volumetric_unshadowed", name);
 #else //    (RENDER!=R_R3) && (RENDER!=R_R4) && (RENDER!=R_GL)
     s_volumetric.create("accum_volumetric_nomsaa", name);
     if (RImplementation.o.msaa)
@@ -326,12 +328,32 @@ Fvector cmDir [6] = { { 1.f, 0.f, 0.f }, {-1.f, 0.f, 0.f }, { 0.f, 1.f,  0.f }, 
 
 void light::Export(light_Package& package)
 {
-    if (flags.bShadow)
+    // [DA_PORT] Признак тени считается ОДИН раз и передаётся граням, а не подразумевается.
+    //
+    // Раньше вход в эту ветку означал «тень есть», и все шесть секторов точечной лампы жёстко
+    // помечались теневыми. Когда тень потом снималась (потолок теневых ламп, качество освещения,
+    // r__no_shadows), сектора оставались с координатами слота в атласе, которых им никто не выдал.
+    //
+    // Теперь: у точечной лампы без тени — ОДИН проход накопления вместо шести, а сектора остаются
+    // только для объёмного света. По нашему же дампу источников это 48 проходов из 59 в баре —
+    // восемь ламп по шесть граней. Схема взята у Dead Air Refined.
+    // ⚠️ Условие взято у Refined, но БЕЗ их ps_r_lighting_quality: такой настройки у нас нет, а
+    // тащить чужую систему качества освещения ради одного слагаемого — значит менять поведение там,
+    // где нас не просили. Остальные множители у нас есть и означают ровно то же.
+    const bool shadowEnabled = flags.bShadow && !RImplementation.o.noshadows;
+    const bool volumetricEnabled = flags.bVolumetric && RImplementation.o.advancedpp &&
+        ps_r2_ls_flags.is(R2FLAG_VOLUMETRIC_LIGHTS);
+
+    if (shadowEnabled || volumetricEnabled)
     {
         switch (flags.type)
         {
         case IRender_Light::POINT:
         {
+            // Без тени точечная лампа светит одним проходом; шесть граней нужны только объёму.
+            if (!shadowEnabled)
+                package.v_point.push_back(this);
+
             // tough: create/update 6 shadowed lights
             if (nullptr == omnipart[0])
                 for (auto& p_light : omnipart)
@@ -342,7 +364,7 @@ void light::Export(light_Package& package)
                 Fvector R;
                 R.crossproduct(cmNorm[f], cmDir[f]);
                 L->set_type(IRender_Light::OMNIPART);
-                L->set_shadow(true);
+                L->set_shadow(shadowEnabled);
                 L->set_position(position);
                 L->set_rotation(cmDir[f], R);
                 L->set_cone(PI_DIV_2);

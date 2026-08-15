@@ -17,6 +17,21 @@ namespace xray::render::RENDER_NAMESPACE
 {
 using namespace R_dsgraph;
 
+// [DA_PORT] Урезанный поток вершин годится теневому проходу только тогда, когда шейдер не читает
+// развёртку. Альфа-тестовым материалам она нужна, и без неё они выпадают из теневой карты целиком:
+// разбор и признак отказа — у da_vs_needs_uv в dx11R_Backend_Runtime.h.
+ICF bool da_use_fast_geo(CBackend& cmd_list, u32 phase)
+{
+    if (phase != CRender::PHASE_SMAP)
+        return false;
+#if defined(USE_DX11)
+    return !cmd_list.da_vs_needs_uv();
+#else
+    (void)cmd_list;
+    return true;
+#endif
+}
+
 extern float r_ssaHZBvsTEX;
 extern float r_ssaGLOD_start, r_ssaGLOD_end;
 
@@ -424,7 +439,7 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                     // --#SM+#-- Обновляем шейдерные данные модели [update shader values for this model]
                     // RCache.hemi.c_update(item.pVisual);
 
-                    item.pVisual->Render(cmd_list, LOD, o.phase == CRender::PHASE_SMAP);
+                    item.pVisual->Render(cmd_list, LOD, da_use_fast_geo(cmd_list, o.phase));
                 }
                 if (!da_keep)
                     items.clear();
@@ -483,7 +498,7 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                     // --#SM+#-- Обновляем шейдерные данные модели [update shader values for this model]
                     // RCache.hemi.c_update(item.pVisual);
 
-                    item.pVisual->Render(cmd_list, LOD, o.phase == CRender::PHASE_SMAP);
+                    item.pVisual->Render(cmd_list, LOD, da_use_fast_geo(cmd_list, o.phase));
                 }
                 items.clear();
             }
@@ -847,7 +862,7 @@ void R_dsgraph_structure::render_R1_box(IRender_Sector::sector_id_t sector_id, F
                 for (u32 pass = 0; pass < E2->passes.size(); pass++)
                 {
                     cmd_list.set_Element(E2, pass);
-                    V->Render(cmd_list, -1.f, o.phase == CRender::PHASE_SMAP);
+                    V->Render(cmd_list, -1.f, da_use_fast_geo(cmd_list, o.phase));
                 }
             }
         }

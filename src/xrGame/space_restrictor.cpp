@@ -120,6 +120,11 @@ void CSpaceRestrictor::net_Destroy()
 
 bool CSpaceRestrictor::inside(const Fsphere& sphere) const
 {
+    // [DA_PORT] prepare() перестраивает общий кэш сфер и коробок НА МЕСТЕ, поэтому два
+    // построителя пути, добравшиеся до холодного ограничителя вместе, перевыделяют векторы друг
+    // под другом. Перестроение и зависящие от него чтения — одна критическая секция.
+    std::lock_guard lock(space_restriction_lock());
+
     if (!actual())
         prepare();
 

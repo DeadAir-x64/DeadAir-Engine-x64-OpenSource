@@ -1,0 +1,309 @@
+<w>
+	<!-- [DA_PORT] added by the x64 port: in-game tuner. Labels are string-table ids, so this
+	     file stays pure ASCII and cannot break on encoding. Generated layout: rows are laid out
+	     from one table, so adding a knob cannot leave a slider overlapping the buttons. -->
+	<da_tune>
+		<background x="0" y="0" width="440" height="548" stretch="1">
+			<texture>ui_inGame2_message_box</texture>
+		</background>
+		<cap_title x="16" y="10" width="404" height="24">
+			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_da_tune_title</text>
+		</cap_title>
+		<tab x="14" y="44" width="412" height="26">
+			<button id="view" x="0" y="0" width="100" height="26">
+				<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_da_tune_tab_view</text>
+				<text_color>
+					<e r="191" g="191" b="191"/>
+					<t r="117" g="114" b="97"/>
+					<d r="178" g="178" b="125"/>
+					<h r="0" g="0" b="0"/>
+				</text_color>
+				<texture>ui_button_ordinary</texture>
+			</button>
+			<button id="cross" x="104" y="0" width="100" height="26">
+				<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_da_cross_tab</text>
+				<text_color>
+					<e r="191" g="191" b="191"/>
+					<t r="117" g="114" b="97"/>
+					<d r="178" g="178" b="125"/>
+					<h r="0" g="0" b="0"/>
+				</text_color>
+				<texture>ui_button_ordinary</texture>
+			</button>
+			<button id="image" x="208" y="0" width="100" height="26">
+				<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_da_tune_tab_image</text>
+				<text_color>
+					<e r="191" g="191" b="191"/>
+					<t r="117" g="114" b="97"/>
+					<d r="178" g="178" b="125"/>
+					<h r="0" g="0" b="0"/>
+				</text_color>
+				<texture>ui_button_ordinary</texture>
+			</button>
+			<button id="color" x="312" y="0" width="100" height="26">
+				<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_da_tune_tab_color</text>
+				<text_color>
+					<e r="191" g="191" b="191"/>
+					<t r="117" g="114" b="97"/>
+					<d r="178" g="178" b="125"/>
+					<h r="0" g="0" b="0"/>
+				</text_color>
+				<texture>ui_button_ordinary</texture>
+			</button>
+		</tab>
+		<view>
+			<cap_0 x="16" y="81" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_hud_fov</text>
+			</cap_0>
+			<track_0 x="172" y="80" width="170" height="20" step="0.005">
+				<options_item entry="hud_fov" group="da_tune"/>
+			</track_0>
+			<val_0 x="352" y="81" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_0>
+			<cap_1 x="16" y="111" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_pos_x</text>
+			</cap_1>
+			<track_1 x="172" y="110" width="170" height="20" step="0.002">
+				<options_item entry="da_hud_pos_x" group="da_tune"/>
+			</track_1>
+			<val_1 x="352" y="111" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_1>
+			<cap_2 x="16" y="141" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_pos_y</text>
+			</cap_2>
+			<track_2 x="172" y="140" width="170" height="20" step="0.002">
+				<options_item entry="da_hud_pos_y" group="da_tune"/>
+			</track_2>
+			<val_2 x="352" y="141" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_2>
+			<cap_3 x="16" y="171" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_pos_z</text>
+			</cap_3>
+			<track_3 x="172" y="170" width="170" height="20" step="0.002">
+				<options_item entry="da_hud_pos_z" group="da_tune"/>
+			</track_3>
+			<val_3 x="352" y="171" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_3>
+			<cap_4 x="16" y="201" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_fov</text>
+			</cap_4>
+			<track_4 x="172" y="200" width="170" height="20" step="1">
+				<options_item entry="fov" group="da_tune"/>
+			</track_4>
+			<val_4 x="352" y="201" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_4>
+		</view>
+		<image>
+			<cap_0 x="16" y="81" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_gamma</text>
+			</cap_0>
+			<track_0 x="172" y="80" width="170" height="20" step="0.01">
+				<options_item entry="rs_c_gamma" group="da_tune"/>
+			</track_0>
+			<val_0 x="352" y="81" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_0>
+			<cap_1 x="16" y="111" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_contrast</text>
+			</cap_1>
+			<track_1 x="172" y="110" width="170" height="20" step="0.01">
+				<options_item entry="rs_c_contrast" group="da_tune"/>
+			</track_1>
+			<val_1 x="352" y="111" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_1>
+			<cap_2 x="16" y="141" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_brightness</text>
+			</cap_2>
+			<track_2 x="172" y="140" width="170" height="20" step="0.01">
+				<options_item entry="rs_c_brightness" group="da_tune"/>
+			</track_2>
+			<val_2 x="352" y="141" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_2>
+		</image>
+		<color>
+			<cap_0 x="16" y="81" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_color_r</text>
+			</cap_0>
+			<track_0 x="172" y="80" width="170" height="20" step="0.01">
+				<options_item entry="r__color_base_r" group="da_tune"/>
+			</track_0>
+			<val_0 x="352" y="81" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_0>
+			<cap_1 x="16" y="111" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_color_g</text>
+			</cap_1>
+			<track_1 x="172" y="110" width="170" height="20" step="0.01">
+				<options_item entry="r__color_base_g" group="da_tune"/>
+			</track_1>
+			<val_1 x="352" y="111" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_1>
+			<cap_2 x="16" y="141" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_color_b</text>
+			</cap_2>
+			<track_2 x="172" y="140" width="170" height="20" step="0.01">
+				<options_item entry="r__color_base_b" group="da_tune"/>
+			</track_2>
+			<val_2 x="352" y="141" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_2>
+			<cap_3 x="16" y="171" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_vibrance</text>
+			</cap_3>
+			<track_3 x="172" y="170" width="170" height="20" step="0.01">
+				<options_item entry="r2_vibrance_val" group="da_tune"/>
+			</track_3>
+			<val_3 x="352" y="171" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_3>
+		</color>
+		<cross>
+			<cap_0 x="16" y="81" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_style</text>
+			</cap_0>
+			<track_0 x="172" y="80" width="170" height="20" step="1" is_integer="1" min="-1" max="23">
+				<options_item entry="da_cross_style" group="da_tune"/>
+			</track_0>
+			<val_0 x="352" y="81" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_0>
+			<cap_1 x="16" y="111" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_thick</text>
+			</cap_1>
+			<track_1 x="172" y="110" width="170" height="20" step="1" is_integer="1" min="1" max="12">
+				<options_item entry="da_cross_thick" group="da_tune"/>
+			</track_1>
+			<val_1 x="352" y="111" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_1>
+			<cap_2 x="16" y="141" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_len</text>
+			</cap_2>
+			<track_2 x="172" y="140" width="170" height="20" step="1" is_integer="1" min="1" max="200">
+				<options_item entry="da_cross_len" group="da_tune"/>
+			</track_2>
+			<val_2 x="352" y="141" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_2>
+			<cap_3 x="16" y="171" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_gap</text>
+			</cap_3>
+			<track_3 x="172" y="170" width="170" height="20" step="1" is_integer="1" min="0" max="200">
+				<options_item entry="da_cross_gap" group="da_tune"/>
+			</track_3>
+			<val_3 x="352" y="171" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_3>
+			<cap_4 x="16" y="201" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_dot</text>
+			</cap_4>
+			<track_4 x="172" y="200" width="170" height="20" step="1" is_integer="1" min="0" max="1">
+				<options_item entry="da_cross_dot" group="da_tune"/>
+			</track_4>
+			<val_4 x="352" y="201" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_4>
+			<cap_5 x="16" y="231" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_outline</text>
+			</cap_5>
+			<track_5 x="172" y="230" width="170" height="20" step="1" is_integer="1" min="0" max="1">
+				<options_item entry="da_cross_outline" group="da_tune"/>
+			</track_5>
+			<val_5 x="352" y="231" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_5>
+			<cap_6 x="16" y="261" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_dynamic</text>
+			</cap_6>
+			<track_6 x="172" y="260" width="170" height="20" step="1" is_integer="1" min="0" max="1">
+				<options_item entry="da_cross_dynamic" group="da_tune"/>
+			</track_6>
+			<val_6 x="352" y="261" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_6>
+			<cap_7 x="16" y="291" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_r</text>
+			</cap_7>
+			<track_7 x="172" y="290" width="170" height="20" step="5" is_integer="1" min="0" max="255">
+				<options_item entry="da_cross_r" group="da_tune"/>
+			</track_7>
+			<val_7 x="352" y="291" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_7>
+			<cap_8 x="16" y="321" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_g</text>
+			</cap_8>
+			<track_8 x="172" y="320" width="170" height="20" step="5" is_integer="1" min="0" max="255">
+				<options_item entry="da_cross_g" group="da_tune"/>
+			</track_8>
+			<val_8 x="352" y="321" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_8>
+			<cap_9 x="16" y="351" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_b</text>
+			</cap_9>
+			<track_9 x="172" y="350" width="170" height="20" step="5" is_integer="1" min="0" max="255">
+				<options_item entry="da_cross_b" group="da_tune"/>
+			</track_9>
+			<val_9 x="352" y="351" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_9>
+			<cap_10 x="16" y="381" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_a</text>
+			</cap_10>
+			<track_10 x="172" y="380" width="170" height="20" step="5" is_integer="1" min="0" max="255">
+				<options_item entry="da_cross_a" group="da_tune"/>
+			</track_10>
+			<val_10 x="352" y="381" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_10>
+			<cap_11 x="16" y="411" width="150" height="20">
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_cross_relation</text>
+			</cap_11>
+			<track_11 x="172" y="410" width="170" height="20" step="1" is_integer="1" min="0" max="1">
+				<options_item entry="da_cross_relation" group="da_tune"/>
+			</track_11>
+			<val_11 x="352" y="411" width="66" height="20">
+				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
+			</val_11>
+		</cross>
+			<btn_cancel x="14" y="444" width="120" height="26">
+				<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_da_tune_cancel</text>
+				<text_color>
+					<e r="191" g="191" b="191"/>
+					<t r="117" g="114" b="97"/>
+					<d r="178" g="178" b="125"/>
+					<h r="0" g="0" b="0"/>
+				</text_color>
+				<texture>ui_button_ordinary</texture>
+			</btn_cancel>
+			<btn_defaults x="142" y="444" width="130" height="26">
+				<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_da_tune_defaults</text>
+				<text_color>
+					<e r="191" g="191" b="191"/>
+					<t r="117" g="114" b="97"/>
+					<d r="178" g="178" b="125"/>
+					<h r="0" g="0" b="0"/>
+				</text_color>
+				<texture>ui_button_ordinary</texture>
+			</btn_defaults>
+			<btn_save x="280" y="444" width="146" height="26">
+				<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_da_tune_save</text>
+				<text_color>
+					<e r="191" g="191" b="191"/>
+					<t r="117" g="114" b="97"/>
+					<d r="178" g="178" b="125"/>
+					<h r="0" g="0" b="0"/>
+				</text_color>
+				<texture>ui_button_ordinary</texture>
+			</btn_save>
+	</da_tune>
+</w>

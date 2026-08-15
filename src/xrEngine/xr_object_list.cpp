@@ -481,17 +481,47 @@ void CObjectList::Update(bool bForce)
         for (int it = destroy_queue.size() - 1; it >= 0; it--)
             g_pGameLevel->Sound->object_relcase(destroy_queue[it]);
 
-        RELCASE_CALLBACK_VEC::iterator it = m_relcase_callbacks.begin();
-        const RELCASE_CALLBACK_VEC::iterator ite = m_relcase_callbacks.end();
-        for (; it != ite; ++it)
+        // ⛔ [DA_PORT] Здесь был обход с ЗАПОМНЕННЫМ заранее концом и вызовом по сырому указателю.
+        //
+        // Симптом: на выгрузке уровня игра прыгала по адресу 0 — «исполнение по адресу
+        // 0000000000000000», машинного стека нет вовсе, разматывать нечего. Ловилось не всегда:
+        // потребовался переход с зажжённой лампой в руках, а вход-выход тем же переходом проходил
+        // чисто.
+        //
+        // Механизм. `relcase_unregister` снимает обработчик перестановкой последнего на его место
+        // (swap-with-back) и `pop_back()`. Любой обработчик в этом цикле может привести к
+        // уничтожению объекта, а `~pure_relcase` зовёт как раз `relcase_unregister`. Вектор
+        // укорачивается — и запомненный `ite` начинает указывать ЗА новый конец. Дальше цикл читает
+        // освободившиеся ячейки и зовёт то, что в них лежит: мусор или ноль.
+        //
+        // Инвариант, который это стерёг, был записан как `VERIFY(*(*it).m_ID == it - begin())` — а
+        // VERIFY в отгружаемой сборке исчезает (xrDebug_macros.h). Тот же класс, что уже был у нас
+        // с пустыми списками анимаций и с записью за границы массива костей.
+        //
+        // Второй дефект той же перестановки: элемент, переехавший на уже пройденный индекс, обход
+        // ПРОПУСКАЛ — его обработчик о смерти объекта не узнавал.
+        //
+        // Починка: идти по живому размеру, а шагать вперёд только если на этом индексе остался тот
+        // же обработчик. Если его сняли, на месте оказался переехавший — и его надо обойти тоже.
+        for (size_t ci = 0; ci < m_relcase_callbacks.size();)
         {
-            VERIFY(*(*it).m_ID == (it - m_relcase_callbacks.begin()));
+            const SRelcasePair entry = m_relcase_callbacks[ci];
             for (auto& dit : destroy_queue)
-            {
-                (*it).m_Callback(dit);
-                g_pGameLevel->pHUD->net_Relcase(dit);
-            }
+                entry.m_Callback(dit);
+
+            if (ci < m_relcase_callbacks.size() && m_relcase_callbacks[ci].m_ID == entry.m_ID)
+                ++ci;
         }
+
+        // [DA_PORT] Интерфейс уведомляется ОТДЕЛЬНО и ровно один раз на объект.
+        //
+        // Раньше этот вызов был вложен в цикл обработчиков, и от этого страдал дважды: при N
+        // обработчиках он повторялся N раз на каждый удаляемый объект, а при ПУСТОМ списке не
+        // выполнялся вовсе. Второе опаснее: интерфейс держит предмет в руках, и неполученное
+        // уведомление оставляет ему висячий указатель на уничтоженный предмет — ровно та же беда,
+        // от которой этот проход и заведён.
+        for (auto& dit : destroy_queue)
+            g_pGameLevel->pHUD->net_Relcase(dit);
 
         // Destroy
         for (int it = destroy_queue.size() - 1; it >= 0; it--)
@@ -796,7 +826,23 @@ void CObjectList::relcase_register(RELCASE_CALLBACK cb, int* ID)
 
 void CObjectList::relcase_unregister(int* ID)
 {
-    VERIFY(m_relcase_callbacks[*ID].m_ID == ID);
+    // ⛔ [DA_PORT] Проверка вместо VERIFY: он исчезает в отгружаемой сборке, а следующая строка —
+    // запись ПО ИНДЕКСУ ИЗ САМОГО СНИМАЕМОГО ОБЪЕКТА. Негодный индекс здесь означает запись мимо
+    // вектора, то есть порчу чужой памяти, которая проявится позже и в другом месте.
+    //
+    // Негодным он бывает законно: `pure_relcase` заводится и разрушается по всему движку, и объект,
+    // не успевший зарегистрироваться (или снятый дважды), приходит сюда с индексом от прошлой
+    // жизни. Раньше это молча писало в чужое.
+    if (!ID || *ID < 0 || size_t(*ID) >= m_relcase_callbacks.size() || m_relcase_callbacks[*ID].m_ID != ID)
+    {
+        static u32 da_reported = 0;
+        if (++da_reported <= 5)
+            Msg("! [DA_PORT] снятие обработчика уборки пропущено: индекс %d при %u записях — запись "
+                "мимо вектора предотвращена (случаев %u)",
+                ID ? *ID : -1, u32(m_relcase_callbacks.size()), da_reported);
+        return;
+    }
+
     m_relcase_callbacks[*ID] = m_relcase_callbacks.back();
     *m_relcase_callbacks.back().m_ID = *ID;
     m_relcase_callbacks.pop_back();

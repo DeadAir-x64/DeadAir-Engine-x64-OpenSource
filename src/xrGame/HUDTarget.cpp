@@ -120,6 +120,12 @@ void CHUDTarget::Render()
 
     BOOL b_do_rendering = (psHUD_Flags.is(HUD_CROSSHAIR | HUD_CROSSHAIR_RT | HUD_CROSSHAIR_RT2));
 
+    // [DA_PORT] Предпросмотр перебивает обычные условия: пока открыто окно подгонки, марку надо
+    // видеть, иначе ползунки крутятся вслепую. Разбор — у флага в HUDCrosshair.cpp.
+    extern int ps_da_cross_preview;
+    if (ps_da_cross_preview)
+        b_do_rendering = TRUE;
+
     if (!b_do_rendering)
         return;
 
@@ -263,6 +269,11 @@ void CHUDTarget::Render()
     }
 
     //отрендерить кружочек или крестик
+    // [DA_PORT] Условие оставлено СТОКОВЫМ намеренно. Здесь стояла оговорка «в предпросмотре всегда
+    // марка», и она отнимала у безоружного игрока привычный кружок: без оружия движок зовёт
+    // ShowCrosshair(false), и эта ветка — ровно то место, где кружок и рисуется.
+    // Предпросмотр по-прежнему работает, но выше: он снимает общий запрет на отрисовку марки, а
+    // выбор между кружком и марком остаётся за игрой.
     if (!m_bShowCrosshair)
     {
         GEnv.UIRender->StartPrimitive(6, IUIRender::ptTriList, UI().m_currentPointType);
@@ -297,6 +308,18 @@ void CHUDTarget::Render()
     }
     else
     {
+        // [DA_PORT] Кто под прицелом — врагу красный, нейтралу жёлтый, союзнику зелёный.
+        //
+        // Отношение движок считает сам, чуть выше: C становится C_ON_ENEMY / C_ON_NEUTRAL /
+        // C_ON_FRIEND и остаётся C_DEFAULT, когда под прицелом никого. Передаём это отдельным
+        // признаком, а не цветом: у марки свой цвет из настроек, и подменять его целиком нельзя —
+        // иначе игрок терял бы подобранный оттенок каждый раз, когда никого нет в прицеле.
+        //
+        // ⚠️ Весь разбор отношений живёт внутри `if (psHUD_Flags.test(HUD_INFO))`. Погаснет этот
+        // флаг — подсветка молча перестанет работать, и виновата будет не она.
+        extern int g_da_cross_target;
+        g_da_cross_target = (C == C_ON_ENEMY) ? 1 : ((C == C_ON_NEUTRAL) ? 2 : ((C == C_ON_FRIEND) ? 3 : 0));
+
         //отрендерить прицел
         HUDCrosshair.cross_color = C;
         HUDCrosshair.OnRender();

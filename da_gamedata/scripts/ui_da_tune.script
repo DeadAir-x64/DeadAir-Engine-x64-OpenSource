@@ -1,0 +1,220 @@
+-- [DA_PORT] Экранная подгонка обзора оружия и цвета.
+--
+-- Зачем окно, а не пункты в меню. Обзор оружия, его положение в руках, гамма/контраст/яркость и
+-- цветокоррекция — это величины, которые оценивают ГЛАЗАМИ. В меню их подобрать нельзя: меню
+-- закрывает собой ровно ту картинку, ради которой ползунок и двигают. Поэтому «Изображение» и
+-- «Цветокоррекция» убраны из настроек видео целиком и живут здесь, поверх живой игры.
+--
+-- Тем же путём идут и в других играх: в Anomaly для этого есть отдельный режим hud_adjust, в
+-- сетевых шутерах — консольные viewmodel_offset_*, которые крутят прямо в матче.
+--
+-- Как устроено. Каждый ползунок привязан в разметке к КОНСОЛЬНОЙ КОМАНДЕ (options_item entry).
+-- Из неё же движок берёт и границы (Console->GetFloat отдаёт значение вместе с min/max), поэтому
+-- разойтись разметке с движком негде. Значение уезжает в команду сразу при движении мыши — иначе
+-- пропадает весь смысл затеи.
+--
+-- ОСТОРОЖНО: пишем da_console_silent, а не console:execute. Обычный execute кладёт строку в лог,
+-- а живой ползунок дёргается каждый кадр. Лог у нас — основной инструмент разбора вылетов,
+-- засорять его ради интерфейса нельзя.
+
+local PAGES = {
+	{ id = "view",  cmds = { "hud_fov", "da_hud_pos_x", "da_hud_pos_y", "da_hud_pos_z", "fov" },
+	                fmt  = { "%.3f", "%.3f", "%.3f", "%.3f", "%.0f" } },
+	{ id = "image", cmds = { "rs_c_gamma", "rs_c_contrast", "rs_c_brightness" },
+	                fmt  = { "%.2f", "%.2f", "%.2f" } },
+	{ id = "color", cmds = { "r__color_base_r", "r__color_base_g", "r__color_base_b", "r2_vibrance_val" },
+	                fmt  = { "%.2f", "%.2f", "%.2f", "%.2f" } },
+	-- ОСТОРОЖНО: вся вкладка прицела ЦЕЛОЧИСЛЕННАЯ. У ползунка с is_integer="1" движок заполняет только
+	-- целое поле, а вещественное остаётся нулём — читать его GetFValue значит уверенно печатать 0
+	-- рядом с ручкой, стоящей у правого края. На этом в проекте уже обжигались (анизотропия).
+	{ id = "cross", int = true,
+	  cmds = { "da_cross_style", "da_cross_thick", "da_cross_len", "da_cross_gap", "da_cross_dot",
+	           "da_cross_outline", "da_cross_dynamic", "da_cross_r", "da_cross_g", "da_cross_b",
+	           "da_cross_a", "da_cross_relation" },
+	  fmt  = { "%.0f", "%.0f", "%.0f", "%.0f", "%.0f", "%.0f", "%.0f", "%.0f", "%.0f", "%.0f", "%.0f", "%.0f" } },
+}
+
+class "da_tune_ui" (CUIScriptWnd)
+
+function da_tune_ui:__init() super()
+	self.rows  = {}
+	self.pages = {}
+	self:InitControls()
+	self:InitCallBacks()
+	self.ready = false
+end
+
+function da_tune_ui:__finalize()
+	self:Preview(false)
+end
+
+function da_tune_ui:InitControls()
+	self:SetWndRect(Frect():set(0,0,1024,768))
+	-- Левый верхний угол: оружие держат справа-снизу, и окно там перекрывало ровно то,
+	-- что настраивают.
+	self:SetWndPos(vector2():set(20,20))
+	self:SetAutoDelete(true)
+
+	local xml = CScriptXmlInit()
+	xml:ParseFile("ui_da_tune.xml")
+
+	xml:InitStatic("da_tune:background", self)
+	xml:InitStatic("da_tune:cap_title",  self)
+
+	self.tab = xml:InitTab("da_tune:tab", self)
+	self:Register(self.tab, "tab")
+
+	for _,p in ipairs(PAGES) do
+		local wnd = CUIWindow()
+		wnd:SetAutoDelete(true)
+		wnd:SetWndRect(Frect():set(0,0,440,548))
+		self:AttachChild(wnd)
+		self.pages[p.id] = wnd
+
+		for i,cmd in ipairs(p.cmds) do
+			local path = "da_tune:"..p.id..":"
+			xml:InitStatic(path.."cap_"..(i-1), wnd)
+			local bar = xml:InitTrackBar(path.."track_"..(i-1), wnd)
+			local lbl = xml:InitStatic(path.."val_"..(i-1), wnd)
+			table.insert(self.rows, { cmd = cmd, fmt = p.fmt[i], bar = bar, label = lbl, int = p.int })
+		end
+	end
+
+	local btn = xml:Init3tButton("da_tune:btn_cancel", self)
+	self:Register(btn, "btn_cancel")
+	btn = xml:Init3tButton("da_tune:btn_defaults", self)
+	self:Register(btn, "btn_defaults")
+	btn = xml:Init3tButton("da_tune:btn_save", self)
+	self:Register(btn, "btn_save")
+
+	self:ShowPage("view")
+	self:Preview(true)
+end
+
+-- Пока окно открыто, перекрестие рисуется принудительно: иначе правки не видны до закрытия,
+-- и настройка идёт вслепую. Снимаем во ВСЕХ выходах, включая финализатор, чтобы флаг не
+-- пережил окно и не остался включённым в обычной игре.
+function da_tune_ui:Preview(on)
+	da_console_silent("da_cross_preview " .. (on and "1" or "0"))
+end
+
+function da_tune_ui:InitCallBacks()
+	self:AddCallback("tab",        ui_events.TAB_CHANGED,    self.OnTabChange, self)
+	self:AddCallback("btn_cancel", ui_events.BUTTON_CLICKED, self.OnCancel,    self)
+	self:AddCallback("btn_defaults", ui_events.BUTTON_CLICKED, self.OnDefaults, self)
+	self:AddCallback("btn_save",   ui_events.BUTTON_CLICKED, self.OnSave,      self)
+end
+
+function da_tune_ui:ShowPage(id)
+	for k,w in pairs(self.pages) do
+		w:Show(k == id)
+	end
+end
+
+function da_tune_ui:OnTabChange()
+	self:ShowPage(self.tab:GetActiveId())
+end
+
+-- Запоминаем, с чем игрок пришёл: «Отмена» это единственный способ не потерять исходную
+-- настройку, если увёл ползунок слишком далеко.
+-- Значение ползунка: у целочисленных заполнено только целое поле.
+local function bar_value(r)
+	if (r.int) then
+		return r.bar:GetIValue()
+	end
+	return r.bar:GetFValue()
+end
+
+function da_tune_ui:LoadValues()
+	local c = get_console()
+	for _,r in ipairs(self.rows) do
+		r.start = c:get_float(r.cmd)
+		r.bar:SetCurrentValue()
+		r.last  = bar_value(r)
+	end
+end
+
+function da_tune_ui:Update()
+	CUIScriptWnd.Update(self)
+
+	-- Первый заход: только теперь окно разложено и ползунки способны принять значение. Читаем и
+	-- НИЧЕГО не пишем, иначе в команды уедет положение ещё ненастроенных ручек.
+	if not (self.ready) then
+		self.ready = true
+		self:LoadValues()
+		return
+	end
+
+	for _,r in ipairs(self.rows) do
+		local v = bar_value(r)
+		if (v ~= r.last) then
+			r.last = v
+			da_console_silent(string.format(r.int and "%s %d" or "%s %.5f", r.cmd, v))
+		end
+		r.label:TextControl():SetText(string.format(r.fmt, v))
+	end
+end
+
+function da_tune_ui:OnCancel()
+	self:Preview(false)
+	for _,r in ipairs(self.rows) do
+		da_console_silent(string.format(r.int and "%s %d" or "%s %.5f", r.cmd, r.start))
+	end
+	self:HideDialog()
+end
+
+-- Вернуть всё к значениям по умолчанию. Список живёт в движке (команда da_tune_defaults), а не
+-- здесь: числа должны лежать в одном месте, иначе «стандартные» разойдутся с движком при первой же
+-- правке, и никто этого не заметит.
+--
+-- После сброса ползунки надо пересобрать: они читают привязанную команду только по SetCurrentValue,
+-- сами за ней не следят. Заодно обновляем last, иначе Update увидит расхождение и тут же вернёт
+-- старое значение обратно в команду.
+function da_tune_ui:OnDefaults()
+	get_console():execute("da_tune_defaults")
+	for _,r in ipairs(self.rows) do
+		r.bar:SetCurrentValue()
+		r.last = bar_value(r)
+	end
+end
+
+function da_tune_ui:OnSave()
+	self:Preview(false)
+	-- Пишем настройку сразу: подобранное должно пережить выход из игры, а падение между подгонкой
+	-- и выходом отняло бы всю работу.
+	get_console():execute("cfg_save")
+	self:HideDialog()
+end
+
+function da_tune_ui:OnKeyboard(dik, keyboard_action)
+	CUIScriptWnd.OnKeyboard(self, dik, keyboard_action)
+	if (keyboard_action == ui_events.WINDOW_KEY_PRESSED) then
+		if (dik == DIK_keys.DIK_ESCAPE) then
+			-- ESC СОХРАНЯЕТ, а не откатывает. Игрок подобрал настройку и закрыл окно привычной
+			-- клавишей — терять его работу за это нельзя. Откат остаётся отдельной кнопкой «Отмена»,
+			-- то есть требует осознанного нажатия.
+			self:OnSave()
+		end
+	end
+	return true
+end
+
+function show()
+	local hud = get_hud()
+	if not (hud) then
+		return false
+	end
+	hud:HideActorMenu()
+	local d = da_tune_ui()
+	d:ShowDialog(true)
+	return true
+end
+
+-- Открытие СЛЕДУЮЩИМ кадром. Кнопка в настройках сначала гасит меню, и показывать окно в том же
+-- кадре нельзя: меню ещё живо, а окно уже просит себе ввод.
+function show_deferred()
+	CreateTimeEvent("da_tune", "open", 0, function()
+		show()
+		return true
+	end)
+end

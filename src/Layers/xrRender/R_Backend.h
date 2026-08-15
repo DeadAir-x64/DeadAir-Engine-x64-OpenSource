@@ -521,6 +521,23 @@ public:
 #endif
     ICF void Render(D3DPRIMITIVETYPE T, u32 startV, u32 PC);
 
+    // ⛔ [DA_PORT] Сброс кэша НЕПОСРЕДСТВЕННОГО контекста после отправки списка команд.
+    //
+    // `ExecuteCommandList(..., FALSE)` по контракту DirectX 11 возвращает непосредственный контекст
+    // к состоянию ПО УМОЛЧАНИЮ. Наш бэкенд при этом продолжает считать, что привязано то же, что и
+    // до отправки, и следующая привязка пропускается как «уже стоит» — а на деле не стоит ничего.
+    //
+    // Отправок за кадр несколько: три каскада солнца и дождь. То есть несколько раз за кадр
+    // рисование шло с умолчаниями вместо нужных целей, шейдеров и текстур.
+    //
+    // Отдельная функция, а не вызов на месте: макрос RCache объявлен НИЖЕ по этому заголовку, и
+    // внутри тела здесь он ещё не раскрывается.
+    //
+    // ⚠️ Статическая намеренно. `Invalidate()` последней строкой ставит `context_id = IMM_CTX_ID`;
+    // позови мы его на `this` (а это ОТЛОЖЕННЫЙ бэкенд) — он молча переключился бы на чужой
+    // контекст. Сбрасывать надо непосредственный, и только его.
+    static void da_invalidate_immediate();
+
     ICF void submit()
     {
 #ifdef USE_DX11
@@ -529,6 +546,7 @@ public:
         CHK_DX(HW.get_context(context_id)->FinishCommandList(false, &pCommandList));
         HW.get_context(CHW::IMM_CTX_ID)->ExecuteCommandList(pCommandList, false);
         _RELEASE(pCommandList);
+        da_invalidate_immediate(); // [DA_PORT] разбор — у объявления выше
 #endif
     }
 
@@ -600,8 +618,16 @@ private:
     void ApplyPrimitieTopology(D3D_PRIMITIVE_TOPOLOGY Topology);
     bool CBuffersNeedUpdate(ref_cbuffer buf1[MaxCBuffers], ref_cbuffer buf2[MaxCBuffers], u32& uiMin, u32& uiMax);
 
+public:
+    // [DA_PORT] Читает ли текущий вершинный шейдер развёртку. Разбор — у da_vs_needs_uv.
+    bool da_vs_needs_uv();
+
 private:
     ID3DBlob* m_pInputSignature{ nullptr };
+    // Ответ запоминается на последнюю сигнатуру: шейдер меняется десятки раз за кадр, а разбор
+    // двоичного контейнера стоит несравнимо дороже сравнения указателя.
+    ID3DBlob* da_uv_sig_memo{ nullptr };
+    bool da_uv_need_memo{ false };
     ID3DUserDefinedAnnotation* pAnnotation{ nullptr };
 
     bool m_bChangedRTorZB;

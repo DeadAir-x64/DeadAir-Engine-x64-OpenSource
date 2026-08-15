@@ -161,6 +161,15 @@ void CBackend::Invalidate()
         matrix = nullptr;
 }
 
+// [DA_PORT] Сброс кэша непосредственного контекста после отправки списка команд.
+// Разбор, зачем и почему статическая, — у объявления в R_Backend.h рядом с submit().
+void CBackend::da_invalidate_immediate()
+{
+#ifdef USE_DX11
+    RCache.Invalidate();
+#endif
+}
+
 void CBackend::set_ClipPlanes(u32 _enable, Fplane* _planes /*=NULL */, u32 count /* =0*/)
 {
 #if defined(USE_DX11) || defined(USE_OGL)

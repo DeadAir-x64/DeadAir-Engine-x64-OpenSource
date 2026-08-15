@@ -421,4 +421,120 @@
 	<string id="ui_da_wpn_breakage_none">
 		<text>none</text>
 	</string>
+
+	<!-- [DA_PORT] added by the x64 port: on-screen tuner for weapon FOV / colour correction -->
+	<string id="ui_mm_da_tune_btn">
+		<text>Adjust in game</text>
+	</string>
+	<string id="ui_da_tune_title">
+		<text>Weapon and colour adjustment</text>
+	</string>
+	<string id="ui_da_tune_hud_fov">
+		<text>Weapon FOV</text>
+	</string>
+	<string id="ui_da_tune_pos_x">
+		<text>Weapon: right / left</text>
+	</string>
+	<string id="ui_da_tune_pos_y">
+		<text>Weapon: up / down</text>
+	</string>
+	<string id="ui_da_tune_pos_z">
+		<text>Weapon: forward / back</text>
+	</string>
+	<string id="ui_da_tune_brightness">
+		<text>Brightness</text>
+	</string>
+	<string id="ui_da_tune_gamma">
+		<text>Gamma</text>
+	</string>
+	<string id="ui_da_tune_contrast">
+		<text>Contrast</text>
+	</string>
+	<string id="ui_da_tune_hint1">
+		<text>Arrows: up/down - row, left/right - value, PgUp/PgDn - coarse step</text>
+	</string>
+	<string id="ui_da_tune_hint2">
+		<text>Backspace - restore, ESC - leave and save</text>
+	</string>
+	<string id="ui_da_tune_fov">
+		<text>Camera FOV</text>
+	</string>
+	<string id="ui_da_tune_color_r">
+		<text>Colour: red</text>
+	</string>
+	<string id="ui_da_tune_color_g">
+		<text>Colour: green</text>
+	</string>
+	<string id="ui_da_tune_color_b">
+		<text>Colour: blue</text>
+	</string>
+	<string id="ui_da_tune_vibrance">
+		<text>Saturation</text>
+	</string>
+	<string id="ui_mm_grp_da_tune">
+		<text>Weapon and colour adjustment</text>
+	</string>
+	<string id="ui_da_tune_tab_view">
+		<text>View</text>
+	</string>
+	<string id="ui_da_tune_tab_image">
+		<text>Image</text>
+	</string>
+	<string id="ui_da_tune_tab_color">
+		<text>Colour correction</text>
+	</string>
+	<string id="ui_da_tune_cancel">
+		<text>Cancel</text>
+	</string>
+	<string id="ui_da_tune_save">
+		<text>Save and hide</text>
+	</string>
+	<string id="ui_da_tune_aim_align">
+		<text>Barrel to crosshair</text>
+	</string>
+	<string id="ui_da_tune_dump">
+		<text>To config</text>
+	</string>
+	<string id="ui_da_tune_defaults">
+		<text>Restore defaults</text>
+	</string>
+	<string id="ui_da_cross_tab">
+		<text>Crosshair</text>
+	</string>
+	<string id="ui_da_cross_style">
+		<text>Style</text>
+	</string>
+	<string id="ui_da_cross_thick">
+		<text>Thickness</text>
+	</string>
+	<string id="ui_da_cross_len">
+		<text>Line length, px</text>
+	</string>
+	<string id="ui_da_cross_gap">
+		<text>Centre gap, px</text>
+	</string>
+	<string id="ui_da_cross_dot">
+		<text>Centre dot</text>
+	</string>
+	<string id="ui_da_cross_outline">
+		<text>Dark outline</text>
+	</string>
+	<string id="ui_da_cross_dynamic">
+		<text>Follows weapon spread</text>
+	</string>
+	<string id="ui_da_cross_r">
+		<text>Colour: red</text>
+	</string>
+	<string id="ui_da_cross_g">
+		<text>Colour: green</text>
+	</string>
+	<string id="ui_da_cross_b">
+		<text>Colour: blue</text>
+	</string>
+	<string id="ui_da_cross_a">
+		<text>Opacity</text>
+	</string>
+	<string id="ui_da_cross_relation">
+		<text>Target highlight</text>
+	</string>
 </string_table>

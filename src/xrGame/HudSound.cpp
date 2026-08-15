@@ -99,17 +99,29 @@ void HUD_SOUND_ITEM::PlaySound(
 
     hud_snd.m_activeSnd = &hud_snd.sounds[index];
 
-    //if (hud_snd.m_b_exclusive)
+    // [DA_PORT] Неэксклюзивные одиночные звуки играют ОТВЯЗАННО — как в CoC и в Dead Air 1.0.
+    //
+    // Симптом: выстрелы звучат обрубленными на всём оружии. Причина в том, что отслеживаемый
+    // источник у предмета ОДИН: следующий выстрел занимает его и обрывает хвост предыдущего, а
+    // хвост у выстрела — это как раз эхо и раскат.
+    //
+    // Эта ветка есть у автора, но современная база upstream принесла её ЗАКОММЕНТИРОВАННОЙ, и
+    // условие вместе с ней: играло всегда по эксклюзивной ветке. Возвращаем как было. Эксклюзивные
+    // и зацикленные звуки (перезарядка, движение затвора) остаются отслеживаемыми — их обрывать
+    // как раз надо, иначе они наложатся сами на себя.
+    //
+    // Найдено не у себя: Dead Air Refined, коммит fbcc00fd от 15.08.2026.
+    if (hud_snd.m_b_exclusive)
     {
         hud_snd.m_activeSnd->snd.play_at_pos(const_cast<IGameObject*>(parent),
             flags & sm_2D ? Fvector().set(0, 0, 0) : position, flags, hud_snd.m_activeSnd->delay);
     }
-    //else
-    //{
-    //    Fvector pos = flags & sm_2D ? Fvector{} : position;
-    //    hud_snd.m_activeSnd->snd.play_no_feedback(const_cast<IGameObject*>(parent),
-    //            flags, hud_snd.m_activeSnd->delay, &pos, nullptr, nullptr, nullptr);
-    //}
+    else
+    {
+        Fvector pos = flags & sm_2D ? Fvector{} : position;
+        hud_snd.m_activeSnd->snd.play_no_feedback(const_cast<IGameObject*>(parent),
+            flags, hud_snd.m_activeSnd->delay, &pos, nullptr, nullptr, nullptr);
+    }
     hud_snd.m_activeSnd->snd.set_volume(hud_snd.m_activeSnd->volume * (b_hud_mode ? psHUDSoundVolume : 1.0f));
 }
 

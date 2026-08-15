@@ -107,19 +107,43 @@ void CStateBloodsuckerVampireExecuteAbstract::execute()
 TEMPLATE_SPECIALIZATION
 void CStateBloodsuckerVampireExecuteAbstract::show_hud()
 {
+    // ⛔ [DA_PORT] Актёра может НЕ БЫТЬ, и проверять это обязан вызывающий.
+    //
+    // `Actor()` внутри содержит `VERIFY(g_actor)` и возвращает указатель как есть. VERIFY в
+    // отгружаемой сборке исчезает (xrDebug_macros.h), поэтому здесь молча приходит ноль, а следом
+    // идёт вызов метода и запись в поле — то есть запись по НУЛЮ ПЛЮС СМЕЩЕНИЕ. Разбор пути — у
+    // cleanup() ниже.
+    CActor* actor = Actor();
+    if (!actor)
+        return;
+
     HUD().SetRenderable(true);
     NET_Packet P;
 
-    Actor()->u_EventGen(P, GEG_PLAYER_WEAPON_HIDE_STATE, Actor()->ID());
+    actor->u_EventGen(P, GEG_PLAYER_WEAPON_HIDE_STATE, actor->ID());
     P.w_u16(INV_STATE_BLOCK_ALL);
     P.w_u8(u8(false));
-    Actor()->u_EventSend(P);
+    actor->u_EventSend(P);
 }
 
 TEMPLATE_SPECIALIZATION
 void CStateBloodsuckerVampireExecuteAbstract::cleanup()
 {
-    Actor()->set_inventory_disabled(false);
+    // ⛔ [DA_PORT] Подтверждённый вылет: запись по адресу 0x0eb3 (14.08.2026, лог 038).
+    //
+    // Стек: CObjectList::Update -> CBaseMonster::net_Destroy -> CMonsterStateManager::critical_finalize
+    // -> CState::critical_finalize -> сюда. То есть кровосос уничтожается ПРЯМО В СОСТОЯНИИ
+    // высасывания, и уборка состояния идёт из пути уничтожения объекта.
+    //
+    // В этот момент актёра законно может уже не быть: на выгрузке уровня и при выходе порядок сноса
+    // объектов не обещает, что актёр переживёт монстра. `Actor()` возвращает ноль, а
+    // `set_inventory_disabled` пишет в поле — отсюда и адрес 0x0eb3, то есть ноль плюс смещение поля.
+    //
+    // Уборка СОСТОЯНИЯ при этом обязана продолжиться: отпустить управление актёром и снять
+    // анимационное дерево нужно независимо от того, есть актёр или нет, иначе монстр уйдёт из мира,
+    // не отцепившись.
+    if (CActor* actor = Actor())
+        actor->set_inventory_disabled(false);
 
     if (this->object->com_man().ta_is_active())
         this->object->com_man().ta_deactivate();

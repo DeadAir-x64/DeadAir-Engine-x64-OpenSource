@@ -12,6 +12,12 @@ extern ENGINE_API int ps_r__d3d_debug;
 
 namespace xray::render::RENDER_NAMESPACE
 {
+// [DA_PORT] Метка последней фазы кадра; определена в da_gpu_timer.cpp. Заголовок оттуда сюда не
+// тянем -- он про замер, а нужны три переменные, и объявление в том же пространстве имён их найдёт.
+extern pcstr g_da_stage;
+extern u32 g_da_stage_frame;
+extern u32 g_da_stage_seq;
+
 CHW HW;
 
 CHW::CHW()
@@ -81,11 +87,22 @@ void CHW::CreateD3D()
     if (m_pFactory)
         m_pFactory->EnumAdapters1(0, &m_pAdapter);
 
+#ifdef HAS_DXGI1_4
+    // [DA_PORT] Тот же адаптер через интерфейс с бюджетом памяти. Отсутствие -- не ошибка: на
+    // системе без DXGI 1.4 просто не будет учёта видеопамяти, всё остальное работает как прежде.
+    if (m_pAdapter)
+        m_pAdapter->QueryInterface(__uuidof(IDXGIAdapter3), (void**)&m_pAdapter3);
+#endif
+
     Valid = m_pAdapter;
 }
 
 void CHW::DestroyD3D()
 {
+#ifdef HAS_DXGI1_4
+    _RELEASE(m_pAdapter3);
+#endif
+
     _SHOW_REF("refCount:m_pAdapter", m_pAdapter);
     _RELEASE(m_pAdapter);
 
@@ -687,8 +704,17 @@ void CHW::Reset()
     desc.Width = Device.dwWidth;
     desc.Height = Device.dwHeight;
 
+    // [DA_PORT] Снимок памяти по обе стороны пересоздания буферов.
+    //
+    // Перезапуск рендера идёт при каждой загрузке уровня, и именно на нём накапливается всё, что
+    // забыли освободить. Одна пара чисел за сброс -- и утечка на перезапуске видна прямо в логе
+    // игрока: занято до и занято после расходятся с каждым разом.
+    da_vram_report("до пересоздания буферов");
+
     CHK_DX(m_pSwapChain->ResizeBuffers(
         cd.BufferCount, desc.Width, desc.Height, desc.Format, cd.Flags));
+
+    da_vram_report("после пересоздания буферов");
 }
 
 void CHW::SetPrimaryAttributes(u32& /*windowFlags*/)
@@ -736,6 +762,84 @@ std::pair<u32, u32> CHW::GetSurfaceSize() const
     };
 }
 
+// [DA_PORT] Учёт видеопамяти. Разбор, зачем и почём, -- у объявления в dx11HW.h.
+void CHW::da_vram_report(pcstr when)
+{
+#ifdef HAS_DXGI1_4
+    if (!m_pAdapter3)
+        return;
+
+    // Две кучи, и обе нужны. Local -- собственная память карты, туда всё и кладётся. NonLocal --
+    // системная память, отданная видеокарте: когда своя кончается, драйвер начинает вытеснять туда,
+    // и кадр обваливается ЗАДОЛГО до какой-либо ошибки. Рост NonLocal при упёршемся Local -- это и
+    // есть картина исчерпания, по одному Local её не отличить от нормы.
+    DXGI_QUERY_VIDEO_MEMORY_INFO local{}, nonlocal{};
+    const bool got_local =
+        SUCCEEDED(m_pAdapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local));
+    const bool got_nonlocal =
+        SUCCEEDED(m_pAdapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &nonlocal));
+    if (!got_local)
+        return;
+
+    da_vram_budget = local.Budget;
+    da_vram_usage = local.CurrentUsage;
+    if (local.CurrentUsage > da_vram_peak)
+        da_vram_peak = local.CurrentUsage;
+
+    const auto mb = [](u64 bytes) { return u32(bytes / (1024 * 1024)); };
+    const u32 percent = local.Budget ? u32((local.CurrentUsage * 100) / local.Budget) : 0;
+
+    Msg("* [DA_VRAM] %s: занято %u МБ из %u МБ (%u%%), пик %u МБ, вытеснено в ОЗУ %u МБ", when,
+        mb(local.CurrentUsage), mb(local.Budget), percent, mb(da_vram_peak),
+        got_nonlocal ? mb(nonlocal.CurrentUsage) : 0u);
+#else
+    (void)when;
+#endif
+}
+
+void CHW::da_vram_poll()
+{
+#ifdef HAS_DXGI1_4
+    if (!m_pAdapter3)
+        return;
+
+    // Раз в секунду. Опрашивать каждый кадр незачем: столько памяти за кадр не появляется, а вызов
+    // всё-таки идёт в драйвер.
+    static u32 s_next = 0;
+    if (Device.dwTimeGlobal < s_next)
+        return;
+    s_next = Device.dwTimeGlobal + 1000;
+
+    DXGI_QUERY_VIDEO_MEMORY_INFO local{};
+    if (FAILED(m_pAdapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local)))
+        return;
+
+    da_vram_budget = local.Budget;
+    da_vram_usage = local.CurrentUsage;
+    if (local.CurrentUsage > da_vram_peak)
+        da_vram_peak = local.CurrentUsage;
+
+    if (!local.Budget)
+        return;
+
+    // В лог идёт не опрос, а ПЕРЕСЕЧЕНИЕ порога, и каждая ступень -- по одному разу. Иначе при
+    // нехватке памяти лог заполнялся бы одинаковыми строками ровно тогда, когда игре и без того
+    // тяжело, а именно эти секунды потом и разбирать.
+    static u32 s_step_reported = 0;
+    const u32 percent = u32((local.CurrentUsage * 100) / local.Budget);
+    const u32 step = percent >= 100 ? 3 : percent >= 95 ? 2 : percent >= 85 ? 1 : 0;
+    if (step > s_step_reported)
+    {
+        s_step_reported = step;
+        da_vram_report(step >= 3 ? "ВИДЕОПАМЯТЬ ИСЧЕРПАНА" : "видеопамять на пределе");
+    }
+    else if (step == 0 && s_step_reported != 0)
+    {
+        s_step_reported = 0; // отпустило -- следующий подъём снова будет виден
+    }
+#endif
+}
+
 void CHW::BeginScene() { }
 void CHW::EndScene() { }
 
@@ -753,6 +857,8 @@ void CHW::Present()
     }
 
     CurrentBackBuffer = (CurrentBackBuffer + 1) % BackBufferCount;
+
+    da_vram_poll(); // [DA_PORT] раз в секунду, разбор -- у da_vram_poll
 
     TracyD3D11Collect(profiler_ctx);
 }
@@ -775,8 +881,86 @@ DeviceState CHW::GetDeviceState()
             return DeviceState::NeedReset;
 
         case DXGI_ERROR_DEVICE_REMOVED:
-            FATAL("Graphics driver was updated or GPU was physically removed from computer.\n"
-                  "Please, restart the game.");
+            {
+                // [DA_PORT] Спрашиваем ПРИЧИНУ, а не гадаем.
+                //
+                // Прежний текст называл две: обновился драйвер или вынули карту. На деле
+                // DXGI_ERROR_DEVICE_REMOVED приходит ещё и от зависания видеокарты (сторожевой
+                // таймер Windows перезапустил драйвер), от внутренней ошибки драйвера и от
+                // неверного вызова с нашей стороны. Это разные беды: одна к игре отношения не
+                // имеет, другая означает, что подвесили её мы. Отличает их только
+                // GetDeviceRemovedReason, и он не спрашивался ни разу.
+                //
+                // Причина уходит и в лог, и в окно: у игрока часто есть только снимок экрана.
+                // [DA_PORT] Докладываем ОДИН РАЗ за запуск.
+                //
+                // Замер по логу игрока: отчёт повторился 16 раз подряд, по разу на кадр. Причина в
+                // том, что после фатала движок продолжает крутить кадры, `doPresentTest` остаётся
+                // взведённым, и следующая проба возвращает ту же потерю. Толку от повторов нет —
+                // числа в них одинаковые, — а окно всплывает снова и снова, и разобрать лог мешает
+                // именно этот повтор.
+                //
+                // Дальше отвечаем «устройство потеряно»: движок перестаёт рисовать, окно остаётся
+                // живым, и игру можно закрыть по-человечески.
+                static bool da_reported = false;
+                if (da_reported)
+                    return DeviceState::Lost;
+                da_reported = true;
+
+                const HRESULT da_reason = pDevice ? pDevice->GetDeviceRemovedReason() : S_OK;
+                pcstr da_name = "драйвер причины не назвал";
+                switch (da_reason)
+                {
+                case DXGI_ERROR_DEVICE_HUNG:
+                    da_name = "DEVICE_HUNG: видеокарта зависла на наших командах";
+                    break;
+                case DXGI_ERROR_DEVICE_REMOVED:
+                    da_name = "DEVICE_REMOVED: драйвер обновлён или карта отключена";
+                    break;
+                case DXGI_ERROR_DEVICE_RESET:
+                    da_name = "DEVICE_RESET: сброс из-за неверной команды";
+                    break;
+                case DXGI_ERROR_DRIVER_INTERNAL_ERROR:
+                    da_name = "DRIVER_INTERNAL_ERROR: внутренняя ошибка драйвера";
+                    break;
+                case DXGI_ERROR_INVALID_CALL:
+                    da_name = "INVALID_CALL: неверный вызов с нашей стороны";
+                    break;
+                default:
+                    break;
+                }
+
+                Msg("! [DA_PORT] устройство отрисовки потеряно, причина драйвера 0x%08x - %s",
+                    (u32)da_reason, da_name);
+
+                // [DA_PORT] Вторая строка -- «хлебная крошка»: до какой фазы кадра мы дошли.
+                //
+                // Одной причины мало: DEVICE_HUNG говорит, что видеокарта встала на наших командах,
+                // но не на каких. Метку пишет da_gpu_timer::zone_begin бесплатно и всегда (разбор
+                // цены -- там же). Отставание номера кадра от текущего показывает, сколько мы уже
+                // ждали: если оно велико, процессор давно упёрся в видеокарту.
+                const u32 da_lag = Device.dwFrame - g_da_stage_frame;
+                Msg("! [DA_PORT] последняя фаза кадра: %s | кадр %u (текущий %u, отставание %u) | фаз "
+                    "отправлено %u",
+                    g_da_stage, g_da_stage_frame, Device.dwFrame, da_lag, g_da_stage_seq);
+
+                // [DA_PORT] Видеопамять. Спрашивать адаптер сейчас уже поздно -- устройства нет,
+                // -- поэтому печатаются последние снятые числа: их обновлял опрос раз в секунду.
+                // Ими исчерпание памяти либо подтверждается, либо снимается с подозрения сразу.
+                {
+                    const auto da_mb = [](u64 bytes) { return u32(bytes / (1024 * 1024)); };
+                    const u32 da_pc =
+                        da_vram_budget ? u32((da_vram_usage * 100) / da_vram_budget) : 0;
+                    Msg("! [DA_PORT] видеопамять за секунду до потери: занято %u МБ из %u МБ (%u%%), "
+                        "пик за сеанс %u МБ",
+                        da_mb(da_vram_usage), da_mb(da_vram_budget), da_pc, da_mb(da_vram_peak));
+                }
+                FlushLog();
+
+                FATAL_F("Устройство отрисовки потеряно.\n\nПричина: %s\n(код 0x%08x)\nПоследняя фаза: %s\n\n"
+                        "Перезапустите игру. Если повторяется - пришлите лог.",
+                    da_name, (u32)da_reason, g_da_stage);
+            }
             break;
         }
     }

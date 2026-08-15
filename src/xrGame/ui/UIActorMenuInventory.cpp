@@ -387,10 +387,28 @@ void CUIActorMenu::DetachAddon(LPCSTR addon_name, PIItem itm)
         CGameObject::u_EventSend(P);
         return;
     }
+    // [DA_PORT] Прибор на САМО снятие обвеса.
+    //
+    // По подсказкам различить не удалось: «два разных ствола в инвентаре» и «мод подменил секцию»
+    // выглядят в логе одинаково -- меняются и номер, и секция. Здесь событие названо прямо: какой
+    // ствол, какой номер, какая маска поломок ДО и ПОСЛЕ снятия. Если номер прежний, а маска стала
+    // нулём -- её стирает снятие. Если номер сменился -- оружие подменили, и чинить надо перенос.
+    PIItem target = (itm == NULL) ? CurrentIItem() : itm;
+    CWeapon* w_before = smart_cast<CWeapon*>(target);
+    const u16 id_before = w_before ? w_before->ID() : u16(-1);
+    const u32 mask_before = w_before ? w_before->m_weapon_condition_type : 0;
+    shared_str sect_before = w_before ? w_before->cNameSect() : shared_str("(не оружие)");
+
     if (itm == NULL)
         CurrentIItem()->Detach(addon_name, true);
     else
         itm->Detach(addon_name, true);
+
+    if (w_before)
+    {
+        Msg("~ [DA_WPN] снят обвес [%s] с %s id[%u]: маска %u -> %u", addon_name, sect_before.c_str(),
+            u32(id_before), mask_before, w_before->m_weapon_condition_type);
+    }
 }
 
 // [DA_PORT] Dead Air equips items to small "utility" slot cells whose authored capacity (rows_num x

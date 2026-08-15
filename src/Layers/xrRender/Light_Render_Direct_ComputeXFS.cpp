@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Light_Render_Direct.h"
+#include "Layers/xrRender_R2/r2_types.h" // SMAP_near_plane
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -137,13 +138,23 @@ void CLight_Compute_XFORM_and_VIS::compute_xf_spot(light* L)
 
     // _min(L->cone + deg2rad(4.5f), PI*0.98f) - Here, it is needed to enlarge the shadow map frustum to include also
     // displaced pixels and the pixels neighbor to the examining one.
-    float tan_shift;
-    if (L->flags.type == IRender_Light::POINT)
-        tan_shift = deg2rad(11.5f);
-    else
-        tan_shift = deg2rad(3.5f);
-
-    L->X.S.project.build_projection(L->cone + tan_shift, 1.f, L->virtual_size, L->range + EPS_S);
+    // [DA_PORT] Ближняя плоскость теневой проекции лампы — ФИКСИРОВАННАЯ, а не virtual_size лампы.
+    //
+    // Смещение глубины (ps_r2_ls_depth_bias) задано в ПОСЛЕПРОЕКЦИОННЫХ единицах, поэтому его вес в
+    // мире идёт как 1/near. Подставляя сюда virtual_size, мы молча меняли смещение у каждой лампы
+    // по-своему: лампа, у которой в спавне 0.5, получала впятеро меньше положенного. Отсюда рябь на
+    // одних стенах и чистые тени на других — при том, что сама настройка везде одна и та же.
+    //
+    // В заводском движке этого расхождения нет по другой причине: там set_virtual_size — пустая
+    // заглушка, и значение из спавна до рендера просто не доходит. У нас оно доходит, и потому
+    // подстановка стала действующей.
+    //
+    // Угловой запас сведён к одному значению вместо разных для точки и конуса, с ограничением
+    // сверху: без него конус, близкий к развёрнутому, давал негодную проекцию.
+    //
+    // Найдено не у себя: Dead Air Refined, коммит 91d0529f от 15.08.2026.
+    L->X.S.project.build_projection(
+        _min(L->cone + deg2rad(5.f), PI * 0.98f), 1.f, SMAP_near_plane, L->range + EPS_S);
     L->X.S.combine.mul(L->X.S.project, L->X.S.view);
 }
 } // namespace xray::render::RENDER_NAMESPACE

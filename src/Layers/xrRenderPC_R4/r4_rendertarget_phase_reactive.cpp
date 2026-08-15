@@ -15,6 +15,9 @@ extern ENGINE_API int ps_r__reactive_selftest;
 extern ENGINE_API int ps_r__probe_center; // [DA_PORT] 0 - ярчайший пиксель, 1 - перекрестье
 extern ENGINE_API bool g_da_jitter_suppress; // [DA_PORT] подавление джиттера на время чтения экрана
 
+// [DA_PORT] ВНЕ пространства имён — иначе extern ищет символ внутри него.
+extern ENGINE_API int ps_r__combine_dbg;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // [DA_PORT] Смещение и поворот камеры ЗА ПОСЛЕДНИЙ КАДР. Считаются покадрово в phase_combine,
@@ -425,6 +428,93 @@ static bool da_probe_pixel(
 // [DA_PORT] Целая строка яркости во всю ширину экрана, одним копированием. Сумма r+g+b на пиксель.
 // Промежуточная текстура держится между кадрами: создавать её каждый кадр — та самая ошибка, из-за
 // которой первая версия наблюдения молча выдавала нули.
+// [DA_PORT] Чтение пикселя С УЧЁТОМ ФОРМАТА цели.
+//
+// da_probe_pixel выше написан под цели половинной точности и разбирает содержимое как четыре по
+// 16 бит. Для накопителя это верно, а вот альбедо создаётся либо A16B16G16R16F, либо A8R8G8B8 —
+// смотря по возможностям видеокарты (r2_rendertarget.cpp, ветки создания rt_Color). Разобрать
+// байтовую цель как половинную — получить правдоподобный мусор, а не отказ, поэтому формат берём
+// у самой текстуры.
+static bool da_read_px_fmt(const ref_rt& rt, u32 x, u32 y, float* out4)
+{
+    out4[0] = out4[1] = out4[2] = out4[3] = 0.f;
+    if (!rt || !rt->pTexture)
+        return false;
+
+    ID3DBaseTexture* res = rt->pTexture->surface_get();
+    ID3D11Texture2D* tex = nullptr;
+    if (res)
+        res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex);
+    _RELEASE(res);
+    if (!tex)
+        return false;
+
+    D3D11_TEXTURE2D_DESC desc;
+    tex->GetDesc(&desc);
+
+    bool ok = false;
+    if (x < desc.Width && y < desc.Height && desc.SampleDesc.Count == 1)
+    {
+        D3D11_TEXTURE2D_DESC sd{};
+        sd.Width = 1;
+        sd.Height = 1;
+        sd.MipLevels = 1;
+        sd.ArraySize = 1;
+        sd.Format = desc.Format;
+        sd.SampleDesc.Count = 1;
+        sd.Usage = D3D11_USAGE_STAGING;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+        ID3D11Texture2D* staging = nullptr;
+        if (SUCCEEDED(HW.pDevice->CreateTexture2D(&sd, nullptr, &staging)) && staging)
+        {
+            ID3D11DeviceContext* ctx = HW.get_context(CHW::IMM_CTX_ID);
+            const D3D11_BOX box = {x, y, 0, x + 1, y + 1, 1};
+            ctx->CopySubresourceRegion(staging, 0, 0, 0, 0, tex, 0, &box);
+
+            D3D11_MAPPED_SUBRESOURCE map{};
+            if (SUCCEEDED(ctx->Map(staging, 0, D3D11_MAP_READ, 0, &map)))
+            {
+                switch (desc.Format)
+                {
+                case DXGI_FORMAT_R16G16B16A16_FLOAT:
+                {
+                    const u16* px = (const u16*)map.pData;
+                    for (u32 c = 0; c < 4; ++c)
+                        out4[c] = da_half(px[c]);
+                    ok = true;
+                    break;
+                }
+                case DXGI_FORMAT_R8G8B8A8_UNORM:
+                case DXGI_FORMAT_B8G8R8A8_UNORM:
+                {
+                    const u8* px = (const u8*)map.pData;
+                    for (u32 c = 0; c < 4; ++c)
+                        out4[c] = float(px[c]) / 255.f;
+                    ok = true;
+                    break;
+                }
+                case DXGI_FORMAT_R32G32B32A32_FLOAT:
+                {
+                    const float* px = (const float*)map.pData;
+                    for (u32 c = 0; c < 4; ++c)
+                        out4[c] = px[c];
+                    ok = true;
+                    break;
+                }
+                default:
+                    Msg("~ [DA_PIX] формат цели %u читать не умею", u32(desc.Format));
+                    break;
+                }
+                ctx->Unmap(staging, 0);
+            }
+            _RELEASE(staging);
+        }
+    }
+    _RELEASE(tex);
+    return ok;
+}
+
 static bool da_probe_line(
     const ref_rt& rt, u32 w, u32 y, xr_vector<float>& out, ID3D11Texture2D** resolve_cache)
 {
@@ -819,6 +909,585 @@ void CRenderTarget::da_shadow_test_report()
     g_prev_screen.clear();
 }
 
+
+// [DA_PORT] ================= Карта кадра: где именно пропадает свет =================
+//
+// Точечный замер под перекрестием ответил на вопрос «чернит свет или геометрия» (альбедо в норме,
+// накопитель ноль), но не отвечает на «где граница и что за ней»: чтобы получить точку сравнения,
+// приходилось водить перекрестием и надеяться, что попал. Здесь снимается ВЕСЬ экран сразу, и
+// граница видна в числах без единого движения мышью.
+//
+// Печатаются две карты одного кадра:
+//   НАКОПИТЕЛЬ — сумма всего света, попавшего в пиксель;
+//   АЛЬБЕДО    — цвет поверхности до света.
+// Если на карте накопителя есть область из пробелов, а на карте альбедо в тех же клетках обычные
+// значения — чернит именно свет, и форма области названа точно.
+//
+// Полноэкранное чтение с видеокарты СТОИТ кадра: это синхронизация с ней. Поэтому промежуточная
+// текстура создаётся один раз и держится между кадрами (создавать её каждый кадр — ровно та ошибка,
+// из-за которой прежний замер молча выдавал нули), а сам замер включается на заданное число кадров.
+constexpr u32 DA_MAP_COLS = 60;
+constexpr u32 DA_MAP_ROWS = 24;
+
+// Ступени яркости. Пробел — РОВНО ноль: именно его мы и ищем, и путать его с «очень тёмным» нельзя.
+static char da_map_char(float v)
+{
+    // [DA_PORT] ⛔ ОТРИЦАТЕЛЬНОЕ И НОЛЬ — РАЗНЫЕ ВЕЩИ, и первая версия карты их путала: пробел
+    // означал «меньше либо равно нулю». Накопитель — цель половинной точности СО ЗНАКОМ, и минус в
+    // ней возможен. Разница решающая: ноль это «света не пришло», а минус — «свет ВЫЧЛИ», и после
+    // обрезки цвет становится ровно чёрным при всех целых входах формулы.
+    if (v < -1e-5f)
+        return 'n'; // n = negative, минус
+    if (v <= 0.f)
+        return ' ';
+    if (v < 0.005f)
+        return '.';
+    if (v < 0.02f)
+        return ':';
+    if (v < 0.08f)
+        return '-';
+    if (v < 0.25f)
+        return '+';
+    if (v < 0.8f)
+        return '*';
+    return '#';
+}
+
+// Полноэкранное чтение цели в сетку DA_MAP_COLS x DA_MAP_ROWS. Значение клетки — СРЕДНЯЯ яркость
+// (сумма трёх составляющих) по её пикселям, чтобы одиночный яркий пиксель не выдавал клетку за
+// освещённую.
+static bool da_grid_from_rt(
+    const ref_rt& rt, ID3D11Texture2D** cache, float* grid, float& out_max, int comp = -1)
+{
+    out_max = 0.f;
+    for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+        grid[i] = 0.f;
+
+    if (!rt || !rt->pTexture)
+        return false;
+
+    ID3DBaseTexture* res = rt->pTexture->surface_get();
+    ID3D11Texture2D* tex = nullptr;
+    if (res)
+        res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex);
+    _RELEASE(res);
+    if (!tex)
+        return false;
+
+    D3D11_TEXTURE2D_DESC desc;
+    tex->GetDesc(&desc);
+
+    if (desc.SampleDesc.Count > 1)
+    {
+        _RELEASE(tex);
+        Msg("~ [DA_MAP] цель многосэмпловая, карта не снимается");
+        return false;
+    }
+
+    // Промежуточная текстура держится между кадрами и пересоздаётся только при смене размера.
+    if (*cache)
+    {
+        D3D11_TEXTURE2D_DESC cd;
+        (*cache)->GetDesc(&cd);
+        if (cd.Width != desc.Width || cd.Height != desc.Height || cd.Format != desc.Format)
+            _RELEASE(*cache);
+    }
+    if (!*cache)
+    {
+        D3D11_TEXTURE2D_DESC sd = desc;
+        sd.MipLevels = 1;
+        sd.ArraySize = 1;
+        sd.Usage = D3D11_USAGE_STAGING;
+        sd.BindFlags = 0;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        sd.MiscFlags = 0;
+        if (FAILED(HW.pDevice->CreateTexture2D(&sd, nullptr, cache)))
+        {
+            _RELEASE(tex);
+            Msg("~ [DA_MAP] промежуточная текстура не создалась");
+            return false;
+        }
+    }
+
+    ID3D11DeviceContext* ctx = HW.get_context(CHW::IMM_CTX_ID);
+    ctx->CopyResource(*cache, tex);
+    _RELEASE(tex);
+
+    D3D11_MAPPED_SUBRESOURCE map{};
+    if (FAILED(ctx->Map(*cache, 0, D3D11_MAP_READ, 0, &map)))
+    {
+        Msg("~ [DA_MAP] цель не отобразилась в память");
+        return false;
+    }
+
+    u32 count[DA_MAP_COLS * DA_MAP_ROWS] = {};
+    const u32 step = 4; // каждый четвёртый пиксель: карта грубая, полный обход не нужен
+    for (u32 y = 0; y < desc.Height; y += step)
+    {
+        const u8* row = (const u8*)map.pData + size_t(y) * map.RowPitch;
+        const u32 gy = (y * DA_MAP_ROWS) / desc.Height;
+        for (u32 x = 0; x < desc.Width; x += step)
+        {
+            float lum = 0.f;
+            if (desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT)
+            {
+                const u16* px = (const u16*)row + size_t(x) * 4;
+                if (comp == 11)
+                {
+                    // [DA_PORT] НОМЕР МАТЕРИАЛА. Лежит в том же слове, что и полусфера: gbuf_unpack_mtl --
+                    // биты 21..24 плюс старший бит пятым разрядом, делённое на 31 и умноженное на 1.3333.
+                    // Этим числом берётся выборка из трёхмерной текстуры материалов, от неё зависит hdiffuse.
+                    const float w = da_half(px[3]);
+                    u32 bits;
+                    std::memcpy(&bits, &w, 4);
+                    const u32 m = ((bits >> 21) & 15u) + ((bits & 0x80000000u) ? 16u : 0u);
+                    lum = float(m) * (1.0f / 31.0f) * 1.3333333f;
+                }
+                else if (comp == 12)
+                {
+                    // [DA_PORT] Вертикальная составляющая НОРМАЛИ. Ею берётся выборка из кубической карты
+                    // неба, то есть env_d в hmodel. Распаковка -- gbuf_unpack_normal.
+                    const float nx = da_half(px[0]), ny = da_half(px[1]);
+                    const float rz = nx;
+                    const float rx = 2.f * _abs(ny) - 1.f;
+                    const float ry = (ny < 0.f ? -1.f : 1.f) * _sqrt(_abs(1.f - rx * rx - rz * rz));
+                    lum = 0.5f + 0.5f * ry;
+                }
+                else if (comp == 10)
+                {
+                    // [DA_PORT] Полусферическая засветка лежит БИТАМИ в четвёртой составляющей
+                    // rt_Position (при упакованном G-буфере). Достаём ровно как шейдер:
+                    // gbuf_unpack_hemi -- (asuint(w) >> 13) & 255, делённое на 254.8. Читать это
+                    // поле как обычное число бессмысленно: получаются тысячи, что меня и сбило.
+                    const float w = da_half(px[3]);
+                    u32 bits;
+                    std::memcpy(&bits, &w, 4);
+                    lum = float((bits >> 13) & 255u) * (1.0f / 254.8f);
+                }
+                else
+                    lum = (comp < 0) ? (da_half(px[0]) + da_half(px[1]) + da_half(px[2])) : da_half(px[comp]);
+            }
+            else if (desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM)
+            {
+                const u8* px = row + size_t(x) * 4;
+                lum = ((comp < 0) ? (float(px[0]) + float(px[1]) + float(px[2])) : float(px[comp])) / 255.f;
+            }
+            else if (desc.Format == DXGI_FORMAT_R32G32B32A32_FLOAT)
+            {
+                const float* px = (const float*)row + size_t(x) * 4;
+                lum = (comp < 0) ? (px[0] + px[1] + px[2]) : px[comp];
+            }
+            const u32 gx = (x * DA_MAP_COLS) / desc.Width;
+            const u32 gi = gy * DA_MAP_COLS + gx;
+            grid[gi] += lum;
+            ++count[gi];
+        }
+    }
+    ctx->Unmap(*cache, 0);
+
+    for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+    {
+        if (count[i])
+            grid[i] /= float(count[i]);
+        if (grid[i] > out_max)
+            out_max = grid[i];
+    }
+    return true;
+}
+
+// Ступени для карты глубины: пробел — РОВНО НОЛЬ, то есть поверхности в этом пикселе НЕТ вовсе.
+// Дальше — расстояние до неё, чтобы по карте было видно, что там за геометрия.
+static char da_depth_char(float d)
+{
+    if (d <= 0.f)
+        return ' ';
+    if (d < 2.f)
+        return '1';
+    if (d < 5.f)
+        return '2';
+    if (d < 15.f)
+        return '3';
+    if (d < 40.f)
+        return '4';
+    if (d < 100.f)
+        return '5';
+    return '6';
+}
+
+// [DA_PORT] Глубина и ТРАФАРЕТ из настоящего буфера глубины-трафарета.
+//
+// Зачем отдельно от остальных слоёв: буфер создаётся как R24G8_TYPELESS (24 бита глубины + 8 бит
+// трафарета в одном значении), и разбирать его как цветную цель нельзя. А нужен он потому, что
+// отвечает сразу на два вопроса, которые больше никто не закрывает:
+//   глубина  — рисовалась ли в этот пиксель геометрия вообще (единица = пусто, дальняя плоскость);
+//   трафарет — пометил ли её движок как геометрию (0x01) или там осталась чужая метка источника.
+// Второе прямо проверяет версию про оставшиеся метки, которую я снимал по косвенным признакам.
+static bool da_grid_from_ds(const ref_rt& rt, ID3D11Texture2D** cache, float* gdepth, float* gsten)
+{
+    for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+        gdepth[i] = 1.f, gsten[i] = 255.f;
+
+    if (!rt)
+        return false;
+
+    ID3D11Texture2D* tex = nullptr;
+    // У цели глубины текстура лежит отдельно от цветного пути.
+    if (rt->pSurface)
+        rt->pSurface->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&tex);
+    if (!tex)
+    {
+        Msg("~ [DA_MAP] буфер глубины недоступен");
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC desc;
+    tex->GetDesc(&desc);
+    if (desc.SampleDesc.Count > 1)
+    {
+        _RELEASE(tex);
+        Msg("~ [DA_MAP] буфер глубины многосэмпловый, карта не снимается");
+        return false;
+    }
+
+    if (*cache)
+    {
+        D3D11_TEXTURE2D_DESC cd;
+        (*cache)->GetDesc(&cd);
+        if (cd.Width != desc.Width || cd.Height != desc.Height || cd.Format != desc.Format)
+            _RELEASE(*cache);
+    }
+    if (!*cache)
+    {
+        D3D11_TEXTURE2D_DESC sd = desc;
+        sd.MipLevels = 1;
+        sd.ArraySize = 1;
+        sd.Usage = D3D11_USAGE_STAGING;
+        sd.BindFlags = 0;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        sd.MiscFlags = 0;
+        if (FAILED(HW.pDevice->CreateTexture2D(&sd, nullptr, cache)))
+        {
+            _RELEASE(tex);
+            Msg("~ [DA_MAP] копия буфера глубины не создалась (формат %u)", u32(desc.Format));
+            return false;
+        }
+    }
+
+    ID3D11DeviceContext* ctx = HW.get_context(CHW::IMM_CTX_ID);
+    ctx->CopyResource(*cache, tex);
+    _RELEASE(tex);
+
+    D3D11_MAPPED_SUBRESOURCE map{};
+    if (FAILED(ctx->Map(*cache, 0, D3D11_MAP_READ, 0, &map)))
+    {
+        Msg("~ [DA_MAP] буфер глубины не отобразился в память");
+        return false;
+    }
+
+    u32 count[DA_MAP_COLS * DA_MAP_ROWS] = {};
+    const u32 step = 4;
+    for (u32 y = 0; y < desc.Height; y += step)
+    {
+        const u8* row = (const u8*)map.pData + size_t(y) * map.RowPitch;
+        const u32 gy = (y * DA_MAP_ROWS) / desc.Height;
+        for (u32 x = 0; x < desc.Width; x += step)
+        {
+            const u32 v = ((const u32*)row)[x];
+            const float d = float(v & 0x00ffffffu) / float(0x00ffffffu);
+            const float st = float((v >> 24) & 0xffu);
+            const u32 gi = gy * DA_MAP_COLS + (x * DA_MAP_COLS) / desc.Width;
+            if (count[gi] == 0)
+                gdepth[gi] = 0.f;
+            gdepth[gi] += d;
+            // [DA_PORT] ⛔ У трафарета берём НАИМЕНЬШЕЕ, а не наибольшее.
+            //
+            // Наибольшее прячет нули, и это стоило мне половины расследования: клетка показывала
+            // метку источника 7 или 9, а внутри неё могли быть пиксели с НУЛЁМ. Разница решающая:
+            // проход сборки кадра проверяет «трафарет >= 1», а цель перед ним очищена в чёрный,
+            // поэтому пиксель с нулём остаётся ровно чёрным при любых целых входах формулы.
+            if (count[gi] == 0)
+                gsten[gi] = st;
+            else
+                gsten[gi] = _min(gsten[gi], st);
+            ++count[gi];
+        }
+    }
+    ctx->Unmap(*cache, 0);
+
+    for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+        if (count[i])
+            gdepth[i] /= float(count[i]);
+    return true;
+}
+
+// Глубина: 'x' — РОВНО дальняя плоскость, то есть геометрии нет. Дальше ближе к камере — меньше цифра.
+static char da_depth2_char(float d)
+{
+    if (d >= 0.99999f)
+        return 'x';
+    if (d < 0.90f)
+        return '1';
+    if (d < 0.98f)
+        return '2';
+    if (d < 0.995f)
+        return '3';
+    if (d < 0.999f)
+        return '4';
+    return '5';
+}
+
+// Трафарет: 0 — не помечено (небо), 1 — геометрия, буквы — ОСТАВШАЯСЯ метка источника.
+static char da_sten_char(float v)
+{
+    const u32 s = u32(v);
+    if (s == 0)
+        return '.';
+    if (s == 1)
+        return '1';
+    // ⛔ Отдельный знак для значений ОТ 128: именно они и есть приговор. Сборка кадра проверяет
+    // трафарет как (значение & 0x81) == 1, а у всего, что от 128, взведён седьмой бит — такие
+    // пиксели проход пропускает, и они остаются чёрными. Раньше здесь стояло одно 'M' на всё, что
+    // больше девяти, и различить 11 от 200 было нельзя.
+    if (s >= 128)
+        return 'X';
+    if (s < 10)
+        return char('0' + s);
+    return 'A';
+}
+
+// [DA_PORT] Альбедо снимается В КОНЦЕ ГЕОМЕТРИЧЕСКОГО ПРОХОДА, а не в phase_combine.
+//
+// 🪤 Ошибка, стоившая круга расследования: rt_Color переиспользуется в phase_combine под готовый
+// кадр (u_setrt(RCache, rt_Color, ...) — «LDR RT»). Прибор читал её В КОНЦЕ combine и печатал,
+// стало быть, ИТОГОВУЮ КАРТИНКУ под видом альбедо. Совпадение «дыры в альбедо» с чёрным пятном на
+// экране выглядело доказательством, а было тавтологией: это и была одна и та же картинка.
+//
+// Урок общий: цель рендера — не имя, а роль В МОМЕНТ ЧТЕНИЯ. Прежде чем что-то читать, проверять,
+// не занята ли она к этому времени под другое.
+static float g_da_map_albedo[DA_MAP_COLS * DA_MAP_ROWS] = {};
+static float g_da_map_albedo_max = 0.f;
+static bool g_da_map_albedo_ok = false;
+
+void CRenderTarget::da_map_capture_gbuffer()
+{
+    static ID3D11Texture2D* s_cache = nullptr;
+    g_da_map_albedo_ok = da_grid_from_rt(rt_Color, &s_cache, g_da_map_albedo, g_da_map_albedo_max);
+}
+
+// [DA_PORT] Съём света и трафарета — В НАЧАЛЕ phase_combine, до единого его прохода.
+//
+// 🪤 Третий раз подряд одна и та же ошибка, поэтому пишу её прямо: цель рендера — это РОЛЬ В МОМЕНТ
+// ЧТЕНИЯ, а не имя. rt_Color к концу combine занята готовым кадром; накопитель к тому же моменту
+// могли переиспользовать проходы апскейлера. Прибор при этом ничего не сообщает: он честно читает
+// текстуру, просто в ней уже другое. Признак, по которому это ловится, один — величина выглядит
+// правдоподобно, но противоречит картинке (накопитель пуст там, где сцена освещена).
+//
+// Поэтому каждый слой снимается там, где он ещё свой:
+//   альбедо      — конец геометрического прохода (da_map_capture_gbuffer);
+//   свет, трафарет, глубина — начало сборки кадра (здесь);
+//   готовый кадр — конец сборки (в самой da_light_map).
+static float g_da_map_acc[DA_MAP_COLS * DA_MAP_ROWS] = {};
+static float g_da_map_zbuf[DA_MAP_COLS * DA_MAP_ROWS] = {};
+static float g_da_map_sten[DA_MAP_COLS * DA_MAP_ROWS] = {};
+static float g_da_map_hemi[DA_MAP_COLS * DA_MAP_ROWS] = {};
+static float g_da_map_acc_max = 0.f, g_da_map_hemi_max = 0.f;
+static bool g_da_map_acc_ok = false, g_da_map_ds_ok = false, g_da_map_hemi_ok = false;
+
+void CRenderTarget::da_map_capture_lighting()
+{
+    static ID3D11Texture2D* s_acc = nullptr;
+    static ID3D11Texture2D* s_pos = nullptr;
+    static ID3D11Texture2D* s_ds = nullptr;
+    g_da_map_acc_ok = da_grid_from_rt(rt_Accumulator, &s_acc, g_da_map_acc, g_da_map_acc_max);
+    g_da_map_hemi_ok = da_grid_from_rt(rt_Position, &s_pos, g_da_map_hemi, g_da_map_hemi_max, 10);
+    g_da_map_ds_ok = da_grid_from_ds(rt_Base_Depth, &s_ds, g_da_map_zbuf, g_da_map_sten);
+}
+
+// [DA_PORT] Кадр СРАЗУ ПОСЛЕ первого прохода сборки — до лучей, искажения, тонального сжатия и
+// апскейлера. Перебор входов формулы закончен: альбедо, полусфера, материал, нормаль, глубина в
+// камере, накопитель и трафарет измерены и целы. Значит дальше мерить надо не входы, а ПРОХОДЫ, и
+// первый вопрос — рисует ли черноту сама формула или что-то после неё.
+static float g_da_map_c1[DA_MAP_COLS * DA_MAP_ROWS] = {};
+static float g_da_map_c1_max = 0.f;
+static bool g_da_map_c1_ok = false;
+
+void CRenderTarget::da_map_capture_combine1()
+{
+    static ID3D11Texture2D* s_cache = nullptr;
+    g_da_map_c1_ok = da_grid_from_rt(rt_Generic_0_r, &s_cache, g_da_map_c1, g_da_map_c1_max);
+}
+
+void CRenderTarget::da_light_map()
+{
+    static ID3D11Texture2D* s_acc_cache = nullptr;
+    static ID3D11Texture2D* s_alb_cache = nullptr;
+
+    static ID3D11Texture2D* s_pos_cache = nullptr;
+
+    float acc[DA_MAP_COLS * DA_MAP_ROWS], alb[DA_MAP_COLS * DA_MAP_ROWS], dep[DA_MAP_COLS * DA_MAP_ROWS];
+    float acc_max = 0.f, alb_max = 0.f, dep_max = 0.f;
+    const bool a = g_da_map_acc_ok;
+    if (a)
+    {
+        for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+            acc[i] = g_da_map_acc[i];
+        acc_max = g_da_map_acc_max;
+    }
+    (void)s_acc_cache;
+    // Альбедо берётся из снимка, сделанного в конце геометрического прохода: здесь rt_Color уже
+    // занята под готовый кадр (разбор у da_map_capture_gbuffer).
+    const bool b = g_da_map_albedo_ok;
+    if (b)
+    {
+        for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+            alb[i] = g_da_map_albedo[i];
+        alb_max = g_da_map_albedo_max;
+    }
+    (void)s_alb_cache;
+    // Четвёртая составляющая rt_Position — расстояние до поверхности. Ноль означает, что в этот
+    // пиксель геометрия не писалась: именно это и надо отличить от «нарисована чёрной».
+    static ID3D11Texture2D* s_mtl_cache = nullptr;
+    static ID3D11Texture2D* s_nrm_cache = nullptr;
+    float mtl[DA_MAP_COLS * DA_MAP_ROWS], nrm[DA_MAP_COLS * DA_MAP_ROWS];
+    float mtl_max = 0.f, nrm_max = 0.f;
+    const bool g_mtl = da_grid_from_rt(rt_Position, &s_mtl_cache, mtl, mtl_max, 11);
+    const bool g_nrm = da_grid_from_rt(rt_Position, &s_nrm_cache, nrm, nrm_max, 12);
+
+    // [DA_PORT] Третья составляющая rt_Position — глубина В СИСТЕМЕ КАМЕРЫ, та самая, по которой
+    // шейдер сборки восстанавливает положение точки и считает расстояние для тумана. Аппаратный
+    // буфер глубины я мерил, а ЭТУ величину нет, хотя считает шейдер именно по ней.
+    static ID3D11Texture2D* s_pz_cache = nullptr;
+    float pz[DA_MAP_COLS * DA_MAP_ROWS];
+    float pz_max = 0.f;
+    const bool g_pz = da_grid_from_rt(rt_Position, &s_pz_cache, pz, pz_max, 2);
+
+    const bool g_c1 = g_da_map_c1_ok;
+
+    const bool c = g_da_map_hemi_ok;
+    if (c)
+    {
+        for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+            dep[i] = g_da_map_hemi[i];
+        dep_max = g_da_map_hemi_max;
+    }
+    (void)s_pos_cache;
+
+    // [DA_PORT] ИТОГОВЫЙ КАДР отдельным слоем — контроль «а был ли дефект в кадре вообще».
+    //
+    // Без него все остальные слои читаются вслепую: «дыр нет» может означать и «всё цело», и
+    // «смотрели мимо». К моменту печати rt_Color занята под собранный кадр (u_setrt в phase_combine),
+    // и это ровно то, что видит игрок. Раньше я по незнанию печатал ЕЁ под видом альбедо — теперь
+    // она стоит своим слоем и с честным названием, а альбедо снимается отдельно и раньше.
+    static ID3D11Texture2D* s_fin_cache = nullptr;
+    float fin[DA_MAP_COLS * DA_MAP_ROWS];
+    float fin_max = 0.f;
+    const bool e = da_grid_from_rt(rt_Color, &s_fin_cache, fin, fin_max);
+
+    static ID3D11Texture2D* s_ds_cache = nullptr;
+    float zbuf[DA_MAP_COLS * DA_MAP_ROWS], sten[DA_MAP_COLS * DA_MAP_ROWS];
+    const bool d = g_da_map_ds_ok;
+    if (d)
+        for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+            zbuf[i] = g_da_map_zbuf[i], sten[i] = g_da_map_sten[i];
+    (void)s_ds_cache;
+
+    float sten_max = 0.f;
+    if (d)
+        for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+            sten_max = _max(sten_max, sten[i]);
+
+    // [DA_PORT] Номер режима разбора — в заголовок. Без него шесть карт в логе неотличимы, и
+    // сопоставлять их с режимами приходится по виду, то есть тем самым способом, который уже
+    // дважды дал ложный ответ.
+    Msg("~ [DA_MAP] ==== кадр %u, экран %ux%u | РЕЖИМ РАЗБОРА da_combine_dbg = %d | свет %.3f, "
+        "альбедо %.3f | НАИБОЛЬШАЯ МЕТКА ТРАФАРЕТА %u %s ====",
+        Device.dwFrame, Device.dwRenderWidth, Device.dwRenderHeight, ::ps_r__combine_dbg, acc_max, alb_max,
+        u32(sten_max),
+        sten_max >= 128.f ? "-- ЕСТЬ ПЕРЕХОД ЗА 127, ЭТИ ПИКСЕЛИ СБОРКА КАДРА ПРОПУСКАЕТ" : "(до 127, в норме)");
+    // Наименьшее значение накопителя печатаем числом: если оно отрицательное, это и есть ответ.
+    float acc_min = 0.f;
+    if (a)
+        for (u32 i = 0; i < DA_MAP_COLS * DA_MAP_ROWS; ++i)
+            acc_min = _min(acc_min, acc[i]);
+    if (g_pz)
+        Msg("~ [DA_MAP] наибольшая глубина в камере: %.1f (ступени слоя: 1 <2м, 2 <5, 3 <15, 4 <40, "
+            "5 <100, 6 дальше)", pz_max);
+    Msg("~ [DA_MAP] ступени: 'n' = ОТРИЦАТЕЛЬНОЕ, пробел = ноль, далее . : - + * # | наименьший "
+        "накопитель %.4f %s",
+        acc_min, acc_min < -1e-5f ? "-- СВЕТ ВЫЧИТАЕТСЯ, это и есть чернота" : "(минуса нет)");
+
+    string256 line;
+    for (u32 pass = 0; pass < 10; ++pass)
+    {
+        if (pass == 9 && !g_c1)
+            continue;
+        if ((pass == 0 && !a) || (pass == 1 && !b) || (pass == 2 && !c) || ((pass == 3 || pass == 4) && !d)
+            || (pass == 5 && !e) || (pass == 6 && !g_mtl) || (pass == 7 && !g_nrm) || (pass == 8 && !g_pz))
+            continue;
+        const float* g = (pass == 0) ? acc : (pass == 1) ? alb : (pass == 2) ? dep
+                       : (pass == 3) ? zbuf : (pass == 4) ? sten : (pass == 5) ? fin
+                       : (pass == 6) ? mtl : (pass == 7) ? nrm : (pass == 8) ? pz : g_da_map_c1;
+        pcstr title = (pass == 0) ? "НАКОПИТЕЛЬ (весь свет)"
+                    : (pass == 1) ? "АЛЬБЕДО (цвет поверхности до света)"
+                    : (pass == 2) ? "ПОЛУСФЕРА (засветка неба; ночью именно она освещает мир)"
+                    : (pass == 3) ? "ГЛУБИНА из буфера ('x' = геометрии НЕТ, 1..5 = ближе..дальше)"
+                    : (pass == 4) ? "ТРАФАРЕТ ('.' = не помечено, '1' = геометрия, цифра = метка, X = от 128)"
+                    : (pass == 5) ? "ИТОГ (готовый кадр — то, что видит игрок; здесь и должен быть дефект)"
+                    : (pass == 6) ? "МАТЕРИАЛ (номер; им берётся выборка из текстуры материалов)"
+                    : (pass == 7) ? "НОРМАЛЬ, вертикаль (0 вниз, 1 вверх; у земли ожидаем около 1)"
+                    : (pass == 8) ? "ГЛУБИНА В КАМЕРЕ (по ней шейдер считает расстояние и туман)"
+                                  : "КАДР ПОСЛЕ ФОРМУЛЫ (до лучей, тонального сжатия и апскейлера)";
+        Msg("~ [DA_MAP] --- %s ---", title);
+        for (u32 r = 0; r < DA_MAP_ROWS; ++r)
+        {
+            for (u32 col = 0; col < DA_MAP_COLS; ++col)
+            {
+                const float v = g[r * DA_MAP_COLS + col];
+                // Глубину в камере печатаем ступенями расстояния: 1 -- под ногами, 6 -- очень далеко.
+                line[col] = (pass == 8) ? da_depth_char(v)
+                          : (pass == 3) ? da_depth2_char(v)
+                          : (pass == 4) ? da_sten_char(v)
+                                        : da_map_char(v);
+            }
+            line[DA_MAP_COLS] = 0;
+            Msg("~ [DA_MAP] %02u |%s|", r, line);
+        }
+
+        // [DA_PORT] ЧИСЛА, а не только знаки. Знак даёт порядок величины, и на нём я уже дважды
+        // сделал ложный вывод: «ровное» и «ноль» на глаз неотличимы от «мало, но не ноль».
+        // Строку выбираем НЕ наугад, а по самому дефекту: ту, где в готовом кадре больше всего
+        // ровных нулей. Жёстко заданная строка промахивалась мимо клина, стоило камере сдвинуться,
+        // и заход пропадал впустую.
+        {
+            u32 r = 16, best = 0;
+            if (e)
+            {
+                for (u32 rr = 0; rr < DA_MAP_ROWS; ++rr)
+                {
+                    u32 zeros = 0;
+                    for (u32 cc = 0; cc < DA_MAP_COLS; ++cc)
+                        if (fin[rr * DA_MAP_COLS + cc] <= 0.f)
+                            ++zeros;
+                    if (zeros > best)
+                    {
+                        best = zeros;
+                        r = rr;
+                    }
+                }
+            }
+            string512 num;
+            num[0] = 0;
+            for (u32 col = 8; col < 56; col += 4)
+            {
+                string64 one;
+                xr_sprintf(one, "%u:%.4f ", col, g[r * DA_MAP_COLS + col]);
+                xr_strcat(num, sizeof(num), one);
+            }
+            Msg("~ [DA_MAP] числа, строка %u (нулей в готовом кадре: %u): %s", r, best, num);
+        }
+    }
+}
+
 void CRenderTarget::da_light_watch()
 {
     const u32 w = Device.dwRenderWidth, h = Device.dwRenderHeight;
@@ -834,6 +1503,23 @@ void CRenderTarget::da_light_watch()
     float acc[4] = {}, pos[4] = {};
     da_probe_pixel("rt_Accumulator", rt_Accumulator, 4, x, y, acc, &s_resolve_acc);
     da_probe_pixel("rt_Position", rt_Position, 4, x, y, pos, &s_resolve_pos);
+
+    // [DA_PORT] Альбедо и нормаль под перекрестием — то, чего приборам не хватало всё расследование.
+    //
+    // Чёрная область может родиться на трёх разных стадиях, и по картинке они неотличимы:
+    //   альбедо ~0                     — чернит ГЕОМЕТРИЯ, свет ни при чём;
+    //   альбедо в норме, накопитель ~0 — до пикселя не дошёл ни один источник;
+    //   оба в норме                    — чернит уже постобработка.
+    // Пять версий подряд снимались отключением подсистем, и каждый раз вывод оказывался негодным:
+    // выключение источников гасит сцену целиком, и «пятно пропало» неотличимо от «стало темно».
+    // Эти три числа отвечают на вопрос прямо и не зависят от того, что видно глазом.
+    float alb[4] = {}, nrm[4] = {};
+    const bool alb_ok = da_read_px_fmt(rt_Color, x, y, alb);
+    const bool nrm_ok = da_read_px_fmt(rt_Normal, x, y, nrm);
+    Msg("~ [DA_PIX] под перекрестием %ux%u | альбедо %s%.3f %.3f %.3f (a %.3f) | нормаль %s%.3f %.3f "
+        "%.3f (полусфера %.3f) | накопитель %.4f %.4f %.4f | глубина %.2f",
+        x, y, alb_ok ? "" : "НЕ ПРОЧТЕНО ", alb[0], alb[1], alb[2], alb[3], nrm_ok ? "" : "НЕ ПРОЧТЕНО ",
+        nrm[0], nrm[1], nrm[2], nrm[3], acc[0], acc[1], acc[2], pos[3]);
 
     // [DA_PORT] Кроме пикселя под перекрестьем — вся строка во всю ширину экрана.
     //

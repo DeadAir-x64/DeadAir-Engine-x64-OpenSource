@@ -304,7 +304,33 @@ void CCustomDetector::UpdateHudParticles()
     bool show = false;
     Fmatrix xf;
     xf.identity();
-    if (hi && hi->m_model)
+
+    // ⛔ [DA_PORT] Одного `hi` МАЛО: руки бывают убраны, а предмет при этом никуда не делся.
+    //
+    // Симптом: во время анимации еды модель зажигалки не рисуется, а пламя висит в воздухе само.
+    //
+    // Прежнее условие опиралось на обнуление `HudItemData()` при убирании в кобуру — верно, но
+    // только для кобуры. Анимации взаимодействия идут другим путём, и он ПОЛНОСТЬЮ СКРИПТОВЫЙ:
+    //
+    //   actor_effects_data.script: "actor_effects.use_weapon(0)"
+    //     -> actor_effects.use_weapon: db.actor:hide_weapon()
+    //       -> CScriptGameObject::HideWeapon: SetWeaponHideState(INV_STATE_BLOCK_ALL, true)
+    //         -> CInventory::SetSlotsBlocked, маска 0xffff — то есть ВСЕ слоты, включая детектор.
+    //
+    // ⚠️ Состояние предмета при этом НЕ меняется: он остаётся в eIdle. Первая попытка чинить это
+    // проверкой eHiding/eHidden поэтому и не сработала — руки убирает инвентарь, а не сам предмет.
+    //
+    // Правильный признак — заблокированный слот. Проверка состояния оставлена рядом: она закрывает
+    // обычное убирание в кобуру, и вместе они покрывают оба пути.
+    //
+    // Свет в руке НЕ трогаем: он ниже по функции и зависит от `hi` отдельно. На анимации зажигалка
+    // из рук не делась, гасить освещение вокруг игрока было бы неверно — убирается ровно пламя.
+    const u32 da_state = GetState();
+    CActor* da_actor = smart_cast<CActor*>(H_Parent());
+    const bool da_slot_blocked = da_actor && da_actor->inventory().IsSlotBlocked(this);
+    const bool da_visible = (da_state != eHiding && da_state != eHidden) && !da_slot_blocked;
+
+    if (hi && hi->m_model && da_visible)
     {
         // [DA_PORT] Положение берём через setup_firedeps, а НЕ перемножением матриц вручную.
         //

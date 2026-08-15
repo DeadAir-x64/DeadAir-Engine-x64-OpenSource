@@ -19,6 +19,7 @@
 #include "attachable_item.h"
 #include "script_entity.h"
 #include "alife_registry_wrappers.h"
+#include "alife_object_registry.h" // [DA_PORT] доступ к серверному объекту, см. SetWeaponConditionType
 #include "relation_registry.h"
 #include "CustomMonster.h"
 #include "ActorCondition.h"
@@ -2421,4 +2422,55 @@ void CScriptGameObject::SetArtefactAdditionalWeight(float v) { CArtefact* a = sm
 // Dead Air: weapon break/condition type (items_condition.script)
 // [DA_PORT] 32-bit bitmask (bit=malfunction). Was u8 -> truncated bits 8..31 (scripts use bit 28, loop 0..31).
 u32 CScriptGameObject::GetWeaponConditionType() { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return 0; return w->m_weapon_condition_type; }
-void CScriptGameObject::SetWeaponConditionType(u32 t) { CWeapon* w = smart_cast<CWeapon*>(&object()); if (!w) return; w->m_weapon_condition_type = t; }
+// [DA_PORT] Маска поломок ставится в ОБА объекта: в мире и на сервере.
+//
+// Дефект от игрока: снять обвес со ствола, поднятого с трупа NPC, -- и все поломки исчезают,
+// остаётся один износ. Корень оказался не в снятии обвеса вовсе.
+//
+// Маску назначает скрипт (death_manager -> items_condition.break_weapon, при генерации добычи), и
+// делал он это ТОЛЬКО в объекте в мире. Сохраняется же она в СЕРВЕРНОМ объекте
+// (CSE_ALifeItemWeapon::condition_type, см. STATE_Write), и оттуда же читается обратно при каждом
+// появлении оружия в мире: CWeapon::net_Spawn делает `m_weapon_condition_type = E->condition_type`.
+// Сам CWeapon::save маску не пишет вовсе.
+//
+// Значит серверный объект оставался с нулём, и первое же пересоздание оружия обнуляло поломки.
+// Снятие обвеса -- лишь один из поводов: тот же ноль должен приходить после выхода уровня из
+// онлайна и после загрузки сохранения.
+//
+// ⚠️ Формат сохранения при этом НЕ трогаем. Добавить поле в CWeapon::save было соблазнительно и
+// неверно: у существующих сохранений его нет, и load разъехался бы на всём, что читается после.
+// Серверный объект и так сохраняется, там поле уже есть -- надо было лишь начать его заполнять.
+void CScriptGameObject::SetWeaponConditionType(u32 t)
+{
+    CWeapon* w = smart_cast<CWeapon*>(&object());
+    if (!w)
+        return;
+
+    da_wpn_mask_note(w, t, "скрипт");
+    w->m_weapon_condition_type = t;
+
+    // Второй конец: без него правка переживёт только текущую жизнь объекта.
+    //
+    // Отчёт обязателен. Прибор da_wpn_mask_note слеп к главному случаю: он сравнивает значения
+    // ВНУТРИ одного объекта, а при пересоздании оружия у нового объекта и старое, и новое равны
+    // нулю -- изменения нет, строки нет, а поломки исчезли. Видно должно быть именно то, легла ли
+    // маска в серверный объект: только он переживает пересоздание.
+    if (!ai().get_alife())
+    {
+        Msg("! [DA_WPN] %s: ALife недоступен -- маска %u осталась только в объекте в мире",
+            w->cNameSect().c_str(), t);
+        return;
+    }
+
+    CSE_ALifeItemWeapon* se = smart_cast<CSE_ALifeItemWeapon*>(ai().alife().objects().object(w->ID(), true));
+    if (!se)
+    {
+        Msg("! [DA_WPN] %s: серверный объект id[%u] НЕ НАЙДЕН -- маска %u не переживёт пересоздание",
+            w->cNameSect().c_str(), u32(w->ID()), t);
+        return;
+    }
+
+    se->condition_type = t;
+    Msg("~ [DA_WPN] %s: маска %u записана и в серверный объект id[%u]", w->cNameSect().c_str(), t,
+        u32(w->ID()));
+}

@@ -61,10 +61,40 @@ float CActor::GetWeaponAccuracy() const
     return dispersion;
 }
 
+// [DA_PORT] Откуда вылетает пуля и куда летит — три ручки, один в один как в движке Anomaly
+// (xray-monolith, релиз 2025.05.06), где точку вылета и направление специально развели.
+//
+//   g_firepos       — от бедра:       0 = из камеры,  1 = из СТВОЛА
+//   g_firepos_zoom  — в прицеливании: 0 = из камеры,  1 = из СТВОЛА
+//   g_aimpos        — направление:    0 = в центр экрана, 1 = ВДОЛЬ СТВОЛА
+//
+// Смысл по их же формулировке: со стволом это физически правильное поведение, и отдача начинает
+// влиять на прицельную марку; без него пуля идёт в горизонт по центру экрана.
+//
+// Значения по умолчанию — НУЛИ, то есть ровно то поведение, что было в этой сборке до правки.
+// Ничего не меняется само: включает тот, кому нужно.
+int g_firepos = 0;
+int g_firepos_zoom = 0;
+int g_aimpos = 0;
+
 void CActor::g_fireParams(const CHudItem* pHudItem, Fvector& fire_pos, Fvector& fire_dir)
 {
     fire_pos = Cameras().Position();
     fire_dir = Cameras().Direction();
+
+    if (g_firepos || g_firepos_zoom || g_aimpos)
+    {
+        // Ствольные точку и направление считает setup_firedeps; для игрока их обычно выбрасывают,
+        // подменяя камерой — здесь как раз и решаем, выбрасывать ли.
+        if (CWeapon* wpn = smart_cast<CWeapon*>(const_cast<CHudItem*>(pHudItem)))
+        {
+            const bool zoomed = !!wpn->IsZoomed();
+            if (zoomed ? g_firepos_zoom : g_firepos)
+                fire_pos = wpn->get_LastFP();
+            if (g_aimpos)
+                fire_dir = wpn->get_LastFD();
+        }
+    }
 
     const CMissile* pMissile = smart_cast<const CMissile*>(pHudItem);
     if (pMissile)

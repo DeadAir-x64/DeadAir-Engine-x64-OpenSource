@@ -6,13 +6,22 @@
 #include "xrMemory.h"
 
 #include <cstring>
+#include <atomic>
 
 #pragma pack(push, 4)
 #pragma warning(push)
 #pragma warning(disable : 4200)
 struct XRCORE_API str_value
 {
-    u32 dwReference;
+    // [DA_PORT] Счётчик ссылок АТОМАРНЫЙ.
+    //
+    // Узлы общих строк копируются и освобождаются с рабочих потоков — у нас это загрузчики,
+    // планировщик задач, свой обход графа ИИ и расчёт костей. Один потерянный инкремент означает,
+    // что уборка освободит узел, на который ещё ссылаются, и его память уйдёт под другое: падение
+    // вылезет далеко от причины и на чужом тексте.
+    //
+    // Найдено не у себя: Dead Air Refined, коммит 049c6309 от 09.08.2026.
+    std::atomic<u32> dwReference;
     u32 dwLength;
     u32 dwCRC;
     str_value* next;
@@ -61,8 +70,8 @@ protected:
     {
         if (nullptr == p_)
             return;
-        p_->dwReference--;
-        if (0 == p_->dwReference)
+        // fetch_sub возвращает значение ДО вычитания: единица означает, что это была последняя ссылка.
+        if (p_->dwReference.fetch_sub(1, std::memory_order_acq_rel) <= 1)
             p_ = nullptr;
     }
 
@@ -71,7 +80,7 @@ public:
     {
         str_value* v = g_pStringContainer->dock(rhs);
         if (nullptr != v)
-            v->dwReference++;
+            v->dwReference.fetch_add(1, std::memory_order_relaxed);
         _dec();
         p_ = v;
     }
@@ -79,7 +88,7 @@ public:
     {
         str_value* v = rhs.p_;
         if (nullptr != v)
-            v->dwReference++;
+            v->dwReference.fetch_add(1, std::memory_order_relaxed);
         _dec();
         p_ = v;
     }

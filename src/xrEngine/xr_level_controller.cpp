@@ -578,13 +578,19 @@ static void TranslateBinding(key_binding& keyBinding, action_binding_desc& actio
     // Keyboard & mouse
     if (keyBinding.m_keyboard[0] || keyBinding.m_keyboard[1])
     {
+        // [DA_PORT] В экранной подсказке показываем ОДНУ клавишу, а не весь список привязок.
+        //
+        // Эта строка попадает только в подсказки поверх игры («Открыть дверь (F)») — единственные
+        // её читатели GetActionBinding и CGameFont, меню управления берёт привязки напрямую.
+        // Раньше сюда склеивались обе клавиши, и у всех, кто перенёс appdata из оригинального
+        // Dead Air, подсказка читалась как «(F, F10)»: их сборка по умолчанию вешала F10 второй
+        // на use, и этот мусор живёт в user.ltx игрока — из движка его не вычистить, не тронув
+        // чужие настройки. Показываем главную клавишу, а при её отсутствии — вторую, чтобы
+        // подсказка не опустела у тех, кто оставил только вторую привязку.
         const auto& prim = keyBinding.m_keyboard[0];
         const auto& sec  = keyBinding.m_keyboard[1];
 
-        strconcat(actionBinding.keyboard_mouse,
-                  prim        ? prim->key_local_name.c_str() : "",
-                  sec && prim ? ", "                         : "",
-                  sec         ? sec->key_local_name.c_str()  : "");
+        xr_strcpy(actionBinding.keyboard_mouse, (prim ? prim : sec)->key_local_name.c_str());
     }
     else
     {

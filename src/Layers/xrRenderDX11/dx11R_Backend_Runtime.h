@@ -189,6 +189,76 @@ ICF void CBackend::set_CS(ID3D11ComputeShader* _cs, LPCSTR _n)
     }
 }
 
+// [DA_PORT] Читает ли вершинный шейдер развёртку (TEXCOORD0).
+//
+// ЗАЧЕМ. В теневой проход геометрия идёт УРЕЗАННЫМ потоком: теневой карте нужна одна глубина,
+// поэтому берётся `m_fast` — только положение, 12 байт на вершину. Но альфа-тестовые материалы
+// (семейство `_aref`: листва, кроны, сетка, заборы) в теневом шейдере читают прозрачность из
+// текстуры, а значит требуют развёртку. Для пары «поток без развёртки + шейдер с альфа-тестом»
+// DirectX 11 разметку вершин НЕ СОЗДАЁТ — и такая геометрия молча выпадает из теневой карты.
+//
+// В 32-битном движке на DirectX 9 это было незаметно: недостающие входы там читались нулями, то
+// есть прозрачность бралась из угла текстуры. Тот же класс, что уже разобранная невидимая мачта.
+//
+// Разбор сигнатуры ручной и намеренно осторожный: при любом неожиданном содержимом отвечаем
+// «развёртка нужна». Это безопасная сторона — потеряем ускорение, но не тень.
+static bool da_dxbc_needs_texcoord(ID3DBlob* sig)
+{
+    if (!sig)
+        return true;
+
+    const u8* base = (const u8*)sig->GetBufferPointer();
+    const size_t size = (size_t)sig->GetBufferSize();
+    if (!base || size <= 32 || base[0] != 'D' || base[1] != 'X' || base[2] != 'B' || base[3] != 'C')
+        return true;
+
+    const u32 chunks = *(const u32*)(base + 28);
+    const u32* offsets = (const u32*)(base + 32);
+    for (u32 c = 0; c < chunks && 32 + (c + 1) * 4 <= size; ++c)
+    {
+        const u32 off = offsets[c];
+        if (off + 8 > size)
+            continue;
+        const u8* chunk = base + off;
+        // ISG1 -- та же таблица с расширенной записью; отличается только шагом.
+        if (chunk[0] != 'I' || chunk[1] != 'S' || chunk[2] != 'G')
+            continue;
+
+        const u32 stride = chunk[3] == 'N' ? 24u : 32u;
+        const u8* body = chunk + 8;
+        const u32 count = *(const u32*)body;
+        if (count > 32)
+            return true; // столько входов не бывает: содержимое не то, чем кажется
+
+        for (u32 k = 0; k < count; ++k)
+        {
+            const u8* e = body + 8 + k * stride;
+            if (size_t(e + stride - base) > size)
+                return true;
+            const u32 name_off = *(const u32*)e;
+            if (size_t(body + name_off - base) >= size)
+                return true;
+            // Считается ТОЛЬКО то, что шейдер действительно читает: объявленный, но неиспользуемый
+            // вход разметке не мешает — у DirectX 11 он в маске чтения пуст.
+            const u8 read_mask = *(e + 21);
+            if (read_mask && 0 == xr_strcmp((const char*)(body + name_off), "TEXCOORD"))
+                return true;
+        }
+        return false;
+    }
+    return true;
+}
+
+bool CBackend::da_vs_needs_uv()
+{
+    if (da_uv_sig_memo != m_pInputSignature)
+    {
+        da_uv_sig_memo = m_pInputSignature;
+        da_uv_need_memo = da_dxbc_needs_texcoord(m_pInputSignature);
+    }
+    return da_uv_need_memo;
+}
+
 ICF bool CBackend::is_TessEnabled() { return HW.FeatureLevel >= D3D_FEATURE_LEVEL_11_0 && (ds != 0 || hs != 0); }
 #endif
 
@@ -663,9 +733,96 @@ IC void CBackend::ApplyVertexLayout()
                 }
                 // ⭐ Имя шейдера — самое важное в этой строке: по перечню семантик видно, чего НЕ
                 // хватает, а по имени — КТО требует. Без него отказ приходится искать перебором.
+                // [DA_PORT] Третье, чего не хватало: ЧЬЯ это геометрия. Имени визуала на этом уровне
+                // нет — до бэкенда доходит только объявление вершин, — но его опознаёт связка
+                // «шаг вершины + адрес объявления»: у каждого формата он свой и стабилен за сеанс.
+                // По шагу сразу видно урезанный поток (12 байт — только положение).
+                u32 da_stride = 0;
+                for (size_t i = 0; i + 1 < decl->dx11_dcl_code.size(); ++i)
+                {
+                    const auto& e = decl->dx11_dcl_code[i];
+                    switch (e.Format)
+                    {
+                    case DXGI_FORMAT_R32G32B32A32_FLOAT: da_stride += 16; break;
+                    case DXGI_FORMAT_R32G32B32_FLOAT: da_stride += 12; break;
+                    case DXGI_FORMAT_R32G32_FLOAT: da_stride += 8; break;
+                    case DXGI_FORMAT_R32_FLOAT:
+                    case DXGI_FORMAT_R8G8B8A8_UNORM:
+                    case DXGI_FORMAT_R8G8B8A8_UINT:
+                    case DXGI_FORMAT_R16G16_SINT:
+                    case DXGI_FORMAT_R16G16_FLOAT: da_stride += 4; break;
+                    default: break;
+                    }
+                }
+
                 Msg("! [DA] разметка вершин НЕ СОЗДАНА (0x%08x): вызовы шейдера «%s» рисуют пустоту. "
-                    "Объявление даёт: %s(случаев %u)",
-                    (u32)hr, vs_name ? vs_name : "(без имени)", semantics, da_hits);
+                    "Объявление даёт: %s| шаг вершины %u байт, объявление [%p] (случаев %u)",
+                    (u32)hr, vs_name ? vs_name : "(без имени)", semantics, da_stride,
+                    (const void*)decl, da_hits);
+
+                // [DA_PORT] Вторая строка: чего шейдер ТРЕБУЕТ, прочитано из его же сигнатуры.
+                //
+                // Зачем понадобилась. Первой строки хватало ровно до тех пор, пока требования шейдера
+                // можно было прочитать в его исходнике. На `da_water_velocity` это подвело: исходник
+                // объявлял шесть входов, читал один, и глазами было не понять, что DirectX сверяет
+                // раскладку с ОБЪЯВЛЕННЫМИ, а не с используемыми. Разбираться пришлось разбором
+                // двоичного файла из кэша — снаружи и вручную. Теперь это делает сам движок.
+                //
+                // Формат сигнатуры: контейнер DXBC, внутри кусок ISGN со списком входов. Разбор
+                // ручной и намеренно осторожный: это отладочная ветка, она обязана молчать при любом
+                // неожиданном содержимом, а не падать поверх уже случившейся беды.
+                if (m_pInputSignature)
+                {
+                    const u8* base = (const u8*)m_pInputSignature->GetBufferPointer();
+                    const size_t size = (size_t)m_pInputSignature->GetBufferSize();
+                    string512 wants{};
+                    bool parsed = false;
+
+                    if (base && size > 32 && base[0] == 'D' && base[1] == 'X' && base[2] == 'B' &&
+                        base[3] == 'C')
+                    {
+                        const u32 chunks = *(const u32*)(base + 28);
+                        const u32* offsets = (const u32*)(base + 32);
+                        for (u32 c = 0; c < chunks && 32 + (c + 1) * 4 <= size; ++c)
+                        {
+                            const u32 off = offsets[c];
+                            if (off + 8 > size)
+                                continue;
+                            const u8* chunk = base + off;
+                            // ISG1 -- та же таблица с расширенной записью; отличается только шагом.
+                            const bool isgn = chunk[0] == 'I' && chunk[1] == 'S' && chunk[2] == 'G';
+                            if (!isgn)
+                                continue;
+                            const u32 stride = chunk[3] == 'N' ? 24u : 32u;
+                            const u8* body = chunk + 8;
+                            const u32 count = *(const u32*)body;
+                            if (count > 32)
+                                break; // столько входов не бывает: содержимое не то, чем кажется
+                            for (u32 k = 0; k < count; ++k)
+                            {
+                                const u8* e = body + 8 + k * stride;
+                                if (size_t(e + stride - base) > size)
+                                    break;
+                                const u32 name_off = *(const u32*)e;
+                                const u32 sem_index = *(const u32*)(e + 4);
+                                const u8 read_mask = *(e + 21);
+                                if (size_t(body + name_off - base) >= size)
+                                    break;
+                                string64 one;
+                                // Помечаем те входы, которые шейдер объявил, но не читает: именно они
+                                // и есть обычная причина отказа -- лишние требования на пустом месте.
+                                xr_sprintf(one, "%s%u%s ", (const char*)(body + name_off), sem_index,
+                                    read_mask ? "" : "(не читается)");
+                                xr_strcat(wants, one);
+                                parsed = true;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (parsed)
+                        Msg("!   шейдер требует: %s", wants);
+                }
             }
             pLayout = nullptr;
         }

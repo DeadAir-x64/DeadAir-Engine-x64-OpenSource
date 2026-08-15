@@ -1563,6 +1563,17 @@ ENGINE_API int ps_r__gbuffer_probe = 0;
 // Против дефектов, которые мерцают сами по себе: срез отвечает «что в этом кадре», а здесь нужна
 // последовательность, чтобы увидеть размах и период.
 ENGINE_API int ps_r__light_watch = 0;
+// [DA_PORT] Карта света по всему экрану, N кадров подряд. Разбор — у CRenderTarget::da_light_map.
+// Полноэкранное чтение с видеокарты синхронизирует с ней кадр, поэтому это прибор, а не режим:
+// включать на десяток кадров, а не держать постоянно.
+ENGINE_API int ps_r__light_map = 0;
+
+// [DA_PORT] Разбор слагаемых сборки кадра, см. da_dbg в r3\combine_1.ps. Ноль — обычный кадр.
+ENGINE_API int ps_r__combine_dbg = 0;
+
+// [DA_PORT] Нижняя граница полусферической засветки, долей от цвета неба. Лечит чёрные пятна
+// вечером и ночью; разбор — в r3\combine_1.ps. 0 возвращает прежнее поведение точь-в-точь.
+ENGINE_API float ps_r__hemi_floor = 0.0f; // ОТКАТ: граница поднимала засветку во всех тенях
 
 // [DA_PORT] Сколько кадров подряд мерить, ЕЗДИТ ЛИ ГОТОВЫЙ КАДР относительно предыдущего.
 //
@@ -2764,6 +2775,9 @@ void CCC_Register()
     CMD4(CCC_DaDebugInteger, "da_gbuffer_probe", &ps_r__gbuffer_probe, 0, 600);
     // [DA_PORT] Свет под перекрестьем, N кадров подряд — для мерцания при неподвижной камере.
     CMD4(CCC_DaDebugInteger, "da_light_watch", &ps_r__light_watch, 0, 600);
+    CMD4(CCC_DaDebugInteger, "da_light_map", &ps_r__light_map, 0, 600);
+    CMD4(CCC_DaDebugInteger, "da_combine_dbg", &ps_r__combine_dbg, 0, 12);
+    CMD4(CCC_Float, "da_hemi_floor", &ps_r__hemi_floor, 0.f, 0.5f);
     CMD4(CCC_DaDebugInteger, "da_shift_watch", &ps_r__shift_watch, 0, 600);
     CMD4(CCC_DaDebugInteger, "da_move_dump", &ps_da_move_dump, 0, 2000);
     CMD4(CCC_DaDebugFloat, "da_squad_dump", &ps_da_squad_dump, 0.f, 1000.f); // [DA_PORT] порог, мс

@@ -160,7 +160,21 @@ void door::change_state(actor* initiator)
     if (!m_object.is_spawned())
         return;
 
-    m_object.callback(GameObject::eUseObject)(m_object.lua_game_object(), initiator ? static_cast<CScriptGameObject*>(initiator->lua_game_object()) : nullptr);
+    // [DA_PORT] В обработчик использования НИКОГДА не должен уходить пустой пользователь.
+    //
+    // Первое, что делает любой скрипт-потребитель, — читает who:id(); при пустом значении падает
+    // тот скрипт, который окажется подписан. Смена состояния, которую никто не запрашивал явно
+    // (физика доиграла движение — см. on_change_state), всё равно вызвана тем, кто держит дверь
+    // открытой: его и передаём. А если не держит никто — значит дверью никто и не пользовался,
+    // и сообщать не о чем.
+    //
+    // Найдено не у себя: Dead Air Refined, коммит ea2f4e4d от 09.08.2026.
+    actor* const user = initiator ? initiator : (m_initiators.empty() ? nullptr : m_initiators.front());
+    if (!user)
+        return;
+
+    m_object.callback(GameObject::eUseObject)(
+        m_object.lua_game_object(), static_cast<CScriptGameObject*>(user->lua_game_object()));
 #ifdef DEBUG
     if (g_debug_doors)
         Msg("door[%s] started to change its state to [%s]", m_object.cName().c_str(),
@@ -272,7 +286,7 @@ void door::on_change_state(door_state const state)
         return;
     }
 
-    change_state(nullptr); //Alundaio: NULL - no need to know who
+    change_state(nullptr); //Alundaio: NULL — вместо него берётся тот, кто держит дверь
 }
 
 #ifdef DEBUG

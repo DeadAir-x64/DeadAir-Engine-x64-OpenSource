@@ -92,7 +92,9 @@ void CSE_ALifeOnlineOfflineGroup::update()
         MEMBER* m = (*I).second;
 
         // Тот же случай: боец из сохранения ещё не связан с объектом — пропускаем до register_member.
-        if (!m)
+        // Метка жизни — по вылету у игрока в switch_offline: освобождённый боец даёт не ноль, а
+        // мусор, и проверка на ноль его пропускает. Ниже идёт ЗАПИСЬ в его поля.
+        if (!m || !m->da_object_alive())
             continue;
 
         m->o_Position = o_Position;
@@ -211,6 +213,20 @@ void CSE_ALifeOnlineOfflineGroup::unregister_member(ALife::_OBJECT_ID member_id)
         return;
     }
 
+    // [DA_PORT] Метка жизни: если боец уже освобождён, трогать его поля и обновлять по нему граф
+    // нельзя — а из состава запись всё равно надо вычеркнуть, иначе она останется висеть.
+    if (!(*I).second->da_object_alive())
+    {
+        Msg("~ [DA_PORT] отряд [%d]: боец [%d] уже освобождён — вычёркиваем без обновления графа", ID,
+            member_id);
+        m_members.erase(I);
+
+        if (m_members.empty())
+            m_flags.set(flUsedAI_Locations, FALSE);
+
+        return;
+    }
+
     (*I).second->m_group_id = 0xffff;
 
     graph.update((*I).second);
@@ -242,7 +258,17 @@ bool CSE_ALifeOnlineOfflineGroup::synchronize_location()
     {
         // [DA_PORT] См. update(): состав бывает пустым, а указатель на бойца — нулевым сразу после
         // загрузки сохранения (STATE_Read кладёт nullptr до register_member).
-        MEMBER* member = m_members.empty() ? nullptr : (*m_members.begin()).second;
+        // Первый ЖИВОЙ, а не просто первый — тот же разбор, что в switch_offline.
+        MEMBER* member = nullptr;
+        for (const auto& it : m_members)
+        {
+            if (it.second && it.second->da_object_alive())
+            {
+                member = it.second;
+                break;
+            }
+        }
+
         if (member)
         {
             o_Position = member->o_Position;
@@ -273,7 +299,9 @@ void CSE_ALifeOnlineOfflineGroup::try_switch_online()
     for (; I != E; ++I)
     {
         // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
-        if (!(*I).second)
+        // Метка жизни здесь по той же причине, что и в switch_offline: указатель на
+        // освобождённого бойца не ноль, а мусор, и проверка на ноль его пропускает.
+        if (!(*I).second || !(*I).second->da_object_alive())
             continue;
         VERIFY3((*I).second->g_Alive(), "Incorrect situation : some of the OnlineOffline group members is dead",
             (*I).second->name_replace());
@@ -316,7 +344,9 @@ void CSE_ALifeOnlineOfflineGroup::try_switch_offline()
     for (; I != E; ++I)
     {
         // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
-        if (!(*I).second)
+        // Метка жизни здесь по той же причине, что и в switch_offline: указатель на
+        // освобождённого бойца не ноль, а мусор, и проверка на ноль его пропускает.
+        if (!(*I).second || !(*I).second->da_object_alive())
             continue;
         VERIFY3((*I).second->g_Alive(), "Incorrect situation : some of the OnlineOffline group members is dead",
             (*I).second->name_replace());
@@ -378,8 +408,26 @@ void CSE_ALifeOnlineOfflineGroup::switch_offline()
     R_ASSERT(m_bOnline);
     m_bOnline = false;
 
-    // [DA_PORT] Пустой состав отсекается, но и указатель может быть нулевым — см. STATE_Read.
-    MEMBER* member = m_members.empty() ? nullptr : (*m_members.begin()).second;
+    // [DA_PORT] Берём ПЕРВОГО ЖИВОГО бойца, а не просто первого.
+    //
+    // Вылет у игрока (сборка 07d02d13): чтение по адресу 0x4adbeaf2 в synchronize_location прямо
+    // отсюда. Не ноль -- мусор, то есть указатель на освобождённого бойца. Пустоту и ноль здесь мы
+    // уже прикрывали, а проверку живости поставили только в цикле ниже -- и это место осталось
+    // непокрытым. Тот же класс, что чинили в этом файле, просто пропущенная точка.
+    //
+    // Перебор, а не отказ при мёртвом первом: блок ниже переносит на группу положение, узел и
+    // вершину графа. Взять их не с кого -- значит группа уйдёт в офлайн со старыми координатами,
+    // и это заметнее, чем взять их со второго бойца.
+    MEMBER* member = nullptr;
+    for (const auto& it : m_members)
+    {
+        if (it.second && it.second->da_object_alive())
+        {
+            member = it.second;
+            break;
+        }
+    }
+
     if (member)
     {
         member->synchronize_location();
@@ -568,7 +616,9 @@ void CSE_ALifeOnlineOfflineGroup::on_failed_switch_online()
     for (; I != E; ++I)
     {
         // [DA_PORT] Боец из сохранения ещё не связан с объектом (см. STATE_Read) — пропускаем.
-        if ((*I).second)
+        // Метка жизни здесь по той же причине, что и в switch_offline: указатель на
+        // освобождённого бойца не ноль, а мусор, и проверка на ноль его пропускает.
+        if ((*I).second && (*I).second->da_object_alive())
             (*I).second->clear_client_data();
     }
 }

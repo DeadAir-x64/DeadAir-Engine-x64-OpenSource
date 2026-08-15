@@ -18,27 +18,6 @@ function opt_video:InitControls(x, y, xml, handler)
 	xml:InitStatic					("tab_video:cap_window_mode",		self)
 	xml:InitComboBox				("tab_video:list_window_mode",		self)
 
-	xml:InitStatic					("tab_video:cap_brightness",		self)
-	self.brightness_track = xml:InitTrackBar("tab_video:track_brightness", self)
-	self.brightness_val = xml:InitStatic("tab_video:cap_brightness_val", self)
-
-	xml:InitStatic					("tab_video:cap_contrast",			self)
-	self.contrast_track = xml:InitTrackBar("tab_video:track_contrast", self)
-	self.contrast_val = xml:InitStatic("tab_video:cap_contrast_val", self)
-
-	xml:InitStatic("tab_video:cap_fov",self)
-	self.fov_value = xml:InitStatic("tab_video:cap_fov_value",self)
-	self.fov_track = xml:InitTrackBar("tab_video:track_fov",self)
-	--[[
-	xml:InitStatic("tab_video:cap_hud_fov",self)
-	self.hud_fov_value = xml:InitStatic("tab_video:cap_hud_fov_value",self)
-	self.hud_fov_track = xml:InitTrackBar("tab_video:track_hud_fov",self)
-	--]]
-	-- [DA_PORT] Colour-correction sliders restored. They were cut earlier because the port did not read
-	-- r__color_base_r/g/b or r2_vibrance_val anywhere, so moving them changed nothing. That was the wrong
-	-- call: the values are now fed to postprocess.ps (see r2_rendertarget_phase_PP.cpp), so the sliders
-	-- work as they do in the original.
-
 	-- [DA_PORT] Upscaling: which one, and how hard. Replaces the separate FSR 1.0 preset, FSR 2 quality
 	-- list and raw render-scale percentage. The engine side writes the per-vendor variables and the
 	-- render scale together, so these two controls cannot be put into a contradictory state.
@@ -81,29 +60,6 @@ function opt_video:InitControls(x, y, xml, handler)
 	self.aniso_track = xml:InitTrackBar("tab_video:track_aniso", self)
 	self.aniso_val = xml:InitStatic("tab_video:cap_aniso_val", self)
 
-	xml:InitStatic("tab_video:cap_color_correction",self)
-
-	xml:InitStatic("tab_video:cap_color_r",self)
-	self.color_r_val = xml:InitStatic("tab_video:cap_color_r_val",self)
-	self.color_r_track = xml:InitTrackBar("tab_video:track_color_r",self)
-
-	xml:InitStatic("tab_video:cap_color_g",self)
-	self.color_g_val = xml:InitStatic("tab_video:cap_color_g_val",self)
-	self.color_g_track = xml:InitTrackBar("tab_video:track_color_g",self)
-
-	xml:InitStatic("tab_video:cap_color_b",self)
-	self.color_b_val = xml:InitStatic("tab_video:cap_color_b_val",self)
-	self.color_b_track = xml:InitTrackBar("tab_video:track_color_b",self)
-
-	xml:InitStatic("tab_video:cap_vibrance", self)
-	self.vibrance_val = xml:InitStatic("tab_video:cap_vibrance_val",self)
-	self.vibrance_track = xml:InitTrackBar("tab_video:track_vibrance_val", self)
-
-	xml:InitStatic("tab_video:cap_grp_image", self)
-	xml:InitStatic					("tab_video:cap_gamma",				self)
-	self.gamma_track = xml:InitTrackBar("tab_video:track_gamma", self)
-	self.gamma_val = xml:InitStatic("tab_video:cap_gamma_val", self)
-
 	xml:InitStatic					("tab_video:cap_resolution",		self)
 	xml:InitComboBox				("tab_video:list_resolution",		self)
 
@@ -118,4 +74,11 @@ function opt_video:InitControls(x, y, xml, handler)
 
 	btn		= xml:Init3tButton		("tab_video:btn_advanced",	self)
 	handler:Register				(btn, "btn_advanced_graphic")
+
+	xml:InitStatic("tab_video:cap_grp_da_tune", self)
+	-- [DA_PORT] ѕереход к экранной подгонке: обзор оружи€, его положение и цветокоррекци€
+	-- настраиваютс€ в самой игре, потому что меню закрывает собой ровно ту картинку,
+	-- ради которой их и крут€т. ќбработчик Ч options_dialog:OnBtnDaTune.
+	btn		= xml:Init3tButton		("tab_video:btn_da_tune",	self)
+	handler:Register				(btn, "btn_da_tune")
 end

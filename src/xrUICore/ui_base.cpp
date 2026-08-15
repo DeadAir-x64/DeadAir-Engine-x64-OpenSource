@@ -353,33 +353,64 @@ float UICore::get_current_kx()
 // монитор, и 4:3 есть у любого. Достаточно понизить разрешение ради кадров.
 XRUICORE_API int ps_ui_widescreen_layout = 1;
 
+bool UICore::is_ultra_widescreen()
+{
+    return float(Device.dwWidth) / float(Device.dwHeight) > 1.8f;
+}
+
+// [DA_PORT] Выбор набора разметки по соотношению сторон: `_21` -> `_16` -> базовый.
+//
+// Зачем понадобилась третья ступень. Прежний порядок знал только `_16` и базовый, поэтому на
+// сверхшироком экране (21:9, 32:9) брался тот же файл, что и на обычном широком, и растягивался
+// вдвое сильнее.
+//
+// ⭐ Имена и порог сверены с ЧУЖИМИ движками намеренно. Monolith (на нём работает Anomaly) и OGSR
+// независимо пришли к одному и тому же: суффикс `_21`, порог соотношения 1.8, откат вниз при
+// отсутствии файла. Разметку под сверхширокие рисует СООБЩЕСТВО — десятки готовых наборов лежат
+// на ModDB и Nexus, — и совпадение имён означает, что чужой готовый файл у нас просто заработает.
+// Разойдись мы хоть в суффиксе, хоть в пороге — он не нашёлся бы вовсе.
+//
+// ⚠️ В поставке самих Monolith и Dead Air файлов `_21` НЕТ НИ ОДНОГО. То есть сегодня эта ступень
+// молча уходит в откат и ничего не меняет; она сделана ради совместимости, а не ради вида здесь и
+// сейчас.
+//
+// Особенность Dead Air сохранена: на НЕширокоформатном экране всё равно берётся `_16`, потому что
+// базовые файлы мода протухли и остались от основы (разбор — у ps_ui_widescreen_layout).
 shared_str UICore::get_xml_name(pcstr path, pcstr fn)
 {
     string_path str;
-    if (!is_widescreen() && !ps_ui_widescreen_layout)
-    {
-        xr_sprintf(str, "%s", fn);
-        if (NULL == strext(fn))
-            xr_strcat(str, ".xml");
-    }
-    else
+
+    // Сложить имя с суффиксом и ответить, существует ли такой файл.
+    const auto try_suffix = [&](pcstr suffix) -> bool
     {
         if (strext(fn))
         {
             xr_strcpy(str, fn);
             *strext(str) = 0;
-            xr_strcat(str, "_16.xml");
+            xr_strcat(str, suffix);
+            xr_strcat(str, ".xml");
         }
         else
-            xr_sprintf(str, "%s_16", fn);
+            xr_sprintf(str, "%s%s", fn, suffix);
 
-        string_path str_;
-        if (!FS.exist(str_, "$game_config$", path, str))
-        {
-            xr_sprintf(str, "%s", fn);
-            if (nullptr == strext(fn))
-                xr_strcat(str, ".xml");
-        }
+        string_path probe;
+        return !!FS.exist(probe, "$game_config$", path, str);
+    };
+
+    bool found = false;
+
+    if (is_ultra_widescreen())
+        found = try_suffix("_21");
+
+    if (!found && (is_widescreen() || ps_ui_widescreen_layout))
+        found = try_suffix("_16");
+
+    if (!found)
+    {
+        xr_sprintf(str, "%s", fn);
+        if (nullptr == strext(fn))
+            xr_strcat(str, ".xml");
     }
+
     return str;
 }

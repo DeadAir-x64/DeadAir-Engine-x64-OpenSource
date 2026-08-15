@@ -341,7 +341,15 @@ int ps_r2_dhemi_count = 5; // 5
 int ps_r2_wait_sleep = 0;
 int ps_r2_wait_timeout = 500;
 
-float ps_r2_lt_smooth = 1.f; // 1.f
+// [DA_PORT] Скорость привыкания динамических объектов к освещению: 1.0 -> 4.0.
+//
+// При заводском значении переход занимает около трёх секунд, и это читается как «сталкер медленно
+// обугливается», зайдя в тень: модель ещё несёт яркость улицы, когда сама уже под крышей. При 4.0
+// переход укладывается в долю секунды и остаётся плавным.
+//
+// Величина осталась ручкой r2_dhemi_smooth; 1.0 возвращает заводское поведение точь-в-точь.
+// Найдено не у себя: Dead Air Refined, коммит fbcc00fd от 15.08.2026.
+float ps_r2_lt_smooth = 4.f; // заводское: 1.f
 float ps_r2_slight_fade = 0.5f; // 1.f
 
 //  x - min (0), y - focus (1.4), z - max (100)
@@ -1621,6 +1629,20 @@ void xrRender_initconsole()
         CMD4(CCC_DaDebugInteger, "da_bones_dump", &ps_da_bones_dump, 0, 200000); // [DA_PORT]
         CMD4(CCC_DaDebugInteger, "da_sun_only", &ps_da_sun_only, 0, 3);
 
+        // [DA_PORT] Разбор источников света: печать чисел и поштучная изоляция. Разбор — у
+        // da_light_step в r2_R_lights.cpp. Обе ручки отладочные, в user.ltx не оседают.
+        {
+            extern int ps_da_light_dump;
+            extern int ps_da_light_only;
+            extern int ps_da_light_max;
+            CMD4(CCC_DaDebugInteger, "da_light_dump", &ps_da_light_dump, 0, 100);
+            CMD4(CCC_DaDebugInteger, "da_light_only", &ps_da_light_only, 0, 512);
+            CMD4(CCC_DaDebugInteger, "da_light_max", &ps_da_light_max, 0, 512);
+            // Обычный CCC_Integer: это ПРАВКА, а не диагностика, и она должна сохраняться.
+            extern int ps_da_light_nearfix;
+            CMD4(CCC_Integer, "da_light_nearfix", &ps_da_light_nearfix, 0, 2);
+        }
+
         // [DA_PORT] Кэш теневых карт солнца. Разбор — в render_phase_sun.cpp, у da_smap_should_render.
         // ⚠️ Обычные CCC_Integer, а не CCC_DaDebug: это настройка производительности, она ДОЛЖНА
         // сохраняться в user.ltx, в отличие от диагностики.
@@ -1702,6 +1724,17 @@ void xrRender_initconsole()
             void Execute(pcstr) override { RImplementation.da_shader_manifest_save(); }
         };
         CMD1(CCC_ShaderManifest, "da_shader_manifest");
+
+        // [DA_PORT] Видеопамять по требованию. Сам учёт идёт всегда и пишет в лог только пересечение
+        // порога (разбор -- у CHW::da_vram_poll); команда нужна, чтобы снять число в нужный момент,
+        // например сразу после загрузки уровня или на подозрительной сцене.
+        class CCC_DaVram : public IConsole_Command
+        {
+        public:
+            CCC_DaVram(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+            void Execute(pcstr) override { HW.da_vram_report("по запросу"); }
+        };
+        CMD1(CCC_DaVram, "da_vram");
     }
 #endif
     CMD3(CCC_OptimizeStatic, "r__optimize_static_geom", &ps_r_optimize_static, q_optimize_geom);

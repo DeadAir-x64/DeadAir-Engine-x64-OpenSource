@@ -422,4 +422,120 @@
 	<string id="ui_mm_da_fp_body">
 		<text>Своё тело от первого лица</text>
 	</string>
+
+	<!-- [DA_PORT] added by the x64 port: on-screen tuner for weapon FOV / colour correction -->
+	<string id="ui_mm_da_tune_btn">
+		<text>Настроить в игре</text>
+	</string>
+	<string id="ui_da_tune_title">
+		<text>Настройка прицела и цвета</text>
+	</string>
+	<string id="ui_da_tune_hud_fov">
+		<text>Обзор оружия (FOV)</text>
+	</string>
+	<string id="ui_da_tune_pos_x">
+		<text>Оружие: вправо / влево</text>
+	</string>
+	<string id="ui_da_tune_pos_y">
+		<text>Оружие: вверх / вниз</text>
+	</string>
+	<string id="ui_da_tune_pos_z">
+		<text>Оружие: вперёд / назад</text>
+	</string>
+	<string id="ui_da_tune_brightness">
+		<text>Яркость</text>
+	</string>
+	<string id="ui_da_tune_gamma">
+		<text>Гамма</text>
+	</string>
+	<string id="ui_da_tune_contrast">
+		<text>Контраст</text>
+	</string>
+	<string id="ui_da_tune_hint1">
+		<text>Стрелки: вверх/вниз - строка, влево/вправо - значение, PgUp/PgDn - крупный шаг</text>
+	</string>
+	<string id="ui_da_tune_hint2">
+		<text>Backspace - вернуть как было, ESC - выйти и сохранить</text>
+	</string>
+	<string id="ui_da_tune_fov">
+		<text>Обзор камеры</text>
+	</string>
+	<string id="ui_da_tune_color_r">
+		<text>Цвет: красный</text>
+	</string>
+	<string id="ui_da_tune_color_g">
+		<text>Цвет: зелёный</text>
+	</string>
+	<string id="ui_da_tune_color_b">
+		<text>Цвет: синий</text>
+	</string>
+	<string id="ui_da_tune_vibrance">
+		<text>Насыщенность</text>
+	</string>
+	<string id="ui_mm_grp_da_tune">
+		<text>Настройка прицела и цвета</text>
+	</string>
+	<string id="ui_da_tune_tab_view">
+		<text>Обзор</text>
+	</string>
+	<string id="ui_da_tune_tab_image">
+		<text>Изображение</text>
+	</string>
+	<string id="ui_da_tune_tab_color">
+		<text>Цветокоррекция</text>
+	</string>
+	<string id="ui_da_tune_cancel">
+		<text>Отмена</text>
+	</string>
+	<string id="ui_da_tune_save">
+		<text>Сохранить и скрыть</text>
+	</string>
+	<string id="ui_da_tune_aim_align">
+		<text>Ствол в перекрестие</text>
+	</string>
+	<string id="ui_da_tune_dump">
+		<text>В конфиг</text>
+	</string>
+	<string id="ui_da_tune_defaults">
+		<text>Вернуть стандартные</text>
+	</string>
+	<string id="ui_da_cross_tab">
+		<text>Прицел</text>
+	</string>
+	<string id="ui_da_cross_style">
+		<text>Вид прицела</text>
+	</string>
+	<string id="ui_da_cross_thick">
+		<text>Толщина</text>
+	</string>
+	<string id="ui_da_cross_len">
+		<text>Длина штриха, пикс</text>
+	</string>
+	<string id="ui_da_cross_gap">
+		<text>Зазор от центра, пикс</text>
+	</string>
+	<string id="ui_da_cross_dot">
+		<text>Точка в центре</text>
+	</string>
+	<string id="ui_da_cross_outline">
+		<text>Тёмный контур</text>
+	</string>
+	<string id="ui_da_cross_dynamic">
+		<text>Расходится по разбросу</text>
+	</string>
+	<string id="ui_da_cross_r">
+		<text>Цвет: красный</text>
+	</string>
+	<string id="ui_da_cross_g">
+		<text>Цвет: зелёный</text>
+	</string>
+	<string id="ui_da_cross_b">
+		<text>Цвет: синий</text>
+	</string>
+	<string id="ui_da_cross_a">
+		<text>Непрозрачность</text>
+	</string>
+	<string id="ui_da_cross_relation">
+		<text>Подсветка цели</text>
+	</string>
 </string_table>

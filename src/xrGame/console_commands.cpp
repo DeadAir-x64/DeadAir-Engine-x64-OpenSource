@@ -53,6 +53,7 @@
 #include "GametaskManager.h"
 
 #include "da_memory_probe.h" // [DA_PORT] инструменты замера и воспроизведения
+#include "player_hud.h" // [DA_PORT] da_aim_dump читает живые замеры оружия в руках
 
 #ifdef DEBUG
 #include "PHDebug.h"
@@ -2823,6 +2824,410 @@ void CCC_RegisterCommands()
         // [DA_PORT] Сторож висячих выдач: кто спрашивает у реестра уже удалённый объект.
         extern int ps_da_dangling_watch;
         CMD4(CCC_DaDebugInteger, "da_dangling_watch", &ps_da_dangling_watch, 0, 1);
+
+        // [DA_PORT] «Почему не открылось»: что дал луч на нажатие использования.
+        // Разбор трёх подозреваемых — у ps_da_use_log в ActorInput.cpp.
+        extern int ps_da_use_log;
+        CMD4(CCC_DaDebugInteger, "da_use_log", &ps_da_use_log, 0, 1);
+    }
+    {
+        // [DA_PORT] Свой огонёк источника света от первого лица: 0 — не показывать (по умолчанию),
+        // 1 — как было. Обычная настройка, а не отладочная: должна сохраняться между запусками.
+        // Разбор — у места применения в CTorch::UpdateCL.
+        extern int ps_da_torch_glow_fp;
+        CMD4(CCC_Integer, "da_torch_glow_fp", &ps_da_torch_glow_fp, 0, 1);
+        extern int ps_da_npc_torch_shadow; // [DA_PORT] тень фонаря сталкера, разбор в Torch.cpp
+        CMD4(CCC_Integer, "da_npc_torch_shadow", &ps_da_npc_torch_shadow, 0, 1);
+    }
+    {
+        // [DA_PORT] Поправка игрока к положению оружия в руках, МЕТРЫ. Разбор — у места применения
+        // в player_hud::update.
+        //
+        // Оси: X вправо, Y вверх, Z ВПЕРЁД от камеры. Отрицательный Z придвигает оружие к лицу,
+        // положительный отодвигает. Предел ±0.3 м взят с запасом к разбросу самих конфигов: там
+        // значения порядка 0.1–0.2, и большее уводило бы ствол за пределы видимого.
+        //
+        // Обычные настройки, а не отладочные: сохраняются между запусками.
+        extern float ps_da_hud_pos_x, ps_da_hud_pos_y, ps_da_hud_pos_z;
+        CMD4(CCC_Float, "da_hud_pos_x", &ps_da_hud_pos_x, -0.3f, 0.3f);
+        CMD4(CCC_Float, "da_hud_pos_y", &ps_da_hud_pos_y, -0.3f, 0.3f);
+        CMD4(CCC_Float, "da_hud_pos_z", &ps_da_hud_pos_z, -0.3f, 0.3f);
+
+        // [DA_PORT] Гасить ли поправку при прицеливании. Разбор — у места применения в player_hud.
+        extern int ps_da_hud_pos_in_aim;
+        CMD4(CCC_Integer, "da_hud_pos_in_aim", &ps_da_hud_pos_in_aim, 0, 1);
+
+        // [DA_PORT] Доворот ствола к перекрестию. Разбор — у объявления в player_hud.cpp.
+        extern float ps_da_aim_align;
+        CMD4(CCC_Float, "da_aim_align", &ps_da_aim_align, 0.f, 1.f);
+
+        // [DA_PORT] Печать подобранного положения оружия В ГОТОВОМ ВИДЕ ДЛЯ .ltx.
+        //
+        // Зачем именно так. Во всей линейке X-Ray выравнивание мушки — РУЧНАЯ работа по конфигу
+        // каждого ствола: движок ничего не выравнивает сам, а `hud_adjust` в Anomaly это инструмент
+        // подбора, а не автоматика. Значит цикл должен замыкаться: покрутил ползунки — получил
+        // строку — вставил в конфиг. Без последнего шага подгонка остаётся «посмотреть».
+        //
+        // Числа берём из ЖИВЫХ замеров (attachable_hud_item::m_measures), а не перечитываем конфиг:
+        // там уже разрешён вариант _16x9 и применены все правки. Повороты в замерах хранятся в
+        // градусах — ровно как в конфиге, пересчёт не нужен (см. ypr.mul(PI/180) у места применения).
+        class CCC_DaAimDump : public IConsole_Command
+        {
+        public:
+            CCC_DaAimDump(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+            void Execute(pcstr) override
+            {
+                attachable_hud_item* hi = g_player_hud ? g_player_hud->attached_item(0) : nullptr;
+                if (!hi || !hi->m_parent_hud_item)
+                {
+                    Msg("! [DA_PORT] da_aim_dump: в руках ничего нет — печатать нечего.");
+                    return;
+                }
+
+                extern float ps_da_hud_pos_x, ps_da_hud_pos_y, ps_da_hud_pos_z;
+                extern ENGINE_API float psHUD_FOV;
+
+                const bool wide = UICore::is_widescreen();
+                pcstr sfx = wide ? "_16x9" : "";
+
+                Fvector pos = hi->m_measures.m_hands_attach[0];
+                Fvector rot = hi->m_measures.m_hands_attach[1];
+                Fvector aim_pos = hi->m_measures.m_hands_offset[0][1];
+                Fvector aim_rot = hi->m_measures.m_hands_offset[1][1];
+
+                // ⚠️ Живая поправка ложится ТОЛЬКО в hands_position, и это не выбор, а факт: ползунки
+                // прибавляются к положению РУК (player_hud::update, tmp += ps_da_hud_pos_*), тогда как
+                // aim_hud_offset применяется в СОБСТВЕННОЙ системе оружия (Weapon.cpp,
+                // trans.mulB_43(hud_rotation)). Системы координат разные, и складывать поправку с
+                // прицельной строкой нельзя — напечатанный конфиг не воспроизвёл бы подобранное.
+                //
+                // На этом я уже обжёгся: пересчитал замеренное отклонение дула из системы камеры и
+                // вписал в aim_hud_offset_pos как есть — оружие уехало через пол-экрана.
+                const u8 idx = hi->m_parent_hud_item->GetCurrentHudOffsetIdx();
+                const Fvector live = { ps_da_hud_pos_x, ps_da_hud_pos_y, ps_da_hud_pos_z };
+                pos.add(live);
+
+                // Прицельную поправку складываем ОТДЕЛЬНО: она задаётся ровно там же, где движок
+                // читает aim_hud_offset_pos, поэтому система координат совпадает по построению и
+                // напечатанная строка воспроизводит подобранное один в один.
+                extern Fvector g_da_aim_offset_delta;
+                aim_pos.add(g_da_aim_offset_delta);
+
+                Msg("~ [DA_PORT] da_aim_dump: секция [%s], экран %s, hud_fov %.3f, состояние %s",
+                    hi->m_sect_name.c_str(), wide ? "широкий (_16x9)" : "4:3", psHUD_FOV,
+                    idx > 0 ? "ПРИЦЕЛИВАНИЕ" : "от бедра");
+                Msg("~   поправка ползунков (%.4f, %.4f, %.4f) внесена в hands_position (система РУК);"
+                    " состояние сейчас: %s",
+                    live.x, live.y, live.z, idx > 0 ? "прицеливание" : "от бедра");
+                Msg("~   прицельная поправка стрелками (%.4f, %.4f, %.4f) внесена в aim_hud_offset_pos",
+                    g_da_aim_offset_delta.x, g_da_aim_offset_delta.y, g_da_aim_offset_delta.z);
+                Msg("~ --- скопировать в конфиг ствола ---");
+                Msg("[%s]", hi->m_sect_name.c_str());
+                Msg("hands_position%s        = %.6f,%.6f,%.6f", sfx, pos.x, pos.y, pos.z);
+                Msg("hands_orientation%s     = %.6f,%.6f,%.6f", sfx, rot.x, rot.y, rot.z);
+                Msg("aim_hud_offset_pos%s    = %.6f,%.6f,%.6f", sfx, aim_pos.x, aim_pos.y, aim_pos.z);
+                Msg("aim_hud_offset_rot%s    = %.6f,%.6f,%.6f", sfx, aim_rot.x, aim_rot.y, aim_rot.z);
+                Msg("~ --- конец ---");
+                Msg("~   после вставки верните ползунки в ноль: da_hud_pos_x 0; da_hud_pos_y 0; da_hud_pos_z 0");
+
+                // [DA_PORT] Живое состояние прицеливания — В ЛОГ, а не только на экран.
+                //
+                // Панель da_aim_debug рисуется поверх игры и в лог не попадает, поэтому сравнение
+                // «сломанный сейв против нормального» упиралось в скриншоты, а они то тёмные, то не
+                // доходят. Одна команда должна класть в файл всё, что нужно для сравнения.
+                //
+                // Ключевое здесь — доля прицеливания. Она живёт в объекте оружия, не сохраняется и
+                // обнуляется в конструкторе; застрянь она ненулевой при опущенном оружии — всё
+                // прицельное смещение применится от бедра, а загрузка сейва это вылечит.
+                {
+                    extern float g_da_zoom_factor;
+                    extern bool g_da_zoom_weapon, g_da_zoom_actor;
+                    extern u8 g_da_zoom_idx;
+                    extern bool g_da_aim_allowed;
+                    extern u32 g_da_aim_frozen_frames;
+                    extern float g_da_aim_angle_deg, g_da_aim_shift, g_da_aim_shift_max;
+
+                    const bool stuck = (!g_da_zoom_weapon && g_da_zoom_factor > EPS) ||
+                        (g_da_zoom_weapon != g_da_zoom_actor);
+
+                    Msg("~ состояние: доля прицеливания %.4f | оружие в прицеле %s | актёр целится %s "
+                        "| idx %u%s",
+                        g_da_zoom_factor, g_da_zoom_weapon ? "да" : "нет", g_da_zoom_actor ? "да" : "нет",
+                        u32(g_da_zoom_idx), stuck ? "   <-- РАСХОЖДЕНИЕ" : "");
+                    extern float g_da_zoom_hip_peak;
+                    extern u32 g_da_zoom_mismatch_frames;
+                    // ⭐ Главная строка. Доля обязана быть НУЛЁМ всё время, пока оружие опущено;
+                    // ненулевой пик означает, что прицельное смещение применялось от бедра.
+                    Msg("~ ЗА СЕССИЮ: пик доли при ОПУЩЕННОМ оружии %.4f%s | кадров с расхождением "
+                        "флагов %u",
+                        g_da_zoom_hip_peak, g_da_zoom_hip_peak > 0.01f ? "   <-- НЕ НОЛЬ" : "",
+                        g_da_zoom_mismatch_frames);
+                    Msg("~ инерция: догон %s, кадров стоит %u, угол %.2f град, сдвиг %.4f м (пик %.4f)",
+                        g_da_aim_allowed ? "взведён" : "СНЯТ", g_da_aim_frozen_frames, g_da_aim_angle_deg,
+                        g_da_aim_shift, g_da_aim_shift_max);
+
+                    // ⭐ ИТОГ ЦЕПОЧКИ — где оружие стоит и куда смотрит ОТНОСИТЕЛЬНО ГЛАЗА.
+                    //
+                    // Зачем это, когда всё выше уже совпало. Первая пара дампов показала, что в
+                    // прицеливании совпадают ВСЕ измеренные входные величины: конфиг, доля
+                    // прицеливания, флаги, вклад инерции. А картинка при этом разная. Значит
+                    // различие приходит из последнего неизмеренного звена — позы рук: оружие висит
+                    // на кости модели рук (calc_transform берёт LL_GetTransform(m_ancors)), и куда
+                    // встала кость, туда встал и ствол.
+                    //
+                    // Матрица предмета — конец всей цепочки, после неё положение уже не меняется.
+                    // Если эти пять чисел разойдутся между сейвами, а всё выше совпало, то виновата
+                    // именно поза рук, и дальше искать надо там.
+                    Fvector d;
+                    d.sub(hi->m_item_transform.c, Device.vCameraPosition);
+                    const float rt = d.dotproduct(Device.vCameraRight);
+                    const float up = d.dotproduct(Device.vCameraTop);
+                    const float fw = d.dotproduct(Device.vCameraDirection);
+
+                    Fvector k = hi->m_item_transform.k;
+                    k.normalize_safe();
+                    const float yaw = rad2deg(atan2f(k.dotproduct(Device.vCameraRight),
+                        k.dotproduct(Device.vCameraDirection)));
+                    const float pitch = rad2deg(asinf(k.dotproduct(Device.vCameraTop)));
+
+                    {
+                        extern float g_da_shot_sum_yaw, g_da_shot_sum_pitch, g_da_shot_disp_deg;
+                        extern u32 g_da_shot_count;
+                        if (g_da_shot_count)
+                            Msg("~ ВЫСТРЕЛЫ: %u шт | СРЕДНЕЕ отклонение от перекрестия %+.3f / %+.3f "
+                                "град | разброс ствола %.3f град",
+                                g_da_shot_count, g_da_shot_sum_yaw / float(g_da_shot_count),
+                                g_da_shot_sum_pitch / float(g_da_shot_count), g_da_shot_disp_deg);
+                        else
+                            Msg("~ ВЫСТРЕЛЫ: ни одного — прибор пуст, пострелять надо ДО дампа");
+                    }
+
+                    Msg("~ ИТОГ: оружие от глаза  вправо %+.4f  вверх %+.4f  вперёд %+.4f  (метры)",
+                        rt, up, fw);
+                    Msg("~ ИТОГ: ствол относительно взгляда  по горизонтали %+.3f  по вертикали %+.3f (град)",
+                        yaw, pitch);
+
+                    // ⭐ ТОЧКА ВЫЛЕТА — то есть сама геометрия, а не корень модели.
+                    //
+                    // Замер выше показал, что КОРЕНЬ оружия в обоих сейвах стоит одинаково. Но мушка
+                    // это геометрия, и её двигают КОСТИ: анимация рук и оружия уводит видимую часть,
+                    // не трогая корень. Анимация как раз и сбрасывается загрузкой сейва — значит
+                    // проверять надо именно её.
+                    //
+                    // Считаем ровно как setup_firedeps: кость fire_bone -> смещение fire_point ->
+                    // матрица предмета. Это точка у дульного среза, рядом с мушкой.
+                    if (hi->m_measures.m_prop_flags.test(hud_item_measures::e_fire_point) && hi->m_model)
+                    {
+                        Fvector fp;
+                        Fmatrix fire_mat = hi->m_model->LL_GetTransform(hi->m_measures.m_fire_bone);
+                        fire_mat.transform_tiny(fp, hi->m_measures.m_fire_point_offset);
+                        hi->m_item_transform.transform_tiny(fp);
+
+                        Fvector fd2;
+                        fd2.sub(fp, Device.vCameraPosition);
+                        Msg("~ ИТОГ: дуло от глаза  вправо %+.4f  вверх %+.4f  вперёд %+.4f  (метры)",
+                            fd2.dotproduct(Device.vCameraRight), fd2.dotproduct(Device.vCameraTop),
+                            fd2.dotproduct(Device.vCameraDirection));
+
+                        // Куда дуло уводит от центра экрана, в градусах — это и есть «мушка съехала».
+                        const float fx = fd2.dotproduct(Device.vCameraRight);
+                        const float fy = fd2.dotproduct(Device.vCameraTop);
+                        const float fz = fd2.dotproduct(Device.vCameraDirection);
+                        if (fz > EPS)
+                            Msg("~ ИТОГ: дуло от центра экрана  по горизонтали %+.3f  по вертикали %+.3f (град)",
+                                rad2deg(atan2f(fx, fz)), rad2deg(atan2f(fy, fz)));
+                    }
+                    else
+                        Msg("~ ИТОГ: у ствола нет fire_bone — точку вылета не посчитать");
+                }
+                FlushLog();
+            }
+        };
+        CMD1(CCC_DaAimDump, "da_aim_dump");
+
+        // [DA_PORT] Вернуть подгонку к значениям по умолчанию. Кнопка «Вернуть стандартные» в окне.
+        //
+        // Зачем отдельной командой, а не списком в скрипте: значения должны лежать в ОДНОМ месте,
+        // рядом с движком, откуда они и взяты. Разбросанные по Lua числа разойдутся с движком при
+        // первой же правке, и «стандартные» перестанут быть стандартными молча.
+        //
+        // Источники значений (проверены по коду, не выдуманы):
+        //   psHUD_FOV = 0.45, g_fov = 67.5                     — xr_ioc_cmd.cpp
+        //   ps_gamma = ps_brightness = ps_contrast = 1.0        — xr_ioc_cmd.cpp
+        //   ps_r_color_base_r/g/b = 1.04 / 1.00 / 0.96          — xrRender_console.cpp
+        //   ps_r2_vibrance_val = 0.18                           — xrRender_console.cpp
+        //   ps_da_hud_pos_* = 0                                 — player_hud.cpp (наша добавка)
+        //
+        // Идём через консоль, а не по указателям: часть величин живёт в DLL рендера, откуда xrGame
+        // их не видит, и там же на записи висят побочные действия (гамма-рампа, профиль цвета).
+        class CCC_DaTuneDefaults : public IConsole_Command
+        {
+        public:
+            CCC_DaTuneDefaults(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+            void Execute(pcstr) override
+            {
+                static const struct { pcstr name; float value; } da_defaults[] = {
+                    // Обзор, изображение и цветокоррекция — НАШИ значения, подобранные глазами в
+                    // игре, а не заводские из движка. Заводские (0.45 / 67.5 / 1.04,1.00,0.96 /
+                    // 0.18) оставлены в комментариях: если понадобится вернуться к стоку, менять
+                    // надо здесь, а не разыскивать их по исходникам движка заново.
+                    { "hud_fov", 0.365f },        // сток 0.45
+                    { "da_hud_pos_x", 0.f },
+                    { "da_hud_pos_y", 0.f },
+                    { "da_hud_pos_z", 0.f },
+                    { "fov", 90.f },              // сток 67.5
+                    { "rs_c_gamma", 1.1f },       // сток 1.0
+                    { "rs_c_contrast", 1.0f },
+                    { "rs_c_brightness", 1.0f },
+                    { "r__color_base_r", 1.00f }, // сток 1.04
+                    { "r__color_base_g", 1.00f },
+                    { "r__color_base_b", 1.00f }, // сток 0.96
+                    { "r2_vibrance_val", 0.f },   // сток 0.18
+
+                    // Прицел — СТОКОВЫЕ значения Dead Air, разбор у объявлений в HUDCrosshair.cpp.
+                    // Сброс возвращает привычную марку мода, а не то, что нам показалось удобным.
+                    { "da_cross_style", 0.f },
+                    { "da_cross_thick", 1.f },
+                    { "da_cross_len", 2.f },
+                    { "da_cross_gap", 0.f },
+                    { "da_cross_dot", 0.f },
+                    { "da_cross_outline", 0.f },
+                    { "da_cross_dynamic", 1.f },
+                    { "da_cross_r", 178.f },
+                    { "da_cross_g", 178.f },
+                    { "da_cross_b", 178.f },
+                    { "da_cross_a", 178.f },
+                    { "da_cross_relation", 1.f },
+                };
+
+                u32 done = 0, missing = 0;
+                for (const auto& d : da_defaults)
+                {
+                    if (!Console || !Console->GetCommand(d.name))
+                    {
+                        // Команды может не быть — например, величины рендера при другом рендерере.
+                        // Молчать нельзя: игрок нажал «вернуть стандартные», а часть не вернулась.
+                        Msg("! [DA_PORT] da_tune_defaults: команда [%s] не найдена, пропущена", d.name);
+                        ++missing;
+                        continue;
+                    }
+                    string128 buf;
+                    // Целочисленные команды разбирают аргумент как целое: печатать им "0.00000" значит
+                    // отдать строку, которую они прочтут как 0 в лучшем случае. Дробную часть
+                    // оставляем только там, где она есть.
+                    const bool whole = fsimilar(d.value, floorf(d.value));
+                    if (whole)
+                        xr_sprintf(buf, sizeof(buf), "%s %d", d.name, int(d.value));
+                    else
+                        xr_sprintf(buf, sizeof(buf), "%s %.5f", d.name, d.value);
+                    Console->ExecuteCommand(buf, false);
+                    ++done;
+                }
+                Msg("~ [DA_PORT] da_tune_defaults: возвращено к стандартным значениям: %u%s", done,
+                    missing ? " (часть пропущена, см. выше)" : "");
+            }
+        };
+        CMD1(CCC_DaTuneDefaults, "da_tune_defaults");
+
+        // [DA_PORT] Настраиваемое перекрестие: вид, размеры, цвет. Разбор — в HUDCrosshair.cpp.
+        // Вид -1 прячет марку целиком; 0 — заводской крест, то есть по умолчанию ничего не меняется.
+        extern int ps_da_cross_style, ps_da_cross_thick, ps_da_cross_len, ps_da_cross_gap;
+        extern int ps_da_cross_dot, ps_da_cross_outline, ps_da_cross_dynamic;
+        extern int ps_da_cross_r, ps_da_cross_g, ps_da_cross_b, ps_da_cross_a;
+        extern int da_cross_style_count();
+        CMD4(CCC_Integer, "da_cross_style", &ps_da_cross_style, -1, da_cross_style_count() - 1);
+        CMD4(CCC_Integer, "da_cross_thick", &ps_da_cross_thick, 1, 12);
+        CMD4(CCC_Integer, "da_cross_len", &ps_da_cross_len, 1, 200);
+        CMD4(CCC_Integer, "da_cross_gap", &ps_da_cross_gap, 0, 200);
+        CMD4(CCC_Integer, "da_cross_dot", &ps_da_cross_dot, 0, 1);
+        CMD4(CCC_Integer, "da_cross_outline", &ps_da_cross_outline, 0, 1);
+        CMD4(CCC_Integer, "da_cross_dynamic", &ps_da_cross_dynamic, 0, 1);
+        CMD4(CCC_Integer, "da_cross_r", &ps_da_cross_r, 0, 255);
+        CMD4(CCC_Integer, "da_cross_g", &ps_da_cross_g, 0, 255);
+        CMD4(CCC_Integer, "da_cross_b", &ps_da_cross_b, 0, 255);
+        CMD4(CCC_Integer, "da_cross_a", &ps_da_cross_a, 0, 255);
+        extern int ps_da_cross_relation;
+        CMD4(CCC_Integer, "da_cross_relation", &ps_da_cross_relation, 0, 1);
+        // Взводится окном подгонки на время правки, в обычной игре всегда ноль.
+        extern int ps_da_cross_preview;
+        CMD4(CCC_DaDebugInteger, "da_cross_preview", &ps_da_cross_preview, 0, 1);
+
+        // [DA_PORT] Точка вылета и направление пули. Имена и смысл как в движке Anomaly, чтобы
+        // привычные значения работали так же. Разбор — у определения в Actor_Weapon.cpp.
+        extern int g_firepos, g_firepos_zoom, g_aimpos;
+        CMD4(CCC_Integer, "g_firepos", &g_firepos, 0, 1);
+        CMD4(CCC_Integer, "g_firepos_zoom", &g_firepos_zoom, 0, 1);
+        CMD4(CCC_Integer, "g_aimpos", &g_aimpos, 0, 1);
+
+        // [DA_PORT] Стрелки двигают оружие прямо во время прицеливания. Разбор — у
+        // da_tune_keys_handle в player_hud.cpp. Не сохраняется: это режим подбора, а не настройка.
+        extern int ps_da_tune_keys;
+        CMD4(CCC_DaDebugInteger, "da_tune_keys", &ps_da_tune_keys, 0, 1);
+
+        // [DA_PORT] Комната предпросмотра: увести игрока на fake_start и настраивать при живой
+        // картинке.
+        //
+        // Зачем отдельной командой. Ручки выше применяются на лету, но в меню настроек их не видно:
+        // на время меню уровень снимается с отрисовки, и за ним пусто. Развести паузу и отрисовку
+        // мы пробовали — это дало вылет в расчёте видимости на рабочем потоке: отрисовка опирается
+        // на кадровое обновление уровня, а его в меню нет.
+        //
+        // Поэтому идём другим путём, тем же, каким сообщество закрыло этот вопрос в CS2: не
+        // показывать мир за меню, а дать ОТДЕЛЬНОЕ место, где настраивают при обычной игре. У Dead
+        // Air такое место уже есть — технический уровень `fake_start`, с которого начинается новая
+        // игра.
+        //
+        // ⚠️ Внутри — ровно та команда, которую выполняет кнопка «Новая игра» в меню мода
+        // (ui_main_menu.script). Ничего своего в путь запуска уровня не добавляется намеренно: это
+        // единственный путь, который игра проходит каждый раз и который заведомо рабочий.
+        class CCC_DaHudPreview : public IConsole_Command
+        {
+        public:
+            CCC_DaHudPreview(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+            void Execute(pcstr) override
+            {
+                extern float ps_da_hud_pos_x, ps_da_hud_pos_y, ps_da_hud_pos_z;
+                Msg("~ [DA_PORT] комната предпросмотра: начинается НОВАЯ ИГРА на fake_start.");
+                Msg("~   Текущая игра НЕ сохраняется — сохранитесь заранее, если она нужна.");
+                Msg("~   Настройки положения оружия сейчас: x %.3f, y %.3f, z %.3f (метры).",
+                    ps_da_hud_pos_x, ps_da_hud_pos_y, ps_da_hud_pos_z);
+                Msg("~   Крутите da_hud_pos_x/y/z и hud_fov прямо в игре — видно сразу.");
+                FlushLog();
+
+                Console->Execute("start server(all/single/alife/new) client(localhost)");
+            }
+        };
+        CMD1(CCC_DaHudPreview, "da_hud_preview");
+
+        // [DA_PORT] Открыть окно подгонки обзора и цвета, не заходя в меню.
+        //
+        // Само окно живёт в скрипте (ui_da_tune.script): ползунки, вкладки и мышь — это готовые
+        // виджеты интерфейса, писать их заново на C++ незачем. Здесь только вход для тех, кому
+        // быстрее набрать команду, чем идти Настройки → Видео → «Настроить в игре».
+        class CCC_DaTune : public IConsole_Command
+        {
+        public:
+            CCC_DaTune(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+            void Execute(pcstr) override
+            {
+                // Окно ложится поверх игрового интерфейса, и без загруженного уровня его некуда
+                // положить. Молча промолчать нельзя: игрок решил бы, что команда сломана.
+                if (!g_pGameLevel)
+                {
+                    Msg("! [DA_PORT] da_tune: окно работает только в игре — загрузите сохранение "
+                        "или начните новую игру.");
+                    Msg("~   Отдельная комната для подгонки: da_hud_preview");
+                    return;
+                }
+
+                luabind::functor<void> show;
+                if (GEnv.ScriptEngine->functor("ui_da_tune.show", show))
+                    show();
+                else
+                    Msg("! [DA_PORT] da_tune: скрипт ui_da_tune не загружен — открывать нечем.");
+            }
+        };
+        CMD1(CCC_DaTune, "da_tune");
     }
     {
         // [DA_PORT] сверить быстрый поиск ближайшей вершины с прежним полным перебором
@@ -2882,6 +3287,11 @@ void CCC_RegisterCommands()
         // Экранный отчёт числами для подгонки — диагностика, в user.ltx не уходит.
         extern int g_da_fp_body_debug;
         CMD4(CCC_DaDebugInteger, "da_fp_body_debug", &g_da_fp_body_debug, 0, 1);
+
+        // [DA_PORT] Прибор увода прицела. Разбор — у объявления переменных в player_hud.cpp,
+        // как читать показания — у DaRenderAimStats в HUDManager.cpp.
+        extern int g_da_aim_debug;
+        CMD4(CCC_DaDebugInteger, "da_aim_debug", &g_da_aim_debug, 0, 1);
         extern int g_da_mem_probe; // [DA_PORT] выключатель автоматических отметок
         CMD4(CCC_DaDebugInteger, "da_mem_probe", &g_da_mem_probe, 0, 1);
         extern int g_da_mem_heapwalk; // [DA_PORT] обход куч: живые аллокации вместо закоммиченного

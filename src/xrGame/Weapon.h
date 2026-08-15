@@ -24,6 +24,10 @@ class CUIWindow;
 class CBinocularsVision;
 class CNightVisionEffector;
 
+class CWeapon;
+// [DA_PORT] Прибор изменения маски поломок, разбор у da_wpn_mask_note в Weapon.cpp.
+void da_wpn_mask_note(CWeapon* w, u32 next, pcstr who);
+
 class CWeapon : public CHudItemObject, public CShootingObject
 {
     typedef CHudItemObject inherited;

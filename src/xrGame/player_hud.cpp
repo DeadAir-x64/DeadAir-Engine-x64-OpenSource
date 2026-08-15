@@ -107,6 +107,100 @@ void player_hud_motion_container::load(IKinematicsAnimated* model, const shared_
     }
 }
 
+// [DA_PORT] Поправка игрока к положению оружия в руках, метры. Разбор -- у места применения
+// в player_hud::update. Обычные настройки, а не отладочные: должны сохраняться между запусками.
+// [DA_PORT] Доворот нарисованного ствола к перекрестию. Команда da_aim_align, 0..1.
+//
+// Зачем. Пуля игрока НЕ летит вдоль ствола: CActor::g_fireParams (Actor_Weapon.cpp) подменяет и
+// точку вылета, и направление на КАМЕРУ, то есть выстрел всегда идёт ровно в перекрестие, а
+// посчитанные setup_firedeps ствольные vLastFP/vLastFD для игрока выбрасываются. Модель же ставится
+// своими hands_position/hands_orientation из конфига и с камерой никак не связана. Отсюда и
+// расхождение мушки с прицелом: на попадания оно не влияет совсем, но глазами видно.
+//
+// Что делает. Доворачивает модель так, чтобы её ось Z смотрела вдоль камеры — туда, куда и летит
+// пуля. Правка общая: ни один из 93 конфигов оружия трогать не нужно, и от обзора, разрешения и
+// прочих настроек она не зависит.
+//
+// 1 — ствол ровно в перекрестие, 0 — как в оригинале.
+//
+// ⛔ ПО УМОЛЧАНИЮ ВЫКЛЮЧЕНО, и это не осторожность, а вывод. Во всей линейке X-Ray выравнивание
+// мушки — РУЧНАЯ работа по конфигу каждого ствола (aim_hud_offset_pos/rot), а не расчёт в движке;
+// у OGSR даже есть отдельный режим «hard crosshair», который заставляет пулю вылетать из
+// fire_point вместо центра экрана — он существует именно потому, что по умолчанию стреляет центр.
+// Доворот модели этой работы не заменяет: он борется с моделью вместо того, чтобы поправить данные,
+// и на проверке увёл оружие ещё дальше вправо.
+//
+// Ручку оставляем — она даёт быстро увидеть, насколько ствол разошёлся с камерой, — но включать её
+// должен тот, кто этого хочет.
+float ps_da_aim_align = 0.f;
+
+// [DA_PORT] Подгонка положения оружия СТРЕЛКАМИ, прямо во время прицеливания. Команда da_tune_keys.
+//
+// Зачем отдельно от окна. Прицельное смещение (aim_hud_offset_*) подбирается только когда игрок
+// ЦЕЛИТСЯ, а окно подгонки при этом не открыть — прицел отпустится. Набирать команды в консоли,
+// удерживая правую кнопку, тоже нельзя. Без этого печать готовой строки для .ltx (da_aim_dump)
+// для прицеливания попросту неприменима.
+//
+// Стрелки влево/вправо — X, вверх/вниз — Y, PgUp/PgDn — Z. ESC намеренно НЕ перехватываем: выход в
+// меню должен работать всегда.
+int ps_da_tune_keys = 0;
+// [DA_PORT] Прибор выстрела — заполняется в CShootingObject::FireBullet, показывается панелью.
+float g_da_shot_last_yaw = 0.f, g_da_shot_last_pitch = 0.f;
+float g_da_shot_sum_yaw = 0.f, g_da_shot_sum_pitch = 0.f;
+u32 g_da_shot_count = 0;
+float g_da_shot_disp_deg = 0.f, g_da_shot_origin_right = 0.f, g_da_shot_origin_up = 0.f;
+
+float g_da_muzzle_yaw = 0.f;
+float g_da_muzzle_pitch = 0.f;
+
+// [DA_PORT] 1 — применять поправку и в прицеле тоже (прежнее поведение), 0 — гасить её при
+// вскидке. По умолчанию гасим: прицельная посадка у каждого ствола выверена отдельно.
+int ps_da_hud_pos_in_aim = 0;
+
+float ps_da_hud_pos_x = 0.f;
+float ps_da_hud_pos_y = 0.f;
+float ps_da_hud_pos_z = 0.f;
+
+bool da_tune_keys_handle(int scancode)
+{
+    if (!ps_da_tune_keys)
+        return false;
+
+    constexpr float step = 0.002f;
+
+    // Целимся — правим ПРИЦЕЛЬНОЕ смещение, стоим от бедра — положение рук. Это разные величины в
+    // разных системах координат, и путать их нельзя: одно применяется к рукам, другое к самому
+    // оружию. Признак берём у прибора прицеливания (Weapon.cpp).
+    extern u8 g_da_zoom_idx;
+    extern Fvector g_da_aim_offset_delta;
+    const bool aiming = g_da_zoom_idx > 0;
+
+    float* v = nullptr;
+    float dir = 0.f;
+
+    switch (scancode)
+    {
+    case SDL_SCANCODE_LEFT:     v = aiming ? &g_da_aim_offset_delta.x : &ps_da_hud_pos_x; dir = -1.f; break;
+    case SDL_SCANCODE_RIGHT:    v = aiming ? &g_da_aim_offset_delta.x : &ps_da_hud_pos_x; dir = +1.f; break;
+    case SDL_SCANCODE_DOWN:     v = aiming ? &g_da_aim_offset_delta.y : &ps_da_hud_pos_y; dir = -1.f; break;
+    case SDL_SCANCODE_UP:       v = aiming ? &g_da_aim_offset_delta.y : &ps_da_hud_pos_y; dir = +1.f; break;
+    case SDL_SCANCODE_PAGEDOWN: v = aiming ? &g_da_aim_offset_delta.z : &ps_da_hud_pos_z; dir = -1.f; break;
+    case SDL_SCANCODE_PAGEUP:   v = aiming ? &g_da_aim_offset_delta.z : &ps_da_hud_pos_z; dir = +1.f; break;
+    default: return false;
+    }
+
+    *v += dir * step;
+    clamp(*v, -0.3f, 0.3f);
+    return true;
+}
+
+
+// [DA_PORT] Признак «идёт подгонка положения оружия из скрипта». Держится модулем hud_adjust
+// (level_script.cpp) и нужен, чтобы игра не мешала настройке. Один источник правды: отдельного
+// состояния в player_hud НЕ заводим -- у Anomaly оно своё, и это второе место, где правда о том
+// же самом.
+int ps_da_hud_adjust = 0;
+
 Fvector& attachable_hud_item::hands_attach_pos() { return m_measures.m_hands_attach[0]; }
 Fvector& attachable_hud_item::hands_attach_rot() { return m_measures.m_hands_attach[1]; }
 
@@ -152,7 +246,68 @@ void attachable_hud_item::update(bool bForce)
         m_measures.update(m_attach_offset);
 
     m_parent->calc_transform(m_attach_place_idx, m_attach_offset, m_item_transform);
+
+    // [DA_PORT] Свести нарисованный ствол с перекрестием — разбор у объявления ps_da_aim_align.
+    // Только основная рука: во второй ни ствола, ни мушки.
+    if (ps_da_aim_align > EPS && m_attach_place_idx == 0 && m_parent_hud_item &&
+        smart_cast<const CActor*>(m_parent_hud_item->object().H_Parent()))
+    {
+        Fvector cur = m_item_transform.k;
+        cur.normalize_safe();
+
+        float dot = cur.dotproduct(Device.vCameraDirection);
+        clamp(dot, -1.f, 1.f);
+        const float angle = acosf(dot) * ps_da_aim_align;
+
+        Fvector axis;
+        axis.crossproduct(cur, Device.vCameraDirection);
+        if (angle > EPS_S && axis.square_magnitude() > EPS_S)
+        {
+            axis.normalize();
+            Fmatrix rot;
+            rot.rotation(axis, angle);
+
+            // ⚠️ Направление поворота ПРОВЕРЯЕМ, а не предполагаем. Знак зависит от того, как в
+            // движке заданы направление вращения и порядок сомножителей в crossproduct; ошибка
+            // здесь не падает и не логируется — она просто уводит ствол в другую сторону, и
+            // ровно на это я уже наступил: было доложено «стало ровнее», а оружие ушло правее.
+            //
+            // Проверка дешёвая: поворачиваем пробный вектор и смотрим, стало ли ближе к камере.
+            // Если нет — берём тот же угол с обратным знаком.
+            Fvector probe = cur;
+            rot.transform_dir(probe);
+            if (probe.dotproduct(Device.vCameraDirection) < dot)
+                rot.rotation(axis, -angle);
+
+            // Крутим сам базис, а не перемножаем матрицы: порядок умножения тут легко перепутать
+            // местами, а поворот трёх осей при неподвижном начале читается однозначно.
+            rot.transform_dir(m_item_transform.i);
+            rot.transform_dir(m_item_transform.j);
+            rot.transform_dir(m_item_transform.k);
+        }
+    }
+
     m_upd_firedeps_frame = Device.dwFrame;
+
+    // [DA_PORT] Живой угол дула от центра экрана — обратная связь для подгонки стрелками.
+    // Считаем здесь: матрица предмета уже окончательная, прицельное смещение в неё вошло.
+    if (m_attach_place_idx == 0 && m_measures.m_prop_flags.test(hud_item_measures::e_fire_point) && m_model)
+    {
+        extern float g_da_muzzle_yaw, g_da_muzzle_pitch;
+        Fvector fp;
+        Fmatrix fire_mat = m_model->LL_GetTransform(m_measures.m_fire_bone);
+        fire_mat.transform_tiny(fp, m_measures.m_fire_point_offset);
+        m_item_transform.transform_tiny(fp);
+
+        Fvector d;
+        d.sub(fp, Device.vCameraPosition);
+        const float fz = d.dotproduct(Device.vCameraDirection);
+        if (fz > EPS)
+        {
+            g_da_muzzle_yaw = rad2deg(atan2f(d.dotproduct(Device.vCameraRight), fz));
+            g_da_muzzle_pitch = rad2deg(atan2f(d.dotproduct(Device.vCameraTop), fz));
+        }
+    }
 
     if (IKinematicsAnimated* ka = m_model->dcast_PKinematicsAnimated())
     {
@@ -707,6 +862,56 @@ void player_hud::update(const Fmatrix& cam_trans)
         else if (item1)
             tmp = item1->hands_attach_pos();
 
+        // [DA_PORT] Поправка игрока к положению оружия в руках, МЕТРЫ.
+        //
+        // Зачем. Положение задаётся `hands_position` в конфиге КАЖДОГО ствола (в моде их 93, плюс
+        // отдельный вариант `_16x9`), подобрано вручную и вкус у него общий на всех. Кому-то ствол
+        // стоит слишком близко к лицу, кому-то низко; менять 93 файла ради этого нельзя, а трогать
+        // поле зрения — значит менять и сцену.
+        //
+        // Поэтому здесь общая добавка поверх подобранного: относительные различия между стволами
+        // сохраняются, сдвигается весь набор разом.
+        //
+        // Оси HUD: X вправо, Y вверх, Z ВПЕРЁД от камеры. Отрицательный Z придвигает оружие ближе к
+        // лицу, положительный отодвигает — это и есть «расположение камеры относительно оружия».
+        //
+        // ⚠️ Направление ВЫСТРЕЛА этим не меняется: оно берётся из оси Z матрицы предмета
+        // (`setup_firedeps`), а сдвиг на неё не влияет. Поправка чисто про удобство вида.
+        {
+            extern float ps_da_hud_pos_x, ps_da_hud_pos_y, ps_da_hud_pos_z;
+            extern int ps_da_hud_pos_in_aim;
+
+            // [DA_PORT] Поправка ГАСНЕТ при прицеливании — иначе она сбивает выверенную посадку.
+            //
+            // Зачем. Эти ручки двигают РУКИ, то есть действуют в обоих состояниях сразу. От бедра
+            // это ровно то, что нужно: игрок ставит оружие как ему удобно. А в прицеле положение
+            // задано отдельно (aim_hud_offset_pos у каждого ствола) и выверено так, чтобы мушка
+            // села на центр — общий сдвиг рук её оттуда уводит.
+            //
+            // Формула: множим на (1 - доля прицеливания). От бедра доля 0, поправка целиком; в
+            // прицеле доля 1, поправка ноль, и оружие возвращается туда, где его выверили. Между
+            // ними плавно — той же долей, которой движок ведёт саму вскидку, так что рассинхрона
+            // с анимацией быть не может.
+            //
+            // ⭐ Пересчитывать системы координат не нужно: мы не досчитываем компенсацию в чужом
+            // базисе (там я уже ошибся однажды), а просто не применяем сдвиг там, где он мешает.
+            //
+            // idx > 0 — признак того, что вскидка идёт или держится; при опущенном оружии он ноль,
+            // и доля обнуляется вместе с ним, даже если в глобальной переменной осталось старое.
+            float da_aim = 0.f;
+            if (item0 && item0->m_parent_hud_item && item0->m_parent_hud_item->GetCurrentHudOffsetIdx() > 0)
+            {
+                extern float g_da_zoom_factor;
+                da_aim = g_da_zoom_factor;
+                clamp(da_aim, 0.f, 1.f);
+            }
+
+            const float da_k = ps_da_hud_pos_in_aim ? 1.f : (1.f - da_aim);
+            tmp.x += ps_da_hud_pos_x * da_k;
+            tmp.y += ps_da_hud_pos_y * da_k;
+            tmp.z += ps_da_hud_pos_z * da_k;
+        }
+
         m_attach_offset.translate_over(tmp);
         m_transform.mul(trans, m_attach_offset);
 
@@ -755,17 +960,70 @@ void player_hud::update_additional(Fmatrix& trans) const
         m_attached_items[1]->update_hud_additional(trans);
 }
 
+// [DA_PORT] ПРИБОР УВОДА ПРИЦЕЛА. Команда da_aim_debug 1.
+//
+// Что меряем и почему именно это. Смещение оружия здесь берётся из РАЗНИЦЫ между направлением
+// взгляда и «отстающим» вектором st_last_dir: origin.mad(diff_dir, _origin_offset). Догоняет
+// отстающий вектор взгляд только внутри `if (inertion_allowed())`. Когда условие ложно, функция не
+// делает НИЧЕГО — вектор замирает, а камера крутится дальше, и разница копится.
+//
+// Отсюда два числа, ради которых всё и затевалось: сколько кадров подряд догон не работал и на
+// сколько градусов за это время разошлись взгляд с отстающим вектором. Если увод виден на экране, а
+// угол при этом мал — версия неверна, и искать надо в другом месте.
+//
+// ⚠️ Замер стоит ДО раннего выхода. Прибор, который молчит ровно в разбираемом случае, бесполезен:
+// именно «инерция запрещена» нас и интересует.
+//
+// Углы ПИКОВЫЕ (max_angle не сбрасывается): выброс длиной в пару кадров иначе не поймать.
+int g_da_aim_debug = 0;
+bool g_da_aim_allowed = false;
+u32 g_da_aim_frozen_frames = 0;
+float g_da_aim_angle_deg = 0.f;
+float g_da_aim_angle_deg_max = 0.f;
+float g_da_aim_shift = 0.f;
+float g_da_aim_shift_max = 0.f;
+float g_da_aim_tendto = 0.f;
+float g_da_aim_power = 0.f;
+u8 g_da_aim_offset_idx = 0;
+
+// Вынесен из тела функции: был локальной статикой, прибору её не видно. Смысл и время жизни не
+// изменились — та же одна переменная на весь процесс. Это, к слову, и есть подозреваемое место:
+// вектор общий на процесс, не сбрасывается ни при загрузке сейва, ни при смене уровня и оружия.
+static Fvector st_last_dir = { 0, 0, 0 };
+
 void player_hud::update_inertion(Fmatrix& trans) const
 {
-    if (inertion_allowed())
+    const bool allowed = inertion_allowed();
+
+    if (g_da_aim_debug)
+    {
+        g_da_aim_allowed = allowed;
+
+        Fvector last;
+        last.normalize_safe(st_last_dir);
+        if (last.square_magnitude() > EPS)
+        {
+            float dot = last.dotproduct(trans.k);
+            clamp(dot, -1.f, 1.f);
+            g_da_aim_angle_deg = rad2deg(acosf(dot));
+            g_da_aim_angle_deg_max = _max(g_da_aim_angle_deg_max, g_da_aim_angle_deg);
+        }
+
+        if (allowed)
+            g_da_aim_frozen_frames = 0;
+        else
+            ++g_da_aim_frozen_frames;
+    }
+
+    const Fvector origin_before = trans.c;
+
+    if (allowed)
     {
         attachable_hud_item* pMainHud = m_attached_items[0];
 
         Fmatrix xform;
         Fvector& origin = trans.c;
         xform = trans;
-
-        static Fvector st_last_dir = {0, 0, 0};
 
         // load params
         hud_item_measures::inertion_params inertion_data;
@@ -849,6 +1107,19 @@ void player_hud::update_inertion(Fmatrix& trans) const
         // Подьём\опускание
         clamp(pitch, inertion_data.m_pitch_low_limit, PI);
         origin.mad(xform.j, -pitch * inertion_data.m_pitch_offset_n);
+
+        if (g_da_aim_debug)
+        {
+            g_da_aim_tendto = _tendto_speed;
+            g_da_aim_power = (pMainHud ? pMainHud->m_parent_hud_item->GetInertionPowerFactor() : 1.f);
+            g_da_aim_offset_idx = (pMainHud ? pMainHud->m_parent_hud_item->GetCurrentHudOffsetIdx() : 0);
+        }
+    }
+
+    if (g_da_aim_debug)
+    {
+        g_da_aim_shift = origin_before.distance_to(trans.c);
+        g_da_aim_shift_max = _max(g_da_aim_shift_max, g_da_aim_shift);
     }
 }
 

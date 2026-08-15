@@ -174,18 +174,74 @@ struct da_bones_lock
 };
 } // namespace
 
+namespace
+{
+// [DA_PORT] Состояние позы — одно 64-битное число: старшая половина эпоха, младшая время.
+// Одним числом ради атомарности: две отдельные переменные пришлось бы читать по очереди, и между
+// чтениями они могли бы разойтись.
+constexpr u64 DA_TimeMask = u64(u32(-1));
+
+IC u64 PublishedState(const u32 epoch, const u32 time) { return (u64(epoch) << 32) | time; }
+IC u32 PublishedEpoch(const u64 state) { return u32(state >> 32); }
+IC u32 PublishedTime(const u64 state) { return u32(state & DA_TimeMask); }
+
+IC bool IsPublished(const u64 state, const u32 epoch, const u32 time)
+{
+    return PublishedEpoch(state) == epoch && PublishedTime(state) == time;
+}
+
+// Общий замок рекурсивный, поэтому обработчик, позвавший расчёт той же модели изнутри расчёта,
+// прошёл бы дальше и посчитал бы её поверх незаконченной. Защита именно по объекту.
+class DaCalculationGuard final
+{
+    bool& m_in_progress;
+
+public:
+    explicit DaCalculationGuard(bool& in_progress) : m_in_progress(in_progress)
+    {
+        VERIFY(!m_in_progress);
+        m_in_progress = true;
+    }
+
+    ~DaCalculationGuard() { m_in_progress = false; }
+};
+} // namespace
+
 void CKinematics::CalculateBones(BOOL bForceExact)
 {
     ZoneScoped;
 
-    // early out.
-    // check if the info is still relevant
-    // skip all the computations - assume nothing changes in a small period of time :)
-    if (Device.dwTimeGlobal == UCalc_Time)
-        return; // early out for "fast" update
+    // Ранний выход без замка: поза за этот кадр уже посчитана и никем не сброшена.
+    u32 calculation_time = Device.dwTimeGlobal;
+    u64 published_state = UCalc_PublishedState.load(std::memory_order_acquire);
+    u32 calculation_epoch = UCalc_Epoch.load(std::memory_order_acquire);
+    if (IsPublished(published_state, calculation_epoch, calculation_time))
+        return;
+
     da_bones_lock lock; // [DA_PORT] был UCalc_mtlock; поведение то же, плюс замер
+
+    // ⭐ ТА ЖЕ ПРОВЕРКА ВТОРОЙ РАЗ, уже под замком: пока мы стояли в очереди, позу мог посчитать
+    // сосед. Раньше этой проверки не было, и оба потока считали одно и то же целиком.
+    calculation_time = Device.dwTimeGlobal;
+    published_state = UCalc_PublishedState.load(std::memory_order_acquire);
+    calculation_epoch = UCalc_Epoch.load(std::memory_order_acquire);
+    if (IsPublished(published_state, calculation_epoch, calculation_time))
+    {
+        if (g_armed)
+            ++g_idle_locks;
+        return;
+    }
+
+    if (UCalc_InProgress)
+        return;
+    const DaCalculationGuard calculation_guard(UCalc_InProgress);
+
     OnCalculateBones();
-    if (!bForceExact && (Device.dwTimeGlobal < (UCalc_Time + UCalc_Interval)))
+
+    published_state = UCalc_PublishedState.load(std::memory_order_acquire);
+    calculation_epoch = UCalc_Epoch.load(std::memory_order_acquire);
+    if (!bForceExact && PublishedEpoch(published_state) == calculation_epoch &&
+        calculation_time < PublishedTime(published_state) + UCalc_Interval)
     {
         // [DA_PORT] Замок взят, работы не будет. См. разбор у da_bones_lock.
         if (g_armed)
@@ -199,7 +255,7 @@ void CKinematics::CalculateBones(BOOL bForceExact)
     // here we have either:
     //	1:	timeout elapsed
     //	2:	exact computation required
-    UCalc_Time = Device.dwTimeGlobal;
+    calculation_epoch = UCalc_Epoch.load(std::memory_order_acquire);
 
 // exact computation
 // Calculate bones
@@ -214,13 +270,13 @@ void CKinematics::CalculateBones(BOOL bForceExact)
 #endif
     VERIFY(LL_GetBonesVisible() != 0);
     // Calculate BOXes/Spheres if needed
-    UCalc_Visibox++;
-    if (UCalc_Visibox >= psSkeletonUpdate)
+    const s32 visibox_update = UCalc_Visibox.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (visibox_update >= psSkeletonUpdate)
     {
         ZoneScopedN("Skeleton update");
 
         // mark
-        UCalc_Visibox = -(::Random.randI(psSkeletonUpdate - 1));
+        UCalc_Visibox.store(-(::Random.randI(psSkeletonUpdate - 1)), std::memory_order_relaxed);
 
         // the update itself
         Fbox Box;
@@ -291,6 +347,12 @@ void CKinematics::CalculateBones(BOOL bForceExact)
     //
     if (Update_Callback)
         Update_Callback(this);
+
+    // [DA_PORT] Публикуем ТОЛЬКО законченную позу, которую никто не сбросил, пока мы считали:
+    // обработчик выше вправе позвать CalculateBones_Invalidate, и тогда результат уже устарел.
+    if (UCalc_Epoch.load(std::memory_order_acquire) == calculation_epoch)
+        UCalc_PublishedState.store(
+            PublishedState(calculation_epoch, calculation_time), std::memory_order_release);
 }
 
 #ifdef DEBUG

@@ -501,6 +501,23 @@ void render_sun::calculate()
         static Fvector prev_org[R__NUM_SUN_CASCADES] = {};
         static bool have_prev = false;
 
+        // [DA_PORT] Высота солнца над горизонтом и его яркость.
+        //
+        // Повод: «чёрные пятна теней вечером и ночью». Длина тени равна высоте объекта, делённой на
+        // тангенс этого угла: при 12 градусах это уже впятеро, при 1 градусе — в 57 раз. Погоды
+        // Dead Air задают sun_dir статически, и в ночных кадрах там стоит РОВНО −1 градус
+        // (weather_arena, weather_marsh, все default_*_03/04/23). Заслон минимального угла живёт
+        // только в calculate_dynamic_sun_dir — на статические погоды он НЕ распространяется. В той
+        // ветке (Environment_misc.cpp, CEnvDescriptorMixer::lerp) стоит один VERIFY2, и он проверяет
+        // лишь ЗНАК: при −1 градусе он доволен, а в релизе его и вовсе нет.
+        //
+        // Яркость печатается рядом не для полноты: при нулевом солнце вырожденная тень никого не
+        // волнует, и обвинять угол можно только вместе с ненулевым цветом.
+        const float sun_elev = rad2deg(asinf(-sun->direction.y));
+        Msg("~ [DA_SUN] солнце: высота %.2f град | направление (%.3f %.3f %.3f) | яркость %.3f %.3f %.3f",
+            sun_elev, sun->direction.x, sun->direction.y, sun->direction.z, sun->color.r, sun->color.g,
+            sun->color.b);
+
         for (u32 i = 0; i < R__NUM_SUN_CASCADES; ++i)
         {
             const Fvector org = {cull_xform[i]._41, cull_xform[i]._42, cull_xform[i]._43};

@@ -7,7 +7,10 @@
 // [DA_PORT] Разовый срез G-буфера (xr_ioc_cmd.cpp). Объявляем ВНЕ пространства имён: extern внутри
 // xray::render искал бы символ в нём же — та самая грабля, что уже описана у соседних глобалов.
 extern ENGINE_API int ps_r__gbuffer_probe;
-extern ENGINE_API int ps_r__light_watch; // [DA_PORT] сколько кадров подряд писать свет под перекрестьем
+extern ENGINE_API int ps_r__light_watch;
+extern ENGINE_API int ps_r__light_map;   // [DA_PORT] сколько кадров подряд печатать карту света
+extern ENGINE_API int ps_r__combine_dbg; // [DA_PORT] какое слагаемое показать вместо кадра
+extern ENGINE_API float ps_r__hemi_floor; // [DA_PORT] нижняя граница полусферической засветки // [DA_PORT] сколько кадров подряд писать свет под перекрестьем
 extern ENGINE_API int ps_r__shift_watch; // [DA_PORT] сколько кадров подряд мерить съезд готового кадра
 extern ENGINE_API int ps_r__shadow_test;  // [DA_PORT] замер кэша теневых карт, см. da_shadow_test_frame
 
@@ -22,6 +25,10 @@ float hclip(float v, float dim) { return 2.f * v / dim - 1.f; }
 
 void CRenderTarget::phase_combine()
 {
+    // [DA_PORT] Снимок света и трафарета — ДО первого прохода сборки: дальше их переиспользуют.
+    if (::ps_r__light_map > 0)
+        da_map_capture_lighting();
+
     ZoneScoped;
     PIX_EVENT(phase_combine);
 
@@ -218,6 +225,10 @@ void CRenderTarget::phase_combine()
         // pixel shader (which holds the `#ifdef USE_LENS_WATER -> visor_drops()` block) in THIS pass
         // (E[0]), so the constant must be bound here. dinamic_hud.script drives r2_lenswater_val while
         // it rains; r2_lenswater (no _val) is a manual override (untouched by scripts) for testing.
+        // [DA_PORT] Разбор слагаемых сборки кадра: da_combine_dbg N подставляет в шейдер отдельное
+        // слагаемое вместо готового цвета. Разбор — у da_dbg в r3\combine_1.ps.
+        RCache.set_c("da_dbg", float(::ps_r__combine_dbg), ::ps_r__hemi_floor, 0.f, 0.f);
+
         {
             const float lensw = std::max(ps_r2_lenswater_val, ps_r2_lenswater);
             const float lensd = std::max(ps_r2_lensdirt_val, ps_r2_lensdirt);
@@ -226,7 +237,12 @@ void CRenderTarget::phase_combine()
         }
 
         if (!RImplementation.o.msaa)
+        {
             RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
+            // [DA_PORT] Снимок кадра сразу после формулы — разбор у da_map_capture_combine1.
+            if (::ps_r__light_map > 0)
+                da_map_capture_combine1();
+        }
         else
         {
             RCache.set_Stencil(TRUE, D3DCMP_EQUAL, 0x01, 0x81, 0);
@@ -579,6 +595,11 @@ void CRenderTarget::phase_combine()
         // просто ждёт.
         // [DA_PORT] Наблюдение за светом — здесь же и по той же причине: накопитель ещё не разобран
         // комбайном. В отличие от среза, пишет КАЖДЫЙ кадр, пока не кончится счётчик.
+        if (::ps_r__light_map)
+        {
+            --::ps_r__light_map;
+            da_light_map();
+        }
         if (::ps_r__light_watch)
         {
             --::ps_r__light_watch;

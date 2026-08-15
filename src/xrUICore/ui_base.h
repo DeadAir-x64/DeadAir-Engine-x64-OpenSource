@@ -61,6 +61,11 @@ public:
     virtual void OnDeviceReset();
     void OnUIReset() override;
     static bool is_widescreen();
+
+    // [DA_PORT] Сверхширокий экран: 21:9 и шире. Порог 1.8 взят у Monolith и OGSR — там он тот же,
+    // и совпадение важно: по нему обе стороны решают, брать ли набор разметки `_21`, а разметку эту
+    // рисует сообщество. Разойдись мы в пороге — чужой готовый файл брался бы не на тех экранах.
+    static bool is_ultra_widescreen();
     static float get_current_kx();
     static shared_str get_xml_name(pcstr path, pcstr fn);
 

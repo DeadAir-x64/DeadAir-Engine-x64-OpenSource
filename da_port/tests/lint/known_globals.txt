@@ -223,7 +223,9 @@ CUIWindow
 CurrentItemAtCell
 Cwound_manager
 CZoneNoWeapon
+da_console_silent
 da_lua_bytes
+da_tune_ui
 danger_object
 debug
 debug_ui

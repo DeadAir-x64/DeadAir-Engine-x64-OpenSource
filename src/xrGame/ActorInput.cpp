@@ -31,6 +31,9 @@
 #include "HUDManager.h"
 #include "Weapon.h"
 #include "GamePersistent.h"
+#include "script_game_object.h" // прибор da_use_log читает заслон дверей ИИ
+#include "doors.h" // doors_door.h только объявляет door_state, значения лежат здесь
+#include "doors_door.h"
 
 bool g_bAutoClearCrouch = true;
 
@@ -684,8 +687,51 @@ bool CActor::use_Holder(CHolderCustom* holder)
     }
 }
 
+// [DA_PORT] Прибор «почему не открылось». Включается командой da_use_log.
+//
+// Повод: «двери часто не открываются на F». Обвинить можно троих, и по игре они неотличимы:
+//   1. луч не дотянулся — использование требует дальности МЕНЬШЕ 2 метров от камеры, а луч меряет
+//      до точки попадания, и по краю двери она дальше, чем кажется;
+//   2. луч попал не в ту дверь — обход берёт ПЕРВЫЙ отданный объект, а не ближайший;
+//   3. объект выбран, но отказалась сама дверь — заперта схемой, или её use() ничего не делает.
+//
+// Прибор печатает всё это одной строкой на нажатие, и первый же случай называет виновника.
+int ps_da_use_log = 0;
+
 void CActor::ActorUse()
 {
+    if (ps_da_use_log)
+    {
+        collide::rq_result& da_rq = HUD().GetCurrentRayQuery();
+        CGameObject* da_hit = da_rq.O ? smart_cast<CGameObject*>(da_rq.O) : nullptr;
+
+        // Заслон дверей ИИ. CGameObject::use молча возвращает false и НЕ зовёт скрипт, если у двери
+        // есть хоть один зачинщик из числа NPC: is_blocked сравнивает желаемое состояние двери с
+        // запрошенным, и при непустом списке зачинщиков одно из двух сравнений истинно всегда.
+        // По игре это неотличимо от «дверь не нажалась»: ни звука, ни сообщения.
+        string128 da_gate = "";
+        if (m_pUsableObject)
+        {
+            CScriptGameObject* const da_so = m_pUsableObject->lua_game_object();
+            if (da_so && da_so->m_door)
+            {
+                const bool da_bo = da_so->m_door->is_blocked(doors::door_state_open);
+                const bool da_bc = da_so->m_door->is_blocked(doors::door_state_closed);
+                xr_sprintf(da_gate, " | дверь ИИ: заслон откр %d закр %d, замок откр %d закр %d%s", da_bo ? 1 : 0,
+                    da_bc ? 1 : 0, da_so->m_door->is_locked(doors::door_state_open) ? 1 : 0,
+                    da_so->m_door->is_locked(doors::door_state_closed) ? 1 : 0,
+                    (da_bo || da_bc) ? " -- ОТКАЗ ДО СКРИПТА" : "");
+            }
+        }
+
+        Msg("~ [DA_USE] луч: %s [%s], дальность %.2f (предел 2.00), видим %d | внешний обработчик %d "
+            "| выбран для использования: %s%s",
+            da_hit ? da_hit->cName().c_str() : "(объекта нет, только статика)",
+            da_hit ? da_hit->cNameSect().c_str() : "-", da_rq.range,
+            da_rq.O ? (da_rq.O->getVisible() ? 1 : 0) : 0, input_external_handler_installed() ? 1 : 0,
+            m_pUsableObject ? m_pUsableObject->cName().c_str() : "НИКТО", da_gate);
+    }
+
     if (m_holder)
     {
         CGameObject* GO = smart_cast<CGameObject*>(m_holder);
