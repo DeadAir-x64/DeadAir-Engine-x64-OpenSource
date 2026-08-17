@@ -121,7 +121,9 @@ BOOL motions_value::load(pcstr N, IReader* data, vecBones* bones)
 #else
                 VERIFY3(*b_it != BI_NONE, "Can't find bone:", buf);
 #endif
-                if (bRes)
+                // [DA_PORT] m_idx приходит из OMF/OGF (MP->r_u32); проверка границ была только под _EDITOR,
+                // в релизе VERIFY3 вырезан и rm_bones[m_idx] писал за границу при битом файле (recall-audit)
+                if (bRes && m_idx < rm_bones.size())
                     rm_bones[m_idx] = u16(*b_it);
             }
             part_bone_cnt = u16(part_bone_cnt + (u16)PART.bones.size());
@@ -195,6 +197,19 @@ BOOL motions_value::load(pcstr N, IReader* data, vecBones* bones)
         VERIFY3(I->second == m_idx, "Invalid motion index:", mname);
 #endif
         const u32 dwLen = MS->r_u32();
+        // [DA_PORT] Порченый/обрезанный .omf: dwLen из файла умножается на размер ключа и уходит в
+        // create()/advance(). Ловим только ЗАВЕДОМО мусорную длину (битый u32 = миллионы/миллиарды
+        // ключей). ⛔ Раньше здесь стояло сравнение с MS->elapsed()/min_key — это ложно браковало
+        // НОРМАЛЬНЫЕ анимации: elapsed() у под-ридера мельче реальных данных (ключи лежат дальше в
+        // общем буфере файла, сток читал их так же), и dwLen=16 (16 кадров ножа) вылетал как «порча»
+        // → пустой m_Motions → FATAL m_Motions.size() на всём холодном оружии. Над-чтение за буфером
+        // безопасно прикрыто нижним backstop IReader::r (мягкий ноль). Абсолютный потолок оставляет
+        // защиту от настоящего мусора без ложных срабатываний на реальном контенте мода.
+        if (dwLen > (1u << 20)) // > 1M кадров = битый u32, не анимация
+        {
+            Msg("! [DA] порченая анимация [%s]: dwLen=%u неправдоподобно велик — модель пропущена", N, dwLen);
+            return false;
+        }
         for (u32 i = 0; i < bones->size(); i++)
         {
             const u16 bone_id = rm_bones[i];

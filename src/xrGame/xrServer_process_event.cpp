@@ -171,6 +171,8 @@ void xrServer::Process_event(NET_Packet& P, ClientID sender)
     {
         CSE_Visual* visual = smart_cast<CSE_Visual*>(receiver);
         VERIFY(visual);
+        if (!visual) // [DA_PORT] receiver из сети может не быть CSE_Visual; VERIFY вырезан в релизе
+            break;
         string256 tmp;
         P.r_stringZ(tmp);
         visual->set_visual(tmp);

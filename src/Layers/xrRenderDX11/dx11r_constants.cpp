@@ -156,6 +156,19 @@ BOOL R_constant_table::parseConstants(ID3DShaderReflectionConstantBuffer* pTable
         if (bSkip)
             continue;
 
+        // [DA_PORT] Профессиональный заслон на этапе загрузки шейдера (нулевая цена в кадре).
+        // Смещение (VarDesc.StartOffset) и размер константы, и размер самого буфера (TableDesc.Size)
+        // берутся из ОДНОЙ рефлексии pTable — значит для корректного шейдера offset+size ВСЕГДА влезает,
+        // и скалярный set() переполнить буфер не может по построению. Если же мод-шейдер или порченый
+        // кэш дал несогласованную рефлексию, ловим здесь ПО ИМЕНИ и НЕ регистрируем константу — тогда
+        // её запись никогда не тронет чужую память в релизе, где VERIFY внутри set() вырезан.
+        if ((u32)r_index + VarDesc.Size > TableDesc.Size)
+        {
+            Msg("! [DA] шейдер: константа [%s] (смещение %u + размер %u) вне буфера [%s] размером %u — пропущена",
+                name, (u32)r_index, VarDesc.Size, TableDesc.Name, TableDesc.Size);
+            continue;
+        }
+
         // We have determined all valuable info, search if constant already created
         ref_constant C = get(name);
         if (!C)

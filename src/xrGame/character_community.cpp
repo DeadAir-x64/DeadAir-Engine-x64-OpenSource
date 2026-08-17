@@ -39,6 +39,14 @@ CHARACTER_GOODWILL CHARACTER_COMMUNITY::relation(CHARACTER_COMMUNITY_INDEX from,
     VERIFY(from >= 0 && from < (int)m_relation_table.table().size());
     VERIFY(to >= 0 && to < (int)m_relation_table.table().size());
 
+    // [DA_PORT] VERIFY исчезает в релизе. from/to приходят из Lua
+    // (community_relation("faction_a","faction_b")) через IdToIndex, который
+    // на неизвестной группировке отдаёт NO_COMMUNITY_INDEX(-1) -> table()[from][-1]
+    // читает за границей. Мягкий возврат нейтрального отношения вместо OOB.
+    const int table_size = (int)m_relation_table.table().size();
+    if (from < 0 || from >= table_size || to < 0 || to >= table_size)
+        return CHARACTER_GOODWILL(0);
+
     return m_relation_table.table()[from][to];
 }
 
@@ -49,12 +57,23 @@ void CHARACTER_COMMUNITY::set_relation(
     VERIFY(to >= 0 && to < (int)m_relation_table.table().size());
     VERIFY(goodwill != NO_GOODWILL);
 
+    // [DA_PORT] Тот же data-driven путь, что и в relation(): set_community_relation
+    // из Lua может передать неизвестную группировку (index == -1). VERIFY снят в
+    // релизе -> запись за границей table(). Игнорируем некорректный индекс.
+    const int table_size = (int)m_relation_table.table().size();
+    if (from < 0 || from >= table_size || to < 0 || to >= table_size)
+        return;
+
     m_relation_table.table()[from][to] = goodwill;
 }
 
 float CHARACTER_COMMUNITY::sympathy(CHARACTER_COMMUNITY_INDEX comm)
 {
     VERIFY(comm >= 0 && comm < (int)m_sympathy_table.table().size());
+    // [DA_PORT] comm == index() группировки NPC; при неизвестной группировке в
+    // конфиге index == NO_COMMUNITY_INDEX(-1). VERIFY снят в релизе -> table()[-1] OOB.
+    if (comm < 0 || comm >= (int)m_sympathy_table.table().size())
+        return 0.0f;
     return m_sympathy_table.table()[comm][0];
 }
 

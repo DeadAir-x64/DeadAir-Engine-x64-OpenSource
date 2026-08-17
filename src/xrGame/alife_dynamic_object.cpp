@@ -109,10 +109,26 @@ bool CSE_ALifeDynamicObject::synchronize_location()
         return (true);
 
     u32 const new_vertex_id = ai().level_graph().vertex(m_tNodeID, o_Position);
+
+    // [DA_PORT] Тот же дефект, что закрыт в CGameObject::update_ai_locations: CLevelGraph::vertex()
+    // при неудаче поиска штатно отдаёт u32(-1), а следом этим числом индексируют кросс-таблицу.
+    // Проверки на пути только через VERIFY, то есть в релизе их нет вовсе.
+    //
+    // ⚠️ Строка ниже от этого НЕ спасает, хотя выглядит защитой: она стоит под `!m_bOnline`, а для
+    // объекта в онлайне пропускается целиком — и негодный номер уходит в индексацию напрямую.
+    if (!ai().level_graph().valid_vertex_id(new_vertex_id))
+        return (true);
+
     if (!m_bOnline && !ai().level_graph().inside(new_vertex_id, o_Position))
         return (true);
 
     m_tNodeID = new_vertex_id;
+
+    // Граница кросс-таблицы своя: это отдельный файл, и рассинхрон с графом уровня как раз и даёт
+    // промахи мимо массива.
+    if (!ai().get_cross_table() || m_tNodeID >= ai().cross_table().header().level_vertex_count())
+        return (true);
+
     GameGraph::_GRAPH_ID tGraphID = ai().cross_table().vertex(m_tNodeID).game_vertex_id();
     if (tGraphID != m_tGraphID)
     {

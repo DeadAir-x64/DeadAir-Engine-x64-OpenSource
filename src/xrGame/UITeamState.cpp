@@ -154,6 +154,9 @@ void UITeamState::AddPlayer(ClientID const& clientId)
     game_cl_GameState::PLAYERS_MAP& playersMap = Game().players;
     game_cl_GameState::PLAYERS_MAP::iterator pi = playersMap.find(clientId);
     VERIFY(pi != playersMap.end());
+    // [DA_PORT] clientId приходит из сети; в релизе VERIFY исчезает, deref end() = краш
+    if (pi == playersMap.end())
+        return;
     /*if (pi == playersMap.end())
     {
         Msg("--- Player not found by ClientID = 0x%08x", clientId.value());
@@ -222,6 +225,9 @@ bool UITeamState::UpdatePlayer(ClientID const& clientId)
         game_cl_GameState::PLAYERS_MAP& playersMap = Game().players;
         game_cl_GameState::PLAYERS_MAP::iterator pi = playersMap.find(clientId);
         VERIFY2(pi != playersMap.end(), "player not found in Game().player list, but in UI list it exist");
+        // [DA_PORT] clientId из сети; в релизе VERIFY исчезает, deref end() = краш
+        if (pi == playersMap.end())
+            return true;
         game_PlayerState* ps = pi->second;
         // it can be NULL... and player will be removed by player item window
         VERIFY(ps);

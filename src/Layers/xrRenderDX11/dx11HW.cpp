@@ -113,10 +113,26 @@ void CHW::DestroyD3D()
     // To make it work with DXVK, etc.
     hD3D->Close();
     hDXGI->Close();
-    if (auto hModule = GetModuleHandleA("d3d11.dll"))
-        FreeLibrary(hModule);
-    if (auto hModule = GetModuleHandleA("dxgi.dll"))
-        FreeLibrary(hModule);
+    // [DA_PORT] #70: принудительная выгрузка d3d11.dll/dxgi.dll допустима ТОЛЬКО при чистом сносе
+    // устройства. Наш hD3D->Close()/hDXGI->Close() выше уже отпустил нашу ссылку на модуль; лишняя
+    // FreeLibrary(GetModuleHandle) добивала счётчик загрузки до нуля и выгружала код API-DLL, пока
+    // ЖИВЫ COM-объекты (утёкшие RT/SRV/текстуры + NGX/драйвер держали устройство). Их vtable уезжали
+    // в снесённую память, и следующий Release/драйверный колбэк прыгал в никуда — детерминированный
+    // C0000005 «исполнение по фиксированному адресу вне модулей» на выходе после смены видео-настройки.
+    // При остаточных ссылках НЕ трогаем — эти DLL корректно закроет системный process-exit.
+    if (m_device_teardown_refs == 0)
+    {
+        if (auto hModule = GetModuleHandleA("d3d11.dll"))
+            FreeLibrary(hModule);
+        if (auto hModule = GetModuleHandleA("dxgi.dll"))
+            FreeLibrary(hModule);
+    }
+    else
+    {
+        Msg("! [DA_PORT] #70: устройство D3D ушло с %u внешними ссылками — d3d11/dxgi вручную НЕ "
+            "выгружаем (иначе teardown падает в снесённом коде); закроет process-exit",
+            m_device_teardown_refs);
+    }
 }
 
 void CHW::CreateDevice(SDL_Window* sdlWnd)
@@ -564,7 +580,7 @@ void CHW::DestroyDevice()
 #endif
     _SHOW_REF("refCount:pDevice:", pDevice);
 
-    // [DA_PORT] Поимённый список живых объектов D3D при выходе.
+    // [DA_PORT] #70 Поимённый список живых объектов D3D при выходе.
     //
     // Строка выше печатает ЧИСЛО неосвобождённых ссылок, и оно оказалось говорящим: 198 после одной
     // загрузки уровня и 5806 после семи, то есть около девятисот объектов теряется на каждый переход.
@@ -675,7 +691,16 @@ void CHW::DestroyDevice()
             Msg("! [DA_PORT] ID3D11Debug недоступен: слой отладки DirectX не установлен");
     }
 
-    _RELEASE(pDevice);
+    // [DA_PORT] #70: захватываем остаточный refcount устройства. Release() возвращает число внешних
+    // ссылок, ОСТАВШИХСЯ после нашей (утёкшие RT/SRV/текстуры + NGX/драйверный интероп). Если оно не 0,
+    // устройство ещё живо в чужих руках, и DestroyD3D НЕ должен форсировать FreeLibrary(d3d11/dxgi) —
+    // иначе код API-DLL выгружается из-под живых COM-объектов и teardown прыгает в снесённую память
+    // (C0000005 по фикс. адресу вне модулей — 8/11 вылетов тестера при смене видео → выходе).
+    if (pDevice)
+    {
+        m_device_teardown_refs = pDevice->Release();
+        pDevice = nullptr;
+    }
     DestroyD3D();
 }
 

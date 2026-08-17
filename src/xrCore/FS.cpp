@@ -369,6 +369,27 @@ IReader* IReader::open_chunk_iterator(u32& ID, IReader* _prev)
 void IReader::r(void* p, size_t cnt)
 {
     VERIFY(Pos + cnt <= Size);
+    // [DA_PORT] VERIFY вырезан в релизе: порченый/обрезанный чанк с длиной за концом буфера давал
+    // чтение за границами в CopyMemory — базовый дефект класса find_chunk для ЛЮБОГО бинарного чтения.
+    // Для валидных данных быстрый путь ниже не меняется (лишняя проверка — та же, что делал VERIFY).
+    // При выходе за буфер читаем доступное, остаток обнуляем (как NET_Packet::r). Предупреждаем раз.
+    if (Pos > Size || cnt > (size_t)(Size - Pos))
+    {
+        static bool warned = false;
+        if (!warned)
+        {
+            warned = true;
+            Msg("! [DA] чтение за концом файлового буфера: Pos=%u cnt=%u Size=%u — недостающее обнулено",
+                (u32)Pos, (u32)cnt, (u32)Size);
+        }
+        const size_t avail = (Pos <= Size) ? (Size - Pos) : 0;
+        if (avail)
+            CopyMemory(p, pointer(), avail);
+        if (cnt > avail)
+            ZeroMemory((u8*)p + avail, cnt - avail);
+        Pos = Size;
+        return;
+    }
     CopyMemory(p, pointer(), cnt);
     advance(cnt);
 #ifdef DEBUG

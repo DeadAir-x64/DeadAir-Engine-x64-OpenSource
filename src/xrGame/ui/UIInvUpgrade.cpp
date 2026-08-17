@@ -360,6 +360,11 @@ void UIUpgrade::update_item(CInventoryItem* inv_item)
     VERIFY(get_upgrade());
     VERIFY(inv_item->m_section_id.size());
 
+    // [DA_PORT] VERIFY вырезан в релизе: m_upgrade_id из конфига схемы апгрейдов мода может не
+    // найтись в менеджере — get_upgrade() вернёт null и can_install() разыменует его.
+    if (!get_upgrade())
+        return;
+
     inventory::upgrade::UpgradeStateResult res = get_upgrade()->can_install(*inv_item, false);
 
     m_item->SetTextureColor(color_rgba(100, 100, 100, 255));

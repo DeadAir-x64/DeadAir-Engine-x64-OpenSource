@@ -153,9 +153,36 @@ void NET_Packet::r(void* p, u32 count)
 {
     R_ASSERT(inistream == NULL);
     VERIFY(p && count);
+    // [DA_PORT] Граница проверяется ДО чтения, и при выходе за неё чтение НЕ РОНЯЕТ игру, а
+    // безопасно усекается. Прежде VERIFY(r_pos<=B.count) стоял ПОСЛЕ CopyMemory — за границу буфера
+    // уже прочитали, проверка лишь констатировала постфактум; в релизе VERIFY вырезан, и мусор за
+    // концом пакета шёл дальше молча. Сборка Mixed поймала это на загрузке: скрипт мода через
+    // luabind регулярно читает из пакета больше, чем в нём есть (стек: LuaJIT → luabind →
+    // NET_Packet::r), и срабатывание НЕ единичное.
+    //
+    // ⛔ Ронять нельзя. Живой R_ASSERT здесь означал бы падение релиза ровно там, где годами
+    // молча читался мусор, — то есть замену тихого дефекта на краш. Отдаём столько, сколько реально
+    // есть, остаток обнуляем и один раз предупреждаем: поведение не хуже прежнего (те же нули
+    // вместо мусора), но без порчи соседней памяти и с записью в лог.
+    if (r_pos + count > B.count)
+    {
+        static bool warned = false;
+        if (!warned)
+        {
+            warned = true;
+            Msg("! [DA] чтение за границей сетевого пакета: r_pos=%u + count=%u > B.count=%u — "
+                "недостающее обнулено (пакет короче ожидаемого; дальше молчим)", r_pos, count, B.count);
+        }
+        const u32 avail = (r_pos < (u32)B.count) ? ((u32)B.count - r_pos) : 0;
+        if (avail)
+            CopyMemory(p, &B.data[r_pos], avail);
+        if (count > avail)
+            ZeroMemory((u8*)p + avail, count - avail);
+        r_pos += count;
+        return;
+    }
     CopyMemory(p, &B.data[r_pos], count);
     r_pos += count;
-    VERIFY(r_pos <= B.count);
 }
 
 bool NET_Packet::r_eof()

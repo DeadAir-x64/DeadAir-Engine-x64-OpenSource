@@ -13,6 +13,8 @@
 #include "stalker_movement_manager_smart_cover.h"
 #include "xrScriptEngine/script_callback_ex.h"
 #include "smart_cover.h"
+#include "ai_space.h"        // [DA_PORT] §3 audit: ai()
+#include "cover_manager.h"   // [DA_PORT] §3 audit: has_smart_cover
 
 bool CScriptGameObject::use_smart_covers_only() const
 {
@@ -203,6 +205,15 @@ void CScriptGameObject::set_dest_smart_cover(LPCSTR cover_id)
     {
         GEnv.ScriptEngine->script_log(
             LuaMessageType::Error, "CAI_Stalker : cannot access class member set_dest_smart_cover!");
+        return;
+    }
+
+    // [DA_PORT] §3 audit: мод передаёт произвольную строку; несуществующий id уходил в движок и позже
+    // ронял smart_cover() (промах lower_bound → *end()). Режем битый id у источника с внятным сообщением.
+    if (cover_id && xr_strlen(cover_id) && !ai().cover_manager().has_smart_cover(cover_id))
+    {
+        GEnv.ScriptEngine->script_log(LuaMessageType::Error,
+            "set_dest_smart_cover: smart_cover [%s] does not exist — ignored", cover_id);
         return;
     }
 

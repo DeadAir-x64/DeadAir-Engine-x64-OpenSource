@@ -213,6 +213,8 @@ void CActor::UpdateAvailableDialogs(CPhraseDialogManager* partner)
     //добавить актерский диалог собеседника
     CInventoryOwner* pInvOwnerPartner = smart_cast<CInventoryOwner*>(partner);
     VERIFY(pInvOwnerPartner);
+    if (!pInvOwnerPartner) // [DA_PORT] partner может не быть CInventoryOwner; VERIFY вырезан в релизе
+        return;
 
     for (u32 i = 0; i < pInvOwnerPartner->CharacterInfo().ActorDialogs().size(); i++)
         AddAvailableDialog(pInvOwnerPartner->CharacterInfo().ActorDialogs()[i], partner);

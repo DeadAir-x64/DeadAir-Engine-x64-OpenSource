@@ -419,10 +419,41 @@ void SGameTaskObjective::CreateMapLocation(bool on_load)
     else
     {
         m_linked_map_location = Level().MapManager().AddMapLocation(m_map_location, m_map_object_id);
-        m_linked_map_location->m_owner_task_id = m_parent->m_ID;
+        if (m_linked_map_location && m_parent)
+            m_linked_map_location->m_owner_task_id = m_parent->m_ID;
     }
 
-    VERIFY(m_linked_map_location);
+    // [DA_PORT] Метки карты может не оказаться — и это НЕ «не может быть» (задача #75).
+    //
+    // ЧТО БЫЛО. Ниже стоял VERIFY, а он в релизе исчезает; следом идёт безусловное
+    // m_linked_map_location->complex_spot(). При загрузке (on_load) метка не создаётся, а ИЩЕТСЯ
+    // среди уже существующих по имени, номеру объекта и владельцу — и если совпадения нет,
+    // указатель остаётся пустым. Дальше игра читала по нулю и падала.
+    //
+    // КАК НАШЛОСЬ. Обход локаций: вылет C0000005 по адресу 0x38 при прыжке на l02_garbage,
+    // l04_darkvalley, l05_bar — устойчиво, 3 из 3. Стек:
+    //   CreateMapLocation <- CGameTask::load <- CALifeAbstractRegistry<u16, vector<SGameTaskKey>>::load
+    //
+    // ⛔ Это НЕ регресс порта, и это проверено, а не предположено: сборка xrGame, часом ранее
+    // прошедшая все 34 локации чисто, падает на этих же трёх. Вылет латентный, а чистый прогон был
+    // удачей — состояние задач в сейве решает, найдётся метка или нет.
+    //
+    // ПОЧЕМУ ВЫХОД, А НЕ СОЗДАНИЕ МЕТКИ. «Не нашлось» при загрузке означает ровно одно: у этой цели
+    // на карте метки нет. Дорисовать её здесь значило бы поменять содержимое сохранённой игры на
+    // ходу; правильный ответ — обойтись без неё, о чём и сказать в лог.
+    if (!m_linked_map_location)
+    {
+        static u32 reported = 0;
+        if (reported < 8)
+        {
+            ++reported;
+            Msg("! [DA] метка карты [%s] для объекта [%u] не найдена%s — цель останется без отметки%s",
+                m_map_location.c_str() ? m_map_location.c_str() : "без имени", u32(m_map_object_id),
+                on_load ? " при загрузке" : "",
+                (reported == 8) ? " (дальнейшие сообщения подавлены)" : "");
+        }
+        return;
+    }
 
     if (!on_load)
     {

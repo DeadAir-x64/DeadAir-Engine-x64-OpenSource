@@ -158,6 +158,10 @@ void anti_aim_ability::start_camera_effector()
 {
     VERIFY(!m_effector_id);
     VERIFY(m_effectors.size());
+    // [DA_PORT] VERIFY вырезан в релизе: пустой список эффекторов (конфиг монстра) давал `rand() % 0`
+    // — целочисленное деление на ноль, аппаратный крах. Без эффекторов просто нечего запускать.
+    if (m_effectors.empty())
+        return;
     pcstr const effector_name = m_effectors[rand() % m_effectors.size()].c_str();
 
     m_effector_id = Actor()->Cameras().RequestCamEffectorId();

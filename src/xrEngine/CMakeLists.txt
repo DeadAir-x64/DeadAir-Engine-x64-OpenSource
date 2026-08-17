@@ -331,8 +331,12 @@ target_sources_grouped(
     TARGET xrEngine
     NAME "Render\\Execution & 3D\\Shaders\\Textures"
     FILES
-    tntQAVI.cpp
-    tntQAVI.h
+    # [DA_PORT] tntQAVI — проигрывание AVI через Video for Windows, платформенное по природе:
+    # ниже в этом же файле библиотека vfw32 уже подключается только под WIN32. В общем списке
+    # исходников он оставался по недосмотру и валил сборку под Linux на BITMAPINFOHEADER.
+    # Вскрылось при первой сборке под санитайзеры в контейнере (разбор — в da_port/tools/asan).
+    $<$<BOOL:${WIN32}>:tntQAVI.cpp>
+    $<$<BOOL:${WIN32}>:tntQAVI.h>
     xrImage_Resampler.cpp
     xrImage_Resampler.h
     xrTheora_Stream.cpp

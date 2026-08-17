@@ -12,7 +12,13 @@ bool CTorridZone::net_Spawn(CSE_Abstract* DC)
 
     CSE_Abstract* abstract = (CSE_Abstract*)(DC);
     CSE_ALifeTorridZone* zone = smart_cast<CSE_ALifeTorridZone*>(abstract);
-    VERIFY(zone);
+    // [DA_PORT] Живая проверка вместо VERIFY — разбор вида в smart_cover_object.cpp.
+    if (!zone)
+    {
+        Msg("! [DA] жгучая зона [%s]: серверный объект не того класса — не создаём",
+            abstract ? abstract->name_replace() : "без имени");
+        return FALSE;
+    }
 
     m_animator->Load(zone->get_motion());
     m_animator->Play(true);

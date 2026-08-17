@@ -320,7 +320,11 @@ float evalEnvelope(CEnvelope* env, float time)
     }
     // get the endpoints of the interval being evaluated
     int k = 0;
-    while (time > env->keys[k + 1]->time)
+    // [DA_PORT] Цикл читал keys[k+1] ДО проверки границы (VERIFY ниже вырезан в релизе). На
+    // рассортированной/крайней по времени огибающей мода k уходил за массив, и keys[k+1]->time
+    // (а следом строки 327+) разыменовывали мусор. Держим k <= sz-2 — все обращения ниже это
+    // и предполагают (keys[k+1] максимум последний элемент).
+    while ((k + 2) < sz && time > env->keys[k + 1]->time)
         k++;
     VERIFY((k + 1) < sz);
 

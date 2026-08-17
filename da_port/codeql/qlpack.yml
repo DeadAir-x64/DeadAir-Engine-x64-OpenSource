@@ -1,0 +1,4 @@
+name: da-port/verify-audit
+version: 0.0.1
+dependencies:
+  codeql/cpp-all: "*"

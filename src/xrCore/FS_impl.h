@@ -108,7 +108,13 @@ IC size_t IReaderBase<T>::find_chunk(u32 ID, bool* bCompressed)
 
     bool success = false;
 
-    if (m_last_pos != 0)
+    // [DA_PORT] Кэш-путь: m_last_pos указывает на начало СЛЕДУЮЩЕГО чанка от прошлого поиска. Прежде
+    // отсюда безусловно читались два u32 заголовка (тип + размер) — а если файл усечён так, что за
+    // m_last_pos осталось меньше 8 байт, r_u32 уходил за границу (r(): «Pos + cnt <= Size»). Оба
+    // guard'а ниже, в полном переборе, этот путь НЕ прикрывают. Условие ставит m_last_pos как
+    // dwPos+dwSize при СТРОГОМ < length, то есть хвост в 1..7 байт проходил. Проверяем, что заголовок
+    // помещается целиком; если нет — идём полным перебором (он защищён).
+    if (m_last_pos != 0 && m_last_pos + 2 * sizeof(u32) <= (size_t)impl().length())
     {
         impl().seek(m_last_pos);
         dwType = r_u32();
@@ -123,7 +129,16 @@ IC size_t IReaderBase<T>::find_chunk(u32 ID, bool* bCompressed)
     if (!success)
     {
         rewind();
-        while (!eof())
+        // [DA_PORT] КОРЕНЬ. Было `while (!eof())` — то есть проверялось лишь Pos < Size, а затем
+        // читались ДВА u32 заголовка (тип + размер). Если у файла хвост в 1..7 байт после последнего
+        // валидного чанка (выравнивание или обрезок), !eof ещё истинно, а r_u32 уходит за границу —
+        // r(): «Pos + cnt <= Size». Именно это ловил VERIFY в Mixed на разборе .thm; в релизе он
+        // вырезан, и читался мусорный заголовок. Требуем, чтобы целый заголовок помещался.
+        //
+        // Найдено по СТЕКУ (addr2line): IReader::r ← find_chunk, инлайненный в STextureParams::Load.
+        // Оффлайн-валидатор .thm молчал именно потому, что был строже движка (проверял pos+8<=size),
+        // а движок — нет. Это и есть расхождение, дававшее «данные целы, а игра падает».
+        while (impl().elapsed() >= (intptr_t)(2 * sizeof(u32)))
         {
             dwType = r_u32();
             dwSize = r_u32();
@@ -134,6 +149,17 @@ IC size_t IReaderBase<T>::find_chunk(u32 ID, bool* bCompressed)
             }
             else
             {
+                // [DA_PORT] Битый заголовок чанка: заявленный размер выводит за конец файла.
+                // advance тогда уходил за границу — в релизе это молча Pos > Size, а при переполнении
+                // size_t (dwSize близко к максимуму) Pos ОБОРАЧИВАЕТСЯ меньше Size, eof() не
+                // наступает, и while крутится ВЕЧНО, читая мусор: замечено на битом .thm — процесс
+                // молол CPU минутами. В сборке Mixed тот же advance роняет загрузку на
+                // VERIFY(Pos<=Size). Прекращаем перебор: в испорченном файле дальше искать нечего.
+                if (impl().tell() + dwSize > (size_t)impl().length())
+                {
+                    m_last_pos = 0;
+                    return 0;
+                }
                 impl().advance(dwSize);
             }
         }
@@ -145,7 +171,17 @@ IC size_t IReaderBase<T>::find_chunk(u32 ID, bool* bCompressed)
         }
     }
 
-    VERIFY(impl().tell() + dwSize <= impl().length());
+    // [DA_PORT] Живая проверка вместо VERIFY: заявленный размер НАЙДЕННОГО чанка выводит за конец
+    // файла — файл усечён/битый. VERIFY тут в релизе вырезан, и find_chunk возвращал завышенный
+    // размер, по которому вызывающий читал за границей (r(): «Pos + cnt <= Size»). Возвращаем 0 =
+    // «не найдено»: STextureParams::Load на это отвечает пропуском файла с именем, а не крахом.
+    // Это второй рубеж к правке перебора выше — вместе они не дают find_chunk вернуть размер,
+    // выходящий за пределы файла, ни на промежуточном чанке, ни на найденном.
+    if (impl().tell() + dwSize > (size_t)impl().length())
+    {
+        m_last_pos = 0;
+        return 0;
+    }
     if (bCompressed)
         *bCompressed = dwType & CFS_CompressMark;
 

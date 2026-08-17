@@ -235,3 +235,17 @@ CCoverManager::Cover* CCoverManager::smart_cover(shared_str const& cover_id) con
 
     return (*found);
 }
+
+// [DA_PORT] §3 audit: не-крашащая проверка существования укрытия по id. smart_cover() выше при промахе
+// возвращает *end() (мусор → краш при разыменовании у вызывающего). Lua set_dest_smart_cover не валидирует
+// id, поэтому опечатка мода уходила в движок и падала. Здесь — тот же lower_bound, но без разыменования.
+bool CCoverManager::has_smart_cover(shared_str const& cover_id) const
+{
+    if (!m_smart_covers_actual)
+        actualize_smart_covers();
+
+    SmartCovers::iterator found =
+        std::lower_bound(m_smart_covers.begin(), m_smart_covers.end(), cover_id, id_predicate_less());
+
+    return (found != m_smart_covers.end()) && ((*found)->id()._get() == cover_id._get());
+}

@@ -7,11 +7,15 @@
 #   define DA_GPU_ZONE_END(z)   g_da_gpu_timer.zone_end(da_gpu_timer::z)
 #   define DA_GPU_FRAME_BEGIN()  g_da_gpu_timer.frame_begin()
 #   define DA_GPU_FRAME_END()    g_da_gpu_timer.frame_end()
+#   define DA_CULL_WAIT_STATS(exec, spins) da_gpu_set_cull_wait(exec, spins)
+#   define DA_GBUF2_PARTS(h, l, d) da_gpu_set_gbuf2(h, l, d)
 #else
 #   define DA_GPU_ZONE_BEGIN(z)
 #   define DA_GPU_ZONE_END(z)
 #   define DA_GPU_FRAME_BEGIN()
 #   define DA_GPU_FRAME_END()
+#   define DA_CULL_WAIT_STATS(exec, spins)
+#   define DA_GBUF2_PARTS(h, l, d)
 #endif
 
 #include "xrCore/Threading/TaskManager.hpp"
@@ -57,6 +61,9 @@ extern std::atomic<u32> g_da_ssa_discarded;
 
 // [DA_PORT] Приборы фазы света живут в r2_R_lights.cpp, отчёт печатается здесь.
 extern int ps_da_light_prof;
+extern double g_da_lp_prep;
+extern double g_da_lp_vis;
+extern double g_da_lp_pack;
 extern double g_da_lp_wait;
 extern double g_da_lp_smap;
 extern double g_da_lp_accum;
@@ -231,9 +238,26 @@ void CRender::Render()
     BasicStats.WaitS.End();
     q_sync_point.End();
 
+    // [DA_PORT] Ожидание расчёта видимости: мерим не только СКОЛЬКО, но и ЧЕМ занят поток.
+    //
+    // Полный разбор -- у g_da_wait_executed в r2.h. Коротко: ожидание ворует чужие задачи, поэтому
+    // одни и те же 1.63 мс означают либо настоящий пузырь (воровать было нечего), либо честную
+    // работу кадра, просто записанную в эту зону. По времени эти случаи неразличимы, а лечение у них
+    // противоположное, так что считаем выполненные задачи и холостые витки.
+    //
+    // Счётчики монотонные и общие для всех фаз, поэтому берём РАЗНОСТЬЮ вокруг нужного ожидания --
+    // так в отчёт попадает только основная сцена, без каскадов солнца и дождя.
+    //
+    // Числа уезжают через ту же заглушку, что и зоны: копилка живёт в da_gpu_timer (только R4), а
+    // этот файл идёт и в ветку GL.
+    const u32 da_wait_exec_before = g_da_wait_executed;
+    const u32 da_wait_spin_before = g_da_wait_idle_spins;
+
     DA_GPU_ZONE_BEGIN(z_wait_cull);
     r_main.sync();
     DA_GPU_ZONE_END(z_wait_cull);
+
+    DA_CULL_WAIT_STATS(g_da_wait_executed - da_wait_exec_before, g_da_wait_idle_spins - da_wait_spin_before);
 
     if (ps_r2_ls_flags.test(R2FLAG_ZFILL))
     {
@@ -502,12 +526,43 @@ void CRender::Render()
         }
 
         // level
+        // [DA_PORT] Вторая половина G-буфера стоит 0.90 мкс на вызов против 0.56 у первой -- на 60%
+        // дороже за ту же по сути подачу геометрии. Половины делают РАЗНОЕ: первая гонит
+        // render_graph(0), вторая -- интерфейс с оружием, импосторы и траву. Трава при плотности 0.3
+        // и радиусе 200 м даёт много пачек, и хотя её построение вынесено на свой поток
+        // (mt_detail_path), подача вызовов идёт здесь, на главном. Меряем три куска врозь: у них
+        // разные хозяева и лечатся они по-разному.
+        // Флаг живёт в da_gpu_timer.cpp того же пространства имён -- см. соседние externы наверху.
+        extern int ps_da_gpu_log;
+        const bool da_g2 = ps_da_gpu_log > 0;
+        CTimer da_g2_timer;
+        double da_g2_hud = 0.0, da_g2_lods = 0.0, da_g2_details = 0.0;
+
         Target->phase_scene_begin();
+
+        if (da_g2)
+            da_g2_timer.Start();
         dsgraph.render_hud();
+        if (da_g2)
+        {
+            da_g2_hud = da_g2_timer.GetElapsed_sec() * 1000.0;
+            da_g2_timer.Start();
+        }
+
         dsgraph.render_lods(true, true);
+        if (da_g2)
+        {
+            da_g2_lods = da_g2_timer.GetElapsed_sec() * 1000.0;
+            da_g2_timer.Start();
+        }
+
         if (Details)
             Details->Render(dsgraph.cmd_list);
+        if (da_g2)
+            da_g2_details = da_g2_timer.GetElapsed_sec() * 1000.0;
+
         Target->phase_scene_end();
+        DA_GBUF2_PARTS(da_g2_hud, da_g2_lods, da_g2_details);
         DA_GPU_ZONE_END(z_gbuffer2);
     }
 
@@ -656,10 +711,15 @@ void CRender::Render()
     // и по видимости), иначе половина работы осталась бы за кадром отчёта.
     if (ps_da_light_prof > 0)
     {
-        Msg("~ [DA_LIGHT] ламп со тенью %u, накоплений %u | ожидание списков %5.2f мс | "
+        // [DA_PORT] Три первых числа -- разметка кусков, не покрытых прежними счётчиками: зона
+        // lights стоила 0.59 мс, а объяснено было 0.26. Разбор -- у g_da_lp_prep в r2_R_lights.cpp.
+        Msg("~ [DA_LIGHT] ламп со тенью %u, накоплений %u | выборка динамики %5.2f мс | видимость ламп %5.2f мс | "
+            "раскладка атласа %5.2f мс | ожидание списков %5.2f мс | "
             "теневые карты %5.2f мс | накопление %5.2f мс | всего %5.2f мс | волн %u, нехваток %u, свободно контекстов %u, макс. в работе %u | обходов запущено %u",
-            g_da_lp_lights, g_da_lp_accums, g_da_lp_wait, g_da_lp_smap, g_da_lp_accum,
-            g_da_lp_wait + g_da_lp_smap + g_da_lp_accum, g_da_lp_waves, g_da_lp_starved, g_da_lp_free_ctx, g_da_lp_max_flight, g_da_lp_queued);
+            g_da_lp_lights, g_da_lp_accums, g_da_lp_prep, g_da_lp_vis, g_da_lp_pack,
+            g_da_lp_wait, g_da_lp_smap, g_da_lp_accum,
+            g_da_lp_prep + g_da_lp_vis + g_da_lp_pack + g_da_lp_wait + g_da_lp_smap + g_da_lp_accum,
+            g_da_lp_waves, g_da_lp_starved, g_da_lp_free_ctx, g_da_lp_max_flight, g_da_lp_queued);
         Msg("~ [DA_LIGHT] рисуются: %u шт, ячейка %u..%u пикс, среднее расстояние %.0f м | "
             "пустые: %u шт, ячейка %u..%u пикс, среднее расстояние %.0f м",
             g_da_lc_drawn, g_da_lc_drawn == 0 ? 0 : g_da_lc_drawn_size_min, g_da_lc_drawn_size_max,
@@ -674,6 +734,7 @@ void CRender::Render()
         g_da_lc_drawn_size_max = g_da_lc_empty_size_max = 0;
         g_da_lc_drawn_dist = g_da_lc_empty_dist = 0.0;
 
+        g_da_lp_prep = g_da_lp_vis = g_da_lp_pack = 0.0;
         g_da_lp_wait = g_da_lp_smap = g_da_lp_accum = 0.0;
         g_da_lp_lights = g_da_lp_accums = g_da_lp_waves = g_da_lp_starved = g_da_lp_free_ctx = g_da_lp_max_flight = g_da_lp_queued = 0;
         --ps_da_light_prof;

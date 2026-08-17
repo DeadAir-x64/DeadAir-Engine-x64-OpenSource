@@ -1,5 +1,7 @@
 #include "StdAfx.h"
 
+#include "xrCore/da_heap_guard.h" // [DA_PORT] образец отравы: «блок уже освобождён»
+
 #include <limits>
 
 #include "PHDynamicData.h"
@@ -81,6 +83,66 @@ IC void add_contact_body_effector(dBodyID body, const dContact& c, SGameMtl* mat
     }
 }
 
+// [DA_PORT] Правдоподобность указателя геометрии. Задача #66: вылет в физике после подрыва гранаты.
+//
+// ЧТО ИЗВЕСТНО ИЗ ЛОГА. Отказ C0000005 в dGeomGetData <- retrieveGeomUserData <- InitContact <-
+// NearCallback. Последнее событие мира перед падением — «Destroying local grenade». То есть
+// столкновение читает геометрию, которой уже нет: обратный вызов держит указатель на снесённый
+// объект. Тот же класс, что закрытая гонка с формой столкновений.
+//
+// ⚠️ ВАЖНАЯ ПОПРАВКА К ПРЕЖНЕМУ РАЗБОРУ. В отчёте стоял адрес ffffffffffffffff, и из этого был
+// сделан вывод «указатель равен -1». Вывод неверен: ровно так Windows сообщает об отказе по
+// НЕКАНОНИЧЕСКОМУ адресу — процессор выдаёт общий отказ защиты, и настоящего адреса в отчёте нет.
+// Значит указатель был не -1, а произвольным мусором из освобождённой памяти. (Проверено на своей
+// шкуре в тот же день: отрава карантина 0xDDDD... давала точно такой же ffffffffffffffff.)
+//
+// ⛔ Проверить «жива ли геометрия» по указателю невозможно. Но отсеять заведомо негодный указатель
+// можно, и этого достаточно, чтобы не падать: ноль, невыравненный, неканонический, из ядерной
+// половины адресов — и отдельно образец отравы карантина, то есть «блок уже освобождён».
+IC bool da_geom_plausible(dGeomID g)
+{
+    const u64 v = (u64)(uintptr_t)g;
+    if (!v)
+        return false;
+    if (v & 7)
+        return false; // объекты ODE выровнены; нечётный адрес — заведомо мусор
+    if (v >= 0x0000800000000000ull)
+        return false; // выше пользовательской половины: либо ядро, либо неканонический адрес
+    if (v == DA_HEAP_POISON_WORD)
+        return false; // прочитано из отравленного блока — объект уже освобождён
+
+    return true;
+}
+
+// Сообщение о негодной геометрии. Печатает того из пары, кто ещё цел: имя мертвеца недоступно по
+// определению, а вот «с кем он сталкивался» сразу сужает поиск владельца.
+IC void da_report_bad_geom(pcstr where, dGeomID bad, dGeomID other)
+{
+    static u32 reported = 0;
+    if (reported >= 8)
+        return;
+    ++reported;
+
+    // Имя мертвеца недоступно по определению — читать его поля и значит упасть. Зато у ЦЕЛОГО
+    // партнёра можно спросить материал и наличие физического объекта: этого хватает, чтобы понять,
+    // кто с кем сталкивался в момент отказа.
+    int partner_material = -1;
+    bool partner_has_object = false;
+    if (da_geom_plausible(other))
+    {
+        if (dxGeomUserData* d = retrieveGeomUserData(other))
+        {
+            partner_material = int(d->material);
+            partner_has_object = (d->ph_object != nullptr);
+        }
+    }
+
+    Msg("! [DA] %s: негодный указатель геометрии %p, столкновение пропущено; партнёр %p "
+        "(материал %d, физобъект %s)%s",
+        where, (void*)bad, (void*)other, partner_material, partner_has_object ? "есть" : "нет",
+        (reported == 8) ? " (дальнейшие сообщения подавлены)" : "");
+}
+
 IC static int CollideIntoGroup(
     dGeomID o1, dGeomID o2, dJointGroupID jointGroup, CPHIsland* world, const int& MAX_CONTACTS)
 {
@@ -92,8 +154,14 @@ IC static int CollideIntoGroup(
     // get the contacts up to a maximum of N contacts
     int n;
 
-    VERIFY(o1);
-    VERIFY(o2);
+    // [DA_PORT] Живая проверка вместо VERIFY: до dCollide, иначе разбирать будет уже нечего.
+    if (!da_geom_plausible(o1) || !da_geom_plausible(o2))
+    {
+        da_report_bad_geom("CollideIntoGroup", da_geom_plausible(o1) ? o2 : o1,
+            da_geom_plausible(o1) ? o1 : o2);
+        return (0);
+    }
+
     VERIFY(&contacts[0].geom);
     n = dCollide(o1, o2, N, &contacts[0].geom, sizeof(dContact));
 
@@ -108,6 +176,17 @@ IC static int CollideIntoGroup(
         dSurfaceParameters& surface = c.surface;
         dGeomID g1 = cgeom.g1;
         dGeomID g2 = cgeom.g2;
+
+        // [DA_PORT] Второй заслон, и он не лишний: dCollide заполняет g1/g2 САМ, и для составных
+        // тел это могут быть ВЛОЖЕННЫЕ геометрии, а не переданные o1/o2. Проверка выше их не видит.
+        // Именно здесь стек и падал — в retrieveGeomUserData строкой ниже.
+        if (!da_geom_plausible(g1) || !da_geom_plausible(g2))
+        {
+            da_report_bad_geom("NearCallback/контакт", da_geom_plausible(g1) ? g2 : g1,
+                da_geom_plausible(g1) ? g1 : g2);
+            continue;
+        }
+
         bool pushing_neg = false;
         bool do_collide = true;
         dxGeomUserData* usr_data_1 = NULL;

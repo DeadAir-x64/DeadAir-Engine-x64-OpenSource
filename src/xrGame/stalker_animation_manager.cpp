@@ -72,7 +72,13 @@ void CStalkerAnimationManager::reload()
     m_crouch_state = m_crouch_state_config;
 
     m_skeleton_animated = smart_cast<IKinematicsAnimated*>(m_visual);
-    VERIFY(m_skeleton_animated);
+    // [DA_PORT] Здесь VERIFY заменён на ЖИВОЙ R_ASSERT, а не на мягкий пропуск, и это осознанно:
+    // сталкер без анимаций нежизнеспособен, дальше его разыменовывают в каждом кадре обновления
+    // анимации — тихо продолжить нельзя. Но модель берётся из профиля персонажа, то есть из данных
+    // мода, и она же молча подменяется заглушкой, если файл не загрузился. Без этой строки такой
+    // случай приходил безымянным обращением по нулю; теперь лог сразу называет НПС и модель.
+    R_ASSERT3(m_skeleton_animated, "визуал сталкера не анимированный (модель без скелета или заглушка): ",
+        object().cNameVisual().c_str());
 
     m_data_storage = stalker_animation_data_storage().object(m_skeleton_animated);
     VERIFY(m_data_storage);

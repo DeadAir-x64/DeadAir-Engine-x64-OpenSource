@@ -142,4 +142,19 @@ dx11StateCache< ID3DxxBlendState , D3D_BLEND_DESC >
     }
 }
 */
+// [DA_PORT] ЯВНЫЕ ИНСТАНЦИРОВАНИЯ. ClearStateArray — шаблонный метод, определённый ЗДЕСЬ, в .cpp, а
+// зовут его из другой единицы трансляции (CHW::DestroyDevice в dx11HW.cpp). По стандарту это ошибка:
+// компилятор не обязан порождать тело для типов, о которых в этом файле знает только по объявлению
+// глобальных RSManager/DSSManager/BSManager выше.
+//
+// Работало оно случайно и держалось на настроении оптимизатора: тело порождалось как побочный
+// эффект инстанцирования деструктора. Стоило собрать конфигурацию Mixed — и три символа исчезли,
+// линковка xrRenderPC_R4.dll упала. Проверено измерением, а не догадкой: `nm` по одному и тому же
+// объектнику даёт 12 записей про ClearStateArray в релизной сборке и НОЛЬ в Mixed.
+//
+// Инстанцируем точечно, а не класс целиком: у шаблона есть методы со специализациями на каждый тип
+// (CreateState, ResetDescription), и инстанцирование класса потребовало бы их все разом.
+template void dx11StateCache<ID3DRasterizerState, D3D_RASTERIZER_DESC>::ClearStateArray();
+template void dx11StateCache<ID3DDepthStencilState, D3D_DEPTH_STENCIL_DESC>::ClearStateArray();
+template void dx11StateCache<ID3DBlendState, D3D_BLEND_DESC>::ClearStateArray();
 } // namespace xray::render::RENDER_NAMESPACE

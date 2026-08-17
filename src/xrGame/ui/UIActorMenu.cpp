@@ -78,8 +78,15 @@ void CUIActorMenu::InitPartnerInfo()
             if (monster)
             {
                 shared_str monster_tex_name = pSettings->r_string(monster->cNameSect(), "icon");
-                GetModeSpecificPartnerInfo(m_currMenuMode)->UIIcon().InitTexture(monster_tex_name.c_str());
-                GetModeSpecificPartnerInfo(m_currMenuMode)->UIIcon().SetStretchTexture(true);
+                // [DA_PORT] UIIcon() returns *m_icons[eIcon] behind a VERIFY that is stripped in release;
+                // the icon element is optional in the actor-menu XML (see CUICharacterInfo null-checks),
+                // so guard on the pointer before dereferencing the reference-return getter (§5 audit)
+                CUICharacterInfo* partner_info = GetModeSpecificPartnerInfo(m_currMenuMode);
+                if (partner_info->GetIcon(CUICharacterInfo::eIcon))
+                {
+                    partner_info->UIIcon().InitTexture(monster_tex_name.c_str());
+                    partner_info->UIIcon().SetStretchTexture(true);
+                }
             }
         }
         else

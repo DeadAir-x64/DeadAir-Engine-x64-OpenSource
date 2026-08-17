@@ -300,6 +300,8 @@ bool Manager::make_known_upgrade(const shared_str& upgrade_id)
 {
     Upgrade* upgrade_p = get_upgrade(upgrade_id);
     VERIFY2(upgrade_p, make_string("Upgrade <%s> does not exist!", upgrade_id.c_str()));
+    if (!upgrade_p) // [DA_PORT] upgrade_id from script/config: VERIFY vanishes in release, null deref
+        return (false);
     return (upgrade_p->make_known());
 }
 
@@ -312,6 +314,8 @@ bool Manager::is_known_upgrade(shared_str const& upgrade_id)
 {
     Upgrade* upgrade_p = get_upgrade(upgrade_id);
     VERIFY2(upgrade_p, make_string("Upgrade <%s> does not exist!", upgrade_id.c_str()));
+    if (!upgrade_p) // [DA_PORT] upgrade_id from script/config: VERIFY vanishes in release, null deref
+        return (false);
     return (upgrade_p->is_known());
 }
 

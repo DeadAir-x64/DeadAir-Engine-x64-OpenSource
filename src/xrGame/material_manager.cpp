@@ -52,9 +52,16 @@ void CMaterialManager::Load(LPCSTR section)
             VERIFY(GAMEMTL_NONE_IDX != m_my_material_idx);
             SGameMtl* m = GMLib.GetMaterialByIdx(m_my_material_idx);
 
-            VERIFY(m);
-            Msg("(CMaterialManager::Load(LPCSTR section)) material: %s loaded for %s, from section: %s ",
-                m->m_Name.c_str(), entity_alive->cName().c_str(), section);
+            // [DA_PORT] Живая проверка вместо VERIFY. GetMaterialByIdx по НАШЕЙ ЖЕ защите (задача
+            // #37/#47) отдаёт ноль при негодном номере, а строка ниже читает у него имя — то есть
+            // сообщение, написанное для отладки, роняло бы игру ровно в том случае, который оно и
+            // должно было описать.
+            if (m)
+                Msg("(CMaterialManager::Load(LPCSTR section)) material: %s loaded for %s, from section: %s ",
+                    m->m_Name.c_str(), entity_alive->cName().c_str(), section);
+            else
+                Msg("! [DA] материал по номеру %u не найден для [%s], секция [%s]", u32(m_my_material_idx),
+                    entity_alive->cName().c_str(), section);
         }
     }
 #endif
@@ -186,6 +193,11 @@ void CMaterialManager::update(float time_delta, float volume, float step_time, b
     // звук и вид разойдутся, и игрок будет слышать плеск на сухом месте.
     SGameMtlPair* mtl_pair = GMLib.GetMaterialPairByIndices(m_my_material_idx, m_last_material_idx);
     VERIFY3(mtl_pair, "Undefined material pair: ", GMLib.GetMaterialByIdx(m_last_material_idx)->m_Name.c_str());
+    // [DA_PORT] Пара материалов из gamemtl.xr может быть не определена (все прочие вызовы
+    // GetMaterialPairByIndices это проверяют, и наш же have_pair выше — тоже). VERIFY3 в релизе
+    // вырезан, а дальше идёт mtl_pair->StepSounds: без гварда null-разыменование (recall-audit)
+    if (!mtl_pair)
+        return;
     if (m_movement_control->CharacterExist())
     {
         position.y += m_movement_control->FootRadius();

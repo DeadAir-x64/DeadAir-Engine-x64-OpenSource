@@ -1063,10 +1063,15 @@ void CCar::UpdatePower()
     if (b_auto_switch_transmission && !b_transmission_switching)
     {
         VERIFY2(CurrentTransmission() < m_gear_ratious.size(), "wrong transmission");
-        if (m_current_rpm < m_gear_ratious[CurrentTransmission()][1])
-            TransmissionDown();
-        if (m_current_rpm > m_gear_ratious[CurrentTransmission()][2])
-            TransmissionUp();
+        // [DA_PORT] VERIFY вырезан в релизе: номер передачи вне таблицы (конфиг машины мода) читал
+        // m_gear_ratious[...] за границей вектора.
+        if (CurrentTransmission() < m_gear_ratious.size())
+        {
+            if (m_current_rpm < m_gear_ratious[CurrentTransmission()][1])
+                TransmissionDown();
+            if (m_current_rpm > m_gear_ratious[CurrentTransmission()][2])
+                TransmissionUp();
+        }
     }
 
     xr_vector<SWheelDrive>::iterator i, e;

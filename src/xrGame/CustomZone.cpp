@@ -360,7 +360,13 @@ bool CCustomZone::net_Spawn(CSE_Abstract* DC)
 
     CSE_Abstract* e = (CSE_Abstract*)(DC);
     CSE_ALifeCustomZone* Z = smart_cast<CSE_ALifeCustomZone*>(e);
-    VERIFY(Z);
+    // [DA_PORT] Живая проверка вместо VERIFY — разбор вида в smart_cover_object.cpp.
+    if (!Z)
+    {
+        Msg("! [DA] зона [%s]: серверный объект не того класса — не создаём",
+            e ? e->name_replace() : "без имени");
+        return FALSE;
+    }
 
     m_fMaxPower = pSettings->read_if_exists<float>(cNameSect(), "max_start_power", Z->m_maxPower);
     m_fAttenuation = pSettings->r_float(cNameSect(), "attenuation");

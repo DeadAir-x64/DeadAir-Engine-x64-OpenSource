@@ -951,10 +951,27 @@ ref_shader CRender::getShader(int id)
     VERIFY(id < int(Shaders.size()));
     return Shaders[id];
 }
+// [DA_PORT] §2 recall-audit: id этих аксессоров читается из OGF модели (FVisual/FTreeVisual::Load,
+// data->r_u32()) и индексирует пул геометрии уровня. VERIFY в релизе снят — при рассинхроне build
+// модели и уровня (битый/чужой .ogf у мода) шёл OOB-доступ к вектору. Все вызовы — на ЗАГРУЗКЕ визуала
+// (не в кадре), поэтому мягкий guard бесплатен: логируем раз и зажимаем id в диапазон вместо чтения за
+// границей; пустой пул = геометрия не загружена вовсе (недостижимый фатал) — отдаём null.
+static int da_clamp_geom_id(int id, int size, const char* who)
+{
+    if (id >= 0 && id < size)
+        return id;
+    static u32 da_hits = 0;
+    if (++da_hits <= 5 || (da_hits % 200) == 0)
+        Msg("! [DA] %s: номер геометрии %d при пуле %d — зажат (рассинхрон модели и уровня, случаев %u)",
+            who, id, size, da_hits);
+    return size > 0 ? size - 1 : -1;
+}
+
 IRenderVisual* CRender::getVisual(int id)
 {
     VERIFY(id < int(Visuals.size()));
-    return Visuals[id];
+    id = da_clamp_geom_id(id, int(Visuals.size()), "getVisual");
+    return id < 0 ? nullptr : Visuals[id];
 }
 
 VertexElement* CRender::getVB_Format(int id, bool alternative)
@@ -962,10 +979,12 @@ VertexElement* CRender::getVB_Format(int id, bool alternative)
     if (alternative)
     {
         VERIFY(id < int(xDC.size()));
-        return xDC[id].begin();
+        id = da_clamp_geom_id(id, int(xDC.size()), "getVB_Format");
+        return id < 0 ? nullptr : xDC[id].begin();
     }
     VERIFY(id < int(nDC.size()));
-    return nDC[id].begin();
+    id = da_clamp_geom_id(id, int(nDC.size()), "getVB_Format");
+    return id < 0 ? nullptr : nDC[id].begin();
 }
 
 VertexStagingBuffer* CRender::getVB(int id, bool alternative)
@@ -973,10 +992,12 @@ VertexStagingBuffer* CRender::getVB(int id, bool alternative)
     if (alternative)
     {
         VERIFY(id<int(xVB.size()));
-        return &xVB[id];
+        id = da_clamp_geom_id(id, int(xVB.size()), "getVB");
+        return id < 0 ? nullptr : &xVB[id];
     }
     VERIFY(id < int(nVB.size()));
-    return &nVB[id];
+    id = da_clamp_geom_id(id, int(nVB.size()), "getVB");
+    return id < 0 ? nullptr : &nVB[id];
 }
 
 IndexStagingBuffer* CRender::getIB(int id, bool alternative)
@@ -984,16 +1005,19 @@ IndexStagingBuffer* CRender::getIB(int id, bool alternative)
     if (alternative)
     {
         VERIFY(id < int(xIB.size()));
-        return &xIB[id];
+        id = da_clamp_geom_id(id, int(xIB.size()), "getIB");
+        return id < 0 ? nullptr : &xIB[id];
     }
     VERIFY(id < int(nIB.size()));
-    return &nIB[id];
+    id = da_clamp_geom_id(id, int(nIB.size()), "getIB");
+    return id < 0 ? nullptr : &nIB[id];
 }
 
 FSlideWindowItem* CRender::getSWI(int id)
 {
     VERIFY(id < int(SWIs.size()));
-    return &SWIs[id];
+    id = da_clamp_geom_id(id, int(SWIs.size()), "getSWI");
+    return id < 0 ? nullptr : &SWIs[id];
 }
 
 IRender_Light* CRender::light_create() { return Lights.Create(); }

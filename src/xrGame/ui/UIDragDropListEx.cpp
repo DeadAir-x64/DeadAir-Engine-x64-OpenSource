@@ -983,8 +983,17 @@ Ivector2 CUICellContainer::PickCell(const Fvector2& abs_pos)
     GetAbsolutePos(ap);
     ap.sub(abs_pos);
     ap.mul(-1);
-    res.x = iFloor(ap.x / (m_cellSize.x + m_cellSpacing.x * (m_cellsCapacity.x - 1) / m_cellsCapacity.x));
-    res.y = iFloor(ap.y / (m_cellSize.y + m_cellSpacing.y * (m_cellsCapacity.y - 1) / m_cellsCapacity.y));
+    // [DA_PORT] Целочисленное деление на m_cellsCapacity (всё Ivector2): у слота-контейнера — напр.
+    // слот рюкзака в костюме эколога — вместимость приходит из конфига и бывает 0, тогда
+    // `... / m_cellsCapacity.x` = целочисленное деление на ноль → C0000094 при перетаскивании предмета
+    // на слот. Промежуток между ячейками осмыслен только при capacity>1; иначе поправки нет, шаг =
+    // размер ячейки. Внешнее деление ap/(шаг) — float, безопасно; но и шаг прикрываем от нуля.
+    const int spacing_x = (m_cellsCapacity.x > 1) ? (m_cellSpacing.x * (m_cellsCapacity.x - 1) / m_cellsCapacity.x) : 0;
+    const int spacing_y = (m_cellsCapacity.y > 1) ? (m_cellSpacing.y * (m_cellsCapacity.y - 1) / m_cellsCapacity.y) : 0;
+    const int step_x = m_cellSize.x + spacing_x;
+    const int step_y = m_cellSize.y + spacing_y;
+    res.x = (step_x != 0) ? iFloor(ap.x / step_x) : -1;
+    res.y = (step_y != 0) ? iFloor(ap.y / step_y) : -1;
     if (!ValidCell(res))
         res.set(-1, -1);
     return res;

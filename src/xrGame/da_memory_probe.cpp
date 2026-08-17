@@ -15,8 +15,13 @@
 #include "xrEngine/XR_IOConsole.h"
 #include "Common/object_broker.h"
 #include <algorithm>
+// [DA_PORT] Обход куч — Windows-только по природе: HeapWalk/HeapLock есть лишь там. Под другими
+// платформами эта часть зонда выключается целиком, и это не потеря: собирают его под санитайзеры,
+// а утечки там ищет LeakSanitizer, причём точнее и со стеком выделения.
+#ifdef XR_PLATFORM_WINDOWS
 #include <windows.h>
 #include <malloc.h> // _get_heap_handle: куча CRT, единственная, где живут наши аллокации
+#endif
 
 // Крутилки объявлены здесь, а определены ниже: обход куч лежит в безымянном пространстве имён выше
 // по файлу и обращается к ним.
@@ -177,6 +182,12 @@ void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u
     xr_vector<size_t>& big_kb, xr_vector<size_t>& per_heap_kb, xr_vector<u32>& per_heap_susp,
     xr_vector<std::pair<u32, u32>>& big_exact)
 {
+#ifndef XR_PLATFORM_WINDOWS
+    // Заглушка: обходить нечего, счётчики остаются нулевыми. Разбор — у включений выше.
+    (void)blocks; (void)bytes; (void)hist; (void)big;
+    (void)big_kb; (void)per_heap_kb; (void)per_heap_susp; (void)big_exact;
+    return;
+#else
     // [DA_PORT] Ловушка аллокатора обязана молчать на время обхода, иначе игра падает в HeapLock.
     // Как это выглядело: ловушка стояла на 128 байт (буферы графа сцены), da_mem_test при старте
     // прогона сам перевзводит её (см. ниже g_da_alloc_trap_left = 6), и она срабатывала ИЗ РАБОЧИХ
@@ -283,6 +294,7 @@ void walk_heaps(size_t& blocks, size_t& bytes, xr_vector<u32>& hist, xr_vector<u
     }
 
     g_da_alloc_trap_size = trap_size_saved;
+#endif // XR_PLATFORM_WINDOWS
 }
 
 // Ширина строки В СИМВОЛАХ, а не в байтах: подписи фаз русские, в UTF-8 это два байта на букву,

@@ -204,6 +204,20 @@ static void da_smap_light_store(light* L)
 // прогонов при одинаковых настройках доходит до полумиллисекунды -- больше, чем сам предмет спора.
 // Прибор внутри кадра от этого разброса не зависит.
 int ps_da_light_prof = 0;
+// [DA_PORT] Три куска фазы света, не покрытые прежними счётчиками.
+//
+// ЗАЧЕМ. Зона lights стоит 0.59 мс процессора при 0.08 мс видеокарты, а прибор объясняет из них
+// только 0.26 (ожидание 0.12 + карты 0.05 + накопление 0.07). Треть миллисекунды не покрыта ничем —
+// на сегодня это самая крупная необъяснённая величина на процессоре, и разбирать её надо прежде,
+// чем трогать пул контекстов: тот отвечает лишь за 0.12 мс ожидания.
+//
+// Границы по смыслу: общая выборка динамики на всю фазу (запрос к дереву объектов по объединённому
+// объёму всех теневых ламп), обновление видимости ламп с расчётом их матриц, и раскладка теневых
+// карт по атласу — она внутри цикла по страницам ещё и пересортировывает список.
+double g_da_lp_prep = 0.0;   // общая выборка динамики (q_box по объединению ламп)
+double g_da_lp_vis = 0.0;    // vis_update + compute_xf_spot по теневым лампам
+double g_da_lp_pack = 0.0;   // раскладка теневых карт по атласу
+
 double g_da_lp_wait = 0.0;   // ожидание задач построения списков видимого
 double g_da_lp_smap = 0.0;   // отрисовка теневых карт (обе фазы кэша)
 double g_da_lp_accum = 0.0;  // накопление света на экране
@@ -394,6 +408,13 @@ static bool da_light_step(const light* L, pcstr where)
 void CRender::render_lights(light_Package& LP)
 {
     g_da_light_idx = 0;
+
+    // [DA_PORT] Разметка непокрытых кусков фазы -- разбор у g_da_lp_prep.
+    const bool da_lp = ps_da_light_prof > 0;
+    CTimer da_lp_timer;
+    if (da_lp)
+        da_lp_timer.Start();
+
     // [DA_PORT] Общая выборка динамики -- один раз на всю фазу. Разбор у ps_da_light_dyn_shared.
     g_da_light_dyn.clear();
     if (ps_da_light_dyn_shared && !LP.v_shadowed.empty())
@@ -416,6 +437,12 @@ void CRender::render_lights(light_Package& LP)
         Fvector center, size;
         bb.get_CD(center, size);
         g_pGamePersistent->SpatialSpace.q_box(g_da_light_dyn, 0, STYPE_RENDERABLE, center, size);
+    }
+
+    if (da_lp)
+    {
+        g_da_lp_prep += da_lp_timer.GetElapsed_sec() * 1000.0;
+        da_lp_timer.Start();
     }
 
     if (ps_da_light_prof > 0)
@@ -450,6 +477,12 @@ void CRender::render_lights(light_Package& LP)
                 LR.compute_xf_spot(L);
             }
         }
+    }
+
+    if (da_lp)
+    {
+        g_da_lp_vis += da_lp_timer.GetElapsed_sec() * 1000.0;
+        da_lp_timer.Start();
     }
 
     // 2. refactor - infact we could go from the backside and sort in ascending order
@@ -565,6 +598,9 @@ void CRender::render_lights(light_Package& LP)
     //	}
     //	if (left_some_lights_that_doesn't cast shadows)
     //		accumulate them
+    if (da_lp)
+        g_da_lp_pack += da_lp_timer.GetElapsed_sec() * 1000.0;
+
     static xr_vector<light*> L_spot_s;
 
     struct task_data_t

@@ -264,6 +264,31 @@ AssertionResult xrDebug::Fail(bool& ignoreAlways, const ErrorLocation& loc, cons
 
     FlushLog();
 
+    // [DA_PORT] ⭐ Ключ -da_verify_continue: ЗАПИСАТЬ И ИДТИ ДАЛЬШЕ.
+    //
+    // ЗАЧЕМ. В сборке Mixed живы все ~5700 VERIFY, и это единственный способ узнать, какие из них
+    // срабатывают на самом деле. Но по умолчанию ПЕРВОЕ же срабатывание уходит в DEBUG_BREAK — то
+    // есть за целый прогон мы узнаём ровно про одну проверку, а следующую увидим только после
+    // разбора этой. При тысячах мест такой темп бессмыслен.
+    //
+    // Здесь всё уже записано: GatherInfo выше положил в лог и само выражение с файлом и строкой,
+    // и стек вызовов. Остаётся не останавливаться. ignoreAlways взводится намеренно — счётчик у
+    // каждого VERIFY свой и статический, так что одно и то же место не зальёт лог повторами, а
+    // список получится по МЕСТАМ, а не по числу срабатываний.
+    //
+    // ⛔ Только для прогонов, не для игры. Продолжать после сработавшего VERIFY небезопасно: ровно
+    // за ним обычно и стоит то разыменование, которое проверка стерегла. Это приемлемо для стенда
+    // (упадём чуть позже, зато со списком), но игроку такую сборку отдавать нельзя.
+    static const bool verify_continue = !!strstr(Core.Params, "-da_verify_continue");
+    if (verify_continue)
+    {
+        ErrorAfterDialog = false;
+        ignoreAlways = true;
+        if (windowHandler)
+            windowHandler->OnErrorDialog(false);
+        return AssertionResult::ignore;
+    }
+
     bool resetFullscreen = false;
     AssertionResult result = AssertionResult::abort;
     if (Core.PluginMode)

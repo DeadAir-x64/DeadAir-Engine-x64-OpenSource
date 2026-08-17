@@ -927,7 +927,7 @@ bool CPHSimpleCharacter::ValidateWalkOnMesh()
     for (auto &Res : *XRC.r_get())
     {
         SGameMtl* m = GMLib.GetMaterialByIdx(Res.material);
-        if (m->Flags.test(SGameMtl::flPassable))
+        if (!m || m->Flags.test(SGameMtl::flPassable)) // [DA_PORT] null = негодный номер, считаем проходимым
             continue;
         // CDB::TRI* T = T_array + Res->id;
         Point vertices[3] = {
@@ -958,7 +958,7 @@ bool CPHSimpleCharacter::ValidateWalkOnMesh()
     {
         // CDB::TRI* T = T_array + Res->id;
         SGameMtl* m = GMLib.GetMaterialByIdx(Res.material);
-        if (m->Flags.test(SGameMtl::flPassable))
+        if (!m || m->Flags.test(SGameMtl::flPassable)) // [DA_PORT] null = негодный номер, считаем проходимым
             continue;
         Point vertices[3] = {
             Point((dReal*)&Res.verts[0]), Point((dReal*)&Res.verts[1]), Point((dReal*)&Res.verts[2])};
@@ -1492,6 +1492,13 @@ void CPHSimpleCharacter::InitContact(dContact* c, bool& do_collide, u16 material
 
     u16 contact_material = bo1 ? material_idx_2 : material_idx_1;
     SGameMtl* tri_material = GMLib.GetMaterialByIdx(contact_material);
+    // [DA_PORT] GetMaterialByIdx теперь мягко отдаёт null на негодный номер (раньше был OOB-чит);
+    // трактуем неизвестный материал как непроходимый контакт: пропускаем без разыменования (CodeQL).
+    if (!tri_material)
+    {
+        do_collide = false;
+        return;
+    }
 
     bool bClimable = !!tri_material->Flags.test(SGameMtl::flClimable);
     if (is_control && m_elevator_state.ClimbingState())
@@ -2020,9 +2027,13 @@ void CPHSimpleCharacter::Collide()
     OnStartCollidePhase();
 
     inherited::Collide();
-    if (injuriousMaterialIDX == GAMEMTL_NONE_IDX && (*p_lastMaterialIDX) != GAMEMTL_NONE_IDX &&
-        GMLib.GetMaterialByIdx(*p_lastMaterialIDX)->Flags.test(SGameMtl::flInjurious))
-        injuriousMaterialIDX = *p_lastMaterialIDX;
+    if (injuriousMaterialIDX == GAMEMTL_NONE_IDX && (*p_lastMaterialIDX) != GAMEMTL_NONE_IDX)
+    {
+        // [DA_PORT] проверка на null: GetMaterialByIdx мягко отдаёт null на негодный номер (CodeQL)
+        SGameMtl* lastM = GMLib.GetMaterialByIdx(*p_lastMaterialIDX);
+        if (lastM && lastM->Flags.test(SGameMtl::flInjurious))
+            injuriousMaterialIDX = *p_lastMaterialIDX;
+    }
 }
 void CPHSimpleCharacter::OnStartCollidePhase() { injuriousMaterialIDX = GAMEMTL_NONE_IDX; }
 void CPHSimpleCharacter::NetRelcase(IPhysicsShellHolder* O)

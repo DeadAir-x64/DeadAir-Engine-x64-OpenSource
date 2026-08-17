@@ -6,15 +6,22 @@
 #include "NET_Common.h"
 #include "xrCore/fastdelegate.h"
 #include "xrCore/Threading/Lock.hpp"
+#include <mutex>
 
 class IClient;
 
 class PlayersMonitor
 {
     using players_collection_t = xr_vector<IClient*>;
+#ifdef XR_PLATFORM_WINDOWS
     CRITICAL_SECTION csPlayersCS; // [DA_PORT] direct CRITICAL_SECTION, not Lock —
     // GCC LTO + cross-DLL construction corrupts the Lock member init chain, leaving
     // the CS zeroed. Direct CS + explicit init in ctor is the only reliable path on MinGW x64.
+#else
+    // [DA_PORT] Не-Windows: тот же договор на стандартном замке. Ветка Windows выше не тронута —
+    // в ней обход ошибки GCC LTO, и лезть туда ради переносимости значило бы менять работающее.
+    std::recursive_mutex csPlayersCS;
+#endif
     players_collection_t net_Players;
     players_collection_t net_Players_disconnected;
     bool now_iterating_in_net_players;
@@ -23,12 +30,29 @@ class PlayersMonitor
     std::thread::id iterator_thread_id;
 #endif
 
+private:
+    // [DA_PORT] Единственная разница между платформами собрана здесь, чтобы 27 мест ниже читались
+    // одинаково и не пришлось править каждое.
+#ifdef XR_PLATFORM_WINDOWS
+    void pm_enter() { EnterCriticalSection(&csPlayersCS); }
+    void pm_leave() { LeaveCriticalSection(&csPlayersCS); }
+#else
+    void pm_enter() { csPlayersCS.lock(); }
+    void pm_leave() { csPlayersCS.unlock(); }
+#endif
+
 public:
     PlayersMonitor() : now_iterating_in_net_players(false), now_iterating_in_net_players_disconn(false)
     {
+#ifdef XR_PLATFORM_WINDOWS
         InitializeCriticalSection(&csPlayersCS);
+#endif
     }
+#ifdef XR_PLATFORM_WINDOWS
     ~PlayersMonitor() { DeleteCriticalSection(&csPlayersCS); }
+#else
+    ~PlayersMonitor() = default;
+#endif
     PlayersMonitor(const PlayersMonitor&) = delete;
     PlayersMonitor& operator=(const PlayersMonitor&) = delete;
 #ifdef DEBUG
@@ -48,7 +72,7 @@ public:
     void ForEachClientDo(ActionFunctor& functor)
     {
         // Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         // LogStackTrace(
         //	make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         now_iterating_in_net_players = true;
@@ -62,13 +86,13 @@ public:
         }
         now_iterating_in_net_players = false;
         // Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
     }
 
     void ForEachClientDo(fastdelegate::FastDelegate1<IClient*, void>& fast_delegate)
     {
         // Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         // LogStackTrace(
         //	make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         now_iterating_in_net_players = true;
@@ -82,14 +106,14 @@ public:
         }
         now_iterating_in_net_players = false;
         // Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
     }
 
     template <typename SearchPredicate, typename ActionFunctor>
     u32 ForFoundClientsDo(SearchPredicate const& predicate, ActionFunctor& functor)
     {
         u32 ret_count = 0;
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         // LogStackTrace(
         //	make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         now_iterating_in_net_players = true;
@@ -107,7 +131,7 @@ public:
         }
         now_iterating_in_net_players = false;
         // Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
         return ret_count;
     }
 
@@ -115,7 +139,7 @@ public:
     IClient* FindAndEraseClient(SearchPredicate const& predicate)
     {
         // Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         // LogStackTrace(
         //	make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         VERIFY(!now_iterating_in_net_players);
@@ -132,7 +156,7 @@ public:
         }
         now_iterating_in_net_players = false;
         // Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
         return ret_client;
     }
 
@@ -140,7 +164,7 @@ public:
     IClient* GetFoundClient(SearchPredicate const& predicate)
     {
         // Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         // LogStackTrace(
         //	make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         players_collection_t::iterator client_iter = std::find_if(net_Players.begin(), net_Players.end(), predicate);
@@ -150,19 +174,19 @@ public:
             ret_client = *client_iter;
         }
         // Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
         return ret_client;
     }
 
     void AddNewClient(IClient* new_client)
     {
         //Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         //LogStackTrace(make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         VERIFY(!now_iterating_in_net_players);
         net_Players.push_back(new_client);
         //Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
     }
 
     /*
@@ -170,7 +194,7 @@ public:
     void ForEachDisconnectedClientDo(ActionFunctor& functor)
     {
         //Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         //LogStackTrace(make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         now_iterating_in_net_players_disconn = true;
 #ifdef DEBUG
@@ -179,14 +203,14 @@ public:
         std::for_each(net_Players_disconnected.begin(), net_Players_disconnected.end(), functor);
         now_iterating_in_net_players_disconn = false;
         //Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
     }
 
     template <typename SearchPredicate>
     IClient* FindAndEraseDisconnectedClient(SearchPredicate const& predicate)
     {
         //Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         //LogStackTrace(make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         VERIFY(!now_iterating_in_net_players_disconn);
         now_iterating_in_net_players_disconn = true;
@@ -205,7 +229,7 @@ public:
         }
         now_iterating_in_net_players_disconn = false;
         //Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
         return ret_client;
     }
 
@@ -213,7 +237,7 @@ public:
     IClient* GetFoundDisconnectedClient(SearchPredicate const& predicate)
     {
         //Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         //LogStackTrace(
         //	make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         now_iterating_in_net_players_disconn = true;
@@ -229,31 +253,31 @@ public:
         if (client_iter != net_Players_disconnected.end())
             ret_client = *client_iter;
         //Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
         return ret_client;
     }
 
     void AddNewDisconnectedClient(IClient* new_client)
     {
         //Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         //LogStackTrace(
         //	make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         VERIFY(!now_iterating_in_net_players_disconn);
         net_Players_disconnected.push_back(new_client);
         //Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
     }
     */
 
     u32 ClientsCount()
     {
         //Msg("-S- Entering to csPlayers [%d]", Threading::GetCurrThreadId());
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         //LogStackTrace(make_string("-S- Entered to csPlayers [%d]", Threading::GetCurrThreadId()).c_str());
         u32 ret_count = net_Players.size();
         //Msg("-S- Leaving from csPlayers [%d]", Threading::GetCurrThreadId());
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
         return ret_count;
     }
 
@@ -262,9 +286,9 @@ public:
     /*
     IClient* GetClientByIndex(u32 index)
     {
-        EnterCriticalSection(&csPlayersCS);
+        pm_enter();
         IClient* ret_client = net_Players[index];
-        LeaveCriticalSection(&csPlayersCS);
+        pm_leave();
         return ret_client;
     }
     */

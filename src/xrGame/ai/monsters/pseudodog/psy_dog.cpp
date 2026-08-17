@@ -104,7 +104,14 @@ bool CPsyDog::spawn_phantom()
     CSE_Abstract* phantom = Level().spawn_item(phantomSection, ai().level_graph().vertex_position(node), node, 0xffff, true);
     //Alundaio: END
     CSE_ALifeMonsterBase* pSE_Monster = smart_cast<CSE_ALifeMonsterBase*>(phantom);
-    VERIFY(pSE_Monster);
+    // [DA_PORT] Живая проверка вместо VERIFY: секция фантома берётся из описания псевдопса —
+    // данные мода, — и spawn_item отдаёт ноль, если её нет или у неё не тот серверный класс.
+    if (!pSE_Monster)
+    {
+        Msg("! [DA] псевдопёс: фантом [%s] не создан — призыв пропущен",
+            phantomSection ? phantomSection : "без имени");
+        return false;
+    }
 
     pSE_Monster->m_spec_object_id = ID();
 

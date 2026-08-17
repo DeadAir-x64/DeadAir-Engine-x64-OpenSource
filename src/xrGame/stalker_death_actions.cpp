@@ -71,9 +71,19 @@ void CStalkerActionDead::initialize()
         CInventoryItem* item = object().inventory().ItemFromSlot(active_slot);
         if (item)
         {
+            // [DA_PORT] Проверка вместо VERIFY: в отгружаемой сборке он вырезан.
+            //
+            // ВЫЛЕТ ПОДТВЕРЖДЁН СТЕКОМ (сборка 10052): чтение по адресу 0 в
+            // CStalkerActionDead::initialize()+514. В третьем слоте у сталкера может оказаться
+            // предмет, который НЕ магазинное оружие — нож, самоделка из мода, что угодно.
+            // Приведение отдаёт ноль, VERIFY в релизе исчезает, и следующая строка разыменовывает
+            // пустоту прямо в момент смерти сталкера.
+            //
+            // Очередь есть только у магазинного оружия, поэтому «не оно — ничего не делаем» и есть
+            // правильный ответ, а не заглушка.
             CWeaponMagazined* weapon = smart_cast<CWeaponMagazined*>(item);
-            VERIFY(weapon);
-            weapon->SetQueueSize(weapon->GetAmmoElapsed());
+            if (weapon)
+                weapon->SetQueueSize(weapon->GetAmmoElapsed());
         }
     }
 

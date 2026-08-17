@@ -88,6 +88,7 @@ public:
     u32 CurrentBackBuffer{};
 
     ID3DDevice* pDevice = nullptr; // render device
+    u32 m_device_teardown_refs = 0; // [DA_PORT] #70: остаточный refcount устройства при сносе (см. DestroyD3D)
 
     D3D_DRIVER_TYPE m_DriverType;
 

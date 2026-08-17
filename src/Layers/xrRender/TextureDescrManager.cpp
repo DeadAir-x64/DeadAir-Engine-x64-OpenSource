@@ -164,7 +164,16 @@ void CTextureDescrMngr::LoadTHM(LPCSTR initial, bool listTHM)
         R_ASSERT3(F->find_chunk(THM_CHUNK_TYPE), "Cannot find THM chunk in file", fn);
         F->r_u32();
         STextureParams tp;
-        tp.Load(*F);
+        // [DA_PORT] Битый/усечённый .thm пропускаем поимённо, а не читаем за его концом. Load теперь
+        // возвращает false, если чанк параметров короче фиксированной части (см. ETextureParams.cpp).
+        // Раньше при таком файле чтение уходило за границу: в релизе — молча мусорные width/height,
+        // в Mixed — падение на VERIFY(Pos<=Size). Имя файла в логе — чтобы негодный .thm было видно.
+        if (!tp.Load(*F))
+        {
+            Msg("! [DA] битый .thm (усечён чанк параметров), пропущен: %s", it.name.c_str());
+            FS.r_close(F);
+            return;
+        }
         FS.r_close(F);
         if (STextureParams::ttImage == tp.type || STextureParams::ttTerrain == tp.type ||
             STextureParams::ttNormalMap == tp.type)

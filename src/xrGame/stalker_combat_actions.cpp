@@ -1291,6 +1291,8 @@ void CStalkerCombatActionThrowGrenade::initialize()
 
     const CInventoryItem* grenade = object().inventory().ItemFromSlot(GRENADE_SLOT);
     VERIFY(grenade);
+    if (!grenade) // [DA_PORT] слот гранаты мог опустеть между планированием и initialize -> null deref в релизе
+        return;
     m_grenade_id = grenade->object().ID();
 
     object().movement().set_movement_type(eMovementTypeStand);

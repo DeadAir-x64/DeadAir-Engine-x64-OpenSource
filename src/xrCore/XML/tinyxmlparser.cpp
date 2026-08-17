@@ -31,7 +31,12 @@ distribution.
 //#define DEBUG_PARSER
 #if defined(DEBUG_PARSER)
 #if defined(DEBUG) && defined(_MSC_VER)
+// [DA_PORT] Заголовок Windows — только под Windows. Разбор — у Lock.hpp: наш x64-порт
+// растерял кроссплатформенность в нескольких местах, и вскрылось это сборкой под
+// санитайзеры в контейнере Ubuntu (в MinGW libasan нет).
+#ifdef XR_PLATFORM_WINDOWS
 #include <windows.h>
+#endif
 #define TIXML_LOG OutputDebugString
 #else
 #define TIXML_LOG printf

@@ -60,11 +60,18 @@ void CPHSkeleton::Init()
 bool CPHSkeleton::Spawn(CSE_Abstract* D)
 {
     CSE_PHSkeleton* po = smart_cast<CSE_PHSkeleton*>(D);
-    VERIFY(po);
+    CSE_Visual* visual = smart_cast<CSE_Visual*>(D);
+
+    // [DA_PORT] Живые проверки вместо VERIFY — разбор вида в smart_cover_object.cpp.
+    // Здесь обе обязательны: следом читаются и флаги разрушаемости, и анимация из внешнего вида.
+    if (!po || !visual)
+    {
+        Msg("! [DA] разрушаемый объект [%s]: нет %s — физическую часть не создаём",
+            D ? D->name_replace() : "без имени", !po ? "описания скелета" : "внешнего вида");
+        return false;
+    }
 
     m_flags = po->_flags;
-    CSE_Visual* visual = smart_cast<CSE_Visual*>(D);
-    VERIFY(visual);
     m_startup_anim = visual->startup_animation;
     CPHSkeleton* source = 0;
     if (po->_flags.test(CSE_PHSkeleton::flSpawnCopy))

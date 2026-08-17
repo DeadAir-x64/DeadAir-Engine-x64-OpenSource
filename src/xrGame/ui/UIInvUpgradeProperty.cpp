@@ -90,6 +90,8 @@ bool UIProperty::compute_value(ItemUpgrades_type const& item_upgrades)
     {
         Upgrade_type* upgr = ai().alife().inventory_upgrade_manager().get_upgrade(*ib_upg);
         VERIFY(upgr);
+        if (!upgr) // [DA_PORT] id апгрейда из конфига/сейва может не быть зарегистрирован; VERIFY вырезан в релизе
+            continue;
         for (u8 i = 0; i < inventory::upgrade::max_properties_count; i++)
         {
             if (upgr->get_property_name(i)._get() == m_property_id._get())

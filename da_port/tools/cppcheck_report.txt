@@ -1,0 +1,969 @@
+performance	src\Layers\xrRender\FBasicVisual.h:37	useInitializationList	Variable 'vBase' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\FBasicVisual.h:38	useInitializationList	Variable 'vCount' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\FBasicVisual.h:40	useInitializationList	Variable 'iBase' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\FBasicVisual.h:41	useInitializationList	Variable 'iCount' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\FBasicVisual.h:42	useInitializationList	Variable 'dwPrimitives' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\FBasicVisual.h:43	useInitializationList	Variable 'rm_geom' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\FProgressive.cpp:20	useInitializationList	Variable 'last_lod' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\Layers\xrRender\FProgressive.cpp:138	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRender\FTreeVisual.cpp:26	uninitMemberVar	Member variable 'FTreeVisual::c_scale' is not initialized in the constructor.
+warning	src\Layers\xrRender\FTreeVisual.cpp:26	uninitMemberVar	Member variable 'FTreeVisual::c_bias' is not initialized in the constructor.
+warning	src\Layers\xrRender\FTreeVisual.h:41	uninitMemberVarNoCtor	Member variable '_5color::hemi' has no initializer.
+warning	src\Layers\xrRender\FTreeVisual.h:42	uninitMemberVarNoCtor	Member variable '_5color::sun' has no initializer.
+performance	src\Layers\xrRender\FTreeVisual.cpp:432	useInitializationList	Variable 'last_lod' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\Layers\xrRender\IRenderDetailModel.h:28	uninitMemberVarNoCtor	Member variable 'IRender_DetailModel::m_fMinScale' has no initializer.
+warning	src\Layers\xrRender\IRenderDetailModel.h:29	uninitMemberVarNoCtor	Member variable 'IRender_DetailModel::m_fMaxScale' has no initializer.
+warning	src\Layers\xrRender\IRenderDetailModel.h:32	uninitMemberVarNoCtor	Member variable 'IRender_DetailModel::vertices' has no initializer.
+warning	src\Layers\xrRender\IRenderDetailModel.h:34	uninitMemberVarNoCtor	Member variable 'IRender_DetailModel::indices' has no initializer.
+warning	src\Layers\xrRender\IRenderDetailModel.h:15	uninitMemberVarNoCtor	Member variable 'fvfVertexIn::u' has no initializer.
+warning	src\Layers\xrRender\IRenderDetailModel.h:15	uninitMemberVarNoCtor	Member variable 'fvfVertexIn::v' has no initializer.
+warning	src\Layers\xrRender\IRenderDetailModel.h:21	uninitMemberVarNoCtor	Member variable 'fvfVertexOut::u' has no initializer.
+warning	src\Layers\xrRender\IRenderDetailModel.h:21	uninitMemberVarNoCtor	Member variable 'fvfVertexOut::v' has no initializer.
+warning	src\Layers\xrRender\DetailManager.h:58	uninitMemberVarNoCtor	Member variable 'SlotItem::scale' has no initializer.
+warning	src\Layers\xrRender\DetailManager.h:59	uninitMemberVarNoCtor	Member variable 'SlotItem::scale_calculated' has no initializer.
+warning	src\Layers\xrRender\DetailManager.h:62	uninitMemberVarNoCtor	Member variable 'SlotItem::c_hemi' has no initializer.
+warning	src\Layers\xrRender\DetailManager.h:63	uninitMemberVarNoCtor	Member variable 'SlotItem::c_sun' has no initializer.
+warning	src\Layers\xrRender\DetailManager.h:111	uninitMemberVar	Member variable 'CacheSlot1::slots' is not initialized in the constructor.
+performance	src\Layers\xrRender\DetailFormat.h:72	useInitializationList	Variable '_version' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\DetailManager.h:113	useInitializationList	Variable 'empty' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\Layers\xrRender\SH_Atomic.h:138	uninitMemberVar	Member variable 'SState::state' is not initialized in the constructor.
+warning	src\Layers\xrRender\TextureDescrManager.h:28	uninitMemberVarNoCtor	Member variable 'texture_spec::m_material' has no initializer.
+warning	src\Layers\xrRender\TextureDescrManager.h:29	uninitMemberVarNoCtor	Member variable 'texture_spec::m_use_steep_parallax' has no initializer.
+performance	src\Layers\xrRender\Blender.h:24	useInitializationList	Variable 'CLS' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\Layers\xrRenderDX11\dx11ConstantBuffer_impl.h:14	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRender\occRasterizer.h:16	uninitMemberVarNoCtor	Member variable 'occTri::adjacent' has no initializer.
+warning	src\Layers\xrRender\occRasterizer.h:19	uninitMemberVarNoCtor	Member variable 'occTri::area' has no initializer.
+performance	src\Layers\xrRender\HOM.cpp:24	useInitializationList	Variable 'bEnabled' is assigned in constructor body. Consider performing initialization in initialization list.
+portability	src\Layers\xrRender\HOM.cpp:113	intToPointerCast	Casting non-zero decimal integer literal to pointer.
+portability	src\Layers\xrRender\HOM.cpp:114	intToPointerCast	Casting non-zero decimal integer literal to pointer.
+portability	src\Layers\xrRender\HOM.cpp:115	intToPointerCast	Casting non-zero decimal integer literal to pointer.
+warning	src\Layers\xrRender\light_gi.h:9	uninitMemberVarNoCtor	Member variable 'light_indirect::E' has no initializer.
+warning	src\Layers\xrRender\DetailManager.cpp:94	uninitMemberVar	Member variable 'CDetailManager::dither' is not initialized in the constructor.
+warning	src\Layers\xrRender\DetailManager.cpp:94	uninitMemberVar	Member variable 'CDetailManager::swing_desc' is not initialized in the constructor.
+warning	src\Layers\xrRender\DetailManager.cpp:94	uninitMemberVar	Member variable 'CDetailManager::swing_current' is not initialized in the constructor.
+warning	src\Layers\xrRender\DetailManager.cpp:94	uninitMemberVar	Member variable 'CDetailManager::cache_cx' is not initialized in the constructor.
+warning	src\Layers\xrRender\DetailManager.cpp:94	uninitMemberVar	Member variable 'CDetailManager::cache_cz' is not initialized in the constructor.
+performance	src\Layers\xrRender\DetailManager.cpp:100	useInitializationList	Variable 'soft_Geom' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\Layers\xrRender\DetailManager.cpp:101	useInitializationList	Variable 'hw_Geom' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\Layers\xrRender\ParticleEffectDef.h:30	uninitMemberVarNoCtor	Member variable 'SFrame::m_iFrameDimX' has no initializer.
+warning	src\Layers\xrRender\ParticleEffectDef.h:31	uninitMemberVarNoCtor	Member variable 'SFrame::m_iFrameCount' has no initializer.
+warning	src\Layers\xrRender\ParticleEffectDef.h:32	uninitMemberVarNoCtor	Member variable 'SFrame::m_fSpeed' has no initializer.
+warning	src\Layers\xrRender\ParticleGroup.h:86	uninitMemberVarNoCtor	Member variable 'SItem::_effect' has no initializer.
+warning	src\Layers\xrRender\ParticleEffect.cpp:523	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRender\ParticleEffect.cpp:532	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRender\LightTrack.h:30	uninitMemberVarNoCtor	Member variable 'Item::source' has no initializer.
+warning	src\Layers\xrRender\LightTrack.h:32	uninitMemberVarNoCtor	Member variable 'Item::test' has no initializer.
+warning	src\Layers\xrRender\LightTrack.h:33	uninitMemberVarNoCtor	Member variable 'Item::energy' has no initializer.
+warning	src\Layers\xrRender\LightTrack.h:37	uninitMemberVarNoCtor	Member variable 'Light::source' has no initializer.
+warning	src\Layers\xrRender\LightTrack.h:38	uninitMemberVarNoCtor	Member variable 'Light::energy' has no initializer.
+error	src\Layers\xrRender\ResourceManager_Scripting.cpp:430	danglingLifetime	Non-local variable 'SH' will use pointer to local variable 'E'.
+warning	src\Layers\xrRenderDX11\StateManager\dx11SamplerStateCache.h:42	uninitMemberVarNoCtor	Member variable 'StateRecord::m_pState' has no initializer.
+warning	src\Layers\xrRender\xrRender_console.cpp:722	invalidscanf	sscanf() without field width limits can crash with huge input data.
+portability	src\Layers\xrRender\xrRender_console.h:209	shiftTooManyBitsSigned	Shifting signed 32-bit value by 31 bits is implementation-defined behaviour
+warning	src\Layers\xrRenderPC_R4\r4_rendertarget_u_set_rt.cpp:25	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRenderPC_R4\r4_rendertarget_u_set_rt.cpp:97	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRender_R2\r2_R_sun_support.h:597	uninitMemberVarNoCtor	Member variable '_poly::planeD' has no initializer.
+warning	src\Layers\xrRender_R2\r2_R_sun_support.h:783	uninitMemberVarNoCtor	Member variable 'FixedConvexVolume < false >::light_cuboid_polys' has no initializer.
+warning	src\Layers\xrRender_R2\r2_R_sun_support.h:775	uninitMemberVarNoCtor	Member variable '_poly::points' has no initializer.
+warning	src\xrCDB\ISpatial.h:109	uninitMemberVarNoCtor	Member variable 'SpatialData::node_radius' has no initializer.
+warning	src\xrCDB\ISpatial.h:110	uninitMemberVarNoCtor	Member variable 'SpatialData::node_ptr' has no initializer.
+warning	src\xrCDB\ISpatial.h:111	uninitMemberVarNoCtor	Member variable 'SpatialData::sector_id' has no initializer.
+warning	src\xrCDB\ISpatial.h:169	uninitMemberVarNoCtor	Member variable 'ISpatial_NODE::parent' has no initializer.
+warning	src\xrCDB\ISpatial.h:170	uninitMemberVarNoCtor	Member variable 'ISpatial_NODE::children' has no initializer.
+performance	src\xrCDB\ISpatial.h:201	useInitializationList	Variable 'ObjectCount' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrCDB\xr_collide_defs.h:16	uninitMemberVarNoCtor	Member variable 'tri::e10s' has no initializer.
+warning	src\xrCDB\xr_collide_defs.h:18	uninitMemberVarNoCtor	Member variable 'tri::e21s' has no initializer.
+warning	src\xrCDB\xr_collide_defs.h:20	uninitMemberVarNoCtor	Member variable 'tri::e02s' has no initializer.
+warning	src\xrCDB\xr_collide_defs.h:23	uninitMemberVarNoCtor	Member variable 'tri::d' has no initializer.
+performance	src\xrCDB\xr_collide_defs.h:95	useInitializationList	Variable 'start' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrCDB\xr_collide_defs.h:96	useInitializationList	Variable 'dir' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrCDB\xr_collide_defs.h:98	useInitializationList	Variable 'flags' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\Layers\xrRender_R2\r2_R_sun_support.h:783	uninitMemberVarNoCtor	Member variable 'FixedConvexVolume::light_cuboid_polys' has no initializer.
+warning	src\Layers\xrRender_R2\render_phase_sun_old.cpp:304	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\Debug\StackTrace.cpp:250	accessMoved	Access of moved variable 'frameStr'.
+warning	src\xrCore\Debug\StackTrace.cpp:252	accessMoved	Access of moved variable 'frameStr'.
+warning	src\xrCDB\xrCDB.h:143	uninitMemberVarNoCtor	Member variable 'RESULT::id' has no initializer.
+warning	src\xrCDB\xrCDB.h:144	uninitMemberVarNoCtor	Member variable 'RESULT::range' has no initializer.
+warning	src\xrCDB\xrCDB.h:145	uninitMemberVarNoCtor	Member variable 'RESULT::u' has no initializer.
+warning	src\xrCDB\xrCDB.h:145	uninitMemberVarNoCtor	Member variable 'RESULT::v' has no initializer.
+warning	src\Layers\xrRender_R2\r2_R_sun_support.h:149	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRender_R2\r2_R_sun_support.h:388	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRender_R2\r2_R_sun_support.h:783	uninitMemberVarNoCtor	Member variable 'FixedConvexVolume < true >::light_cuboid_polys' has no initializer.
+warning	src\xrCore\xrstring.h:25	uninitMemberVarNoCtor	Member variable 'str_value::dwLength' has no initializer.
+warning	src\xrCore\xrstring.h:26	uninitMemberVarNoCtor	Member variable 'str_value::dwCRC' has no initializer.
+warning	src\xrCore\xrstring.h:27	uninitMemberVarNoCtor	Member variable 'str_value::next' has no initializer.
+warning	src\xrCore\xrstring.h:28	uninitMemberVarNoCtor	Member variable 'str_value::value' has no initializer.
+warning	src\xrCore\_color.h:61	uninitMemberVar	Member variable 'Fcolor::r' is not initialized in the constructor.
+warning	src\xrCore\_color.h:61	uninitMemberVar	Member variable 'Fcolor::g' is not initialized in the constructor.
+warning	src\xrCore\_color.h:61	uninitMemberVar	Member variable 'Fcolor::b' is not initialized in the constructor.
+warning	src\xrCore\_color.h:61	uninitMemberVar	Member variable 'Fcolor::a' is not initialized in the constructor.
+warning	src\xrCore\FTimer.h:102	duplInheritedMember	The class 'CTimer' defines member function with name 'Start' also defined in its parent class 'CTimerBase'.
+warning	src\xrCore\xrsharedmem.h:133	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\xrsharedmem.h:135	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\xrsharedmem.h:137	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\xrsharedmem.h:138	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\xr_resource.h:114	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_bitwise.h:22	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_bitwise.h:23	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_bitwise.h:24	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_bitwise.h:25	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_bitwise.h:106	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_bitwise.h:109	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\FS.h:197	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\FS.h:198	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\FS.h:310	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\FS.h:321	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_vector4.h:18	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_vector4.h:19	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_vector3d.h:21	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\_vector3d.h:22	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+portability	src\xrCore\_bitwise.h:22	invalidPointerCast	Casting from const float * to unsigned int * is not portable due to different binary data representations on different platforms.
+portability	src\xrCore\_bitwise.h:23	invalidPointerCast	Casting from const float * to unsigned int * is not portable due to different binary data representations on different platforms.
+portability	src\xrCore\_bitwise.h:24	invalidPointerCast	Casting from float * to unsigned int * is not portable due to different binary data representations on different platforms.
+portability	src\xrCore\_bitwise.h:25	invalidPointerCast	Casting from float * to unsigned int * is not portable due to different binary data representations on different platforms.
+portability	src\xrCore\_bitwise.h:106	invalidPointerCast	Casting from const float * to signed int * is not portable due to different binary data representations on different platforms.
+portability	src\xrCore\_bitwise.h:109	invalidPointerCast	Casting from const float * to signed int * is not portable due to different binary data representations on different platforms.
+warning	src\xrCore\FS_internal.h:51	noCopyConstructor	Class 'CFileWriter' does not have a copy constructor which is recommended since it has dynamic memory/resource management.
+warning	src\xrCore\FS_internal.h:51	noOperatorEq	Class 'CFileWriter' does not have a operator= which is recommended since it has dynamic memory/resource management.
+warning	src\xrCore\FS.cpp:270	ignoredReturnValue	Return value of function C.div() is not used.
+error	src\xrCore\LocatorAPI.cpp:1414	autoVariables	Address of local auto-variable assigned to a function parameter.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_file_mapping_handle' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_start_offset' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_file_size' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_archive_size' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_window_size' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_current_offset_from_start' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_current_window_size' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_current_map_view_of_file' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_start_pointer' is not initialized in the constructor.
+warning	src\xrCore\stream_reader.h:32	uninitMemberVar	Member variable 'CStreamReader::m_current_pointer' is not initialized in the constructor.
+warning	src\xrCore\LocatorAPI.cpp:43	uninitMemberVarNoCtor	Member variable '_open_file::_used' has no initializer.
+warning	src\xrCore\LocatorAPI.cpp:428	invalidscanf	sscanf() without field width limits can crash with huge input data.
+warning	src\xrCore\LocatorAPI.cpp:1099	invalidscanf	sscanf() without field width limits can crash with huge input data.
+warning	src\xrCore\_std_extensions.h:147	nullPointer	Possible null pointer dereference: destination
+warning	src\xrCore\LocatorAPI.cpp:466	nullPointerRedundantCheck	Either the condition '!hdr' is redundant or there is possible null pointer dereference: hdr.
+warning	src\xrCore\Threading\Lock.cpp:80	operatorEqVarError	Member variable 'Lock::cs' is not assigned a value in 'Lock::operator='.
+warning	src\xrCore\Threading\Task.hpp:53	uninitMemberVar	Member variable 'Data::call' is not initialized in the constructor.
+warning	src\xrCore\Threading\Task.hpp:53	uninitMemberVar	Member variable 'Data::parent' is not initialized in the constructor.
+warning	src\xrCDB\xr_area_raypick.cpp:151	constStatement	Found suspicious operator '*', result is not used.
+warning	src\Layers\xrRenderPC_R4\r4_rendertarget_phase_reactive.cpp:216	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRenderPC_R4\r4_rendertarget_phase_reactive.cpp:1034	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRenderPC_R4\r4_rendertarget_phase_reactive.cpp:1077	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\Layers\xrRenderPC_R4\r4_rendertarget_phase_reactive.cpp:1195	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrCore\xrCore.cpp:88	uninitMemberVar	Member variable 'xrCore::ApplicationTitle' is not initialized in the constructor.
+warning	src\xrCore\Threading\Event.hpp:17	uninitMemberVarNoCtor	Member variable 'EventHandle::signaled' has no initializer.
+warning	src\xrCore\xrCore.cpp:111	invalidscanf	sscanf() without field width limits can crash with huge input data.
+error	src\xrEngine\CameraBase.h:31	syntaxError	syntax error
+warning	src\xrCore\intrusive_ptr.h:108	nullPointerRedundantCheck	Either the condition '!m_object' is redundant or there is possible null pointer dereference: m_object.
+error	src\xrEngine\EngineAPI.h:31	syntaxError	syntax error
+warning	src\xrEngine\EventAPI.h:21	uninitMemberVarNoCtor	Member variable 'Deferred::E' has no initializer.
+warning	src\xrEngine\xrSheduler.h:48	uninitMemberVarNoCtor	Member variable 'CSheduler::m_current_step_obj' has no initializer.
+warning	src\xrEngine\xrSheduler.h:49	uninitMemberVarNoCtor	Member variable 'CSheduler::m_processing_now' has no initializer.
+warning	src\xrEngine\xrSheduler.h:16	uninitMemberVarNoCtor	Member variable 'Item::Object' has no initializer.
+warning	src\xrEngine\xrSheduler.h:25	uninitMemberVarNoCtor	Member variable 'ItemReg::Object' has no initializer.
+warning	src\xrEngine\xr_level_controller.h:220	uninitMemberVarNoCtor	Member variable 'keyboard_key::dik' has no initializer.
+warning	src\xrEngine\xr_level_controller.h:234	uninitMemberVarNoCtor	Member variable 'game_action::id' has no initializer.
+warning	src\xrEngine\xr_level_controller.h:235	uninitMemberVarNoCtor	Member variable 'game_action::key_group' has no initializer.
+warning	src\xrEngine\Render.h:256	uninitMemberVarNoCtor	Member variable 'IRender::m_hq_skinning' has no initializer.
+performance	src\xrEngine\EngineAPI.h:31	useInitializationList	Variable 'CLS_ID' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrEngine\EngineAPI.h:32	useInitializationList	Variable 'CLS_ID' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrEngine\vis_object_data.h:30	useInitializationList	Variable 'sh_camo_data' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrCore\xrstring.cpp:106	nullPointerOutOfResources	If resource allocation fails, then there is a possible null pointer dereference: f
+warning	src\xrCore\xrstring.cpp:227	nullPointerOutOfResources	If resource allocation fails, then there is a possible null pointer dereference: F
+warning	src\xrEngine\xr_input.h:84	uninitMemberVar	Member variable 'ControllerAxisState::x' is not initialized in the constructor.
+warning	src\xrEngine\xr_input.h:84	uninitMemberVar	Member variable 'ControllerAxisState::y' is not initialized in the constructor.
+warning	src\xrEngine\xr_input.h:84	uninitMemberVar	Member variable 'ControllerAxisState::magnitude' is not initialized in the constructor.
+warning	src\xrEngine\IGame_Level.h:90	uninitMemberVarNoCtor	Member variable '_esound_delegate::dest' has no initializer.
+warning	src\xrEngine\IGame_Level.h:92	uninitMemberVarNoCtor	Member variable '_esound_delegate::power' has no initializer.
+warning	src\xrEngine\Environment.h:48	uninitMemberVarNoCtor	Member variable 'CEnvModifier::radius' has no initializer.
+warning	src\xrEngine\Environment.h:49	uninitMemberVarNoCtor	Member variable 'CEnvModifier::power' has no initializer.
+warning	src\xrEngine\Environment.h:51	uninitMemberVarNoCtor	Member variable 'CEnvModifier::far_plane' has no initializer.
+warning	src\xrEngine\Environment.h:53	uninitMemberVarNoCtor	Member variable 'CEnvModifier::fog_density' has no initializer.
+warning	src\xrEngine\Environment.h:72	uninitMemberVarNoCtor	Member variable 'SEffect::wind_gust_factor' has no initializer.
+warning	src\xrEngine\Environment.h:73	uninitMemberVarNoCtor	Member variable 'SEffect::wind_blast_in_time' has no initializer.
+warning	src\xrEngine\Environment.h:74	uninitMemberVarNoCtor	Member variable 'SEffect::wind_blast_out_time' has no initializer.
+warning	src\xrEngine\Environment.h:75	uninitMemberVarNoCtor	Member variable 'SEffect::wind_blast_strength' has no initializer.
+warning	src\xrEngine\device.cpp:117	uninitMemberVarNoCtor	Member variable 'da_seq_sample::ms' has no initializer.
+performance	src\xrEngine\ShadersExternalData.h:14	useInitializationList	Variable 'm_script_params' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrEngine\Environment.h:236	duplInheritedMember	The class 'CEnvDescriptorMixer' defines member function with name 'ed_show_params' also defined in its parent class 'CEnvDescriptor'.
+warning	src\xrEngine\Engine.cpp:37	uninitMemberVar	Member variable 'CEngine::eQuit' is not initialized in the constructor.
+warning	src\xrEngine\Engine.cpp:37	uninitMemberVar	Member variable 'CEngine::Sheduler' is not initialized in the constructor.
+warning	src\xrEngine\IGame_Level.cpp:16	uninitMemberVar	Member variable 'IGame_Level::m_world_rendered' is not initialized in the constructor.
+warning	src\xrEngine\IGame_Level.cpp:16	uninitMemberVar	Member variable 'IGame_Level::Sounds_Random_Enabled' is not initialized in the constructor.
+warning	src\xrEngine\GameFont.h:33	uninitMemberVarNoCtor	Member variable 'String::x' has no initializer.
+warning	src\xrEngine\GameFont.h:33	uninitMemberVarNoCtor	Member variable 'String::y' has no initializer.
+warning	src\xrEngine\GameFont.h:34	uninitMemberVarNoCtor	Member variable 'String::height' has no initializer.
+warning	src\xrEngine\IRenderable.h:13	uninitMemberVarNoCtor	Member variable 'RenderData::visual' has no initializer.
+warning	src\xrEngine\IRenderable.h:14	uninitMemberVarNoCtor	Member variable 'RenderData::pROS' has no initializer.
+warning	src\xrEngine\IRenderable.h:15	uninitMemberVarNoCtor	Member variable 'RenderData::pROS_Allowed' has no initializer.
+warning	src\xrEngine\IRenderable.h:16	uninitMemberVarNoCtor	Member variable 'RenderData::invisible' has no initializer.
+warning	src\xrEngine\IRenderable.h:17	uninitMemberVarNoCtor	Member variable 'RenderData::hud' has no initializer.
+warning	src\xrEngine\IGame_Level.cpp:301	nullPointerRedundantCheck	Either the condition 'p' is redundant or there is possible null pointer dereference: p.
+performance	src\xrEngine\PerformanceAlert.hpp:16	useInitializationList	Variable 'alertColor' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrEngine\xrSheduler.cpp:431	nullPointerRedundantCheck	Either the condition '!m_current_step_obj' is redundant or there is possible null pointer dereference: item.Object.
+warning	src\xrEngine\xrSheduler.cpp:452	nullPointerRedundantCheck	Either the condition '!m_current_step_obj' is redundant or there is possible null pointer dereference: item.Object.
+warning	src\xrEngine\xr_collide_form.h:24	uninitMemberVarNoCtor	Member variable 'clQueryTri::T' has no initializer.
+warning	src\xrEngine\xr_efflensflare.h:41	uninitMemberVarNoCtor	Member variable 'SSource::ignore_color' has no initializer.
+performance	src\xrEngine\xr_efflensflare.cpp:123	useInitializationList	Variable 'section' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrEngine\xr_efflensflare.cpp:265	useInitializationList	Variable 'dwFrame' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrEngine\xr_efflensflare.cpp:91	duplInheritedMember	The struct 'SSource' defines member function with name 'ed_show_params' also defined in its parent struct 'SFlare'.
+warning	src\xrEngine\Environment.h:220	uninitMemberVarNoCtor	Member variable 'CEnvDescriptorMixer::weight' has no initializer.
+warning	src\xrEngine\Environment.h:221	uninitMemberVarNoCtor	Member variable 'CEnvDescriptorMixer::modif_power' has no initializer.
+warning	src\xrEngine\Environment.h:222	uninitMemberVarNoCtor	Member variable 'CEnvDescriptorMixer::fog_near' has no initializer.
+warning	src\xrEngine\Environment.h:223	uninitMemberVarNoCtor	Member variable 'CEnvDescriptorMixer::fog_far' has no initializer.
+warning	src\xrEngine\Environment.h:226	uninitMemberVarNoCtor	Member variable 'CEnvDescriptorMixer::soc_style' has no initializer.
+warning	src\xrEngine\Environment.h:300	uninitMemberVarNoCtor	Member variable 'CEnvironment::wfx_time' has no initializer.
+warning	src\xrEngine\Environment.h:316	uninitMemberVarNoCtor	Member variable 'CEnvironment::fTimeFactor' has no initializer.
+warning	src\xrEngine\xr_efflensflare.cpp:675	constStatement	Found suspicious operator '*', result is not used.
+performance	src\xrEngine\XR_IOConsole.cpp:84	useInitializationList	Variable 'm_cmd_history_max' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrEngine\xr_level_controller.cpp:859	invalidscanf	sscanf() without field width limits can crash with huge input data.
+performance	src\xrEngine\xr_object_list.cpp:46	useInitializationList	Variable 'statsFrame' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrEngine\xr_ioc_cmd.cpp:409	uninitMemberVarNoCtor	Member variable 'da_upscaler_entry::value' has no initializer.
+warning	src\xrEngine\x_ray.cpp:169	invalidscanf	sscanf() without field width limits can crash with huge input data.
+warning	src\xrEngine\x_ray.cpp:261	invalidscanf	sscanf() without field width limits can crash with huge input data.
+warning	src\xrEngine\xr_ioc_cmd.cpp:113	invalidscanf	sscanf() without field width limits can crash with huge input data.
+warning	src\xrEngine\xr_ioc_cmd.cpp:275	invalidscanf	sscanf() without field width limits can crash with huge input data.
+warning	src\xrEngine\xr_ioc_cmd.cpp:2798	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrEngine\xr_ioc_cmd.cpp:2799	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrEngine\xr_ioc_cmd.cpp:2839	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\traffic_optimization.h:19	uninitMemberVarNoCtor	Member variable 'lzo_dictionary_buffer::data' has no initializer.
+warning	src\xrGame\visual_memory_params.h:13	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_min_view_distance' has no initializer.
+warning	src\xrGame\visual_memory_params.h:14	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_max_view_distance' has no initializer.
+warning	src\xrGame\visual_memory_params.h:15	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_visibility_threshold' has no initializer.
+warning	src\xrGame\visual_memory_params.h:16	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_always_visible_distance' has no initializer.
+warning	src\xrGame\visual_memory_params.h:17	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_time_quant' has no initializer.
+warning	src\xrGame\visual_memory_params.h:18	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_decrease_value' has no initializer.
+warning	src\xrGame\visual_memory_params.h:19	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_velocity_factor' has no initializer.
+warning	src\xrGame\visual_memory_params.h:20	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_transparency_threshold' has no initializer.
+warning	src\xrGame\visual_memory_params.h:21	uninitMemberVarNoCtor	Member variable 'CVisionParameters::m_luminocity_factor' has no initializer.
+warning	src\xrGame\memory_space.h:50	uninitMemberVarNoCtor	Member variable 'CNotYetVisibleObject::m_value' has no initializer.
+warning	src\xrGame\memory_space.h:161	uninitMemberVarNoCtor	Member variable 'CHitObject::m_amount' has no initializer.
+warning	src\xrGame\memory_space.h:167	uninitMemberVarNoCtor	Member variable 'CSoundObject::m_power' has no initializer.
+warning	src\xrGame\ActorBackpack.cpp:6	uninitMemberVar	Member variable 'CBackpack::m_additional_weight' is not initialized in the constructor.
+warning	src\xrGame\ActorBackpack.cpp:6	uninitMemberVar	Member variable 'CBackpack::m_additional_weight2' is not initialized in the constructor.
+warning	src\xrGame\ActorBackpack.cpp:6	uninitMemberVar	Member variable 'CBackpack::m_fPowerRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\ActorBackpack.cpp:6	uninitMemberVar	Member variable 'CBackpack::m_fPowerLoss' is not initialized in the constructor.
+warning	src\xrGame\ActorBackpack.cpp:6	uninitMemberVar	Member variable 'CBackpack::m_fJumpSpeed' is not initialized in the constructor.
+warning	src\xrGame\ActorBackpack.cpp:6	uninitMemberVar	Member variable 'CBackpack::m_fWalkAccel' is not initialized in the constructor.
+warning	src\xrGame\ActorBackpack.cpp:6	uninitMemberVar	Member variable 'CBackpack::m_fOverweightWalkK' is not initialized in the constructor.
+warning	src\xrGame\actor_defs.h:87	uninitMemberVarNoCtor	Member variable 'net_input::cam_yaw' has no initializer.
+warning	src\xrGame\actor_defs.h:88	uninitMemberVarNoCtor	Member variable 'net_input::cam_pitch' has no initializer.
+warning	src\xrGame\actor_defs.h:89	uninitMemberVarNoCtor	Member variable 'net_input::cam_roll' has no initializer.
+warning	src\xrGame\actor_defs.h:135	uninitMemberVarNoCtor	Member variable 'InterpData::o_model' has no initializer.
+warning	src\xrGame\EntityCondition.h:63	uninitMemberVar	Member variable 'SBooster::fBoostValue' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:63	uninitMemberVar	Member variable 'SBooster::m_type' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fHealth' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fPower' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fSatiety' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fRadiation' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fWoundsHeal' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fMaxPowerUp' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fAlcohol' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.h:79	uninitMemberVar	Member variable 'SMedicineInfluenceValues::fTimeTotal' is not initialized in the constructor.
+warning	src\xrGame\Entity.h:52	uninitMemberVarNoCtor	Member variable 'SEntityState::fVelocity' has no initializer.
+warning	src\xrGame\Entity.h:53	uninitMemberVarNoCtor	Member variable 'SEntityState::fAVelocity' has no initializer.
+warning	src\xrGame\step_manager_defs.h:16	uninitMemberVarNoCtor	Member variable 'SStepParam::step' has no initializer.
+warning	src\xrGame\step_manager_defs.h:38	uninitMemberVar	Member variable 'SStepInfo::activity' is not initialized in the constructor.
+warning	src\xrGame\step_manager_defs.h:38	uninitMemberVar	Member variable 'SStepInfo::params' is not initialized in the constructor.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous2::handled' has no initializer.
+performance	src\xrGame\Level_network_map_sync.h:27	useInitializationList	Variable 'm_level_geom_crc32' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\Level_network_map_sync.h:28	useInitializationList	Variable 'm_wait_map_time' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\actor_defs.h:110	useInitializationList	Variable 'dwTimeStamp' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\inventory_item.h:246	duplInheritedMember	The class 'CInventoryItem' defines member function with name 'object' also defined in its parent class 'CAttachableItem'.
+warning	src\xrGame\Actor.h:907	duplInheritedMember	The class 'CActor' defines member function with name 'conditions' also defined in its parent class 'CEntityAlive'.
+warning	src\xrGame\physic_item.h:24	duplInheritedMember	The class 'CPhysicItem' defines member function with name 'init' also defined in its parent class 'CPhysicsShellHolder'.
+warning	src\xrGame\ActorHelmet.cpp:9	uninitMemberVar	Member variable 'CHelmet::m_fPowerLoss' is not initialized in the constructor.
+warning	src\xrGame\ActorHelmet.cpp:9	uninitMemberVar	Member variable 'CHelmet::m_fHealthRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\ActorHelmet.cpp:9	uninitMemberVar	Member variable 'CHelmet::m_fRadiationRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\ActorHelmet.cpp:9	uninitMemberVar	Member variable 'CHelmet::m_fSatietyRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\ActorHelmet.cpp:9	uninitMemberVar	Member variable 'CHelmet::m_fPowerRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\ActorHelmet.cpp:9	uninitMemberVar	Member variable 'CHelmet::m_fBleedingRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\ActorHelmet.cpp:9	uninitMemberVar	Member variable 'CHelmet::m_fShowNearestEnemiesDistance' is not initialized in the constructor.
+warning	src\xrGame\HudSound.h:41	uninitMemberVarNoCtor	Member variable 'SSnd::delay' has no initializer.
+warning	src\xrGame\HudSound.h:42	uninitMemberVarNoCtor	Member variable 'SSnd::volume' has no initializer.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous5::handled' has no initializer.
+performance	src\xrGame\id_generator.h:69	useInitializationList	Variable 'm_available_count' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\game_base.h:91	virtualDestructor	Class 'game_PlayerState' which has virtual members does not have a virtual destructor.
+warning	src\xrGame\WeaponAmmo.h:77	uninitMemberVarNoCtor	Member variable 'CWeaponAmmo::m_tracer' has no initializer.
+warning	src\xrGame\Weapon.h:220	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_bZoomEnabled' has no initializer.
+warning	src\xrGame\Weapon.h:221	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_bHideCrosshairInZoom' has no initializer.
+warning	src\xrGame\Weapon.h:222	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_bZoomDofEnabled' has no initializer.
+warning	src\xrGame\Weapon.h:224	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_bIsZoomModeNow' has no initializer.
+warning	src\xrGame\Weapon.h:225	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_fCurrentZoomFactor' has no initializer.
+warning	src\xrGame\Weapon.h:226	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_fZoomRotateTime' has no initializer.
+warning	src\xrGame\Weapon.h:228	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_fIronSightZoomFactor' has no initializer.
+warning	src\xrGame\Weapon.h:229	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_fScopeZoomFactor' has no initializer.
+warning	src\xrGame\Weapon.h:231	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_fZoomRotationFactor' has no initializer.
+warning	src\xrGame\Weapon.h:237	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_bUseDynamicZoom' has no initializer.
+warning	src\xrGame\Weapon.h:240	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_pVision' has no initializer.
+warning	src\xrGame\Weapon.h:241	uninitMemberVarNoCtor	Member variable 'SZoomParams::m_pNight_vision' has no initializer.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::project_to_workspace' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::u' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::v' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::n' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::c' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::radius' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::proj_axis' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::pos_axis' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::ee' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::ee_r1' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::p_r1' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::upper_len' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::lower_len' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::reciprocal_upper_len' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::r_angle' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::G' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::T' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::S' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::SRT' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::Ry' is not initialized in the constructor.
+warning	src\xrGame\ik\Dof7control.h:180	uninitMemberVar	Member variable 'SRS::axis' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::status' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::num_crits' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::num_roots' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::status_ptr' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::num_roots_ptr' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::num_crits_ptr' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::alpha' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::beta' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::xi' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::crit_pts' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::root_pts' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::a2b2' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:86	uninitMemberVar	Member variable 'PsiEquation::atan2ba' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:87	uninitMemberVar	Member variable 'PsiEquation::crit_pts' is not initialized in the constructor.
+warning	src\xrGame\ik\eqn.h:87	uninitMemberVar	Member variable 'PsiEquation::root_pts' is not initialized in the constructor.
+warning	src\xrGame\ik\jtlimits.h:129	uninitMemberVar	Member variable 'SimpleJtLimit::type' is not initialized in the constructor.
+warning	src\xrGame\ik\jtlimits.h:129	uninitMemberVar	Member variable 'SimpleJtLimit::sin_low' is not initialized in the constructor.
+warning	src\xrGame\ik\jtlimits.h:129	uninitMemberVar	Member variable 'SimpleJtLimit::sin_high' is not initialized in the constructor.
+warning	src\xrGame\ik\jtlimits.h:250	uninitMemberVar	Member variable 'ComplexJtLimit::type' is not initialized in the constructor.
+warning	src\xrGame\ik\jtlimits.h:250	uninitMemberVar	Member variable 'ComplexJtLimit::tan_low' is not initialized in the constructor.
+warning	src\xrGame\ik\jtlimits.h:250	uninitMemberVar	Member variable 'ComplexJtLimit::tan_high' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::check_limits' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::solve' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::num_singular' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::euler1' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::euler2' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::singular_pts' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::x3' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::min' is not initialized in the constructor.
+warning	src\xrGame\ik\limb.h:99	uninitMemberVar	Member variable 'Limb::max' is not initialized in the constructor.
+warning	src\xrGame\player_hud.h:23	uninitMemberVarNoCtor	Member variable 'player_hud_motion::m_anim_speed' has no initializer.
+warning	src\xrGame\player_hud.h:75	uninitMemberVarNoCtor	Member variable 'hud_item_measures::m_inertion_params' has no initializer.
+performance	src\xrGame\PHCollisionDamageReceiver.h:17	useInitializationList	Variable 'id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\Car.h:188	useInitializationList	Variable 'bone_id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\Car.h:249	useInitializationList	Variable 'bone_id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\Car.h:326	useInitializationList	Variable 'bone_id' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\Car.h:497	duplInheritedMember	The class 'CCar' defines member function with name 'Init' also defined in its parent class 'CPHDestroyable'.
+warning	src\xrGame\Car.h:497	duplInheritedMember	The class 'CCar' defines member function with name 'Init' also defined in its parent class 'CPHCollisionDamageReceiver'.
+warning	src\xrEngine\EffectorPP.h:16	uninitMemberVar	Member variable 'CEffectorPP::eType' is not initialized in the constructor.
+warning	src\xrEngine\Effector.h:9	uninitMemberVarNoCtor	Member variable 'CEffectorCam::eType' has no initializer.
+warning	src\xrEngine\Effector.h:12	uninitMemberVarNoCtor	Member variable 'CEffectorCam::fLifeTime' has no initializer.
+warning	src\xrEngine\Effector.h:13	uninitMemberVarNoCtor	Member variable 'CEffectorCam::bHudAffect' has no initializer.
+warning	src\xrGame\SleepEffector.h:43	uninitMemberVarNoCtor	Member variable 'SSleepEffector::time' has no initializer.
+warning	src\xrGame\SleepEffector.h:44	uninitMemberVarNoCtor	Member variable 'SSleepEffector::time_attack' has no initializer.
+warning	src\xrGame\SleepEffector.h:45	uninitMemberVarNoCtor	Member variable 'SSleepEffector::time_release' has no initializer.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skel_airr_lin_factor' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skel_airr_ang_factor' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::hinge_force_factor1' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skel_fatal_impulse_factor' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skel_ddelay' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skel_remain_time' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skeleton_skin_ddelay' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skeleton_skin_remain_time' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skeleton_skin_friction_start' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skeleton_skin_friction_end' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skeleton_skin_ddelay_after_wound' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::skeleton_skin_remain_time_after_wound' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::m_time_delta' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::pelvis_factor_low_pose_detect' is not initialized in the constructor.
+warning	src\xrGame\character_shell_control.h:7	uninitMemberVar	Member variable 'character_shell_control::m_curr_skin_friction_in_death' is not initialized in the constructor.
+performance	src\xrGame\ActorEffector.h:84	useInitializationList	Variable 'cb_name' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\ActorAnimation.cpp:701	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\ActorAnimation.cpp:709	constStatement	Found suspicious operator '*', result is not used.
+performance	src\xrGame\GamePersistent.h:120	returnByReference	Function 'GetHudTuner()' should return member 'm_hudTuner' by const reference.
+warning	src\xrGame\ActorCameras.cpp:471	nullPointerRedundantCheck	Either the condition 'effector' is redundant or there is possible null pointer dereference: effector.
+warning	src\xrGame\ActorCameras.cpp:30	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\ActorCameras.cpp:38	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\ActorCameras.cpp:92	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\ActorCameras.cpp:414	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\ActorCameras.cpp:459	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\space_restrictor_inline.h:11	uninitMemberVar	Member variable 'CSpaceRestrictor::m_actuality' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.h:336	uninitMemberVarNoCtor	Member variable 'ARTEFACT_SPAWN::probability' has no initializer.
+warning	src\xrGame\ui\ArtefactDetectorUI.h:46	uninitMemberVarNoCtor	Member variable 'CUIArtefactDetectorSimple::m_parent' has no initializer.
+warning	src\xrGame\ui\ArtefactDetectorUI.h:144	uninitMemberVarNoCtor	Member variable 'CUIArtefactDetectorAdv::m_cur_y_rot' has no initializer.
+warning	src\xrGame\ui\ArtefactDetectorUI.h:145	uninitMemberVarNoCtor	Member variable 'CUIArtefactDetectorAdv::m_curr_ang_speed' has no initializer.
+performance	src\xrGame\space_restrictor_inline.h:11	useInitializationList	Variable 'm_space_restrictor_type' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\AdvancedDetector.cpp:17	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\agent_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CAgentMemoryManager::m_visible_objects' is not initialized in the constructor.
+warning	src\xrGame\agent_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CAgentMemoryManager::m_sound_objects' is not initialized in the constructor.
+warning	src\xrGame\agent_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CAgentMemoryManager::m_hit_objects' is not initialized in the constructor.
+warning	src\xrGame\ef_base.h:26	uninitMemberVar	Member variable 'CBaseFunction::m_fMinResultValue' is not initialized in the constructor.
+warning	src\xrGame\ef_base.h:26	uninitMemberVar	Member variable 'CBaseFunction::m_fMaxResultValue' is not initialized in the constructor.
+warning	src\xrGame\ef_pattern.h:32	uninitMemberVarNoCtor	Member variable 'tagSPattern::dwaVariableIndexes' has no initializer.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_sounds' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_decrease_factor' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_min_sound_threshold' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_sound_threshold' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_self_sound_factor' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_weapon_factor' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_item_factor' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_npc_factor' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_anomaly_factor' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CSoundMemoryManager::m_world_factor' is not initialized in the constructor.
+warning	src\xrGame\sound_memory_manager.h:38	uninitMemberVarNoCtor	Member variable 'CDelayedSoundObject::m_sound_object' has no initializer.
+warning	src\xrGame\hit_memory_manager_inline.h:11	uninitMemberVar	Member variable 'CHitMemoryManager::m_hits' is not initialized in the constructor.
+warning	src\xrGame\hit_memory_manager.h:36	uninitMemberVarNoCtor	Member variable 'CDelayedHitObject::m_hit_object' has no initializer.
+warning	src\xrGame\object_manager_inline.h:18	uninitMemberVar	Member variable 'CObjectManager < const CEntityAlive >::m_selected' is not initialized in the constructor.
+performance	src\xrGame\ai\stalker\ai_stalker.h:310	useInitializationList	Variable 'm_owner_id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\ai\stalker\ai_stalker.h:311	useInitializationList	Variable 'm_new_owner_id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\CustomMonster.h:102	useInitializationList	Variable 'dwTimeStamp' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\agent_enemy_manager.cpp:56	useInitializationList	Variable 'm_mask' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\ai\stalker\ai_stalker_inline.h:31	duplInheritedMember	The class 'CAI_Stalker' defines member function with name 'movement' also defined in its parent class 'CCustomMonster'.
+warning	src\xrGame\ai\stalker\ai_stalker.h:726	duplInheritedMember	The class 'CAI_Stalker' defines member function with name 'critically_wounded' also defined in its parent class 'CCustomMonster'.
+warning	src\xrGame\ai\stalker\ai_stalker.h:165	duplInheritedMember	The class 'CAI_Stalker' defines member function with name 'init' also defined in its parent class 'CPhysicsShellHolder'.
+warning	src\xrGame\ai\stalker\ai_stalker.h:165	duplInheritedMember	The class 'CAI_Stalker' defines member function with name 'init' also defined in its parent class 'CScriptEntity'.
+warning	src\xrGame\enemy_manager_inline.h:16	duplInheritedMember	The class 'CEnemyManager' defines member function with name 'selected' also defined in its parent class 'CObjectManager < const CEntityAlive >'.
+warning	src\xrGame\object_manager_inline.h:59	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\ai\monsters\ai_monster_squad.h:55	uninitMemberVarNoCtor	Member variable 'SSquadCommand::type' has no initializer.
+warning	src\xrGame\ai\monsters\ai_monster_squad.h:57	uninitMemberVarNoCtor	Member variable 'SSquadCommand::entity' has no initializer.
+warning	src\xrGame\ai\monsters\ai_monster_squad.h:146	uninitMemberVarNoCtor	Member variable '_elem::pE' has no initializer.
+warning	src\xrGame\ai\monsters\ai_monster_squad.h:148	uninitMemberVarNoCtor	Member variable '_elem::yaw' has no initializer.
+warning	src\xrGame\sound_player.h:74	uninitMemberVar	Member variable 'CSoundSingle::m_sound' is not initialized in the constructor.
+performance	src\xrGame\agent_member_manager.cpp:26	useInitializationList	Variable 'm_object_id' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\sound_player_inline.h:48	nullPointerRedundantCheck	Either the condition '!temp' is redundant or there is possible null pointer dereference: temp.
+warning	src\xrGame\ai\monsters\basemonster\base_monster.h:447	uninitMemberVar	Member variable 'SDebugInfo::x' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\basemonster\base_monster.h:447	uninitMemberVar	Member variable 'SDebugInfo::y' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\basemonster\base_monster.h:447	uninitMemberVar	Member variable 'SDebugInfo::delta_y' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\bloodsucker\bloodsucker_alien.cpp:188	uninitMemberVar	Member variable 'CBloodsuckerAlien::m_active' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\bloodsucker\bloodsucker_alien.cpp:188	uninitMemberVar	Member variable 'CBloodsuckerAlien::m_effector' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\bloodsucker\bloodsucker_alien.cpp:188	uninitMemberVar	Member variable 'CBloodsuckerAlien::m_effector_pp' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\bloodsucker\bloodsucker_alien.cpp:188	uninitMemberVar	Member variable 'CBloodsuckerAlien::m_crosshair_show' is not initialized in the constructor.
+performance	src\xrGame\ai\monsters\bloodsucker\bloodsucker_alien.cpp:37	useInitializationList	Variable 'state' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\ai\monsters\control_animation.h:10	uninitMemberVarNoCtor	Member variable 'SAnimationPart::blend' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:11	uninitMemberVarNoCtor	Member variable 'SAnimationPart::actual' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:54	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_skeleton_animated' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:68	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_freeze' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:69	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_saved_global_speed' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:70	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_saved_legs_speed' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:71	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_saved_torso_speed' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:74	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_global_animation_end' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:75	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_legs_animation_end' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:76	uninitMemberVarNoCtor	Member variable 'CControlAnimation::m_torso_animation_end' has no initializer.
+warning	src\xrGame\ai\monsters\control_combase.h:116	uninitMemberVarNoCtor	Member variable 'CControl_ComControlledStorage < SControlAnimationData >::m_data' has no initializer.
+warning	src\xrGame\ai\monsters\control_combase.h:88	uninitMemberVarNoCtor	Member variable 'CControl_ComControlled::m_locked' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:59	uninitMemberVarNoCtor	Member variable 'SAnimationEvent::time_perc' has no initializer.
+warning	src\xrGame\ai\monsters\control_animation.h:61	uninitMemberVarNoCtor	Member variable 'SAnimationEvent::handled' has no initializer.
+warning	src\xrGame\ai\monsters\control_path_builder.h:10	uninitMemberVarNoCtor	Member variable 'SControlPathBuilderData::use_dest_orientation' has no initializer.
+warning	src\xrGame\ai\monsters\control_path_builder.h:13	uninitMemberVarNoCtor	Member variable 'SControlPathBuilderData::try_min_time' has no initializer.
+warning	src\xrGame\ai\monsters\control_path_builder.h:18	uninitMemberVarNoCtor	Member variable 'SControlPathBuilderData::enable' has no initializer.
+warning	src\xrGame\ai\monsters\control_path_builder.h:19	uninitMemberVarNoCtor	Member variable 'SControlPathBuilderData::extrapolate' has no initializer.
+warning	src\xrGame\ai\monsters\control_path_builder.h:24	uninitMemberVarNoCtor	Member variable 'SControlPathBuilderData::reset_actuality' has no initializer.
+warning	src\xrGame\ai\monsters\control_manager.cpp:403	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\ai\monsters\control_manager.cpp:410	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\ai\monsters\control_manager.cpp:417	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist.h:238	uninitMemberVarNoCtor	Member variable 'SFlameElement::target_object' has no initializer.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist.h:243	uninitMemberVarNoCtor	Member variable 'SFlameElement::particles_object' has no initializer.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist.h:244	uninitMemberVarNoCtor	Member variable 'SFlameElement::state' has no initializer.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_pmt_radius' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_pmt_object_min_mass' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_pmt_object_max_mass' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_pmt_distance' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_pmt_object_height' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_pmt_raise_speed' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_pmt_fly_velocity' is not initialized in the constructor.
+warning	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:8	uninitMemberVar	Member variable 'CPolterTele::m_state' is not initialized in the constructor.
+performance	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:152	useInitializationList	Variable 'monster_pos' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\ai\monsters\poltergeist\poltergeist_telekinesis.cpp:153	useInitializationList	Variable 'enemy_pos' is assigned in constructor body. Consider performing initialization in initialization list.
+portability	src\xrGame\ai\stalker\ai_stalker_space.h:57	shiftTooManyBitsSigned	Shifting signed 32-bit value by 31 bits is implementation-defined behaviour
+performance	src\xrGame\alife_storage_manager_inline.h:13	useInitializationList	Variable 'm_section' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\alife_schedule_registry.h:70	useInitializationList	Variable 'm_count' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\alife_schedule_registry.h:71	useInitializationList	Variable 'm_current' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\alife_schedule_registry_inline.h:11	useInitializationList	Variable 'm_objects_per_update' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\alife_level_registry_inline.h:13	useInitializationList	Variable 'm_level_id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\safe_map_iterator_inline.h:21	useInitializationList	Variable 'm_cycle_count' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\ini_table_loader.h:76	useInitializationList	Variable 'table_sect' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\character_community.h:59	duplInheritedMember	The class 'CHARACTER_COMMUNITY' defines member function with name 'DeleteIdToIndexData' also defined in its parent class 'CIni_IdToIndex < true , COMMUNITY_DATA , CHARACTER_COMMUNITY_ID , CHARACTER_COMMUNITY_INDEX , CHARACTER_COMMUNITY >'.
+warning	src\xrGame\alife_simulator_base.cpp:32	uninitMemberVar	Member variable 'CALifeSimulatorBase::m_server_command_line' is not initialized in the constructor.
+warning	src\xrGame\PdaMsg.h:15	uninitMemberVarNoCtor	Member variable 'tagSPdaMessage::msg' has no initializer.
+warning	src\xrGame\PdaMsg.h:19	uninitMemberVarNoCtor	Member variable 'tagSPdaMessage::receive' has no initializer.
+warning	src\xrGame\PdaMsg.h:23	uninitMemberVarNoCtor	Member variable 'tagSPdaMessage::question' has no initializer.
+performance	src\xrGame\encyclopedia_article_defs.h:38	useInitializationList	Variable 'object_id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\alife_registry_wrapper.h:15	useInitializationList	Variable 'holder_id' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\alife_smart_terrain_task_inline.h:25	uninitMemberVar	Member variable 'CALifeSmartTerrainTask::m_patrol_point' is not initialized in the constructor.
+performance	src\xrGame\script_effector_inline.h:13	useInitializationList	Variable 'm_tEffectorType' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\character_community.cpp:12	useInitializationList	Variable 'index' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\character_community.cpp:13	useInitializationList	Variable 'id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\character_community.cpp:14	useInitializationList	Variable 'team' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\character_community.cpp:22	useInitializationList	Variable 'm_current_index' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\character_community.cpp:80	duplInheritedMember	The class 'CHARACTER_COMMUNITY' defines member function with name 'DeleteIdToIndexData' also defined in its parent class 'CIni_IdToIndex < true , COMMUNITY_DATA , CHARACTER_COMMUNITY_ID , CHARACTER_COMMUNITY_INDEX , CHARACTER_COMMUNITY >'.
+warning	src\xrGame\actor_mp_state.h:20	uninitMemberVarNoCtor	Member variable 'actor_mp_state::model_yaw' has no initializer.
+warning	src\xrGame\actor_mp_state.h:21	uninitMemberVarNoCtor	Member variable 'actor_mp_state::camera_yaw' has no initializer.
+warning	src\xrGame\actor_mp_state.h:22	uninitMemberVarNoCtor	Member variable 'actor_mp_state::camera_pitch' has no initializer.
+warning	src\xrGame\actor_mp_state.h:23	uninitMemberVarNoCtor	Member variable 'actor_mp_state::camera_roll' has no initializer.
+warning	src\xrGame\actor_mp_state.h:27	uninitMemberVarNoCtor	Member variable 'actor_mp_state::health' has no initializer.
+warning	src\xrGame\actor_mp_state.h:28	uninitMemberVarNoCtor	Member variable 'actor_mp_state::radiation' has no initializer.
+warning	src\xrGame\screenshot_server.h:32	uninitMemberVarPrivate	Member variable 'clientdata_proxy::m_first_receive' is not initialized in the constructor.
+warning	src\xrGame\screenshot_server.h:32	uninitMemberVarPrivate	Member variable 'clientdata_proxy::m_receiver' is not initialized in the constructor.
+warning	src\xrGame\screenshot_server.h:32	uninitMemberVarPrivate	Member variable 'clientdata_proxy::m_ft_server' is not initialized in the constructor.
+warning	src\xrGame\game_cl_mp.h:46	uninitMemberVarNoCtor	Member variable 'cl_TeamStruct::Indicator_r1' has no initializer.
+warning	src\xrGame\game_cl_mp.h:47	uninitMemberVarNoCtor	Member variable 'cl_TeamStruct::Indicator_r2' has no initializer.
+warning	src\xrGame\game_cl_mp.h:69	uninitMemberVarNoCtor	Member variable 'cl_MessageMenu::m_pSpeechMenu' has no initializer.
+warning	src\xrGame\game_cl_mp.h:279	uninitMemberVar	Member variable 'fr_callback_binder::m_response_type' is not initialized in the constructor.
+warning	src\xrGame\game_cl_mp.h:279	uninitMemberVar	Member variable 'fr_callback_binder::m_owner' is not initialized in the constructor.
+performance	src\xrGame\game_cl_mp.h:87	useInitializationList	Variable 'BonusTypeName' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_cl_mp.h:88	useInitializationList	Variable 'BonusName' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_cl_mp.h:89	useInitializationList	Variable 'MoneyStr' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\configs_dumper.cpp:23	useInitializationList	Variable 'm_buffer_for_compress_size' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\configs_dumper.cpp:24	useInitializationList	Variable 'm_buffer_for_compress_capacity' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\configs_dumper.cpp:26	useInitializationList	Variable 'm_make_start_event' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\configs_dumper.cpp:27	useInitializationList	Variable 'm_make_done_event' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\CustomDetector.cpp:181	uninitMemberVar	Member variable 'CCustomDetector::m_fAfDetectRadius' is not initialized in the constructor.
+warning	src\xrGame\CustomDetector.cpp:181	uninitMemberVar	Member variable 'CCustomDetector::m_bWorking' is not initialized in the constructor.
+warning	src\xrGame\CustomDetector.cpp:181	uninitMemberVar	Member variable 'CCustomDetector::m_fAfVisRadius' is not initialized in the constructor.
+warning	src\xrGame\CustomDetector.cpp:181	uninitMemberVar	Member variable 'CCustomDetector::m_fDecayRate' is not initialized in the constructor.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous4::handled' has no initializer.
+warning	src\xrGame\character_hit_animations.h:31	uninitMemberVarNoCtor	Member variable 'character_hit_animation_controller::block_blends' has no initializer.
+warning	src\xrGame\ai_monster_space.h:83	uninitMemberVarNoCtor	Member variable 'SBoneRotation::speed' has no initializer.
+warning	src\xrGame\restricted_object_inline.h:11	uninitMemberVar	Member variable 'CRestrictedObject::m_applied' is not initialized in the constructor.
+warning	src\xrGame\restricted_object_inline.h:11	uninitMemberVar	Member variable 'CRestrictedObject::m_removed' is not initialized in the constructor.
+warning	src\xrGame\restricted_object_inline.h:11	uninitMemberVar	Member variable 'CRestrictedObject::m_actual' is not initialized in the constructor.
+warning	src\xrGame\detail_path_manager.h:28	uninitMemberVar	Member variable 'STravelParams::linear_velocity' is not initialized in the constructor.
+warning	src\xrGame\detail_path_manager.h:28	uninitMemberVar	Member variable 'STravelParams::angular_velocity' is not initialized in the constructor.
+warning	src\xrGame\detail_path_manager.h:28	uninitMemberVar	Member variable 'STravelParams::real_angular_velocity' is not initialized in the constructor.
+warning	src\xrGame\detail_path_manager.h:57	uninitMemberVarNoCtor	Member variable 'SCirclePoint::radius' has no initializer.
+warning	src\xrGame\detail_path_manager.h:59	uninitMemberVarNoCtor	Member variable 'SCirclePoint::angle' has no initializer.
+warning	src\xrGame\detail_path_manager.h:69	uninitMemberVarNoCtor	Member variable 'SDist::time' has no initializer.
+warning	src\xrGame\static_obstacles_avoider_inline.h:11	uninitMemberVar	Member variable 'static_obstacles_avoider::m_movement_manager' is not initialized in the constructor.
+warning	src\xrGame\static_obstacles_avoider_inline.h:11	uninitMemberVar	Member variable 'static_obstacles_avoider::m_failed_to_build_path' is not initialized in the constructor.
+performance	src\xrGame\stalker_animation_script_inline.h:33	useInitializationList	Variable 'm_transform' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\stalker_animation_script_inline.h:35	useInitializationList	Variable 'm_animation' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\refreshable_obstacles_query_inline.h:12	useInitializationList	Variable 'm_last_update_time' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\stalker_movement_manager_base.h:120	duplInheritedMember	The class 'stalker_movement_manager_base' defines member variable with name 'm_object' also defined in its parent class 'CMovementManager'.
+warning	src\xrGame\stalker_movement_manager_base_inline.h:86	duplInheritedMember	The class 'stalker_movement_manager_base' defines member function with name 'path_type' also defined in its parent class 'CMovementManager'.
+warning	src\xrGame\stalker_movement_manager_base_inline.h:98	duplInheritedMember	The class 'stalker_movement_manager_base' defines member function with name 'object' also defined in its parent class 'CMovementManager'.
+warning	src\xrGame\stalker_movement_manager_obstacles.h:98	duplInheritedMember	The class 'stalker_movement_manager_obstacles' defines member variable with name 'm_restricted_object' also defined in its parent class 'CMovementManager'.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_fPowerLoss' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_additional_weight' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_additional_weight2' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_fHealthRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_fRadiationRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_fSatietyRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_fPowerRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::m_fBleedingRestoreSpeed' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::bIsHelmetAvaliable' is not initialized in the constructor.
+warning	src\xrGame\CustomOutfit.cpp:15	uninitMemberVar	Member variable 'CCustomOutfit::bIsBackpackAvaliable' is not initialized in the constructor.
+warning	src\xrGame\CharacterPhysicsSupport.cpp:149	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\CharacterPhysicsSupport.cpp:162	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\CharacterPhysicsSupport.cpp:665	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\CharacterPhysicsSupport.cpp:1032	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\CharacterPhysicsSupport.cpp:1204	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fSecondaryHitPower' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fHitImpulseScale' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_iStateTime' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_iPreviousStateTime' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_iDisableHitTime' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_iDisableHitTimeSmall' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_iDisableIdleTime' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fIdleLightRange' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fIdleLightRangeDelta' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fIdleLightHeight' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fIdleLightVolumetricQuality' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fIdleLightVolumetricIntensity' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fIdleLightVolumetricDistance' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fLightRange' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fLightTime' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fLightTimeLeft' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:26	uninitMemberVar	Member variable 'CCustomZone::m_fLightHeight' is not initialized in the constructor.
+warning	src\xrGame\CustomZone.cpp:1633	nullPointer	Possible null pointer dereference: nearest_s
+warning	src\xrGame\CustomZone.cpp:361	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\EffectorShot.cpp:12	uninitMemberVar	Member variable 'CWeaponShotEffector::m_shot_numer' is not initialized in the constructor.
+warning	src\xrGame\EliteDetector.cpp:21	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous7::handled' has no initializer.
+warning	src\xrGame\Entity.cpp:28	uninitMemberVar	Member variable 'CEntity::m_entity_condition' is not initialized in the constructor.
+warning	src\xrGame\Entity.cpp:28	uninitMemberVar	Member variable 'CEntity::m_fMorale' is not initialized in the constructor.
+warning	src\xrGame\Entity.cpp:28	uninitMemberVar	Member variable 'CEntity::id_Team' is not initialized in the constructor.
+warning	src\xrGame\Entity.cpp:28	uninitMemberVar	Member variable 'CEntity::id_Squad' is not initialized in the constructor.
+warning	src\xrGame\Entity.cpp:28	uninitMemberVar	Member variable 'CEntity::id_Group' is not initialized in the constructor.
+warning	src\xrGame\Entity.cpp:28	uninitMemberVar	Member variable 'CEntity::m_fFood' is not initialized in the constructor.
+warning	src\xrGame\monster_community.h:55	duplInheritedMember	The class 'MONSTER_COMMUNITY' defines member function with name 'DeleteIdToIndexData' also defined in its parent class 'CIni_IdToIndex < true , MONSTER_COMMUNITY_DATA , shared_str , int , MONSTER_COMMUNITY >'.
+warning	src\xrGame\Entity.cpp:157	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\Entity.cpp:232	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous8::handled' has no initializer.
+warning	src\xrGame\EntityCondition.cpp:29	uninitMemberVar	Member variable 'CEntityConditionSimple::m_fHealthMax' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.cpp:36	uninitMemberVar	Member variable 'CEntityCondition::m_fDeltaCircumspection' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.cpp:36	uninitMemberVar	Member variable 'CEntityCondition::m_fDeltaEntityMorale' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.cpp:36	uninitMemberVar	Member variable 'CEntityCondition::m_change_v' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.cpp:36	uninitMemberVar	Member variable 'CEntityCondition::m_fDeltaTime' is not initialized in the constructor.
+warning	src\xrGame\EntityCondition.cpp:36	uninitMemberVar	Member variable 'CEntityCondition::m_limping_threshold' is not initialized in the constructor.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous3::handled' has no initializer.
+performance	src\xrGame\game_base.cpp:20	useInitializationList	Variable 'skin' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:21	useInitializationList	Variable 'm_online_time' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:22	useInitializationList	Variable 'team' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:23	useInitializationList	Variable 'money_for_round' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:26	useInitializationList	Variable 'rank' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:27	useInitializationList	Variable 'af_count' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:30	useInitializationList	Variable 'flags__' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:31	useInitializationList	Variable 'm_bCurrentVoteAgreed' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:32	useInitializationList	Variable 'RespawnTime' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\game_base.cpp:191	useInitializationList	Variable 'm_type' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous6::handled' has no initializer.
+warning	src\xrGame\HudItem.cpp:29	uninitMemberVar	Member variable 'CHudItem::m_object' is not initialized in the constructor.
+warning	src\xrGame\HudItem.cpp:29	uninitMemberVar	Member variable 'CHudItem::m_item' is not initialized in the constructor.
+performance	src\xrGame\HudItem.cpp:31	useInitializationList	Variable 'm_animation_slot' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\HudItem.cpp:432	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\level_sounds.h:15	uninitMemberVarNoCtor	Member variable 'SStaticSound::m_Volume' has no initializer.
+warning	src\xrGame\level_sounds.h:16	uninitMemberVarNoCtor	Member variable 'SStaticSound::m_Freq' has no initializer.
+warning	src\xrGame\level_sounds.h:34	uninitMemberVarNoCtor	Member variable 'SMusicTrack::m_Volume' has no initializer.
+performance	src\xrGame\level_sounds.cpp:168	useInitializationList	Variable 'm_NextTrackTime' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\Level_Bullet_Manager.cpp:35	uninitMemberVar	Member variable 'SBullet::material_piercing' is not initialized in the constructor.
+warning	src\xrGame\Level_Bullet_Manager.cpp:35	uninitMemberVar	Member variable 'SBullet::density' is not initialized in the constructor.
+warning	src\xrGame\Level_Bullet_Manager.h:127	uninitMemberVar	Member variable '_event::hit_result' is not initialized in the constructor.
+warning	src\xrGame\Level_Bullet_Manager.h:227	uninitMemberVarNoCtor	Member variable 'bullet_test_callback_data::collide_time' has no initializer.
+warning	src\xrGame\Level_Bullet_Manager.h:229	uninitMemberVarNoCtor	Member variable 'bullet_test_callback_data::high_time' has no initializer.
+warning	src\xrGame\game_cl_base_weapon_usage_statistic.h:79	uninitMemberVarNoCtor	Member variable 'HitData::Deadly' has no initializer.
+warning	src\xrGame\game_cl_base_weapon_usage_statistic.h:82	uninitMemberVarNoCtor	Member variable 'HitData::Completed' has no initializer.
+performance	src\xrGame\Level_Bullet_Manager.cpp:39	useInitializationList	Variable 'bullet_pos' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\game_cl_base_weapon_usage_statistic.h:237	virtualDestructor	Class 'WeaponUsageStatistic' which has virtual members does not have a virtual destructor.
+warning	src\xrGame\Level_Bullet_Manager.cpp:603	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous14::handled' has no initializer.
+warning	src\xrGame\ui\UIGameTutorial.h:162	uninitMemberVar	Member variable 'CUISequenceSimpleItem::isTimeDilatedInPDA' is not initialized in the constructor.
+warning	src\xrGame\ui\UIGameTutorial.h:162	uninitMemberVar	Member variable 'CUISequenceSimpleItem::m_UIWindow' is not initialized in the constructor.
+warning	src\xrGame\ui\UIGameTutorial.h:162	uninitMemberVar	Member variable 'CUISequenceSimpleItem::m_time_start' is not initialized in the constructor.
+warning	src\xrGame\ui\UIGameTutorial.h:162	uninitMemberVar	Member variable 'CUISequenceSimpleItem::m_time_length' is not initialized in the constructor.
+warning	src\xrGame\ui\UIGameTutorial.h:146	uninitMemberVarNoCtor	Member variable 'SActionItem::m_bfinalize' has no initializer.
+performance	src\xrGame\space_restriction_holder_inline.h:13	useInitializationList	Variable 'm_default_out_restrictions' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\space_restriction_holder_inline.h:14	useInitializationList	Variable 'm_default_in_restrictions' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\space_restriction_abstract_inline.h:13	useInitializationList	Variable 'm_initialized' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\trade_action_parameters_inline.h:11	useInitializationList	Variable 'm_default' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\space_restriction_manager.h:46	duplInheritedMember	The class 'CSpaceRestrictionManager' defines member function with name 'collect_garbage' also defined in its parent class 'CSpaceRestrictionHolder'.
+warning	src\xrGame\space_restriction_manager.h:58	duplInheritedMember	The class 'CSpaceRestrictionManager' defines member function with name 'clear' also defined in its parent class 'CSpaceRestrictionHolder'.
+warning	src\xrGame\space_restriction_inline.h:21	duplInheritedMember	The class 'CSpaceRestriction' defines member function with name 'initialized' also defined in its parent class 'CSpaceRestrictionAbstract'.
+warning	src\xrGame\Level.cpp:1127	invalidscanf	sscanf() without field width limits can crash with huge input data.
+warning	src\xrGame\material_manager.cpp:23	uninitMemberVar	Member variable 'CMaterialManager::m_time_to_step' is not initialized in the constructor.
+warning	src\xrGame\map_location.h:62	uninitMemberVarNoCtor	Member variable 'SCachedValues::m_Actuality' has no initializer.
+performance	src\xrGame\monster_community.cpp:17	useInitializationList	Variable 'id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\monster_community.cpp:18	useInitializationList	Variable 'team' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\monster_community.cpp:87	duplInheritedMember	The class 'MONSTER_COMMUNITY' defines member function with name 'DeleteIdToIndexData' also defined in its parent class 'CIni_IdToIndex < true , MONSTER_COMMUNITY_DATA , shared_str , int , MONSTER_COMMUNITY >'.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_throw' is not initialized in the constructor.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_fake_missile' is not initialized in the constructor.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_fMinForce' is not initialized in the constructor.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_fConstForce' is not initialized in the constructor.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_fMaxForce' is not initialized in the constructor.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_fForceGrowSpeed' is not initialized in the constructor.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_constpower' is not initialized in the constructor.
+warning	src\xrGame\Missile.cpp:41	uninitMemberVar	Member variable 'CMissile::m_fThrowForce' is not initialized in the constructor.
+performance	src\xrGame\Missile.cpp:41	useInitializationList	Variable 'm_dwStateTime' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\Missile.cpp:97	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\Missile.cpp:398	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\Missile.cpp:676	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\Missile.cpp:704	constStatement	Found suspicious operator '*', result is not used.
+performance	src\xrGame\PHMovementControl.cpp:56	useInitializationList	Variable 'm_material' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\physics_game.cpp:42	useInitializationList	Variable 'ps_name' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\physics_game.cpp:43	useInitializationList	Variable 'c' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\physics_game.cpp:77	useInitializationList	Variable 'remove_time' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrGame\physics_game.cpp:139	useInitializationList	Variable 'pWallmarkShader' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\player_hud_tune.cpp:129	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\player_hud_tune.cpp:130	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\player_hud_tune.cpp:131	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\player_hud_tune.cpp:132	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\player_hud_tune.cpp:133	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\player_hud_tune.cpp:134	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\player_hud_tune.cpp:135	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\player_hud_tune.cpp:136	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous17::handled' has no initializer.
+warning	src\xrGame\RocketLauncher.cpp:15	uninitMemberVar	Member variable 'CRocketLauncher::m_fLaunchSpeed' is not initialized in the constructor.
+warning	src\xrGame\RocketLauncher.h:10	virtualDestructor	Class 'CRocketLauncher' which has virtual members does not have a virtual destructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::m_air_resistance_factor' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::fModeShotTime' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::bCycleDown' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::fHitImpulse' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::fireDistance' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::fireDispersionBase' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::light_base_range' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::light_build_range' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::light_var_color' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::light_var_range' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::light_lifetime' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::light_time' is not initialized in the constructor.
+warning	src\xrGame\ShootingObject.cpp:23	uninitMemberVar	Member variable 'CShootingObject::m_bLightShotEnabled' is not initialized in the constructor.
+warning	src\xrGame\space_restriction_shape.cpp:113	identicalConditionAfterEarlyExit	Identical condition 'm_initialized', second condition is always false
+warning	src\xrGame\space_restriction_manager.cpp:129	duplInheritedMember	The class 'CSpaceRestrictionManager' defines member function with name 'collect_garbage' also defined in its parent class 'CSpaceRestrictionHolder'.
+warning	src\xrGame\space_restriction_manager.cpp:55	duplInheritedMember	The class 'CSpaceRestrictionManager' defines member function with name 'clear' also defined in its parent class 'CSpaceRestrictionHolder'.
+warning	src\xrGame\space_restrictor.cpp:47	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\stalker_animation_pair_inline.h:11	uninitMemberVar	Member variable 'CStalkerAnimationPair::m_just_started' is not initialized in the constructor.
+warning	src\xrGame\stalker_animation_pair.cpp:29	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\stalker_animation_pair.cpp:37	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\stalker_animation_pair.cpp:319	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\sight_manager.h:49	uninitMemberVarNoCtor	Member variable 'bone_parameters::m_factor' has no initializer.
+warning	src\xrGame\setup_manager_inline.h:16	uninitMemberVar	Member variable 'CSetupManager < CSightControlAction , CAI_Stalker , u32 >::m_actuality' is not initialized in the constructor.
+performance	src\xrGame\setup_manager.h:25	useInitializationList	Variable 'm_action_id' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\sight_action.h:79	duplInheritedMember	The class 'CSightAction' defines member function with name 'initialize' also defined in its parent class 'CControlAction'.
+warning	src\xrGame\sight_action.h:80	duplInheritedMember	The class 'CSightAction' defines member function with name 'execute' also defined in its parent class 'CControlAction'.
+warning	src\xrGame\sight_action.h:81	duplInheritedMember	The class 'CSightAction' defines member function with name 'finalize' also defined in its parent class 'CControlAction'.
+warning	src\xrGame\sight_action.h:87	duplInheritedMember	The class 'CSightAction' defines member function with name 'remove_links' also defined in its parent class 'CControlAction'.
+warning	src\xrGame\sight_control_action_inline.h:20	duplInheritedMember	The class 'CSightControlAction' defines member function with name 'sight_type' also defined in its parent class 'CSightAction'.
+warning	src\xrGame\sight_control_action_inline.h:21	duplInheritedMember	The class 'CSightControlAction' defines member function with name 'vector3d' also defined in its parent class 'CSightAction'.
+warning	src\xrGame\sight_control_action_inline.h:18	duplInheritedMember	The class 'CSightControlAction' defines member function with name 'completed' also defined in its parent class 'CControlAction'.
+warning	src\xrGame\sight_control_action_inline.h:22	duplInheritedMember	The class 'CSightControlAction' defines member function with name 'object' also defined in its parent class 'CControlAction'.
+warning	src\xrGame\stalker_animation_callbacks.cpp:140	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\stalker_animation_callbacks.cpp:180	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\stalker_animation_callbacks.cpp:220	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\ui\Restrictions.h:10	uninitMemberVarNoCtor	Member variable 'RESTR::n' has no initializer.
+warning	src\xrGame\ui\Restrictions.cpp:171	uninitvar	Uninitialized variable: ret.n
+error	src\xrGame\ui\Restrictions.cpp:171	uninitStructMember	Uninitialized struct member: ret.n
+warning	src\xrGame\ui\UIActorInfo.h:76	uninitMemberVar	Member variable 'CUIActorStaticticDetail::m_text0' is not initialized in the constructor.
+warning	src\xrGame\ui\UIActorInfo.h:76	uninitMemberVar	Member variable 'CUIActorStaticticDetail::m_text1' is not initialized in the constructor.
+warning	src\xrGame\ui\UIActorInfo.h:76	uninitMemberVar	Member variable 'CUIActorStaticticDetail::m_text2' is not initialized in the constructor.
+warning	src\xrGame\ui\UIActorInfo.h:76	uninitMemberVar	Member variable 'CUIActorStaticticDetail::m_text3' is not initialized in the constructor.
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous1::handled' has no initializer.
+warning	src\xrGame\step_manager.cpp:18	uninitMemberVar	Member variable 'CStepManager::m_object' is not initialized in the constructor.
+warning	src\xrGame\step_manager.cpp:18	uninitMemberVar	Member variable 'CStepManager::m_blend' is not initialized in the constructor.
+warning	src\xrGame\step_manager.cpp:266	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\ui\UIItemInfo.h:25	uninitMemberVarNoCtor	Member variable '_desc_info::pDescFont' has no initializer.
+warning	src\xrGame\ui\UIItemInfo.h:27	uninitMemberVarNoCtor	Member variable '_desc_info::bShowDescrText' has no initializer.
+warning	src\xrGame\ui\UIDragDropReferenceList.h:25	duplInheritedMember	The class 'CUIDragDropReferenceList' defines member function with name 'GetContainer' also defined in its parent class 'CUIDragDropListEx'.
+warning	src\xrGame\ui\UIActorMenu_action.cpp:399	nullPointerRedundantCheck	Either the condition 'itm' is redundant or there is possible null pointer dereference: itm.
+warning	src\xrGame\ui\UICellCustomItems.h:8	uninitMemberVarNoCtor	Member variable 'SIconLayer::m_icon' has no initializer.
+warning	src\xrGame\ui\UICellCustomItems.h:11	uninitMemberVarNoCtor	Member variable 'SIconLayer::m_scale' has no initializer.
+warning	src\xrGame\ui\UICellCustomItems.h:57	duplInheritedMember	The class 'CUIAmmoCellItem' defines member function with name 'object' also defined in its parent class 'CUIInventoryCellItem'.
+warning	src\xrGame\ui\UICellCustomItems.h:94	duplInheritedMember	The class 'CUIWeaponCellItem' defines member function with name 'object' also defined in its parent class 'CUIInventoryCellItem'.
+portability	src\xrGame\ui\UIActorMenuInventory.cpp:1500	intToPointerCast	Casting non-zero decimal integer literal to pointer.
+portability	src\xrGame\ui\UIActorMenuInventory.cpp:1605	intToPointerCast	Casting non-zero decimal integer literal to pointer.
+warning	src\xrGame\ui\UIItemInfo.cpp:116	uninitMemberVar	Member variable 'CUIItemInfo::m_desc_info' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_back' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_back_v' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_back_over_arrow' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_static_health' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_static_armor' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_static_weapon' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_weapon_cur_ammo' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_weapon_fmj_ammo' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_weapon_ap_ammo' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_weapon_third_ammo' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_fire_mode' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_grenade' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_weapon_sign_ammo' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_weapon_icon' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_health_bar' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_armor_bar' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_ui_stamina_bar' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_progress_self' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_radia_damage' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_bleeding' is not initialized in the constructor.
+warning	src\xrGame\ui\UIHudStatesWnd.cpp:24	uninitMemberVar	Member variable 'CUIHudStatesWnd::m_zone_threshold' is not initialized in the constructor.
+warning	src\xrGame\ui\UIMpTradeWnd_items.cpp:15	uninitMemberVar	Member variable 'SBuyItemInfo::m_cell_item' is not initialized in the constructor.
+warning	src\xrGame\ui\UIMpTradeWnd.h:274	duplInheritedMember	The class 'CUIMpTradeWnd' defines member function with name 'GetRank' also defined in its parent class 'IBuyWnd'.
+warning	src\xrGame\ui\UITaskWnd.cpp:24	uninitMemberVar	Member variable 'CUITaskWnd::m_filters' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_icon_acc' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_icon_dam' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_icon_han' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_icon_rpm' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_stAmmo' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_textAmmoTypes' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_textAmmoUsedType' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_textAmmoCount' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_textAmmoCount2' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_stAmmoType1' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_stAmmoType2' is not initialized in the constructor.
+warning	src\xrGame\ui\UIWpnParams.cpp:69	uninitMemberVar	Member variable 'CUIWpnParams::m_Prop_line' is not initialized in the constructor.
+warning	src\xrGame\ui\UIMainIngameWnd.cpp:56	uninitMemberVar	Member variable 'CUIMainIngameWnd::m_iPickUpItemIconX' is not initialized in the constructor.
+warning	src\xrGame\ui\UIMainIngameWnd.cpp:56	uninitMemberVar	Member variable 'CUIMainIngameWnd::m_iPickUpItemIconY' is not initialized in the constructor.
+warning	src\xrGame\ui\UIMainIngameWnd.cpp:56	uninitMemberVar	Member variable 'CUIMainIngameWnd::m_iPickUpItemIconWidth' is not initialized in the constructor.
+warning	src\xrGame\ui\UIMainIngameWnd.cpp:56	uninitMemberVar	Member variable 'CUIMainIngameWnd::m_iPickUpItemIconHeight' is not initialized in the constructor.
+warning	src\xrGame\ui\UIMotionIcon.h:33	uninitMemberVarNoCtor	Member variable '_npc_visibility::value' has no initializer.
+warning	src\xrGame\UITimeDilator.h:25	uninitMemberVarNoCtor	Member variable 'UITimeDilator::currMode' has no initializer.
+warning	src\xrGame\WeaponBinocularsVision.h:15	uninitMemberVar	Member variable 'SBinocVisibleObj::m_upd_speed' is not initialized in the constructor.
+warning	src\xrGame\WeaponKnife.h:128	uninitMemberVarNoCtor	Member variable 'victim_bone_data::m_bone_element' has no initializer.
+warning	src\xrGame\Weapon.cpp:594	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\Weapon.cpp:167	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\Weapon.cpp:1549	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrGame\WeaponMagazinedWGrenade.cpp:20	uninitMemberVar	Member variable 'CWeaponMagazinedWGrenade::iMagazineSize2' is not initialized in the constructor.
+performance	src\xrGame\WeaponMagazinedWGrenade.cpp:22	useInitializationList	Variable 'm_ammoType2' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrGame\encyclopedia_article.h:32	uninitMemberVarNoCtor	Member variable 'SArticleData::articleType' has no initializer.
+warning	src\xrGame\character_rank.h:56	duplInheritedMember	The class 'CHARACTER_RANK' defines member function with name 'DeleteIdToIndexData' also defined in its parent class 'CIni_IdToIndex < true , RANK_DATA , shared_str , int , CHARACTER_RANK >'.
+warning	src\xrGame\character_reputation.h:52	duplInheritedMember	The class 'CHARACTER_REPUTATION' defines member function with name 'DeleteIdToIndexData' also defined in its parent class 'CIni_IdToIndex < true , REPUTATION_DATA , shared_str , int , CHARACTER_REPUTATION >'.
+warning	src\xrGame\game_sv_mp_team.h:41	uninitMemberVarNoCtor	Member variable 'TeamStruct::m_fInvinsibleKillModifier' has no initializer.
+warning	src\xrGame\xrServer.cpp:980	uninitMemberVar	Member variable 'MessageSenderController::m_sender_ps' is not initialized in the constructor.
+warning	src\xrGame\xrServer.cpp:980	uninitMemberVar	Member variable 'MessageSenderController::m_packet' is not initialized in the constructor.
+warning	src\xrGame\ZoneVisual.cpp:15	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrGame\step_manager_defs.h:29	uninitMemberVarNoCtor	Member variable 'Anonymous10::handled' has no initializer.
+warning	src\xrGame\xrServer.cpp:46	uninitMemberVar	Member variable 'xrServer::m_screenshot_proxies' is not initialized in the constructor.
+warning	src\xrGame\xrServer.cpp:46	uninitMemberVar	Member variable 'xrServer::game' is not initialized in the constructor.
+warning	src\xrGame\xrServer.cpp:942	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+error	src\xrPhysics\BlockAllocator.h:84	returnTempReference	Reference to temporary returned.
+warning	src\xrPhysics\DisablingParams.h:19	uninitMemberVarNoCtor	Member variable 'SAllDDOParams::translational' has no initializer.
+warning	src\xrPhysics\DisablingParams.h:20	uninitMemberVarNoCtor	Member variable 'SAllDDOParams::rotational' has no initializer.
+warning	src\xrPhysics\MathUtils.h:443	uninitMemberVar	Member variable 'SInertVal::val' is not initialized in the constructor.
+warning	src\xrPhysics\PHIsland.h:54	uninitMemberVarNoCtor	Member variable 'CPHIsland::m_first_body' has no initializer.
+warning	src\xrPhysics\PHIsland.h:55	uninitMemberVarNoCtor	Member variable 'CPHIsland::m_first_joint' has no initializer.
+warning	src\xrPhysics\PHIsland.h:56	uninitMemberVarNoCtor	Member variable 'CPHIsland::m_joints_tail' has no initializer.
+warning	src\xrPhysics\PHIsland.h:57	uninitMemberVarNoCtor	Member variable 'CPHIsland::m_bodies_tail' has no initializer.
+warning	src\xrPhysics\PHIsland.h:58	uninitMemberVarNoCtor	Member variable 'CPHIsland::m_self_active' has no initializer.
+warning	src\xrPhysics\PHIsland.h:59	uninitMemberVarNoCtor	Member variable 'CPHIsland::m_nj' has no initializer.
+warning	src\xrPhysics\PHIsland.h:60	uninitMemberVarNoCtor	Member variable 'CPHIsland::m_nb' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:108	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::pushing_neg' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:108	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::pushing_b_neg' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:108	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::b_static_colide' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:109	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::neg_tri' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:109	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::b_neg_tri' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:111	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::ph_ref_object' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:114	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::callback' has no initializer.
+warning	src\xrPhysics\ExtendedGeom.h:115	uninitMemberVarNoCtor	Member variable 'dxGeomUserData::callback_data' has no initializer.
+warning	src\xrPhysics\PhysicsShell.h:306	uninitMemberVarNoCtor	Member variable 'CPhysicsShell::m_pKinematics' has no initializer.
+warning	src\xrPhysics\PHContactBodyEffector.h:10	uninitMemberVarNoCtor	Member variable 'CPHContactBodyEffector::m_recip_flotation' has no initializer.
+warning	src\xrPhysics\PHContactBodyEffector.h:11	uninitMemberVarNoCtor	Member variable 'CPHContactBodyEffector::m_material' has no initializer.
+warning	src\xrPhysics\PHDisabling.h:78	uninitMemberVarNoCtor	Member variable 'CPHDisablingBase::m_params' has no initializer.
+warning	src\xrPhysics\PHDisabling.h:65	duplInheritedMember	The class 'CPHDisablingBase' defines member function with name 'Reinit' also defined in its parent struct 'CBaseDisableData'.
+warning	src\xrPhysics\PHDisabling.h:85	duplInheritedMember	The class 'CPHDisablingRotational' defines member function with name 'Reinit' also defined in its parent class 'CPHDisablingBase'.
+warning	src\xrPhysics\PHDisabling.h:85	duplInheritedMember	The class 'CPHDisablingRotational' defines member function with name 'Reinit' also defined in its parent struct 'CBaseDisableData'.
+warning	src\xrPhysics\PHDisabling.h:94	duplInheritedMember	The class 'CPHDisablingTranslational' defines member function with name 'Reinit' also defined in its parent class 'CPHDisablingBase'.
+warning	src\xrPhysics\PHDisabling.h:94	duplInheritedMember	The class 'CPHDisablingTranslational' defines member function with name 'Reinit' also defined in its parent struct 'CBaseDisableData'.
+warning	src\xrPhysics\PHDisabling.h:102	duplInheritedMember	The class 'CPHDisablingFull' defines member function with name 'Reinit' also defined in its parent class 'CPHDisablingTranslational'.
+warning	src\xrPhysics\PHDisabling.h:102	duplInheritedMember	The class 'CPHDisablingFull' defines member function with name 'Reinit' also defined in its parent class 'CPHDisablingBase'.
+warning	src\xrPhysics\PHDisabling.h:102	duplInheritedMember	The class 'CPHDisablingFull' defines member function with name 'Reinit' also defined in its parent struct 'CBaseDisableData'.
+warning	src\xrPhysics\PHDisabling.h:102	duplInheritedMember	The class 'CPHDisablingFull' defines member function with name 'Reinit' also defined in its parent class 'CPHDisablingRotational'.
+warning	src\xrPhysics\MathUtils.h:15	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\MathUtils.h:16	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\MathUtils.h:17	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\MathUtils.h:18	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\PhysicsExternalCommon.h:38	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\PHIsland.h:170	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+performance	src\xrPhysics\PHMoveStorage.h:11	useInitializationList	Variable 'geom' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHElement.cpp:36	useInitializationList	Variable 'm_w_limit' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHElement.cpp:37	useInitializationList	Variable 'm_l_limit' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHElement.cpp:38	useInitializationList	Variable 'm_l_scale' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHElement.cpp:39	useInitializationList	Variable 'm_w_scale' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHElement.cpp:45	useInitializationList	Variable 'm_body' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrPhysics\PHElement.cpp:68	duplInheritedMember	The class 'CPHElement' defines member function with name 'build' also defined in its parent class 'CPHGeometryOwner'.
+warning	src\xrPhysics\PHElement.cpp:115	duplInheritedMember	The class 'CPHElement' defines member function with name 'destroy' also defined in its parent class 'CPHGeometryOwner'.
+warning	src\xrPhysics\PHShellSplitter.h:60	duplInheritedMember	The class 'CPHShellSplitterHolder' defines member function with name 'Activate' also defined in its parent class 'CPHUpdateObject'.
+warning	src\xrPhysics\PHShellSplitter.h:61	duplInheritedMember	The class 'CPHShellSplitterHolder' defines member function with name 'Deactivate' also defined in its parent class 'CPHUpdateObject'.
+warning	src\xrPhysics\PHElement.h:250	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\PHElement.cpp:1077	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\PHElement.cpp:1086	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrPhysics\PhysicsShell.h:310	uninitMemberVarNoCtor	Member variable 'CPhysicsShell::dbg_obj' has no initializer.
+performance	src\xrPhysics\MathUtils.h:163	passedByValue	Function parameter 'dir' should be passed by const reference.
+performance	src\xrPhysics\debug_output.h:101	passedByValue	Function parameter 'h' should be passed by const reference.
+portability	src\xrPhysics\debug_output.h:50	shiftTooManyBitsSigned	Shifting signed 32-bit value by 31 bits is implementation-defined behaviour
+error	src\xrPhysics\PHElement.cpp:1632	syntaxError	syntax error
+warning	src\xrPhysics\PHWorld.cpp:94	uninitMemberVar	Member variable 'CPHWorld::m_start_time' is not initialized in the constructor.
+warning	src\xrPhysics\PHWorld.cpp:94	uninitMemberVar	Member variable 'CPHWorld::m_commander' is not initialized in the constructor.
+warning	src\xrPhysics\PHWorld.cpp:94	uninitMemberVar	Member variable 'CPHWorld::m_update_time' is not initialized in the constructor.
+performance	src\xrPhysics\PHWorld.cpp:98	useInitializationList	Variable 'disable_count' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:99	useInitializationList	Variable 'm_frame_time' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:100	useInitializationList	Variable 'm_previous_frame_time' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:102	useInitializationList	Variable 'm_steps_num' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:103	useInitializationList	Variable 'm_steps_short_num' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:105	useInitializationList	Variable 'm_delay' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:106	useInitializationList	Variable 'm_previous_delay' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:107	useInitializationList	Variable 'm_reduce_delay' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrPhysics\PHWorld.cpp:108	useInitializationList	Variable 'm_update_delay_count' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrScriptEngine\ScriptExporter.cpp:26	constStatement	Found suspicious operator '*', result is not used.
+warning	src\xrScriptEngine\ScriptExporter.cpp:87	constStatement	Found suspicious operator '*', result is not used.
+performance	src\xrScriptEngine\script_debugger.hpp:25	useInitializationList	Variable 'nLine' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrScriptEngine\script_engine.cpp:344	uninitMemberVarNoCtor	Member variable 'urow::count' has no initializer.
+warning	src\xrScriptEngine\script_engine.cpp:373	uninitMemberVarNoCtor	Member variable 'srow::line' has no initializer.
+warning	src\xrScriptEngine\script_engine.cpp:373	uninitMemberVarNoCtor	Member variable 'srow::count' has no initializer.
+performance	src\xrScriptEngine\script_process.hpp:31	useInitializationList	Variable 'm_script_name' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrScriptEngine\script_process.hpp:38	useInitializationList	Variable 'm_script_name' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrScriptEngine\script_thread.hpp:28	duplInheritedMember	The class 'CScriptThread' defines member variable with name 'scriptEngine' also defined in its parent class 'CScriptStackTracker'.
+warning	src\xrServerEntities\xml_str_id_loader.h:15	uninitMemberVarNoCtor	Member variable 'ITEM_DATA::index' has no initializer.
+warning	src\xrServerEntities\xml_str_id_loader.h:16	uninitMemberVarNoCtor	Member variable 'ITEM_DATA::pos_in_file' has no initializer.
+warning	src\xrServerEntities\xml_str_id_loader.h:17	uninitMemberVarNoCtor	Member variable 'ITEM_DATA::_xml' has no initializer.
+warning	src\xrServerEntities\specific_character.h:76	uninitMemberVarNoCtor	Member variable 'SSpecificCharacterData::money_def' has no initializer.
+warning	src\xrServerEntities\specific_character.h:74	uninitMemberVarNoCtor	Member variable 'SMoneyDef::inf_money' has no initializer.
+warning	src\xrServerEntities\ShapeData.h:26	uninitMemberVarNoCtor	Member variable 'shape_def::data' has no initializer.
+warning	src\xrServerEntities\PHNetState.h:23	uninitMemberVarNoCtor	Member variable 'SPHNetState::max_velocity' has no initializer.
+warning	src\xrServerEntities\PHNetState.h:27	uninitMemberVarNoCtor	Member variable 'SPHNetState::enabled' has no initializer.
+warning	src\xrServerEntities\PHNetState.h:23	uninitMemberVarNoCtor	Member variable '::max_velocity' has no initializer.
+warning	src\xrServerEntities\xrServer_Objects_ALife.h:675	uninitMemberVarNoCtor	Member variable 'SDoorState::health' has no initializer.
+warning	src\xrServerEntities\alife_movement_manager_holder.h:15	uninitMemberVarNoCtor	Member variable 'CMovementManagerHolder::m_fGoingSpeed' has no initializer.
+warning	src\xrServerEntities\alife_movement_manager_holder.h:16	uninitMemberVarNoCtor	Member variable 'CMovementManagerHolder::m_fCurrentLevelGoingSpeed' has no initializer.
+warning	src\xrServerEntities\alife_movement_manager_holder.h:17	uninitMemberVarNoCtor	Member variable 'CMovementManagerHolder::m_fCurSpeed' has no initializer.
+warning	src\xrServerEntities\alife_movement_manager_holder.h:18	uninitMemberVarNoCtor	Member variable 'CMovementManagerHolder::m_fDistanceFromPoint' has no initializer.
+warning	src\xrServerEntities\alife_movement_manager_holder.h:19	uninitMemberVarNoCtor	Member variable 'CMovementManagerHolder::m_fDistanceToPoint' has no initializer.
+warning	src\xrServerEntities\PropertiesListTypes.h:562	uninitMemberVar	Member variable 'NumericValue < float >::lim_mn' is not initialized in the constructor.
+warning	src\xrServerEntities\PropertiesListTypes.h:562	uninitMemberVar	Member variable 'NumericValue < float >::lim_mx' is not initialized in the constructor.
+warning	src\xrServerEntities\PropertiesListTypes.h:562	uninitMemberVar	Member variable 'NumericValue < float >::inc' is not initialized in the constructor.
+performance	src\xrServerEntities\PropertiesListTypes.h:320	useInitializationList	Variable 'value' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\PropertiesListTypes.h:343	useInitializationList	Variable 'value' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\PropertiesListTypes.h:471	useInitializationList	Variable 'OnBeforeEditEvent' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\PropertiesListTypes.h:472	useInitializationList	Variable 'OnAfterEditEvent' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\InfoPortionDefs.h:24	useInitializationList	Variable 'element' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\PropertiesListTypes.h:114	useInitializationList	Variable 'OnBeforeEditEvent' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\PropertiesListTypes.h:115	useInitializationList	Variable 'OnAfterEditEvent' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrServerEntities\PropertiesListTypes.h:411	duplInheritedMember	The class 'ShortcutValue' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < xr_shortcut >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < Fvector >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < Fvector >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < s8 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < s8 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < s16 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < s16 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < s32 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < s32 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < u8 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < u8 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < u16 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < u16 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < u32 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < u32 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:575	duplInheritedMember	The class 'NumericValue < float >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < float >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:696	duplInheritedMember	The class 'FlagValue < Flags8 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < Flags8 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:696	duplInheritedMember	The class 'FlagValue < Flags16 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < Flags16 >'.
+warning	src\xrServerEntities\PropertiesListTypes.h:696	duplInheritedMember	The class 'FlagValue < Flags32 >' defines member function with name 'ApplyValue' also defined in its parent class 'CustomValue < Flags32 >'.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.h:646	duplInheritedMember	The class 'CSE_ALifeHumanAbstract' defines member function with name 'brain' also defined in its parent class 'CSE_ALifeMonsterAbstract'.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.h:265	duplInheritedMember	The class 'CSE_ALifeCreatureAbstract' defines member variable with name 'flags' also defined in its parent class 'CSE_Visual'.
+warning	src\xrServerEntities\xrServer_Objects_ALife.h:570	duplInheritedMember	The class 'CSE_ALifeObjectHangingLamp' defines member variable with name 'flags' also defined in its parent class 'CSE_Visual'.
+warning	src\xrServerEntities\PropertiesListTypes.h:323	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrServerEntities\PropertiesListTypes.h:351	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrServerEntities\PropertiesListTypes.h:482	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrServerEntities\PropertiesListTypes.h:813	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrServerEntities\PropertiesListTypes.h:830	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrServerEntities\PropertiesListTypes.h:691	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrServerEntities\PropertiesListTypes.h:124	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:488	useInitializationList	Variable 'a_current' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:489	useInitializationList	Variable 'a_elapsed' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:493	useInitializationList	Variable 'wpn_flags' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:494	useInitializationList	Variable 'wpn_state' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:495	useInitializationList	Variable 'ammo_type' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:496	useInitializationList	Variable 'condition_type' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:720	useInitializationList	Variable 'm_u8CurFireMode' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:773	useInitializationList	Variable 'm_boxSize' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:821	useInitializationList	Variable 'm_ef_detector_type' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:956	useInitializationList	Variable 'm_ef_weapon_type' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Items.cpp:1022	useInitializationList	Variable 'm_ef_equipment_type' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrSound\Sound.h:143	uninitMemberVarNoCtor	Member variable 'CSound_params::base_volume' has no initializer.
+warning	src\xrSound\Sound.h:144	uninitMemberVarNoCtor	Member variable 'CSound_params::volume' has no initializer.
+warning	src\xrSound\Sound.h:145	uninitMemberVarNoCtor	Member variable 'CSound_params::freq' has no initializer.
+warning	src\xrSound\Sound.h:146	uninitMemberVarNoCtor	Member variable 'CSound_params::min_distance' has no initializer.
+warning	src\xrSound\Sound.h:147	uninitMemberVarNoCtor	Member variable 'CSound_params::max_distance' has no initializer.
+warning	src\xrSound\Sound.h:148	uninitMemberVarNoCtor	Member variable 'CSound_params::max_ai_distance' has no initializer.
+warning	src\xrSound\Sound.h:466	uninitMemberVarNoCtor	Member variable 'SItem::volume' has no initializer.
+warning	src\xrSound\Sound.h:467	uninitMemberVarNoCtor	Member variable 'SItem::type' has no initializer.
+warning	src\xrSound\Sound.h:469	uninitMemberVarNoCtor	Member variable 'SItem::game_object' has no initializer.
+performance	src\xrSound\SoundRender_Core.cpp:38	useInitializationList	Variable 's_emitters_u' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\script_value_inline.h:13	useInitializationList	Variable 'm_object' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\script_value_inline.h:14	useInitializationList	Variable 'm_name' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Object_Base.cpp:57	useInitializationList	Variable 'm_da_alive' is assigned in constructor body. Consider performing initialization in initialization list.
+warning	src\xrSound\Sound.h:465	uninitMemberVarNoCtor	Member variable 'SItem::params' has no initializer.
+warning	src\xrSound\SoundRender_Core.cpp:175	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrSound\SoundRender_Core.cpp:182	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrSound\SoundRender_Core.cpp:187	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrSound\SoundRender_Core.cpp:224	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+warning	src\xrServerEntities\xrServer_Object_Base.cpp:123	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast
+performance	src\xrSound\SoundRender_Emitter.cpp:251	returnStdMoveLocal	Using std::move for returning object by-value from function will affect copy elision optimization. More: https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-return-move-local
+warning	src\xrSound\SoundRender_Emitter.cpp:38	uninitMemberVar	Member variable 'CSoundRender_Emitter::p_source' is not initialized in the constructor.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:121	uninitMemberVar	Member variable 'CSE_ALifeTraderAbstract::m_community_index' is not initialized in the constructor.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:121	uninitMemberVar	Member variable 'CSE_ALifeTraderAbstract::m_reputation' is not initialized in the constructor.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:121	uninitMemberVar	Member variable 'CSE_ALifeTraderAbstract::m_rank' is not initialized in the constructor.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:674	uninitMemberVar	Member variable 'CSE_ALifeAnomalousZone::m_tpCurrentBestWeapon' is not initialized in the constructor.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:1198	uninitMemberVar	Member variable 'CSE_ALifeCreatureActor::m_AliveState' is not initialized in the constructor.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:1198	uninitMemberVar	Member variable 'CSE_ALifeCreatureActor::m_DeadBodyData' is not initialized in the constructor.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:1738	uninitMemberVar	Member variable 'CSE_ALifeHumanAbstract::m_brain' is not initialized in the constructor.
+warning	src\xrServerEntities\character_info.h:35	uninitMemberVarNoCtor	Member variable 'SCharacterProfile::m_Rank' has no initializer.
+warning	src\xrServerEntities\character_info.h:36	uninitMemberVarNoCtor	Member variable 'SCharacterProfile::m_Reputation' has no initializer.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:125	useInitializationList	Variable 'm_dwMoney' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:603	useInitializationList	Variable 'm_owner_id' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:677	useInitializationList	Variable 'm_artefact_spawn_count' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:843	useInitializationList	Variable 's_group' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:853	useInitializationList	Variable 'm_ef_creature_type' is assigned in constructor body. Consider performing initialization in initialization list.
+performance	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:1003	useInitializationList	Variable 'm_group_id' is assigned in constructor body. Consider performing initialization in initialization list.
+error	src\xrUICore\Windows\UIWindow.h:362	syntaxError	syntax error
+warning	src\xrServerEntities\alife_human_brain.h:43	duplInheritedMember	The class 'CALifeHumanBrain' defines member function with name 'on_state_write' also defined in its parent class 'CALifeMonsterBrain'.
+warning	src\xrServerEntities\alife_human_brain.h:44	duplInheritedMember	The class 'CALifeHumanBrain' defines member function with name 'on_state_read' also defined in its parent class 'CALifeMonsterBrain'.
+warning	src\xrServerEntities\alife_human_brain_inline.h:11	duplInheritedMember	The class 'CALifeHumanBrain' defines member function with name 'object' also defined in its parent class 'CALifeMonsterBrain'.
+warning	src\xrServerEntities\xrServer_Objects_ALife_Monsters.cpp:1293	dangerousTypeCast	Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast

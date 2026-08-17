@@ -311,6 +311,11 @@ void game_cl_ArtefactHunt::GetMapEntities(xr_vector<SZoneMapEntityData>& dst)
 
     CArtefact* pArtefact = smart_cast<CArtefact*>(pObject);
     VERIFY(pArtefact);
+    // [DA_PORT] VERIFY исчезает в релизе. artefactID приходит из сети; net_Find
+    // может вернуть объект, который НЕ артефакт (десинк/чужой id) -> smart_cast даёт
+    // null -> pArtefact->H_Parent() падает. Мягкий обход.
+    if (!pArtefact)
+        return;
 
     IGameObject* pParent = pArtefact->H_Parent();
     if (!pParent)

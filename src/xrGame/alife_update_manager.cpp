@@ -351,9 +351,14 @@ bool CALifeUpdateManager::change_level(NET_Packet& net_packet)
     string256 autoave_name;
     strconcat(sizeof(autoave_name), autoave_name, Core.UserName, " - ", "autosave");
     LPCSTR temp0 = strchr(m_server_command_line->c_str(), '/');
-    VERIFY(temp0);
-    string256 temp;
-    *m_server_command_line = strconcat(sizeof(temp), temp, autoave_name, temp0);
+    // [DA_PORT] VERIFY вырезан в релизе: командная строка сервера без '/' давала null, который
+    // уходил прямо в strconcat → крах на автосейве при смене уровня. Без '/' просто не переписываем
+    // командную строку (в ней нет аргументов спавна), но автосейв всё равно делаем.
+    if (temp0)
+    {
+        string256 temp;
+        *m_server_command_line = strconcat(sizeof(temp), temp, autoave_name, temp0);
+    }
 
     save(autoave_name);
 

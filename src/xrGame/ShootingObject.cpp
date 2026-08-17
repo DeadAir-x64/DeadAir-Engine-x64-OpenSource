@@ -44,7 +44,18 @@ void CShootingObject::Load(LPCSTR section)
     //Alundaio: Two-shot burst rpm; used for Abakan/AN-94
     fModeShotTime = READ_IF_EXISTS(pSettings, r_float, section, "rpm_mode_2", fOneShotTime);
 
-    VERIFY(fOneShotTime > 0.f);
+    // [DA_PORT] Живая проверка вместо VERIFY: rpm читается из конфига оружия (данные мода), а строкой
+    // ниже на него ДЕЛЯТ (60/rpm = время выстрела). При rpm 0 в релизе, где VERIFY вырезан, это
+    // деление на ноль — бесконечное время выстрела, оружие не стреляет. Опечатка в секции оружия
+    // или незаполненный rpm этого достаточно. Тот же разбор для rpm_mode_2 (двухпатронная очередь).
+    if (fOneShotTime <= 0.f)
+    {
+        Msg("! [DA] оружие [%s]: rpm = %.1f (должно быть > 0) — взято 600", section, fOneShotTime);
+        fOneShotTime = 600.f;
+    }
+    if (fModeShotTime <= 0.f)
+        fModeShotTime = fOneShotTime;
+
     fOneShotTime = 60.f / fOneShotTime;
     fModeShotTime = 60.f / fModeShotTime;
 

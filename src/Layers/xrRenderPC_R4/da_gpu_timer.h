@@ -130,4 +130,33 @@ private:
 };
 
 extern da_gpu_timer g_da_gpu_timer;
+
+// [DA_PORT] Чем был занят главный поток в зоне wait_cull: сколько чужих задач он успел выполнить и
+// сколько раз крутнулся впустую. Полный разбор -- у da_wait_stats в TaskManager.hpp.
+//
+// Коротко: одни и те же миллисекунды ожидания означают либо настоящий пузырь, либо честную работу
+// кадра, просто записанную в эту зону, -- а лечение у них противоположное. Числа печатаются в конце
+// строки DA_GPU как steal <выполнено>/<холостых>.
+void da_gpu_set_cull_wait(u32 executed, u32 idle_spins);
+
+// [DA_PORT] Из чего складывается сам расчёт видимости: порталы / статика / динамика, мс.
+// Разбор -- в build_subspace (r__dsgraph_build.cpp). Печатается как cull <порталы>/<статика>/<динамика>.
+void da_gpu_set_cull_parts(double portals_ms, double statics_ms, double dynamics_ms);
+
+// [DA_PORT] Динамика по частям: сбор из дерева / сортировка по дальности / определение сектора, мс,
+// и число объектов. Печатается как dyn <сбор>/<сортировка>/<сектор> xN. Остаток тела цикла --
+// это динамика минус три эти числа.
+void da_gpu_set_cull_dyn(double collect_ms, double sort_ms, double sector_ms, u32 count, u32 sector_hits);
+
+// [DA_PORT] Тело цикла динамики: программный тест перекрытия и построение списков отрисовки, мс.
+// Печатается как body <hom>/<render>. Остаток тела = динамика минус сбор, сортировка, сектор и эти два.
+void da_gpu_set_cull_body(double hom_ms, double render_ms);
+
+// [DA_PORT] Внутри renderable_Render: расчёт костей и следов на скелетных моделях, мс, плюс число
+// скелетов и листовых визуалов за кадр. Печатается как skel <кости>/<следы> s<скелетов> l<листьев>.
+void da_gpu_set_cull_skel(double bones_ms, double wallmarks_ms, u32 skeletons, u32 leafs, u32 exact);
+
+// [DA_PORT] Вторая половина G-буфера по частям: интерфейс с оружием / импосторы / трава, мс.
+// Печатается как g2 <hud>/<lods>/<трава>. Повод -- 0.90 мкс на вызов против 0.56 у первой половины.
+void da_gpu_set_gbuf2(double hud_ms, double lods_ms, double details_ms);
 } // namespace xray::render::RENDER_NAMESPACE

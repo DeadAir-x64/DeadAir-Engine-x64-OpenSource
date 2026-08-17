@@ -47,7 +47,10 @@ bool CAI_Stalker::tradable_item(CInventoryItem* inventory_item, const u16& curre
     {
         CPda* pda = smart_cast<CPda*>(inventory_item);
         VERIFY(pda);
-        if (pda->GetOriginalOwnerID() == current_owner_id)
+        // [DA_PORT] smart_cast чужого объекта: предмет с CLS_ID == PDA не обязан быть CPda
+        // (мод мог зарегистрировать другой класс на этот clsid). В релизе VERIFY исчезает и
+        // pda->GetOriginalOwnerID() разыменует null. Проверяем указатель перед обращением.
+        if (pda && pda->GetOriginalOwnerID() == current_owner_id)
             return (false);
     }
 

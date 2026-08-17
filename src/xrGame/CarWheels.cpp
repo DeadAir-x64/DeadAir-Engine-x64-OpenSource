@@ -77,7 +77,15 @@ void CCar::SWheel::Load(LPCSTR section)
 {
     IKinematics* K = PKinematics(car->Visual());
     CInifile* ini = K->LL_UserData();
-    VERIFY(ini);
+    // [DA_PORT] Живая проверка вместо VERIFY: LL_UserData отдаёт ноль, если у модели машины нет
+    // блока user data, а это свойство ФАЙЛА МОДЕЛИ — то есть данных мода, а не кода. Строка ниже
+    // сразу зовёт у него section_exist.
+    if (!ini)
+    {
+        Msg("! [DA] колесо машины [%s]: у модели нет user data — настройки колеса взяты по умолчанию",
+            car->cName().c_str());
+        return;
+    }
     if (ini->section_exist(section))
     {
         collision_params.damping_factor =
@@ -376,7 +384,17 @@ void CCar::SWheelBreak::Load(LPCSTR section)
 {
     IKinematics* K = PKinematics(pwheel->car->Visual());
     CInifile* ini = K->LL_UserData();
-    VERIFY(ini);
+    // [DA_PORT] См. SWheel::Load выше. Здесь важнее: break_torque и hand_break_torque — обычные
+    // float без инициализации в объявлении, так что просто выйти нельзя — тормоза получили бы
+    // мусорное усилие. Обнуляем явно: машина без user data останется без тормозов, но поедет.
+    if (!ini)
+    {
+        break_torque = 0.f;
+        hand_break_torque = 0.f;
+        Msg("! [DA] тормоза машины [%s]: у модели нет user data — усилие обнулено",
+            pwheel->car->cName().c_str());
+        return;
+    }
     break_torque = ini->r_float("car_definition", "break_torque");
     hand_break_torque = READ_IF_EXISTS(ini, r_float, "car_definition", "hand_break_torque", break_torque);
     if (ini->section_exist(section))

@@ -77,6 +77,13 @@ CSE_ALifeSmartZone& CALifeMonsterBrain::smart_terrain()
 
 void CALifeMonsterBrain::process_task()
 {
+    // [DA_PORT] В релизе VERIFY внутри smart_terrain()/реестра вырезаны: незаданный
+    // m_smart_terrain_id (0xffff) или отсутствие умного места в реестре роняли оффлайн-ALife
+    // разыменованием нуля/end(). Существо в этом случае просто сохраняет прежнюю цель.
+    if (object().m_smart_terrain_id == 0xffff ||
+        !ai().alife().smart_terrains().object(object().m_smart_terrain_id, true))
+        return;
+
     CALifeSmartTerrainTask* task = smart_terrain().task(&object());
 
     // [DA_PORT] Сообщение вместо броска.

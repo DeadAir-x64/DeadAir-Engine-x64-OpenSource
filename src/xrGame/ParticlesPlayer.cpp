@@ -71,7 +71,18 @@ CParticlesPlayer::CParticlesPlayer()
 CParticlesPlayer::~CParticlesPlayer() { VERIFY(!m_self_object); }
 void CParticlesPlayer::LoadParticles(IKinematics* K)
 {
-    VERIFY(K);
+    // [DA_PORT] Живая проверка вместо VERIFY. Все вызывающие передают сюда
+    // smart_cast<IKinematics*>(Visual()), а он даёт ноль, если у объекта визуал БЕЗ СКЕЛЕТА — либо
+    // так задумано в модели мода, либо модель не загрузилась и движок молча подставил заглушку
+    // (см. docs, «подстановка заглушки»). Дальше идёт K->LL_UserData().
+    //
+    // Выходим ДО m_Bones.clear(): в конструкторе уже лежит корневая кость с нулевым смещением,
+    // и на ней эффекты играют от центра объекта — то есть эффекты остаются, просто без привязки.
+    if (!K)
+    {
+        Msg("! [DA] эффекты: визуал без скелета — кости привязки не читаем, играем от центра объекта");
+        return;
+    }
 
     m_Bones.clear();
 
@@ -206,7 +217,10 @@ void CParticlesPlayer::StopParticles(u16 sender_id, u16 bone_id, bool bDestroy)
     {
         SBoneInfo* bi = get_bone_info(bone_id);
         VERIFY(bi);
-        bi->StopParticles(sender_id, bDestroy);
+        // [DA_PORT] bone_id из скрипта/сети: валидная кость скелета может отсутствовать в
+        // секции particle_bones, тогда get_bone_info даёт ноль. VERIFY в релизе исчезает — мягкий обход.
+        if (bi)
+            bi->StopParticles(sender_id, bDestroy);
     }
     UpdateParticles();
 }
@@ -222,7 +236,9 @@ void CParticlesPlayer::StopParticles(const shared_str& ps_name, u16 bone_id, boo
     {
         SBoneInfo* bi = get_bone_info(bone_id);
         VERIFY(bi);
-        bi->StopParticles(ps_name, bDestroy);
+        // [DA_PORT] см. выше: bone_id из скрипта может не иметь записи в particle_bones.
+        if (bi)
+            bi->StopParticles(ps_name, bDestroy);
     }
     UpdateParticles();
 }
@@ -243,9 +259,13 @@ void CParticlesPlayer::AutoStopParticles(const shared_str& ps_name, u16 bone_id,
     {
         SBoneInfo* bi = get_bone_info(bone_id);
         VERIFY(bi);
-        SParticlesInfo* pInfo = bi->FindParticles(ps_name);
-        if (pInfo)
-            pInfo->life_time = life_time;
+        // [DA_PORT] см. выше: bone_id из скрипта может не иметь записи в particle_bones.
+        if (bi)
+        {
+            SParticlesInfo* pInfo = bi->FindParticles(ps_name);
+            if (pInfo)
+                pInfo->life_time = life_time;
+        }
     }
 }
 

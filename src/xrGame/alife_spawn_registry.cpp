@@ -57,7 +57,10 @@ void CALifeSpawnRegistry::load(IReader& file_stream, LPCSTR game_name)
 
     xrGUID guid;
     chunk = chunk0->open_chunk(0);
-    VERIFY(chunk);
+    // [DA_PORT] Живая проверка вместо VERIFY: имя расстановки читается прямо отсюда, и без куска
+    // это разыменование нуля на самой загрузке. Соседняя строка про сам SPAWN_CHUNK_DATA проверена
+    // через R_ASSERT2 (он в релизе живой) — а вложенный кусок остался без защиты вовсе.
+    R_ASSERT2(chunk, "Повреждено сохранение: в SPAWN_CHUNK_DATA нет куска 0 с именем расстановки");
     chunk->r_stringZ(m_spawn_name);
     chunk->r(&guid, sizeof(guid));
     chunk->close();
@@ -151,9 +154,38 @@ void CALifeSpawnRegistry::load_updates(IReader& stream)
     for (IReader* chunk = stream.open_chunk_iterator(vertex_id); chunk;
          chunk = stream.open_chunk_iterator(vertex_id, chunk))
     {
-        VERIFY(u32(ALife::_SPAWN_ID(-1)) > vertex_id);
+        // [DA_PORT] Номер вершины спавна берётся ИЗ ФАЙЛА СОХРАНЕНИЯ, и обе проверки под ним были
+        // через VERIFY — то есть в релизе отсутствовали, а следом шло разыменование.
+        //
+        // Когда это стреляет: сохранение сделано на одной расстановке объектов, а загружается на
+        // другой — обновили мод, пересобрали spawn, добавили или убрали объекты. Номер из старого
+        // сохранения указывает в пустоту, и загрузка падает без единого слова о причине.
+        //
+        // Найдено заходом по VERIFY на путях загрузки (da_port/tools/verify_audit.py) — после трёх
+        // вылетов одного класса за день: #73 кросс-таблица, #74 уборка потомков, #75 метка карты.
+        //
+        // Пропуск, а не фатал: обновление для несуществующей вершины применять некуда, а остальные
+        // обновления от этого не портятся. Сохранение загрузится, пусть и без части состояния.
+        if (u32(ALife::_SPAWN_ID(-1)) <= vertex_id)
+        {
+            Msg("! [DA] обновление спавна: номер вершины %u вне допустимого — пропущено", vertex_id);
+            continue;
+        }
+
         const SPAWN_GRAPH::CVertex* vertex = m_spawns.vertex(ALife::_SPAWN_ID(vertex_id));
-        VERIFY(vertex);
+        if (!vertex)
+        {
+            static u32 reported = 0;
+            if (reported < 8)
+            {
+                ++reported;
+                Msg("! [DA] обновление спавна: вершины %u нет в расстановке — пропущено%s "
+                    "(сохранение сделано на другой расстановке объектов)",
+                    vertex_id, (reported == 8) ? " (дальнейшие сообщения подавлены)" : "");
+            }
+            continue;
+        }
+
         vertex->data()->load_update(*chunk);
     }
 }

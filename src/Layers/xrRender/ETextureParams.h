@@ -161,7 +161,9 @@ struct ECORE_API STextureParams
         default: return FALSE;
         }
     }
-    void Load(IReader& F);
+    // [DA_PORT] Возвращает false, если чанк параметров усечён (битый .thm). Раньше был void и читал
+    // за концом файла — см. ETextureParams.cpp.
+    bool Load(IReader& F);
     void Save(IWriter& F);
 #ifdef _EDITOR
     PropValue::TOnChange OnTypeChangeEvent;

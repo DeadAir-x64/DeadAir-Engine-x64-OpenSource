@@ -34,6 +34,11 @@ void moving_bones_snd_player::update(float time_delta, CGameObject& object)
 {
     VERIFY(sound._handle());
 
+    // [DA_PORT] Кости нет — играть не от чего (см. load). Ноль базовой скорости отсеиваем здесь же:
+    // ниже на неё делят, и из конфига она приходит как есть.
+    if (BI_NONE == bone_id || fis_zero(base_velocity))
+        return;
+
     Fmatrix new_position;
     new_position.mul_43(object.XFORM(), bone_matrix());
 
@@ -127,7 +132,16 @@ void moving_bones_snd_player::load(IKinematics& K, CInifile& ini, LPCSTR section
     sound.create(ini.r_string(section, "sound"), st_Effect, sg_SourceType);
     VERIFY(sound._handle());
     bone_id = kinematics->LL_BoneID(ini.r_string(section, "bone"));
-    VERIFY(BI_NONE != bone_id);
+    // [DA_PORT] Живая проверка вместо VERIFY, и она важнее прочих в этом файле: имя кости берётся
+    // из user data модели или spawn_ini — то есть из данных мода, — а LL_BoneID отдаёт BI_NONE
+    // (0xFFFF), если такой кости в скелете нет. Дальше bone_matrix() зовёт LL_GetTransform(bone_id),
+    // и это чтение ЗА КОНЦОМ массива костей, КАЖДЫЙ КАДР.
+    //
+    // Не бросаем: звук — украшение, из-за опечатки в имени кости объект целиком терять незачем.
+    // update() ниже сам выходит, пока кость не найдена.
+    if (BI_NONE == bone_id)
+        Msg("! [DA] звук движущейся кости: кость [%s] в скелете не найдена — звук отключён",
+            ini.r_string(section, "bone"));
     min_factor = ini.r_float(section, "min_factor");
     max_factor = ini.r_float(section, "max_factor");
     base_velocity = ini.r_float(section, "base_velocity");

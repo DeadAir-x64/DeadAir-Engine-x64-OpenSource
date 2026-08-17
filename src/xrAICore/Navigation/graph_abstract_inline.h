@@ -51,6 +51,10 @@ IC void CAbstractGraph::add_edge(
     VERIFY(_vertex0);
     CVertex* _vertex1 = vertex(vertex_id1);
     VERIFY(_vertex1);
+    // [DA_PORT] §1 recall-audit: построение графа на загрузке; при битом/рассинхронном графе vertex()
+    // отдаёт null, VERIFY снят в релизе. Пропускаем негодное ребро вместо разыменования null.
+    if (!_vertex0 || !_vertex1)
+        return;
     _vertex0->add_edge(_vertex1, edge_weight);
 }
 

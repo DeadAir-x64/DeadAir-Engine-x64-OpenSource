@@ -177,7 +177,14 @@ void SArtefactActivation::SpawnAnomaly()
     CSE_Abstract* object = Level().spawn_item(
         zone_sect, pos, (GEnv.isDedicatedServer) ? u32(-1) : m_af->ai_location().level_vertex_id(), 0xffff, true);
     CSE_ALifeAnomalousZone* AlifeZone = smart_cast<CSE_ALifeAnomalousZone*>(object);
-    VERIFY(AlifeZone);
+    // [DA_PORT] Живая проверка вместо VERIFY: секция зоны берётся из настроек превращения
+    // артефакта, то есть из данных мода, и spawn_item отдаёт ноль, если её нет.
+    if (!AlifeZone)
+    {
+        Msg("! [DA] превращение артефакта: зона [%s] не создана — аномалия не появится",
+            zone_sect ? zone_sect : "без имени");
+        return;
+    }
     CShapeData::shape_def _shape;
     _shape.data.sphere.P.set(0.0f, 0.0f, 0.0f);
     _shape.data.sphere.R = zone_radius;

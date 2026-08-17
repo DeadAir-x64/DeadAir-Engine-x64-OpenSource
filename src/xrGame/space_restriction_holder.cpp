@@ -49,6 +49,13 @@ shared_str CSpaceRestrictionHolder::normalize_string(shared_str space_restrictor
         }
 
         *i = 0;
+        // [DA_PORT] §4 audit: space_restrictors — строка из конфига; при числе рестрикторов больше лимита
+        // string_current уходил за стек-массив strings[] (VERIFY снят в релизе = порча стека). Обрубаем.
+        if (u32(string_current - strings) >= MAX_RESTRICTION_PER_TYPE_COUNT)
+        {
+            Msg("! [DA] рестрикторов в секции больше %u — лишние отброшены", (u32)MAX_RESTRICTION_PER_TYPE_COUNT);
+            break;
+        }
         VERIFY(u32(string_current - strings) < MAX_RESTRICTION_PER_TYPE_COUNT);
         *string_current = j;
         ++string_current;
@@ -58,9 +65,12 @@ shared_str CSpaceRestrictionHolder::normalize_string(shared_str space_restrictor
         return (space_restrictors);
 
     *i = 0;
-    VERIFY(u32(string_current - strings) < MAX_RESTRICTION_PER_TYPE_COUNT);
-    *string_current = j;
-    ++string_current;
+    // [DA_PORT] §4 audit: тот же лимит для последнего элемента — не писать за границей strings[].
+    if (u32(string_current - strings) < MAX_RESTRICTION_PER_TYPE_COUNT)
+    {
+        *string_current = j;
+        ++string_current;
+    }
 
     // 2. sort the vector (svector???)
     std::sort(strings, string_current, pred_str());

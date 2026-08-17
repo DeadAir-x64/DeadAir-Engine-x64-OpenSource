@@ -209,8 +209,13 @@ bool CWeapon::install_upgrade_hit(LPCSTR section, bool test)
     result2 = process_if_exists(section, "rpm", &CInifile::r_float, rpm, test);
     if (result2 && !test)
     {
-        VERIFY(rpm > 0.0f);
-        fOneShotTime = 60.0f / rpm;
+        // [DA_PORT] rpm читается из секции апгрейда (данные мода); VERIFY вырезан в релизе, а строкой
+        // ниже на него делят (60/rpm = время выстрела). При rpm <= 0 — деление на ноль, оружие
+        // перестаёт стрелять. Оставляем прежнее время выстрела вместо порчи.
+        if (rpm > 0.0f)
+            fOneShotTime = 60.0f / rpm;
+        else
+            Msg("! [DA] апгрейд [%s]: rpm = %.1f (должно быть > 0) — время выстрела не изменено", section, rpm);
     }
     result |= result2;
 

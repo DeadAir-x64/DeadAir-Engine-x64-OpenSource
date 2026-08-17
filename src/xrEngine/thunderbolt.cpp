@@ -26,6 +26,10 @@ SThunderboltDesc::SThunderboltDesc(const CInifile& pIni, shared_str const& sect)
     name = sect;
     color_anim = LALib.FindItem(pIni.r_string(sect, "color_anim"));
     VERIFY(color_anim);
+    // [DA_PORT] color_anim ищется в LALib по имени из конфига .ltx; битый/отсутствующий
+    // цветовой анимационный набор -> FindItem вернёт null, а VERIFY снят в релизе -> краш на строке ниже
+    if (!color_anim)
+        return;
     color_anim->fFPS = (float)color_anim->iFrameCount;
 
     // models

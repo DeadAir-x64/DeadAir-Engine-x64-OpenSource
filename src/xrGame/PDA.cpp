@@ -89,6 +89,8 @@ void CPda::feel_touch_new(IGameObject* O)
     {
         CInventoryOwner* pOwner = smart_cast<CInventoryOwner*>(H_Parent());
         VERIFY(pOwner);
+        if (!pOwner) // [DA_PORT] H_Parent() может быть 0 (PDA без владельца); sibling feel_touch_delete уже так делает
+            return;
         pOwner->NewPdaContact(pNewContactInvOwner);
     }
 }

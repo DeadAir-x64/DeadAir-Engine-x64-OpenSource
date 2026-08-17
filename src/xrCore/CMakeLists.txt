@@ -343,6 +343,8 @@ target_sources_grouped(
     Memory/xalloc.h
     xrMemory.cpp
     xrMemory.h
+    da_heap_guard.cpp # [DA_PORT] карантин освобождённой памяти
+    da_heap_guard.h
     #Memory/xrMemory_align.cpp
     #Memory/xrMemory_align.h
 )

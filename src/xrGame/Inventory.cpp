@@ -345,6 +345,15 @@ bool CInventory::Slot(u16 slot_id, PIItem pIItem, bool bNotActivate, bool strict
 {
     VERIFY(pIItem);
 
+    // [DA_PORT] Номер слота берётся из конфига предмета мода; негодный (>= числа слотов) писал
+    // в m_slots[slot_id] за границы вектора. ItemFromSlot() ниже уже прикрыт, а сама запись — нет.
+    if (slot_id >= m_slots.size())
+    {
+        Msg("! [DA] предмет [%s] просит слот %u вне диапазона (слотов %u) — отклонён",
+            pIItem->object().cNameSect().c_str(), slot_id, (u16)m_slots.size());
+        return false;
+    }
+
     if (ItemFromSlot(slot_id) == pIItem)
         return false;
 
@@ -1611,6 +1620,11 @@ void CInventory::BlockSlot(u16 slot_id)
 {
     VERIFY2(slot_id <= LastSlot(), make_string("wrong slot number. Slot = %d, LastSlot() = %d", slot_id, LastSlot()).c_str());
 
+    // [DA_PORT] В релизе VERIFY вырезан: слот из конфига предмета/детектора за границей вектора
+    // писал в чужую память. Молча игнорируем негодный слот.
+    if (slot_id >= m_blocked_slots.size())
+        return;
+
     ++m_blocked_slots[slot_id];
 
     VERIFY2(m_blocked_slots[slot_id] < 5, make_string("blocked slot [%d] overflow").c_str());
@@ -1619,7 +1633,10 @@ void CInventory::BlockSlot(u16 slot_id)
 void CInventory::UnblockSlot(u16 slot_id)
 {
     VERIFY2(slot_id <= LastSlot(), make_string("wrong slot number. Slot = %d, LastSlot() = %d", slot_id, LastSlot()).c_str());
-    VERIFY2(m_blocked_slots[slot_id] > 0, make_string("blocked slot [%d] underflow").c_str());
+
+    // [DA_PORT] см. BlockSlot: защита от негодного номера слота в релизе.
+    if (slot_id >= m_blocked_slots.size() || m_blocked_slots[slot_id] == 0)
+        return;
 
     --m_blocked_slots[slot_id];
 }
@@ -1627,6 +1644,10 @@ void CInventory::UnblockSlot(u16 slot_id)
 bool CInventory::IsSlotBlocked(u16 slot_id) const
 {
     VERIFY2(slot_id <= LastSlot(), make_string("wrong slot number. Slot = %d, LastSlot() = %d", slot_id, LastSlot()).c_str());
+
+    // [DA_PORT] см. BlockSlot: за границей вектора считался мусор.
+    if (slot_id >= m_blocked_slots.size())
+        return false;
     return m_blocked_slots[slot_id] > 0;
 }
 

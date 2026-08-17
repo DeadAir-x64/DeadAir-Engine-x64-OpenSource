@@ -15,7 +15,15 @@ void CItemMgr::Load(const shared_str& sect_cost)
         val.slot_idx = 0xff;
         int c = sscanf(
             it->second.c_str(), "%d,%d,%d,%d,%d", &val.cost[0], &val.cost[1], &val.cost[2], &val.cost[3], &val.cost[4]);
-        VERIFY(c > 0);
+        // [DA_PORT] Живая проверка вместо VERIFY, и здесь она защищает от ЧТЕНИЯ ЗА ГРАНИЦЕЙ, а не
+        // от разыменования: при c == 0 (строка не разобралась вовсе) цикл ниже берёт cost[c - 1],
+        // то есть cost[-1]. Строка приходит из конфига мода, так что «не разобралось» — обычное
+        // дело: достаточно опечатки или пустого значения.
+        if (c <= 0)
+        {
+            Msg("! [DA] цены [%s]: строка не разобрана — запись пропущена", it->first.c_str());
+            continue;
+        }
 
         while (c < _RANK_COUNT)
         {
@@ -48,6 +56,10 @@ u32 CItemMgr::GetItemCost(const shared_str& sect_name, u32 rank) const
 {
     COST_MAP_CIT it = m_items.find(sect_name);
     VERIFY(it != m_items.end());
+    // [DA_PORT] VERIFY исчезает в релизе. sect_name из конфига; при отсутствии записи
+    // it == end() и it->second падает (ср. GetItemIdx, где промах штатно обработан).
+    if (it == m_items.end())
+        return 0;
     return it->second.cost[rank];
 }
 
@@ -55,6 +67,10 @@ u8 CItemMgr::GetItemSlotIdx(const shared_str& sect_name) const
 {
     COST_MAP_CIT it = m_items.find(sect_name);
     VERIFY(it != m_items.end());
+    // [DA_PORT] VERIFY исчезает в релизе. sect_name из конфига; при промахе it->second
+    // падает (ср. GetItemIdx с корректной обработкой end()). Возвращаем «нет слота».
+    if (it == m_items.end())
+        return 0xff;
     return it->second.slot_idx;
 }
 

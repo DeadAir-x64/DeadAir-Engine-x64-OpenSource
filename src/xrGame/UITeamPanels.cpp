@@ -70,6 +70,11 @@ void UITeamPanels::InitAllTeams(shared_str const& team_node)
         LPCSTR tempTeamName = uiXml.ReadAttrib(tempTeamNode, "tname", "team_not_set_in_tname_xml_attribute");
         UITeamState* tempTeamPanel = panelsFactory.CreateTeamPanel(tempTeamName, this);
         VERIFY2(tempTeamPanel, make_string("failed to create team panel \"%s\"", tempTeamName).c_str());
+        // [DA_PORT] CreateTeamPanel возвращает NULL для незнакомого tname (значение из XML-атрибута,
+        // дефолт "team_not_set_in_tname_xml_attribute" тоже неизвестен). В релизе VERIFY2 исчезает и
+        // следующий Init() падает по нулю. Пропускаем битый узел вместо краша.
+        if (!tempTeamPanel)
+            continue;
         tempTeamPanel->Init(uiXml, team_node.c_str(), i);
         tempTeamPanel->SetAutoDelete(true);
         AttachChild(tempTeamPanel);

@@ -249,6 +249,11 @@ bool CUIInventoryUpgradeWnd::install_item(CInventoryItem& inv_item, bool can_upg
 
         Upgrade_type* upgrade_p = get_manager().get_upgrade(upgrade_name);
         VERIFY(upgrade_p);
+        // [DA_PORT] upgrade_name берётся из схемы апгрейдов (конфиг мода); get_upgrade() вернёт null,
+        // если такого апгрейда нет в реестре (опечатка/рассинхрон конфигов). В релизе VERIFY исчезает,
+        // и upgrade_p->get_property_name()/icon_name() ниже разыменуют null. Пропускаем битую ячейку.
+        if (!upgrade_p)
+            continue;
         for (u8 i = 0; i < inventory::upgrade::max_properties_count; i++)
         {
             shared_str prop_name = upgrade_p->get_property_name(i);

@@ -128,6 +128,13 @@ void CUICharacterInfo::InitCharacter(u16 id)
     m_ownerID = id;
 
     CSE_ALifeTraderAbstract* T = ch_info_get_from_id(m_ownerID);
+    // [DA_PORT] ch_info_get_from_id (smart_cast) отдаёт null на несуществующий/не-трейдерский id;
+    // Update() ниже это уже учитывает — здесь тот же контракт: нет владельца, панель не заполняем (CodeQL).
+    if (!T)
+    {
+        m_ownerID = u16(-1);
+        return;
+    }
 
     CCharacterInfo chInfo;
     chInfo.Init(T);
@@ -294,6 +301,15 @@ void CUICharacterInfo::UpdateRelation()
 
         CSE_ALifeTraderAbstract* T = ch_info_get_from_id(m_ownerID);
         CSE_ALifeTraderAbstract* TA = ch_info_get_from_id(Actor()->ID());
+
+        // [DA_PORT] GetAttitude сразу разыменовывает оба аргумента (from->object_id()); при выбывшем
+        // владельце ch_info_get_from_id отдаёт null — прячем строку отношения, а не падаем (CodeQL).
+        if (!T || !TA)
+        {
+            m_icons[eRelationCaption]->Show(false);
+            m_icons[eRelation]->Show(false);
+            return;
+        }
 
         SetRelation(RELATION_REGISTRY().GetRelationType(T, TA), RELATION_REGISTRY().GetAttitude(T, TA));
     }

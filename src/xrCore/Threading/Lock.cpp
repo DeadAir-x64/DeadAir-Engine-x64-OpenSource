@@ -67,6 +67,7 @@ void Lock::Enter()
 // constructed across DLL boundaries (e.g. PlayersMonitor::csPlayers), leaving
 // CRITICAL_SECTION zeroed -> SIGSEGV in RtlEnterCriticalSection. Out-of-line forces
 // the ctor symbol to be imported and called.
+#ifdef XR_PLATFORM_WINDOWS
 Lock::Lock() { InitializeCriticalSection(&cs); }
 
 Lock::~Lock() { DeleteCriticalSection(&cs); }
@@ -86,6 +87,26 @@ Lock& Lock::operator=(Lock&& other) noexcept(false)
 void Lock::Enter() { EnterCriticalSection(&cs); }
 bool Lock::TryEnter() { return !!TryEnterCriticalSection(&cs); }
 void Lock::Leave() { LeaveCriticalSection(&cs); }
+#else
+// [DA_PORT] Не-Windows: тот же договор на std::recursive_mutex. Разбор — у поля cs в Lock.hpp.
+//
+// Перемещение повторяет поведение ветки Windows: чужой замок НЕ переносится, у нового объекта свой
+// собственный. Так было и там — InitializeCriticalSection на приёмнике, источник не трогается.
+Lock::Lock() = default;
+Lock::~Lock() = default;
+
+Lock::Lock(Lock&& other) noexcept(false) { (void)other; }
+
+Lock& Lock::operator=(Lock&& other) noexcept(false)
+{
+    (void)other;
+    return *this;
+}
+
+void Lock::Enter() { cs.lock(); }
+bool Lock::TryEnter() { return cs.try_lock(); }
+void Lock::Leave() { cs.unlock(); }
+#endif // XR_PLATFORM_WINDOWS
 #endif // CONFIG_PROFILE_LOCKS
 
 #ifdef DEBUG

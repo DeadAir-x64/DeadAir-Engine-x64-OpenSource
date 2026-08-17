@@ -427,6 +427,20 @@ ShaderElement* CBlender_Compile::_lua_Compile(LPCSTR namesp, LPCSTR name)
     using namespace luabind;
 
     ShaderElement E;
+
+    // [DA_PORT] SH — ПОЛЕ КЛАССА (Blender_Recorder.h), а E живёт только до конца этой функции.
+    // После возврата поле указывало на уничтоженный объект, и так оставалось до следующей
+    // компиляции. Нашёл cppcheck (danglingLifetime); читают `SH->` двенадцать мест слоя рендера.
+    //
+    // Пока никто не обращался к нему между вызовами, поэтому дефект был тихим — но это свойство
+    // вызывающего кода, а не гарантия. Достаточно одного нового чтения, чтобы получить вылет,
+    // который ничем себя не объяснит.
+    //
+    // ⚠️ Восстанавливаем прежнее значение, а НЕ обнуляем. Компиляция может оказаться вложенной:
+    // скрипт шейдера через adopt_compiler зовёт методы того же компилятора. Обнуление на выходе из
+    // внутреннего вызова оставило бы внешний с пустым SH — то есть починка одного тихого дефекта
+    // создала бы громкий.
+    ShaderElement* const prev_SH = SH;
     SH = &E;
     RS.Invalidate();
 
@@ -473,6 +487,7 @@ ShaderElement* CBlender_Compile::_lua_Compile(LPCSTR namesp, LPCSTR name)
 
     r_End();
     ShaderElement* _r = RImplementation.Resources->_CreateElement(std::move(E));
+    SH = prev_SH; // [DA_PORT] E умирает следующей строкой — поле не должно её пережить
     return _r;
 }
 } // namespace xray::render::RENDER_NAMESPACE

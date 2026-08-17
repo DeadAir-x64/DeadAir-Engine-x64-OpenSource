@@ -70,7 +70,20 @@ void CSE_ALifeAnomalousZone::spawn_artefacts()
     }
 
     u32 n = _GetItemCount(artefacts);
-    VERIFY2(!(n % 2), "Invalid parameters count in line artefacts for anomalous zone");
+
+    // [DA_PORT] Живая проверка вместо VERIFY2: строка artefacts читается из конфига зоны и обязана
+    // содержать ПАРЫ «секция, вес». При нечётном числе полей n/2 округляется вниз, а разбор пар
+    // ниже уходит за последнее поле — то есть за границу разобранной строки.
+    //
+    // Опечатка в конфиге мода — лишняя или пропущенная запятая — этого достаточно.
+    if (n % 2)
+    {
+        Msg("! [DA] аномальная зона [%s]: в строке artefacts %u полей, нужны ПАРЫ «секция, вес» — "
+            "артефакты не порождаем",
+            name_replace(), n);
+        return;
+    }
+
     n /= 2;
 
     typedef std::pair<shared_str, float> Weight;

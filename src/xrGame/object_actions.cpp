@@ -186,7 +186,10 @@ void CObjectActionReload::initialize()
     {
         CWeapon* weapon = smart_cast<CWeapon*>(&m_item->object());
         VERIFY(weapon);
-        try_advance_ammo(*weapon);
+        // [DA_PORT] VERIFY вырезан в релизе: активным предметом мода может оказаться не-оружие —
+        // smart_cast даёт null, а *weapon разыменовывает его.
+        if (weapon)
+            try_advance_ammo(*weapon);
     }
 
     object().inventory().Action(kWPN_RELOAD, CMD_START);
@@ -202,6 +205,9 @@ void CObjectActionReload::execute()
 
     CWeapon* weapon = smart_cast<CWeapon*>(object().inventory().ActiveItem());
     VERIFY(weapon);
+    // [DA_PORT] см. initialize(): активный предмет может быть не-оружием; в релизе VERIFY вырезан.
+    if (!weapon)
+        return;
     if (weapon->IsPending())
         return;
 

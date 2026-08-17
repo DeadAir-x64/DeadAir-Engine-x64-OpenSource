@@ -41,9 +41,22 @@ const xr_token tmtl_token[] = {{"OrenNayar <-> Blin", STextureParams::tmOrenNaya
 const xr_token tbmode_token[] = {{"None", STextureParams::tbmNone}, {"Use", STextureParams::tbmUse},
     {"Use parallax", STextureParams::tbmUseParallax}, {nullptr, 0}};
 
-void STextureParams::Load(IReader& F)
+bool STextureParams::Load(IReader& F)
 {
-    R_ASSERT(F.find_chunk(THM_CHUNK_TEXTUREPARAM));
+    // [DA_PORT] Проверяем не НАЛИЧИЕ чанка, а его РАЗМЕР. Раньше здесь стоял R_ASSERT(find_chunk),
+    // который убеждался только в том, что чанк есть, — а дальше семь r_u32 читали фиксированную
+    // часть, не глядя, помещается ли она. Усечённый .thm (битый файл в gamedata мода или thm от
+    // старого SDK) проверку проходил, и чтение уходило за конец чанка.
+    //
+    // В релизе VERIFY(Pos<=Size) внутри advance вырезан: читался МУСОР — width/height текстуры
+    // получались произвольными молча. В сборке Mixed этот VERIFY роняет загрузку — так дефект и
+    // всплыл. Возвращаем false, чтобы вызывающий назвал негодный файл и пропустил его, а не принял
+    // мусорные параметры за настоящие.
+    const size_t param_size = F.find_chunk(THM_CHUNK_TEXTUREPARAM);
+    constexpr size_t fixed_part = sizeof(ETFormat) + 7 * sizeof(u32);
+    if (param_size < fixed_part)
+        return false;
+
     F.r(&fmt, sizeof(ETFormat));
     flags.assign(F.r_u32());
     border_color = F.r_u32();
@@ -86,6 +99,8 @@ void STextureParams::Load(IReader& F)
 
     if (F.find_chunk(THM_CHUNK_FADE_DELAY))
         fade_delay = F.r_u8();
+
+    return true;
 }
 
 void STextureParams::Save(IWriter& F)

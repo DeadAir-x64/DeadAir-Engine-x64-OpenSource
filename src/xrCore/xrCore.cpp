@@ -15,6 +15,7 @@
 #endif
 #include "xrCore.h"
 #include "xrCore/_std_extensions.h"
+#include "xrCore/da_heap_guard.h" // [DA_PORT] пометка прогона с карантином в первых строках лога
 #include "Threading/TaskManager.hpp"
 
 #include <SDL.h>
@@ -139,6 +140,16 @@ void xrCore::PrintBuildInfo()
 
     if (!xr_strcmp(GetBuildCommit(), "unknown") || !xr_strcmp(GetBuildCommit(), "no-git"))
         Log("! [DA_PORT] ревизия в сборку не попала: лог этой сборки будет не с чем сопоставить при разборе краша");
+
+    // [DA_PORT] Карантин освобождённой памяти включается переменной окружения, то есть снаружи лога.
+    // Без этой строки отличить прогон с контролем от обычного по логу было бы нечем — а числа
+    // производительности у них несопоставимы, и спутать их значит сделать ложный вывод о просадке.
+    if (da_heap_guard_enabled())
+    {
+        Log("~ [DA_HEAP_GUARD] ВКЛЮЧЁН: освобождённая память травится 0xDD и придерживается в карантине.");
+        Log("~ [DA_HEAP_GUARD] Падение по адресу 00007ddddddddddd = обращение к УЖЕ ОСВОБОЖДЁННОМУ объекту.");
+        Log("~ [DA_HEAP_GUARD] ⛔ Это отладочный прогон: кадры тяжелее и памяти больше. FPS не мерить.");
+    }
 
     pcstr name      = "Custom";
     pcstr buildUniqueId = nullptr;
@@ -339,6 +350,13 @@ void xrCore::_destroy()
     if (0 == init_counter)
     {
         ZoneScoped;
+
+        // [DA_PORT] Итог карантина печатается САМ, на выходе. Иначе его пришлось бы каждый раз
+        // вспоминать и набирать в консоли — а тестируют обычно так: поиграл, вышел, прислал лог.
+        // ⚠️ Здесь, до FS._destroy(): дальше файловая система уже закрыта и писать некуда.
+        if (da_heap_guard_enabled())
+            da_heap_guard_stat();
+
         FS._destroy();
         EFS._destroy();
         xr_FS = nullptr;

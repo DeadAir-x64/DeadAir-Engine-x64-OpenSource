@@ -108,38 +108,42 @@ IC void dx11ConstantBuffer::seta(R_constant* C, R_constant_load& L, u32 e, const
     //	TEST
     // return;
     VERIFY(RC_float == C->type);
+    // [DA_PORT] seta() — путь МАССИВОВ: e это индекс элемента из РАНТАЙМА (палитра костей, массив
+    // источников света и т.п.), а не из рефлексии. В релизе VERIFY ниже вырезан, и base мог уйти за
+    // буфер — плюс скрытая беда: base это u32, а Access() берёт u16, поэтому старая
+    // последовательность «Access((u16)base) ... потом VERIFY(base ...)» и усекала адрес, и проверяла
+    // уже поздно. Считаем полный u32 base, проверяем ДО обращения к буферу; за границей молча
+    // пропускаем запись (лучше устаревшая матрица, чем порча кучи). Это единственная ветка на
+    // горячем пути — только на массивах; скалярный set() не тронут (он безопасен по построению).
     u32 base;
     Fvector4* it;
     switch (L.cls)
     {
     case RC_2x4:
-        // base				= L.index + 2*e;
-        // it					= c_f.access	(base);
-        // c_f.dirty			(base,base+2);
         base = (u32)L.index + 2 * lineSize * e;
-        it = Access((u16)base);
         VERIFY((base + 2 * lineSize) <= m_uiBufferSize);
+        if (base + 2 * lineSize > m_uiBufferSize)
+            return;
+        it = Access((u16)base);
         it[0].set(A._11, A._21, A._31, A._41);
         it[1].set(A._12, A._22, A._32, A._42);
         break;
     case RC_3x4:
-        // base				= L.index + 3*e;
-        // it					= c_f.access	(base);
-        // c_f.dirty			(base,base+3);
         base = (u32)L.index + 3 * lineSize * e;
-        it = Access((u16)base);
         VERIFY((base + 3 * lineSize) <= m_uiBufferSize);
+        if (base + 3 * lineSize > m_uiBufferSize)
+            return;
+        it = Access((u16)base);
         it[0].set(A._11, A._21, A._31, A._41);
         it[1].set(A._12, A._22, A._32, A._42);
         it[2].set(A._13, A._23, A._33, A._43);
         break;
     case RC_4x4:
-        // base				= L.index + 4*e;
-        // it					= c_f.access	(base);
-        // c_f.dirty			(base,base+4);
         base = (u32)L.index + 4 * lineSize * e;
-        it = Access((u16)base);
         VERIFY((base + 4 * lineSize) <= m_uiBufferSize);
+        if (base + 4 * lineSize > m_uiBufferSize)
+            return;
+        it = Access((u16)base);
         it[0].set(A._11, A._21, A._31, A._41);
         it[1].set(A._12, A._22, A._32, A._42);
         it[2].set(A._13, A._23, A._33, A._43);
@@ -163,8 +167,12 @@ IC void dx11ConstantBuffer::seta(R_constant* C, R_constant_load& L, u32 e, const
 
     static const u16 lineSize = 4 * sizeof(float);
     u32 base = (u32)L.index + lineSize * e;
-    Fvector4* it = Access((u16)base);
+    // [DA_PORT] см. seta(Fmatrix): e — рантайм-индекс массива; проверяем полным u32 base ДО обращения
+    // к буферу (Access усекает до u16), за границей молча пропускаем — куча не портится.
     VERIFY((base + lineSize) <= m_uiBufferSize);
+    if (base + lineSize > m_uiBufferSize)
+        return;
+    Fvector4* it = Access((u16)base);
     it->set(A);
 
     // u32			base	= L.index + e;

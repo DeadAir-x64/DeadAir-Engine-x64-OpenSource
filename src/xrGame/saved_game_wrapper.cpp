@@ -84,6 +84,20 @@ CSavedGameWrapper::CSavedGameWrapper(LPCSTR saved_game_name)
     }
 
     u32 source_count = stream->r_u32();
+    // [DA_PORT] CodeQL/taint: source_count (распакованный размер) из СЕЙВА (r_u32) — битый/подменённый
+    // сейв с огромным значением роняет xr_malloc (OOM) или отдаёт null, дальше rtc_decompress пишет
+    // в null. Кламп ВНИЗ опасен (декомпрессор переполнит буфер), поэтому отклоняем битый размер.
+    if (source_count == 0 || source_count > (1u << 30))
+    {
+        Msg("! [DA] сейв [%s]: невалидный размер распакованных данных %u — отклонён", saved_game_name, source_count);
+        FS.r_close(stream);
+        CALifeTimeManager time_manager(alife_section);
+        m_game_time = time_manager.game_time();
+        m_actor_health = 1.f;
+        m_level_id = _LEVEL_ID(-1);
+        m_level_name = "";
+        return;
+    }
     void* source_data = xr_malloc(source_count);
     rtc_decompress(source_data, source_count, stream->pointer(), stream->length() - 3 * sizeof(u32));
     FS.r_close(stream);

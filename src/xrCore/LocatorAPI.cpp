@@ -299,6 +299,10 @@ IReader* open_chunk(void* ptr, u32 ID, pcstr archiveName, size_t archiveSize, bo
 
         if ((dwType & ~CFS_CompressMark) == ID)
         {
+            // [DA_PORT] CodeQL/taint: dwSize из заголовка архива — при битом архиве огромный размер
+            // роняет xr_alloc (OOM). Отбраковываем заведомо невозможный размер чанка (> 1 ГБ).
+            if (dwSize == 0 || dwSize > (1u << 30))
+                return nullptr;
             u8* src_data = xr_alloc<u8>(dwSize);
             res = ReadFile(ptr, src_data, dwSize, &read_byte, nullptr);
 
@@ -2092,6 +2096,17 @@ CLocatorAPI::archive_file_header::archive_file_header(IReader& reader)
 
     const size_t name_length = size - ELEMENTS_SIZE;
     VERIFY(name_length < sizeof(name));
+
+    // [DA_PORT] VERIFY исчезает в релизе. size приходит из данных архива (r_u16);
+    // при битом/усечённом заголовке size < ELEMENTS_SIZE даёт беззнаковое
+    // переполнение name_length -> reader.r() и name[name_length] уходят за границы
+    // буфера (перезапись стека/кучи). Мягкий обход: не читаем имя, оставляем пустым.
+    if (size < ELEMENTS_SIZE || name_length >= sizeof(name))
+    {
+        name[0] = 0;
+        ptr = 0;
+        return;
+    }
 
     reader.r(&name, name_length);
     name[name_length] = 0;

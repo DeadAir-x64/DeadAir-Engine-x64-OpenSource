@@ -1,0 +1,133 @@
+  (пропущено автосейвов при выборе старта: 6)
+стартовое сохранение: cap3347 - quicksave9
+обход локаций: одновременно 2, кадров 600, время x1000, карантин 128 МБ
+логи и отчёт: D:\Dead Air\xray-16\da_port\tools\heap_guard\tour\20260817_213147
+
+запрашиваю список локаций из графа игры...
+запуск: D:\Dead Air\Dead Air\bin\xrEngine.exe -r4 -nofpslock -force_flushlog -nointro -da_cmd "load_last_save cap3347 - quicksave9 ; load_last_save ; da_after_load 60 da_list_levels quit" -silent_error_mode
+рабочий стол: DeadAirQA
+процесс: 13092
+прогон занял 16с
+лог: D:\Dead Air\Dead Air\appdata\logs\openxray_cap3347_003.log
+
+наши предупреждения в логе: 2
+    ! [DA] чтение за границей сетевого пакета: r_pos=157 + count=2 > B.count=157 - недостающее обнулено (пакет короче ожидаемого; дальше молчим)
+    ! [DA] оружие [wpn_upd]: rpm = 0.0 (должно быть > 0) - взято 600
+
+ИТОГ: чисто
+локаций в графе: 34
+
+запущено: k00_marsh (в работе 1)
+запущено: l01_escape (в работе 2)
+  [1/34] k00_marsh                чисто  (67с)
+запущено: l02_garbage (в работе 2)
+  [2/34] l01_escape               чисто  (71с)
+запущено: l03_agroprom (в работе 2)
+  [3/34] l02_garbage              чисто  (74с)
+запущено: k01_darkscape (в работе 2)
+  [4/34] l03_agroprom             чисто  (74с)
+запущено: l04_darkvalley (в работе 2)
+  [6/34] l04_darkvalley           чисто  (74с)
+запущено: l05_bar (в работе 2)
+  [5/34] k01_darkscape            чисто  (130с)
+запущено: l06_rostok (в работе 2)
+  [7/34] l05_bar                  чисто  (61с)
+запущено: l07_military (в работе 2)
+  [9/34] l07_military             пропущена (нет данных уровня)  (23с)
+запущено: l08_yantar (в работе 2)
+  [8/34] l06_rostok               чисто  (64с)
+запущено: l09_deadcity (в работе 2)
+  [11/34] l09_deadcity             чисто  (80с)
+запущено: l10_limansk (в работе 2)
+  [10/34] l08_yantar               чисто  (115с)
+запущено: l10_radar (в работе 2)
+  [12/34] l10_limansk              чисто  (95с)
+  [13/34] l10_radar                чисто  (84с)
+запущено: l10_red_forest (в работе 1)
+запущено: l11_hospital (в работе 2)
+  [14/34] l10_red_forest           чисто  (82с)
+запущено: l11_pripyat (в работе 2)
+  [15/34] l11_hospital             чисто  (107с)
+запущено: l12_stancia (в работе 2)
+  [16/34] l11_pripyat              чисто  (104с)
+запущено: l12_stancia_2 (в работе 2)
+  [17/34] l12_stancia              чисто  (122с)
+запущено: l13_generators (в работе 2)
+  [18/34] l12_stancia_2            чисто  (67с)
+запущено: l03u_agr_underground (в работе 2)
+  [19/34] l13_generators           чисто  (64с)
+запущено: l04u_labx18 (в работе 2)
+  [20/34] l03u_agr_underground     чисто  (65с)
+запущено: l08u_brainlab (в работе 2)
+  [22/34] l08u_brainlab            чисто  (59с)
+запущено: l10u_bunker (в работе 2)
+  [21/34] l04u_labx18              чисто  (91с)
+запущено: l12u_sarcofag (в работе 2)
+  [23/34] l10u_bunker              чисто  (62с)
+запущено: l12u_control_monolith (в работе 2)
+  [24/34] l12u_sarcofag            чисто  (68с)
+запущено: l13u_warlab (в работе 2)
+  [25/34] l12u_control_monolith    чисто  (62с)
+запущено: zaton (в работе 2)
+  [26/34] l13u_warlab              чисто  (62с)
+запущено: jupiter (в работе 2)
+  [28/34] jupiter                  чисто  (105с)
+запущено: jupiter_underground (в работе 2)
+  [29/34] jupiter_underground      чисто  (59с)
+запущено: pripyat (в работе 2)
+  [27/34] zaton                    чисто  (292с)
+запущено: labx8 (в работе 2)
+  [31/34] labx8                    чисто  (65с)
+запущено: k02_trucks_cemetery (в работе 2)
+  [32/34] k02_trucks_cemetery      чисто  (74с)
+запущено: fake_start (в работе 2)
+  [33/34] fake_start               чисто  (59с)
+запущено: new_military (в работе 2)
+  [30/34] pripyat                  чисто  (337с)
+  [34/34] new_military             чисто  (208с)
+
+user.ltx возвращён из снимка (значения не менялись)
+
+================ СВОДКА ================
+
+ N локация               итог                          вид двойных секунд лог                         
+ - -------               ----                          --- ------- ------ ---                         
+ 1 k00_marsh             чисто                                   0     67 01_k00_marsh.log            
+ 2 l01_escape            чисто                                   0     71 02_l01_escape.log           
+ 3 l02_garbage           чисто                                   0     74 03_l02_garbage.log          
+ 4 l03_agroprom          чисто                                   0     74 04_l03_agroprom.log         
+ 5 k01_darkscape         чисто                                   0    130 05_k01_darkscape.log        
+ 6 l04_darkvalley        чисто                                   0     74 06_l04_darkvalley.log       
+ 7 l05_bar               чисто                                   0     61 07_l05_bar.log              
+ 8 l06_rostok            чисто                                   0     64 08_l06_rostok.log           
+ 9 l07_military          пропущена (нет данных уровня)           0     23 09_l07_military.log         
+10 l08_yantar            чисто                                   0    115 10_l08_yantar.log           
+11 l09_deadcity          чисто                                   0     80 11_l09_deadcity.log         
+12 l10_limansk           чисто                                   0     95 12_l10_limansk.log          
+13 l10_radar             чисто                                   0     84 13_l10_radar.log            
+14 l10_red_forest        чисто                                   0     82 14_l10_red_forest.log       
+15 l11_hospital          чисто                                   0    107 15_l11_hospital.log         
+16 l11_pripyat           чисто                                   0    104 16_l11_pripyat.log          
+17 l12_stancia           чисто                                   0    122 17_l12_stancia.log          
+18 l12_stancia_2         чисто                                   0     67 18_l12_stancia_2.log        
+19 l13_generators        чисто                                   0     64 19_l13_generators.log       
+20 l03u_agr_underground  чисто                                   0     65 20_l03u_agr_underground.log 
+21 l04u_labx18           чисто                                   0     91 21_l04u_labx18.log          
+22 l08u_brainlab         чисто                                   0     59 22_l08u_brainlab.log        
+23 l10u_bunker           чисто                                   0     62 23_l10u_bunker.log          
+24 l12u_sarcofag         чисто                                   0     68 24_l12u_sarcofag.log        
+25 l12u_control_monolith чисто                                   0     62 25_l12u_control_monolith.log
+26 l13u_warlab           чисто                                   0     62 26_l13u_warlab.log          
+27 zaton                 чисто                                   0    292 27_zaton.log                
+28 jupiter               чисто                                   0    105 28_jupiter.log              
+29 jupiter_underground   чисто                                   0     59 29_jupiter_underground.log  
+30 pripyat               чисто                                   0    337 30_pripyat.log              
+31 labx8                 чисто                                   0     65 31_labx8.log                
+32 k02_trucks_cemetery   чисто                                   0     74 32_k02_trucks_cemetery.log  
+33 fake_start            чисто                                   0     59 33_fake_start.log           
+34 new_military          чисто                                   0    208 34_new_military.log         
+
+
+
+локаций проверено: 34, с замечаниями: 1
+отчёт и логи: D:\Dead Air\xray-16\da_port\tools\heap_guard\tour\20260817_213147

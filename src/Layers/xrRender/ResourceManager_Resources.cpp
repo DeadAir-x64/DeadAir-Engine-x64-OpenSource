@@ -196,8 +196,15 @@ SGeometry* CResourceManager::CreateGeom(const VertexElement* decl, VertexBufferH
 SGeometry* CResourceManager::CreateGeom(u32 FVF, VertexBufferHandle vb, IndexBufferHandle ib)
 {
     thread_local xr_vector<VertexElement> decl;
-    [[maybe_unused]] const bool result = ::FVF::CreateDeclFromFVF(FVF, decl);
-    VERIFY(result);
+    // [DA_PORT] ЖИВАЯ проверка вместо VERIFY: это тот же механизм, что дал «невидимую мачту»
+    // (задача #51) — отказ построения разметки вершин, оседающий в кэше навсегда.
+    //
+    // Здесь он даже коварнее: decl объявлен thread_local, то есть при отказе в нём остаётся
+    // разметка ПРЕДЫДУЩЕГО вызова — не пустышка, а правдоподобная чужая. Дальше она уходит в
+    // CreateGeom и кэшируется, и объекты начинают рисоваться по чужому формату вершин либо
+    // молча отбрасываться драйвером, без единой строки в логе.
+    const bool result = ::FVF::CreateDeclFromFVF(FVF, decl);
+    R_ASSERT2(result, "не удалось построить разметку вершин по FVF");
     SGeometry* g = CreateGeom(decl.data(), vb, ib);
     return g;
 }

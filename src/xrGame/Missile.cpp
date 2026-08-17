@@ -94,8 +94,14 @@ void CMissile::PH_A_CrPr()
     {
         CPhysicsShellHolder& obj = CInventoryItem::object();
         VERIFY(obj.Visual());
+        // [DA_PORT] VERIFY вырезан в релизе: граната без визуала/скелета разыменовывала null в
+        // физическом колбэке сразу после спавна.
+        if (!obj.Visual())
+            return;
         IKinematics* K = obj.Visual()->dcast_PKinematics();
         VERIFY(K);
+        if (!K)
+            return;
         if (!obj.PPhysicsShell())
         {
             Msg("! ERROR: PhysicsShell is NULL, object [%s][%d]", obj.cName().c_str(), obj.ID());
@@ -147,7 +153,13 @@ void CMissile::spawn_fake_missile()
             GEnv.isDedicatedServer ? u32(-1) : ai_location().level_vertex_id(), ID(), true);
 
         CSE_ALifeObject* alife_object = smart_cast<CSE_ALifeObject*>(object);
-        VERIFY(alife_object);
+        // [DA_PORT] Живая проверка вместо VERIFY: ноль сюда приходит от spawn_item при негодной
+        // секции — а секция здесь берётся из описания самой гранаты, то есть из данных мода.
+        if (!alife_object)
+        {
+            Msg("! [DA] бросок [%s]: летящий предмет не создан — бросок отменён", cNameSect().c_str());
+            return;
+        }
         alife_object->m_flags.set(CSE_ALifeObject::flCanSave, FALSE);
 
         NET_Packet P;

@@ -46,6 +46,88 @@ u32 g_da_stage_seq = 0;
 static const char* zone_names[da_gpu_timer::z_count] ={ "sun_smap", "sun_apply", "selfillum", "gbuffer", "gbuffer2",
     "lights", "combine", "sky", "forward", "sorted", "prepare", "occq", "wmarks", "tail", "wait_fence", "wait_cull" };
 
+// [DA_PORT] Копилка «чем занят поток в ожидании расчёта видимости» -- объявление в da_gpu_timer.h.
+//
+// Пишет её r2_R_render.cpp вокруг r_main.sync(), читает печать отчёта ниже. Обе стороны -- главный
+// поток, поэтому без атомарности. Значение держится до следующего кадра: строка DA_GPU печатается
+// не каждый кадр, и обнулять здесь было бы нечестно -- в отчёт попадали бы нули от кадров, которые
+// просто не печатались.
+static u32 s_cull_wait_executed = 0;
+static u32 s_cull_wait_idle_spins = 0;
+
+void da_gpu_set_cull_wait(u32 executed, u32 idle_spins)
+{
+    s_cull_wait_executed = executed;
+    s_cull_wait_idle_spins = idle_spins;
+}
+
+// [DA_PORT] Состав самого расчёта видимости. Пишет build_subspace с РАБОЧЕГО потока, читает печать
+// отчёта с главного -- но не одновременно: печать идёт после r_main.sync(), то есть после того, как
+// расчёт этого кадра заведомо закончен, и ожидание задачи само по себе является барьером.
+static double s_cull_portals_ms = 0.0;
+static double s_cull_statics_ms = 0.0;
+static double s_cull_dynamics_ms = 0.0;
+
+void da_gpu_set_cull_parts(double portals_ms, double statics_ms, double dynamics_ms)
+{
+    s_cull_portals_ms = portals_ms;
+    s_cull_statics_ms = statics_ms;
+    s_cull_dynamics_ms = dynamics_ms;
+}
+
+static double s_dyn_collect_ms = 0.0;
+static double s_dyn_sort_ms = 0.0;
+static double s_dyn_sector_ms = 0.0;
+static u32 s_dyn_count = 0;
+
+// Сколько объектов реально пересчитали сектор -- см. da_dyn_sector_hits в r__dsgraph_build.cpp.
+static u32 s_dyn_sector_hits = 0;
+
+void da_gpu_set_cull_dyn(double collect_ms, double sort_ms, double sector_ms, u32 count, u32 sector_hits)
+{
+    s_dyn_collect_ms = collect_ms;
+    s_dyn_sort_ms = sort_ms;
+    s_dyn_sector_ms = sector_ms;
+    s_dyn_count = count;
+    s_dyn_sector_hits = sector_hits;
+}
+
+static double s_body_hom_ms = 0.0;
+static double s_body_render_ms = 0.0;
+
+void da_gpu_set_cull_body(double hom_ms, double render_ms)
+{
+    s_body_hom_ms = hom_ms;
+    s_body_render_ms = render_ms;
+}
+
+static double s_skel_bones_ms = 0.0;
+static double s_skel_wallmarks_ms = 0.0;
+static u32 s_skel_count = 0;
+static u32 s_skel_leafs = 0;
+
+static double s_g2_hud_ms = 0.0;
+static double s_g2_lods_ms = 0.0;
+static double s_g2_details_ms = 0.0;
+
+void da_gpu_set_gbuf2(double hud_ms, double lods_ms, double details_ms)
+{
+    s_g2_hud_ms = hud_ms;
+    s_g2_lods_ms = lods_ms;
+    s_g2_details_ms = details_ms;
+}
+
+static u32 s_skel_exact = 0;
+
+void da_gpu_set_cull_skel(double bones_ms, double wallmarks_ms, u32 skeletons, u32 leafs, u32 exact)
+{
+    s_skel_bones_ms = bones_ms;
+    s_skel_wallmarks_ms = wallmarks_ms;
+    s_skel_count = skeletons;
+    s_skel_leafs = leafs;
+    s_skel_exact = exact;
+}
+
 void da_gpu_timer::create()
 {
     if (m_created)
@@ -241,8 +323,18 @@ void da_gpu_timer::collect(frame_queries& f)
         xr_strcat(line, part);
     }
 
-    string128 tail;
-    xr_sprintf(tail, " GPU total %5.2f | calls %u", total, total_calls);
+    string256 tail;
+    // [DA_PORT] steal <выполнено>/<холостых витков> -- чем был занят поток в зоне wait_cull.
+    // cull <порталы>/<статика>/<динамика> -- из чего складывается сам расчёт.
+    // dyn <сбор>/<сортировка>/<сектор> xN -- динамика по частям; остаток цикла = динамика минус три.
+    // Разбор -- у da_gpu_set_cull_wait и da_gpu_set_cull_parts ниже.
+    xr_sprintf(tail, " GPU total %5.2f | calls %u | steal %u/%u | cull %.2f/%.2f/%.2f | dyn %.2f/%.2f/%.2f x%u sec%u | body %.2f/%.2f | skel %.2f/%.2f s%u l%u e%u | g2 %.2f/%.2f/%.2f",
+        total, total_calls, s_cull_wait_executed, s_cull_wait_idle_spins,
+        s_cull_portals_ms, s_cull_statics_ms, s_cull_dynamics_ms,
+        s_dyn_collect_ms, s_dyn_sort_ms, s_dyn_sector_ms, s_dyn_count, s_dyn_sector_hits,
+        s_body_hom_ms, s_body_render_ms,
+        s_skel_bones_ms, s_skel_wallmarks_ms, s_skel_count, s_skel_leafs, s_skel_exact,
+        s_g2_hud_ms, s_g2_lods_ms, s_g2_details_ms);
     xr_strcat(line, tail);
     Msg("%s", line);
 

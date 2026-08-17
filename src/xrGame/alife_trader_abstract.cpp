@@ -25,10 +25,31 @@ extern Flags32 psAI_Flags;
 void CSE_ALifeTraderAbstract::spawn_supplies()
 {
     CSE_ALifeDynamicObject* dynamic_object = smart_cast<CSE_ALifeDynamicObject*>(this);
-    VERIFY(dynamic_object);
+    if (!dynamic_object)
+    {
+        Msg("! [DA] выдача снаряжения: объект не динамический — пропущено");
+        return;
+    }
+
     CSE_Abstract* abstract = dynamic_object->alife().spawn_item(
         "device_pda", base()->o_Position, dynamic_object->m_tNodeID, dynamic_object->m_tGraphID, base()->ID);
     CSE_ALifeItemPDA* pda = smart_cast<CSE_ALifeItemPDA*>(abstract);
+
+    // [DA_PORT] ⚠️ Здесь `pda` не проверялся ВООБЩЕ — ни VERIFY, ни чего-либо ещё, хотя источник у
+    // него ненадёжный: spawn_item отдаёт ноль, если секции нет или у неё не тот серверный класс
+    // (наша же защита в alife_simulator_base.cpp). Достаточно переименовать или убрать в моде
+    // секцию device_pda — и КАЖДЫЙ торговец роняет игру при появлении.
+    //
+    // Найдено заходом по VERIFY: само место в отчёт не попало, зато привело к соседней строке.
+    // ⛔ Отсюда правило для оставшихся мест: проверять надо не только то, что нашёл прибор, но и
+    // соседей — прибор ищет по образцу, а дефект живёт рядом.
+    if (!pda)
+    {
+        Msg("! [DA] торговцу [%s] не удалось выдать КПК (секция device_pda) — снаряжение пропущено",
+            base() ? base()->name_replace() : "без имени");
+        return;
+    }
+
     pda->m_original_owner = base()->ID;
 
     character_profile();

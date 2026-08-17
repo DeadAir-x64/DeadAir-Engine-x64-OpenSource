@@ -14,6 +14,8 @@ void CStateMonsterSmartTerrainTaskGraphWalkAbstract::initialize()
     CSE_ALifeMonsterAbstract* monster =
         smart_cast<CSE_ALifeMonsterAbstract*>(ai().alife().objects().object(this->object->ID()));
     VERIFY(monster);
+    if (!monster) // [DA_PORT] smart_cast of ALife registry object may be null; VERIFY gone in release
+        return;
     VERIFY(monster->m_smart_terrain_id != 0xffff);
 
     // get task
@@ -27,6 +29,8 @@ bool CStateMonsterSmartTerrainTaskGraphWalkAbstract::check_start_conditions()
     CSE_ALifeMonsterAbstract* monster =
         smart_cast<CSE_ALifeMonsterAbstract*>(ai().alife().objects().object(this->object->ID()));
     VERIFY(monster);
+    if (!monster) // [DA_PORT] smart_cast of ALife registry object may be null; VERIFY gone in release
+        return false;
 
     if (monster->m_smart_terrain_id == 0xffff)
         return false;

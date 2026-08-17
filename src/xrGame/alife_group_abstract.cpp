@@ -67,13 +67,33 @@ void CSE_ALifeGroupAbstract::switch_offline()
             tpGroup->m_fCurSpeed = tpGroup->m_fCurrentLevelGoingSpeed;
             tpGroup->o_Position = tpGroupMember->o_Position;
             u32 dwNodeID = tpGroup->m_tNodeID;
-            tpGroup->m_tGraphID = ai().cross_table().vertex(dwNodeID).game_vertex_id();
-            tpGroup->m_fDistanceToPoint = ai().cross_table().vertex(dwNodeID).distance();
-            tpGroup->m_tNextGraphID = tpGroup->m_tGraphID;
-            u16 wNeighbourCount = ai().game_graph().vertex(tpGroup->m_tGraphID)->edge_count();
-            CGameGraph::const_iterator i, e;
-            ai().game_graph().begin(tpGroup->m_tGraphID, i, e);
-            tpGroup->m_tPrevGraphID = (*(i + object->randI(0, wNeighbourCount))).vertex_id();
+
+            // [DA_PORT] Третье место того же дефекта (см. CGameObject::update_ai_locations):
+            // номер вершины уходит в индексацию кросс-таблицы, а оттуда полученный номер вершины
+            // графа — в индексацию самого графа. Ни одной живой проверки: обе стояли через VERIFY.
+            const bool node_ok =
+                ai().get_cross_table() && dwNodeID < ai().cross_table().header().level_vertex_count();
+
+            if (node_ok)
+            {
+                tpGroup->m_tGraphID = ai().cross_table().vertex(dwNodeID).game_vertex_id();
+                tpGroup->m_fDistanceToPoint = ai().cross_table().vertex(dwNodeID).distance();
+                tpGroup->m_tNextGraphID = tpGroup->m_tGraphID;
+
+                if (ai().game_graph().valid_vertex_id(tpGroup->m_tGraphID))
+                {
+                    u16 wNeighbourCount = ai().game_graph().vertex(tpGroup->m_tGraphID)->edge_count();
+                    // ⚠️ Вершина без исходящих рёбер существует, и тогда randI(0, 0) с последующим
+                    // разыменованием итератора читает мимо списка. Отдельная проверка, а не «такого
+                    // не бывает».
+                    if (wNeighbourCount)
+                    {
+                        CGameGraph::const_iterator i, e;
+                        ai().game_graph().begin(tpGroup->m_tGraphID, i, e);
+                        tpGroup->m_tPrevGraphID = (*(i + object->randI(0, wNeighbourCount))).vertex_id();
+                    }
+                }
+            }
         }
         object->alife().remove_online(tpGroupMember, false);
         ++I;

@@ -700,6 +700,9 @@ ENGINE_API void da_upscaler_set_available(u32 mask, pcstr why_hidden)
 // directly. Same wording everywhere, so the choice means the same thing whichever backend is picked.
 ENGINE_API u32 ps_r__upscaler_quality = 1; // default "quality" when an upscaler is first switched on
 ENGINE_API xr_token qupscaler_quality_token[] = {
+    // [DA_PORT] DLAA — реконструкция в РОДНОМ разрешении, без масштабирования. Стоит первой как
+    // самая качественная ступень. Разбор — у da_upscaler_scale ниже.
+    { "ui_mm_upq_dlaa", 5 },
     { "ui_mm_upq_ultra_quality", 0 },
     { "ui_mm_upq_quality", 1 },
     { "ui_mm_upq_balanced", 2 },
@@ -709,14 +712,38 @@ ENGINE_API xr_token qupscaler_quality_token[] = {
 };
 
 // Render scale per quality step, in percent of the output: 1.3x, 1.5x, 1.7x, 2.0x, 3.0x per dimension.
-static const int da_upscaler_scale[5] = { 77, 67, 59, 50, 33 };
+//
+// [DA_PORT] Шестая ступень — 100%, то есть DLAA: сглаживание без масштабирования.
+//
+// ЗАЧЕМ. Замер показал, что кадр НЕ упирается в закраску: снятие четверти пикселей (77% -> 67%)
+// не сдвинуло gbuffer на видеокарте вовсе (1.81 -> 1.84), а всю видеокарту — на 2%. Узкое место —
+// дробность подачи (2016 вызовов по 567 треугольников), и от числа пикселей она не зависит.
+// Значит родное разрешение здесь почти бесплатно, а реконструкция при нём даёт то же сглаживание
+// по честным пикселям, без домысливания из уменьшенного кадра.
+//
+// ⚠️ Ступень добавлена ПОСЛЕДНЕЙ (значение 5), а не первой, хотя в меню стоит сверху: значения
+// 0..4 уже лежат в user.ltx у игроков, и сдвиг индексов молча переключил бы им качество.
+//
+// ⛔ ТОЛЬКО DLSS. У XeSS родного режима нет вовсе, у FSR он появился лишь в 3.1 (наш backend
+// старее), FSR 1.0 — вообще не реконструкция. Остальным ступень подменяется лучшей доступной,
+// см. da_apply_upscaler.
+static const int da_upscaler_scale[6] = { 77, 67, 59, 50, 33, 100 };
 // FSR 1.0 has no reconstruction to recover detail with, so it leans harder on sharpening the lower the
 // source resolution gets. The temporal upscalers do their own and ignore this.
-static const int da_upscaler_sharpen[5] = { 35, 40, 45, 55, 60 };
+static const int da_upscaler_sharpen[6] = { 35, 40, 45, 55, 60, 20 };
 
 static void da_apply_upscaler()
 {
-    const u32 q = (ps_r__upscaler_quality < 5) ? ps_r__upscaler_quality : 1;
+    const u32 q = (ps_r__upscaler_quality < 6) ? ps_r__upscaler_quality : 1;
+
+    // [DA_PORT] Ступень DLAA есть только у DLSS — остальным отдаём их лучшую, а не молча худшую.
+    //
+    // 🪤 Просто обрезать индекс сверху (`min(q, 4)`) было бы миной: четвёрка это УЛЬТРА-СКОРОСТЬ,
+    // 33% масштаба. Игрок, выбравший высшее качество и переключивший апскейлер, получил бы самое
+    // мыльное изображение из возможных и не понял бы, почему.
+    const u32 q_scaled = (q > 4) ? 0 : q;
+    if (q != q_scaled && ps_r__upscaler != 6 && ps_r__upscaler != 1)
+        Msg("! [DA_PORT] DLAA доступен только с DLSS; для этого апскейлера взято высшее качество");
 
     // Everything off first, one thing on after - including our own temporal AA, which is now a choice
     // in the same list. Keeping the reset complete is the whole point of the shape: a case that forgets
@@ -739,9 +766,9 @@ static void da_apply_upscaler()
         ps_r__upscale_sharpness = 0;
         break;
     case 2: // FSR 1.0 - spatial, applied to the finished frame
-        ps_r__upscale_preset = q + 1;
-        ps_r__render_scale = da_upscaler_scale[q];
-        ps_r__upscale_sharpness = da_upscaler_sharpen[q];
+        ps_r__upscale_preset = q_scaled + 1;
+        ps_r__render_scale = da_upscaler_scale[q_scaled];
+        ps_r__upscale_sharpness = da_upscaler_sharpen[q_scaled];
         break;
     // [DA_PORT] ⚠️ Резкость задаёт КАЖДАЯ ветка, и это не украшательство.
     //
@@ -755,20 +782,20 @@ static void da_apply_upscaler()
     // не точат. Причину по картинке не угадать, а в настройках виден ноль, который игрок туда не
     // ставил. Нашли ровно так — по скриншоту Кладбища техники.
     case 3: // FSR 2 - temporal reconstruction
-        ps_r__fsr2 = int(q + 1);
-        ps_r__render_scale = da_upscaler_scale[q];
+        ps_r__fsr2 = int(q_scaled + 1);
+        ps_r__render_scale = da_upscaler_scale[q_scaled];
         // FSR сам гоняет RCAS от этого же ползунка, поэтому берём значение по ступени качества:
         // чем сильнее масштабирование, тем больше нужно.
-        ps_r__upscale_sharpness = da_upscaler_sharpen[q];
+        ps_r__upscale_sharpness = da_upscaler_sharpen[q_scaled];
         break;
     case 4: // FSR 3 - temporal reconstruction, community DX11 backend
-        ps_r__fsr3 = int(q + 1);
-        ps_r__render_scale = da_upscaler_scale[q];
-        ps_r__upscale_sharpness = da_upscaler_sharpen[q];
+        ps_r__fsr3 = int(q_scaled + 1);
+        ps_r__render_scale = da_upscaler_scale[q_scaled];
+        ps_r__upscale_sharpness = da_upscaler_sharpen[q_scaled];
         break;
     case 5: // XeSS - temporal reconstruction, Intel Arc only on D3D11
-        ps_r__xess = int(q + 1);
-        ps_r__render_scale = da_upscaler_scale[q];
+        ps_r__xess = int(q_scaled + 1);
+        ps_r__render_scale = da_upscaler_scale[q_scaled];
         // XeSS и DLSS своей резкости НЕ имеют: у Intel её нет, NVIDIA свою объявила устаревшей и в
         // DLSS 4 игнорирует. Точит их наш проход в постобработке (r2_rendertarget_phase_PP.cpp), и
         // без внятного значения они смотрятся мягче FSR при равной реконструкции.
@@ -778,9 +805,13 @@ static void da_apply_upscaler()
         ps_r__upscale_sharpness = 35;
         break;
     case 6: // DLSS - temporal reconstruction, RTX only
+        // [DA_PORT] q == 5 даёт ps_r__dlss == 6, а шесть уходит в ветку `default` моста NGX,
+        // то есть ровно в NVSDK_NGX_PerfQuality_Value_DLAA. Ветка была написана и проверена, но
+        // недостижима: ступени давали только 1..5.
         ps_r__dlss = int(q + 1);
         ps_r__render_scale = da_upscaler_scale[q];
-        ps_r__upscale_sharpness = 35;
+        // При родном разрешении домысливать нечего, и прежние 35 дают ореол по кромкам.
+        ps_r__upscale_sharpness = (q > 4) ? 20 : 35;
         break;
     default:
         ps_r__render_scale = 100;

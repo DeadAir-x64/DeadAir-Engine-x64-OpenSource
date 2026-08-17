@@ -57,7 +57,13 @@ void CPhantom::Load(LPCSTR section)
 bool CPhantom::net_Spawn(CSE_Abstract* DC)
 {
     CSE_ALifeCreaturePhantom* OBJ = smart_cast<CSE_ALifeCreaturePhantom*>(DC);
-    VERIFY(OBJ);
+    // [DA_PORT] Живая проверка вместо VERIFY — разбор вида в smart_cover_object.cpp.
+    if (!OBJ)
+    {
+        Msg("! [DA] фантом [%s]: серверный объект не того класса — не создаём",
+            DC ? DC->name_replace() : "без имени");
+        return FALSE;
+    }
 
     // select visual at first
     LPCSTR vis_name = OBJ->get_visual();

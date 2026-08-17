@@ -256,11 +256,17 @@ void CBone::CopyData(CBone* bone)
 void CBoneInstance::set_param(u32 idx, float data)
 {
     VERIFY(idx < MAX_BONE_PARAMS);
+    // [DA_PORT] idx приходит из Lua-скрипта мода; в релизе VERIFY вырезан, и негодный индекс писал
+    // за границу массива param[]. Молча игнорируем.
+    if (idx >= MAX_BONE_PARAMS)
+        return;
     param[idx] = data;
 }
 float CBoneInstance::get_param(u32 idx)
 {
     VERIFY(idx < MAX_BONE_PARAMS);
+    if (idx >= MAX_BONE_PARAMS)
+        return 0.f;
     return param[idx];
 }
 

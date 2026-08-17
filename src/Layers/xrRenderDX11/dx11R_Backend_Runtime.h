@@ -249,7 +249,11 @@ static bool da_dxbc_needs_texcoord(ID3DBlob* sig)
     return true;
 }
 
-bool CBackend::da_vs_needs_uv()
+// [DA_PORT] ⚠️ IC обязателен: функция определена В ЗАГОЛОВКЕ, который включают полтора десятка
+// единиц трансляции рендера. Без inline каждая из них порождает своё определение, и линковка
+// падает с multiple definition. В релизной сборке это не всплывало — там подстановка съедала
+// определения, — и вскрылось только на конфигурации Mixed. Соседние функции файла помечены так же.
+IC bool CBackend::da_vs_needs_uv()
 {
     if (da_uv_sig_memo != m_pInputSignature)
     {

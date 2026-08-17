@@ -427,8 +427,13 @@ void CPHJoint::SetAxisDir(const float x, const float y, const float z, const int
 {
     int ax = axis_num;
     LimitAxisNum(ax);
-    // if(-1==ax) return;
     VERIFY(-1 != ax);
+    // [DA_PORT] ax приходит из данных: LimitAxisNum даёт -1 для ball-joint и для axis_num<-1;
+    // метод выведен в Lua (PhysicsShellScript.cpp), скрипт может позвать на любом суставе. VERIFY
+    // в релизе пуст, тогда axes[-1] — запись за границей вектора. Все соседние Set*-методы уже
+    // имеют такой же живой guard; восстанавливаю его (recall-audit).
+    if (-1 == ax)
+        return;
     axes[ax].vs = vs_global;
     axes[ax].direction.set(x, y, z);
 

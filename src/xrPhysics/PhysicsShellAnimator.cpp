@@ -56,9 +56,13 @@ void CPhysicsShellAnimator::CreateJoints(LPCSTR controled)
         u16 bid = m_pPhysicsShell->PKinematics()->LL_BoneID(n);
         VERIFY2(bid != BI_NONE, make_string("shell_animation - controled bone %s not found! object: %s, model: %s", n,
                                     obj->ObjectName(), obj->ObjectNameVisual()));
+        if (bid == BI_NONE) // [DA_PORT] controled bone list is config data; VERIFY2 gone in release
+            continue;
         CPHElement* e = smart_cast<CPHElement*>(m_pPhysicsShell->get_Element(bid));
         VERIFY2(e, make_string("shell_animation - controled bone %s has no physics collision! object: %s, model: %s", n,
                        obj->ObjectName(), obj->ObjectNameVisual()));
+        if (!e) // [DA_PORT] bone may lack a physics element; CreateJoint would deref null in release
+            continue;
         CreateJoint(e);
     }
 }

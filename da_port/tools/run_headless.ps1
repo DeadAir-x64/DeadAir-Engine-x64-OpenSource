@@ -151,7 +151,12 @@ public static class DaHiddenDesktop
         PROCESS_INFORMATION pi;
         // Кавычки вокруг exe обязательны: в пути есть пробел ("Dead Air").
         string cmd = "\"" + exe + "\" " + args;
-        bool ok = CreateProcess(null, cmd, IntPtr.Zero, IntPtr.Zero, false, 0,
+        // CREATE_NO_WINDOW: без него игра ПРИЦЕПЛЯЕТСЯ К КОНСОЛИ запускающего и сыплет в неё свой
+        // вывод. Перенаправление stdout у родителя не спасает — консоль наследуется отдельно от
+        // дескрипторов. На параллельном обходе локаций это дало 80 КБ сообщений физики поверх
+        // полезного вывода. Нам её вывод не нужен: всё, что важно, идёт в лог игры.
+        const uint CREATE_NO_WINDOW = 0x08000000;
+        bool ok = CreateProcess(null, cmd, IntPtr.Zero, IntPtr.Zero, false, CREATE_NO_WINDOW,
             IntPtr.Zero, workDir, ref si, out pi);
         if (!ok)
         {
@@ -229,12 +234,19 @@ Write-Host ("лог: {0}" -f $log)
 $text = Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue
 if (-not $text) { $text = Get-Content -LiteralPath $log -ErrorAction SilentlyContinue }
 
-$crashed = $text | Select-String -SimpleMatch -Pattern @(
-    'stack trace',
-    '[DA_MODULES]',
-    'Unexpected application termination',
-    'FATAL ERROR'
-) -ErrorAction SilentlyContinue
+# ⛔ «stack trace» ищется ОТДЕЛЬНО и строго — с начала строки и с двоеточием. Простое вхождение
+# ловит `stack traceback:`, а это штатный вывод LUA: мод печатает его сотнями за заход. Из-за
+# этого прибор объявлял ПРОВАЛ на совершенно чистом прогоне — ровно тот случай, когда врущий
+# прибор хуже отсутствующего. Тот же дефект был в level_tour.ps1 и починен там раньше; здесь
+# оставался второй, независимый экземпляр.
+$crashed = @($text | Select-String -Pattern '^stack trace:' -ErrorAction SilentlyContinue) + @(
+    $text | Select-String -SimpleMatch -Pattern @(
+        '[DA_MODULES]',
+        'Unexpected application termination',
+        'FATAL ERROR'
+    ) -ErrorAction SilentlyContinue
+)
+$crashed = @($crashed | Where-Object { $_ })
 
 $daWarnings = $text | Select-String -SimpleMatch -Pattern '! [DA]' -ErrorAction SilentlyContinue
 

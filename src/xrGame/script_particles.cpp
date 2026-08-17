@@ -111,17 +111,31 @@ CScriptParticles::~CScriptParticles()
     }
 }
 
+// [DA_PORT] Живые проверки вместо VERIFY во ВСЁМ классе, а часть методов ниже не имела вообще
+// никакой (SetDirection, SetOrientation, StartPath, StopPath, PausePath).
+//
+// Почему это не «защита от невозможного»: объект particles живёт в Lua, а сама система частиц —
+// в движке, и она удаляет себя САМА, когда доиграла. При этом PSI_destroy/PSI_internal_delete
+// выше обнуляют m_particles у владельца. То есть после `p:play()` неповторяющегося эффекта любой
+// следующий вызов из скрипта — `p:stop()`, `p:move_to()`, `p:playing()` — приходит на пустой
+// указатель. Скрипту неоткуда узнать момент, когда это произошло: методы, отвечающего на вопрос
+// «жив ли ещё эффект», у него нет — playing() сам разыменовывает то, что проверяет.
+//
+// Молчим намеренно: обращение к доигравшему эффекту — обычный порядок вещей в скриптах мода, а
+// не ошибка, и сообщение на каждый такой вызов залило бы лог.
 void CScriptParticles::Play()
 {
-    VERIFY(m_particles);
+    if (!m_particles)
+        return;
     m_particles->Play(false);
 }
 
 void CScriptParticles::PlayAtPos(const Fvector& position)
 {
-    VERIFY(m_particles);
     //m_particles->play_at_pos(position);
     m_transform.translate_over(position);
+    if (!m_particles)
+        return;
     m_particles->UpdateParent(m_transform, zero_vel);
     m_particles->Play(false);
     m_particles->UpdateParent(m_transform, zero_vel);
@@ -129,24 +143,29 @@ void CScriptParticles::PlayAtPos(const Fvector& position)
 
 void CScriptParticles::Stop()
 {
-    VERIFY(m_particles);
+    if (!m_particles)
+        return;
     m_particles->Stop(FALSE);
 }
 
 void CScriptParticles::StopDeferred()
 {
-    VERIFY(m_particles);
+    if (!m_particles)
+        return;
     m_particles->Stop(TRUE);
 }
 
 void CScriptParticles::MoveTo(const Fvector& pos, const Fvector& vel)
 {
-    VERIFY(m_particles);
     //Fmatrix XF;
     //XF.translate(pos);
     m_transform.translate_over(pos);
 
     //m_particles->UpdateParent(XF, vel);
+    // Положение запоминаем в любом случае: эффект могут запустить повторно, и он должен появиться
+    // там, куда его успел передвинуть скрипт.
+    if (!m_particles)
+        return;
     m_particles->UpdateParent(m_transform, vel);
 }
 
@@ -158,6 +177,8 @@ void CScriptParticles::SetDirection(const Fvector& dir)
     Fvector::generate_orthonormal_basis_normalized(matrix.k, matrix.j, matrix.i);
     matrix.translate_over(m_transform.c);
     m_transform.set(matrix);
+    if (!m_particles)
+        return;
     m_particles->UpdateParent(matrix, zero_vel);
 }
 
@@ -167,26 +188,44 @@ void CScriptParticles::SetOrientation(float yaw, float pitch, float roll)
     matrix.setHPB(yaw, pitch, roll); // ?????????? matrix.c
     matrix.translate_over(m_transform.c);
     m_transform.set(matrix);
+    if (!m_particles)
+        return;
     m_particles->UpdateParent(matrix, zero_vel);
 }
 
 bool CScriptParticles::IsPlaying() const
 {
-    VERIFY(m_particles);
+    // Ушедший эффект не играет — это честный ответ, а не заглушка.
+    if (!m_particles)
+        return false;
     return m_particles->IsPlaying();
 }
 
 bool CScriptParticles::IsLooped() const
 {
-    VERIFY(m_particles);
+    if (!m_particles)
+        return false;
     return m_particles->IsLooped();
 }
 
 void CScriptParticles::LoadPath(LPCSTR caPathName)
 {
-    VERIFY(m_particles);
+    if (!m_particles)
+        return;
     m_particles->LoadPath(caPathName);
 }
-void CScriptParticles::StartPath(bool looped) { m_particles->StartPath(looped); }
-void CScriptParticles::StopPath() { m_particles->StopPath(); }
-void CScriptParticles::PausePath(bool val) { m_particles->PausePath(val); }
+void CScriptParticles::StartPath(bool looped)
+{
+    if (m_particles)
+        m_particles->StartPath(looped);
+}
+void CScriptParticles::StopPath()
+{
+    if (m_particles)
+        m_particles->StopPath();
+}
+void CScriptParticles::PausePath(bool val)
+{
+    if (m_particles)
+        m_particles->PausePath(val);
+}

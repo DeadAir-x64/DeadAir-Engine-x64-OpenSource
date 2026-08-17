@@ -859,8 +859,14 @@ void CInventoryItem::PH_A_CrPr()
     if (m_just_after_spawn)
     {
         VERIFY(object().Visual());
+        // [DA_PORT] VERIFY вырезан в релизе: предмет без визуала/скелета разыменовывал null в
+        // физическом колбэке сразу после спавна.
+        if (!object().Visual())
+            return;
         IKinematics* K = object().Visual()->dcast_PKinematics();
         VERIFY(K);
+        if (!K)
+            return;
         if (!object().PPhysicsShell())
         {
             Msg("! ERROR: PhysicsShell is NULL, object [%s][%d]", object().cName().c_str(), object().ID());

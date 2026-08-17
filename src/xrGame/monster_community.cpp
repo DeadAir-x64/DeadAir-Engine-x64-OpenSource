@@ -81,6 +81,12 @@ int MONSTER_COMMUNITY::relation(MONSTER_COMMUNITY_INDEX from, MONSTER_COMMUNITY_
     VERIFY(from >= 0 && from < (int)m_relation_table.table().size());
     VERIFY(to >= 0 && to < (int)m_relation_table.table().size());
 
+    // [DA_PORT] та же защита, что и в team(): индекс мог остаться отрицательным/вне таблицы
+    // у существа без species; VERIFY в релизе исчезает -> OOB. Нейтральное отношение при промахе.
+    const int _sz = (int)m_relation_table.table().size();
+    if (from < 0 || from >= _sz || to < 0 || to >= _sz)
+        return 0;
+
     return m_relation_table.table()[from][to];
 }
 

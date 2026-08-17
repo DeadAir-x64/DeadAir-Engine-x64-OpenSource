@@ -1,6 +1,11 @@
 #include "stdafx.h"
 #include "string_concatenations.h"
+// [DA_PORT] Заголовок Windows — только под Windows. Разбор — у Lock.hpp: наш x64-порт
+// растерял кроссплатформенность в нескольких местах, и вскрылось это сборкой под
+// санитайзеры в контейнере Ubuntu (в MinGW libasan нет).
+#ifdef XR_PLATFORM_WINDOWS
 #include <windows.h>
+#endif
 
 #if !defined(XR_PLATFORM_WINDOWS) // XXX: remove or cleanup
 int _cdecl _resetstkoflw(void)

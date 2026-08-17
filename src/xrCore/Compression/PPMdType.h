@@ -27,7 +27,12 @@ defined(_UNKNOWN_ENVIRONMENT_) != \
           != 1 */
 #endif
 #if defined(_WIN32_ENVIRONMENT_)
+// [DA_PORT] Заголовок Windows — только под Windows. Разбор — у Lock.hpp: наш x64-порт
+// растерял кроссплатформенность в нескольких местах, и вскрылось это сборкой под
+// санитайзеры в контейнере Ubuntu (в MinGW libasan нет).
+#ifdef XR_PLATFORM_WINDOWS
 #include <windows.h>
+#endif
 #else /* _DOS32_ENVIRONMENT_ || _POSIX_ENVIRONMENT_ || _UNKNOWN_ENVIRONMENT_ */
 #include "stdafx.h"
 //typedef int BOOL;

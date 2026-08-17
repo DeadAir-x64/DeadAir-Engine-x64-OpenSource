@@ -255,7 +255,12 @@ bool ChimeraAttackState<Object>::select_target_for_jump(enum_action const action
 
     VERIFY(self2enemy_mag < m_min_run_distance);
     VERIFY(get_attack_radius() >= 4);
-    float const attack_radius = 3 + float(rand() % (u32)(get_attack_radius() - 3));
+    // [DA_PORT] VERIFY вырезан в релизе: радиус атаки из конфига химеры <= 3 давал `rand() % 0`
+    // (целочисленное деление на ноль → аппаратный крах) либо огромный размах при отрицательной
+    // разности. Диапазон берём не меньше 1.
+    float const radius_span_f = get_attack_radius() - 3.f;
+    u32 const radius_span = (radius_span_f >= 1.f) ? (u32)radius_span_f : 1;
+    float const attack_radius = 3 + float(rand() % radius_span);
 
     Fvector const enemy_dir = normalize(enemy->Direction());
     Fvector const behind_point = enemy_pos - (enemy_dir * attack_radius);

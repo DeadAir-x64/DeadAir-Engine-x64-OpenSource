@@ -105,8 +105,24 @@ void CALifeGraphRegistry::setup_current_level()
         ai().game_graph().header().levels().find(ai().game_graph().vertex(actor()->m_tGraphID)->level_id());
     R_ASSERT2(ai().game_graph().header().levels().end() != I, "Graph point level ID not found!");
 
-    [[maybe_unused]] const int id = g_pGamePersistent->Level_ID(I->second.name().c_str(), "1.0", true);
-    VERIFY3(id >= 0, "Level is corrupted or doesn't exist", I->second.name().c_str());
+    // [DA_PORT] ЖИВАЯ проверка вместо VERIFY3, и она не про аккуратность, а про читаемость отказа.
+    //
+    // Level_ID(..., true) не просто отвечает номером — он ПЕРЕКЛЮЧАЕТ путь $level$ на каталог
+    // уровня, но делает это только при найденном каталоге: Level_Set при негодном номере молча
+    // выходит (IGame_Persistent.cpp). Отдав -1, функция оставляет $level$ указывать на ПРЕЖНИЙ
+    // уровень — а строкой ниже ai().load() создаёт CLevelGraph, который читает level.ai именно по
+    // этому пути. Дальше кросс-таблица берётся уже для НОВОГО уровня, и игра падает на сверке
+    // идентификаторов в AISpaceBase::Load с сообщением «cross_table doesn't correspond to the
+    // AI-map» — то есть жалуется на кросс-таблицу, хотя настоящая причина в ненайденном каталоге.
+    //
+    // Именно так выглядел вылет на l07_military при обходе локаций: два разных исходных уровня —
+    // и оба раза level.ai перезагружался ТОТ ЖЕ, что и был (доказано числом вершин в логе).
+    //
+    // Тихо продолжить нельзя: без своего уровня игра нежизнеспособна. Поэтому не пропуск, а
+    // ЖИВОЙ отказ — но с названным виновником.
+    const int id = g_pGamePersistent->Level_ID(I->second.name().c_str(), "1.0", true);
+    R_ASSERT3(id >= 0, "каталог уровня не найден (архив уровня не подключён или переименован): ",
+        I->second.name().c_str());
     ai().load(I->second.name().c_str());
 
     g_start_game_vertex_id = 0;

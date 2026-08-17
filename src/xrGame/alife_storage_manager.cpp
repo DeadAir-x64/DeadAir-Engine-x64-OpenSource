@@ -305,6 +305,16 @@ bool CALifeStorageManager::load(LPCSTR save_name_no_check)
     reload(m_section);
 
     const u32 source_count = stream->r_u32();
+    // [DA_PORT] CodeQL/taint: source_count (распакованный размер) из СЕЙВА — при мусоре огромный
+    // xr_malloc роняет OOM/отдаёт null, rtc_decompress пишет в null. Кламп вниз опасен (переполнение
+    // буфера декомпрессором), поэтому отклоняем битый размер.
+    if (source_count == 0 || source_count > (1u << 30))
+    {
+        Msg("! [DA] сейв [%s]: невалидный размер распакованных данных %u — загрузка прервана", file_name, source_count);
+        FS.r_close(stream);
+        xr_strcpy(m_save_name, saveBackup);
+        return false;
+    }
     void* source_data = xr_malloc(source_count);
     rtc_decompress(source_data, source_count, stream->pointer(), stream->length() - 3 * sizeof(u32));
     FS.r_close(stream);

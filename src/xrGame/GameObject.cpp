@@ -874,20 +874,90 @@ u32 CGameObject::new_level_vertex_id() const
     return (ai().level_graph().vertex(ai_location().level_vertex_id(), center));
 }
 
+// [DA_PORT] Три вырезанных в релизе VERIFY на одном пути — и чтение за границами кросс-таблицы.
+//
+// КАК НАШЛОСЬ. Обход всех 34 локаций под контролем кучи: вылет на labx8 при спавне «умного
+// укрытия». Доведено до инструкции дизассемблером, гадать не пришлось:
+//
+//     mov   (%rax),%eax          ; level_vertex_id
+//     lea   (%rax,%rax,2),%rax   ; x3
+//     add   %rax,%rax            ; x6  — размер CCell
+//     add   0x38(%rdi),%rax      ; + база кросс-таблицы
+//     movzwl (%rax),%eax         ; <- ОТКАЗ
+//
+// То есть номер вершины уходил в индексацию массива, не будучи проверенным НИГДЕ. Проверки были,
+// но все три — через VERIFY, а он в релизе исчезает: здесь (строка ниже), в
+// CAI_ObjectLocation::level_vertex и в CGameLevelCrossTable::vertex. См. [[release-assert-macros]].
+//
+// ОТКУДА НЕГОДНЫЙ НОМЕР. new_level_vertex_id() сводится к CLevelGraph::vertex(), а тот при неудаче
+// поиска штатно отдаёт u32(-1). Никакой экзотики: обычный отказ поиска, за которым сразу шло
+// умножение на 6 и разыменование.
+//
+// ⚠️ В обычной сборке этот же промах чаще всего попадает в отображённую память и МОЛЧА возвращает
+// мусор: объект встаёт на чужую вершину графа, а последствия всплывают позже и в другом месте.
+// Контроль кучи раздвинул адресное пространство, и промах стал честным вылетом — то есть дефект
+// тут был всегда, просто до сих пор был невидим.
 void CGameObject::update_ai_locations(bool decrement_reference)
 {
     u32 l_dwNewLevelVertexID = new_level_vertex_id();
-    VERIFY(ai().level_graph().valid_vertex_id(l_dwNewLevelVertexID));
+
+    // Живая проверка вместо VERIFY. Отказ поиска — штатное событие, а не «не может быть».
+    if (!ai().level_graph().valid_vertex_id(l_dwNewLevelVertexID))
+    {
+        static u32 reported = 0;
+        if (reported < 8)
+        {
+            ++reported;
+            Msg("! [DA] вершина уровня не найдена для [%s], размещение пропущено (номер %u)%s",
+                cName().c_str(), l_dwNewLevelVertexID,
+                (reported == 8) ? " (дальнейшие сообщения подавлены)" : "");
+        }
+        return;
+    }
+
     if (decrement_reference && (ai_location().level_vertex_id() == l_dwNewLevelVertexID))
         return;
 
     ai_location().level_vertex(l_dwNewLevelVertexID);
 
-    if (!ai().get_game_graph() && ai().get_cross_table())
+    // ⛔ Условие было перепутано: `!граф && таблица`. Разбор по случаям показывает, что ДВА из
+    // четырёх ведут прямо в разыменование — «графа нет, таблицы нет» и «граф есть, таблицы нет»
+    // проваливались дальше и звали cross_table(). Нужно ровно обратное: нет любого из двух — выйти.
+    if (!ai().get_game_graph() || !ai().get_cross_table())
         return;
 
-    ai_location().game_vertex(ai().cross_table().vertex(ai_location().level_vertex_id()).game_vertex_id());
-    VERIFY(ai().game_graph().valid_vertex_id(ai_location().game_vertex_id()));
+    // Граница у кросс-таблицы СВОЯ, и она не обязана совпадать с числом вершин графа уровня:
+    // это разные файлы, и рассинхрон между ними как раз и даёт такие промахи.
+    const u32 level_vertex_id = ai_location().level_vertex_id();
+    if (level_vertex_id >= ai().cross_table().header().level_vertex_count())
+    {
+        static u32 reported = 0;
+        if (reported < 8)
+        {
+            ++reported;
+            Msg("! [DA] вершина %u вне кросс-таблицы (в ней %u) для [%s], привязка к графу пропущена%s",
+                level_vertex_id, ai().cross_table().header().level_vertex_count(), cName().c_str(),
+                (reported == 8) ? " (дальнейшие сообщения подавлены)" : "");
+        }
+        return;
+    }
+
+    // Полученную вершину графа проверяем ДО записи: дальше по коду ею индексируют сам граф игры.
+    const GameGraph::_GRAPH_ID game_vertex_id = ai().cross_table().vertex(level_vertex_id).game_vertex_id();
+    if (!ai().game_graph().valid_vertex_id(game_vertex_id))
+    {
+        static u32 reported = 0;
+        if (reported < 8)
+        {
+            ++reported;
+            Msg("! [DA] кросс-таблица отдала недопустимую вершину графа %u для [%s]%s",
+                u32(game_vertex_id), cName().c_str(),
+                (reported == 8) ? " (дальнейшие сообщения подавлены)" : "");
+        }
+        return;
+    }
+
+    ai_location().game_vertex(game_vertex_id);
 }
 
 void CGameObject::validate_ai_locations(bool decrement_reference)
@@ -1186,9 +1256,16 @@ bool CGameObject::UsedAI_Locations() { return (m_server_flags.test(CSE_ALifeObje
 bool CGameObject::TestServerFlag(u32 Flag) const { return (m_server_flags.test(Flag)); }
 void CGameObject::add_visual_callback(visual_callback callback)
 {
-    VERIFY(smart_cast<IKinematics*>(Visual()));
-    [[maybe_unused]] auto I = std::find(visual_callbacks().begin(), visual_callbacks().end(), callback);
-    VERIFY(I == visual_callbacks().end());
+    // [DA_PORT] Живая проверка вместо VERIFY (перенято у Anomaly/monolith, где это давно живой
+    // guard). Колбэки визуала имеют смысл только для СКЕЛЕТНОГО визуала: SetKinematicsCallback ниже
+    // разыменовывает smart_cast<IKinematics*>(Visual())->Callback(). Если визуал есть, но НЕ
+    // кинематический, smart_cast даёт ноль, VERIFY в релизе вырезан — и дальше разыменование нуля.
+    if (!smart_cast<IKinematics*>(Visual()))
+        return;
+    auto I = std::find(visual_callbacks().begin(), visual_callbacks().end(), callback);
+    // Дубликат колбэка — просто не добавляем повторно (было VERIFY, в релизе исчезал).
+    if (I != visual_callbacks().end())
+        return;
 
     if (m_visual_callback.empty())
         SetKinematicsCallback(true);
@@ -1213,12 +1290,16 @@ void CGameObject::remove_visual_callback(visual_callback callback)
 
 void CGameObject::SetKinematicsCallback(bool set)
 {
-    if (!Visual())
+    // [DA_PORT] Проверяем ТИП визуала, а не только его наличие (перенято у Anomaly). Прежде стояло
+    // if(!Visual()) return — но Visual() может быть не-кинематическим, тогда smart_cast ниже даёт
+    // ноль, и ->Callback() — разыменование нуля. Проверка smart_cast покрывает оба случая.
+    IKinematics* K = smart_cast<IKinematics*>(Visual());
+    if (!K)
         return;
     if (set)
-        smart_cast<IKinematics*>(Visual())->Callback(VisualCallback, this);
+        K->Callback(VisualCallback, this);
     else
-        smart_cast<IKinematics*>(Visual())->Callback(0, 0);
+        K->Callback(0, 0);
 };
 
 void VisualCallback(IKinematics* tpKinematics)
@@ -1297,6 +1378,27 @@ extern ENGINE_API float ps_da_lua_call_dump;
 //
 // Обработчик вектора исключений видит КАЖДОЕ исключение процесса, включая первичные, поэтому
 // считает и то, что кто-то ловит и глушит. Возвращает «искать дальше» и ни на что не влияет.
+#ifndef XR_PLATFORM_WINDOWS
+// [DA_PORT] Заглушка типа для не-Windows.
+//
+// Прибор ниже меряет время потока через GetThreadTimes — это Windows-только, и сами ВЫЗОВЫ уже
+// закрыты заслонами. А вот ОБЪЯВЛЕНИЯ (FILETIME da_kc0, лямбда ft_ms и прочее) стоят снаружи, и без
+// типа файл не компилируется вовсе. Даём тип-пустышку: заслоны на вызовах остаются, значения просто
+// не наполняются, а диагностика на этой платформе печатает нули.
+//
+// Понадобилось при сборке xrGame под санитайзеры в контейнере — разбор в da_port/tools/asan.
+struct FILETIME
+{
+    u32 dwLowDateTime;
+    u32 dwHighDateTime;
+};
+
+// Счётчик кода последнего исключения. Под Windows его ведёт обработчик вектора исключений (он
+// объявлен внутри соседнего заслона), здесь же нужен только сам символ: печать ниже стоит снаружи
+// заслонов и обращается к нему безусловно.
+static volatile long da_exc_last_code = 0;
+#endif
+
 #ifdef XR_PLATFORM_WINDOWS
 #include <x86intrin.h>
 

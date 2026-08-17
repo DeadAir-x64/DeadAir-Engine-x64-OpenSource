@@ -18,15 +18,23 @@ void DamageReceiverCollisionCallback(bool& do_colide, bool bo1, dContact& c, SGa
     SGameMtl* material_self = bo1 ? material_1 : material_2;
     SGameMtl* material_damager = bo1 ? material_2 : material_1;
     VERIFY(ud_self);
+    // [DA_PORT] VERIFY вырезан в релизе: геометрия уничтоженного объекта (напр. после подрыва
+    // гранаты) даёт нулевой ud_self/ph_ref_object; разыменование роняло физику при столкновении.
+    if (!ud_self)
+        return;
     IPhysicsShellHolder* o_self = ud_self->ph_ref_object;
     IPhysicsShellHolder* o_damager = NULL;
     if (ud_damager)
         o_damager = ud_damager->ph_ref_object;
     u16 source_id = o_damager ? o_damager->ObjectID() : u16(-1);
 
+    if (!o_self)
+        return;
     // CPHCollisionDamageReceiver	*dr	= static_cast<CPhysicsShellHolder*>( o_self )->PHCollisionDamageReceiver();
     ICollisionDamageReceiver* dr = (o_self)->ObjectPhCollisionDamageReceiver();
     VERIFY2(dr, "wrong callback");
+    if (!dr)
+        return;
 
     float damager_material_factor = material_damager->fBounceDamageFactor;
 
@@ -56,6 +64,11 @@ void BreakableObjectCollisionCallback(
     dxGeomUserData* usr_data_2 = retrieveGeomUserData(c.geom.g2);
     VERIFY(usr_data_1);
     VERIFY(usr_data_2);
+    // [DA_PORT] VERIFY вырезан в релизе: геометрия уничтоженного ломаемого объекта даёт нулевые
+    // usr_data/ph_ref_object; разыменование роняло физику при столкновении. Ранняя авторская логика
+    // (закомментирована ниже) как раз проверяла это через `else return`.
+    if (!usr_data_1 || !usr_data_2)
+        return;
     // CBreakableObject* this_object	= 0;
     ICollisionDamageReceiver* damag_receiver = 0;
 
@@ -65,6 +78,8 @@ void BreakableObjectCollisionCallback(
     if (bo1)
     {
         VERIFY(usr_data_1->ph_ref_object);
+        if (!usr_data_1->ph_ref_object)
+            return;
         damag_receiver = usr_data_1->ph_ref_object->ObjectPhCollisionDamageReceiver();
         body = dGeomGetBody(c.geom.g2);
         norm_sign = -1.f;
@@ -72,11 +87,15 @@ void BreakableObjectCollisionCallback(
     else
     {
         VERIFY(usr_data_2->ph_ref_object);
+        if (!usr_data_2->ph_ref_object)
+            return;
         damag_receiver = usr_data_2->ph_ref_object->ObjectPhCollisionDamageReceiver();
         body = dGeomGetBody(c.geom.g1);
         norm_sign = 1.f;
     }
     VERIFY(damag_receiver);
+    if (!damag_receiver)
+        return;
 
     /*
 

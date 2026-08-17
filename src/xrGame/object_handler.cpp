@@ -59,7 +59,13 @@ bool CObjectHandler::net_Spawn(CSE_Abstract* DC)
 
     CSE_Abstract* abstract = static_cast<CSE_Abstract*>(DC);
     CSE_ALifeTraderAbstract* trader = smart_cast<CSE_ALifeTraderAbstract*>(abstract);
-    VERIFY(trader);
+    // [DA_PORT] Живая проверка вместо VERIFY — разбор вида в smart_cover_object.cpp.
+    if (!trader)
+    {
+        Msg("! [DA] обработчик предметов [%s]: объект не торговец — бесконечные патроны не читаем",
+            abstract ? abstract->name_replace() : "без имени");
+        return (TRUE);
+    }
 
     m_infinite_ammo = !!trader->m_trader_flags.test(CSE_ALifeTraderAbstract::eTraderFlagInfiniteAmmo);
     return (TRUE);

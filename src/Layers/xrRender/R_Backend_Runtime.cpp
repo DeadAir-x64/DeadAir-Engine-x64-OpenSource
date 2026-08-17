@@ -60,9 +60,16 @@ void CBackend::OnFrameBegin()
         // При уменьшенном — глубина не привязывается вовсе, и это безопасно: каждый проход, которому
         // она нужна, ставит свою сам (u_setrt), а до первого такого прохода читать её всё равно
         // некому.
+        // [DA_PORT] ⚠️ Разбор выше — про DirectX, и правка обязана быть его же. В OpenGL буфер
+        // глубины это GLuint, а не указатель: `nullptr` туда не ложится, и общий код переставал
+        // собираться для GL целиком. Обнаружено сборкой под санитайзеры — см. da_port/tools/asan.
+#ifndef USE_OGL
         const bool base_depth_matches = Device.dwRenderWidth == Device.dwWidth &&
             Device.dwRenderHeight == Device.dwHeight;
         set_ZB(base_depth_matches ? RImplementation.Target->get_base_zb() : nullptr);
+#else
+        set_ZB(RImplementation.Target->get_base_zb());
+#endif
 #endif
 
         ZeroMemory(&stat, sizeof(stat));

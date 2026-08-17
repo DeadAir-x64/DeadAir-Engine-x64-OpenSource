@@ -46,17 +46,22 @@ u16 mbhMulti2WideDumb(xr_wide_char* WideStr, xr_wide_char* WidePos, u16 WideStrS
         if (WideStr)
         {
             VERIFY2((dpos < WideStrSize), make_string("S1: '%s',%hu<%hu", MultiStr, dpos, WideStrSize));
+            // [DA_PORT] VERIFY2 выпадает в релизе. WideStr — стековый буфер MAX_MB_CHARS;
+            // строка длиннее буфера иначе переполняет стек. Обрезаем вместо порчи памяти.
+            if (dpos >= WideStrSize)
+                break;
             WideStr[dpos] = wc;
         }
     }
 
-    if (WidePos)
+    if (WidePos && (!WideStr || dpos < WideStrSize)) // [DA_PORT] после обрезки dpos может выйти за WidePos
         WidePos[dpos] = spos;
 
     if (WideStr)
     {
         VERIFY2((dpos < WideStrSize), make_string("S2: '%s',%hu<%hu", MultiStr, dpos, WideStrSize));
-        WideStr[dpos + 1] = 0x0000;
+        if (dpos + 1 < WideStrSize) // [DA_PORT] см. выше — не пишем за границу
+            WideStr[dpos + 1] = 0x0000;
     }
 
     if (WideStr)
@@ -139,17 +144,22 @@ u16 mbhMulti2Wide(xr_wide_char* WideStr, xr_wide_char* WidePos, u16 WideStrSize,
         if (WideStr)
         {
             VERIFY2((dpos < WideStrSize), make_string("S1: '%s',%hu<%hu", MultiStr, dpos, WideStrSize));
+            // [DA_PORT] VERIFY2 выпадает в релизе. WideStr — стековый буфер MAX_MB_CHARS;
+            // строка длиннее буфера иначе переполняет стек. Обрезаем вместо порчи памяти.
+            if (dpos >= WideStrSize)
+                break;
             WideStr[dpos] = wc;
         }
     }
 
-    if (WidePos)
+    if (WidePos && (!WideStr || dpos < WideStrSize)) // [DA_PORT] после обрезки dpos может выйти за WidePos
         WidePos[dpos] = spos;
 
     if (WideStr)
     {
         VERIFY2((dpos < WideStrSize), make_string("S2: '%s',%hu<%hu", MultiStr, dpos, WideStrSize));
-        WideStr[dpos + 1] = 0x0000;
+        if (dpos + 1 < WideStrSize) // [DA_PORT] см. выше — не пишем за границу
+            WideStr[dpos + 1] = 0x0000;
     }
 
     if (WideStr)

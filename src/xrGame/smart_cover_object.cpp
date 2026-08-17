@@ -29,7 +29,23 @@ namespace smart_cover
 bool object::net_Spawn(CSE_Abstract* server_entity)
 {
     CSE_SmartCover* smart_cover = smart_cast<CSE_SmartCover*>(server_entity);
-    VERIFY(smart_cover);
+
+    // [DA_PORT] Приведение к серверному классу проверяется ЖИВОЙ проверкой, а не VERIFY.
+    //
+    // Это общий вид для всех net_Spawn: класс объекта определяется ДАННЫМИ — секцией в расстановке
+    // и таблицей классов мода. Достаточно расхождения между ними (обновили мод, поменяли класс
+    // секции, ошиблись в конфиге), и приведение даёт ноль, а следом идёт разыменование. VERIFY от
+    // этого не защищает: в релизе его нет.
+    //
+    // ⚠️ Именно «умное укрытие» уже роняло нас в задаче #73 — там оно спавнилось с негодной
+    // вершиной. Пропуск создания объекта здесь безопаснее вылета: укрытием просто никто не
+    // воспользуется.
+    if (!smart_cover)
+    {
+        Msg("! [DA] умное укрытие [%s]: серверный объект не того класса — не создаём",
+            server_entity ? server_entity->name_replace() : "без имени");
+        return false;
+    }
 
     if (!smart_cover->m_description.size())
         Msg("! smart cover %s has no description", smart_cover->name_replace());

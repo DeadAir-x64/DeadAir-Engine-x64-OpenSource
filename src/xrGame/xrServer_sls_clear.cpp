@@ -20,8 +20,47 @@ void xrServer::Perform_destroy(CSE_Abstract* object, u32 mode)
 
     while (!object->children.empty())
     {
-        CSE_Abstract* child = game->get_entity_from_eid(object->children.back());
-        R_ASSERT2(child, make_string("child registered but not found [%d]", object->children.back()));
+        const u16 child_id = object->children.back();
+        CSE_Abstract* child = game->get_entity_from_eid(child_id);
+
+        // [DA_PORT] Пропавший потомок больше не валит игру (задача #74).
+        //
+        // ЧТО БЫЛО. Здесь стоял живой R_ASSERT2 — не VERIFY, а именно R_ASSERT2, то есть он
+        // работает и в релизе. Если объект держит в списке номер потомка, которого уже нет в карте
+        // сущностей, уборка обрывалась фаталом «child registered but not found». Происходит это на
+        // ВЫХОДЕ из игры, когда пользователю уже нечего терять, но выглядит как вылет.
+        //
+        // Найдено прогоном da_grenade_test: выдача предметов родителем-актёром плюс расстановка
+        // сталкеров, затем выход — «child registered but not found [55588]».
+        //
+        // ПОЧЕМУ ПРОПУСК, А НЕ ФАТАЛ. Мы разбираем мир на части, и уже уничтоженный потомок — это в
+        // точности то состояние, к которому мы и стремимся. Разрушать процесс из-за того, что
+        // работа частично сделана заранее, смысла нет: остальные потомки от этого не уберутся.
+        //
+        // ⛔ Запись ОБЯЗАТЕЛЬНО снимается. Цикл крутится, пока список не опустеет, а вычёркивает из
+        // него обычно Perform_reject — для отсутствующего потомка он не отработает, и простое
+        // «пропустить» дало бы вечный цикл вместо вылета. Это было бы хуже: вылет хотя бы виден.
+        if (!child)
+        {
+            static u32 reported = 0;
+            if (reported < 8)
+            {
+                ++reported;
+                // ⚠️ Номер владельца печатается ВСЕГДА, а имя — только если оно есть. У актёра
+                // name_replace() пуст, и первая версия сообщения выглядела как «числится за []»:
+                // сказать, что запись снята, и не сказать чья — значит отдать половину подсказки.
+                pcstr owner = object->name_replace();
+                if (!owner || !*owner)
+                    owner = object->name();
+
+                Msg("! [DA] уборка: потомок [%u] числится за [%s] (номер %u), но уже не существует "
+                    "— запись снята%s",
+                    u32(child_id), (owner && *owner) ? owner : "без имени", u32(object->ID),
+                    (reported == 8) ? " (дальнейшие сообщения подавлены)" : "");
+            }
+            object->children.pop_back();
+            continue;
+        }
         //		Msg					("SLS-CLEAR : REJECT  [%s][%s] FROM
         //[%s][%s]",child->name(),child->name_replace(),object->name(),object->name_replace());
         Perform_reject(child, object, 2 * NET_Latency);

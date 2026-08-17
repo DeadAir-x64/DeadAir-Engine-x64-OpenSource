@@ -1110,8 +1110,11 @@ void CAI_Stalker::update_throw_params()
 #endif
 
     static float const distances[] = {30.f, 40.f, 50.f, 60.f};
-    VERIFY(g_SingleGameDifficulty < sizeof(distances) / sizeof(distances[0]));
-    float const max_distance = distances[g_SingleGameDifficulty];
+    // [DA_PORT] VERIFY вырезан в релизе: сложность из конфига/скрипта вне [0..3] читала бы за
+    // границей массива. Клампим индекс к последнему элементу.
+    constexpr u32 dist_count = sizeof(distances) / sizeof(distances[0]);
+    u32 const diff_idx = ((u32)g_SingleGameDifficulty < dist_count) ? (u32)g_SingleGameDifficulty : (dist_count - 1);
+    float const max_distance = distances[diff_idx];
 
     // computing velocity with minimum magnitude
     m_throw_velocity.sub(m_throw_target_position, m_throw_position);

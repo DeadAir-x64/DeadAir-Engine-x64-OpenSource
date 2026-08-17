@@ -476,6 +476,10 @@ u32 CScriptGameObject::Money()
 {
     CInventoryOwner* pOurOwner = smart_cast<CInventoryOwner*>(&object());
     VERIFY(pOurOwner);
+    // [DA_PORT] Из Lua money() можно вызвать на любом объекте (ящик, труп без инвентаря, аномалия);
+    // приведение не обязано удаться, VERIFY в релизе исчезает -> разыменование null. Мягкий обход.
+    if (!pOurOwner)
+        return (0);
     return pOurOwner->get_money();
 }
 
@@ -519,6 +523,9 @@ void CScriptGameObject::GiveMoney(u32 money)
 {
     CInventoryOwner* pOurOwner = smart_cast<CInventoryOwner*>(&object());
     VERIFY(pOurOwner);
+    // [DA_PORT] give_money() из Lua на не-владельце инвентаря: VERIFY мёртв в релизе -> null-разыменование.
+    if (!pOurOwner)
+        return;
 
     pOurOwner->set_money(pOurOwner->get_money() + money, true);
 }
@@ -898,6 +905,9 @@ void CScriptGameObject::AllowBreakTalkDialog(bool b)
 {
     CInventoryOwner* inv_owner = smart_cast<CInventoryOwner*>(&object());
     VERIFY(inv_owner);
+    // [DA_PORT] allow_break_talk_dialog() из Lua на не-владельце инвентаря: VERIFY мёртв в релизе -> null-разыменование.
+    if (!inv_owner)
+        return;
     inv_owner->bDisableBreakDialog = !b;
 }
 

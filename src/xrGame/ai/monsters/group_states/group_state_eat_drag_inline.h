@@ -22,6 +22,15 @@ void CStateGroupDragAbstract::initialize()
     CInifile* ini = K->LL_UserData();
     VERIFY(ini);
 
+    // [DA_PORT] LL_UserData() отдаёт null, если у модели нет user data (данные мода). В релизе
+    // VERIFY исчезает, и ini->section_exist() ниже разыменует null. Нет user data — захват костей
+    // невозможен, помечаем состояние как неудачное и выходим, вместо краша.
+    if (!ini)
+    {
+        m_failed = true;
+        return;
+    }
+
     if (!ini->section_exist("capture_used_bones") || !ini->line_exist("capture_used_bones", "bones"))
     {
         m_failed = true;

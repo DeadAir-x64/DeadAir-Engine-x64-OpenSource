@@ -1,0 +1,68 @@
+file,line,func,expr,usage,code
+xrGame\Actor_Events.cpp,108,OnEvent,Obj,разыменование,"VERIFY2(Obj, make_string(""GE_OWNERSHIP_REJECT: Object not found, id = %d"", id).c_str());"
+xrGame\Actor_Events.cpp,211,OnEvent,Obj,разыменование,"VERIFY2(Obj, make_string(""GEG_PLAYER_ITEM_EAT(use): Object not found. object_id = [%d]"", id).c_str()"
+xrGame\Actor_Events.cpp,245,OnEvent,pArtefact,разыменование,"VERIFY2(pArtefact,"
+xrGame\alife_anomalous_zone.cpp,73,spawn_artefacts,!(n % 2),разыменование,"VERIFY2(!(n % 2), ""Invalid parameters count in line artefacts for anomalous zone"");"
+xrGame\alife_simulator_base_inline.h,35,spawns,m_spawns,разыменование *,VERIFY(m_spawns);
+xrGame\alife_simulator_base_inline.h,98,spawns,m_spawns,разыменование *,VERIFY(m_spawns);
+xrGame\alife_spawn_registry.cpp,60,load,chunk,разыменование,VERIFY(chunk);
+xrGame\alife_spawn_registry.cpp,69,load,!m_file,разыменование *,VERIFY(!m_file);
+xrGame\alife_spawn_registry.cpp,83,load,!m_file,разыменование *,VERIFY(!m_file);
+xrGame\alife_spawn_registry.cpp,111,load,!m_chunk,разыменование *,VERIFY(!m_chunk);
+xrGame\alife_spawn_registry.cpp,156,load_updates,vertex,разыменование,VERIFY(vertex);
+xrGame\alife_spawn_registry_inline.h,42,spawn_id,I != m_spawn_story_ids.end(),разыменование *,"VERIFY2(I != m_spawn_story_ids.end(), ""Spawn story id cannot be found"");"
+xrGame\alife_surge_manager.cpp,35,spawn_new_spawns,spawn,разыменование,"VERIFY3(spawn, spawns().spawns().vertex(*I)->data()->object().name(),"
+xrGame\alife_trader_abstract.cpp,28,spawn_supplies,dynamic_object,разыменование,VERIFY(dynamic_object);
+xrGame\artefact_activation.cpp,180,SpawnAnomaly,AlifeZone,разыменование,VERIFY(AlifeZone);
+xrGame\CarWheels.cpp,80,Load,ini,разыменование,VERIFY(ini);
+xrGame\CarWheels.cpp,379,Load,ini,разыменование,VERIFY(ini);
+xrGame\CharacterPhysicsSupport.cpp,271,SpawnInitPhysics,po,разыменование,VERIFY(po);
+xrGame\CustomZone.cpp,363,net_Spawn,Z,разыменование,VERIFY(Z);
+xrGame\CustomZone.cpp,1172,OnEvent,artefact,разыменование,VERIFY(artefact);
+xrGame\GameObject.cpp,441,net_Spawn,E,разыменование,VERIFY(E);
+xrGame\game_cl_mp.cpp,1182,OnEventMoneyChanged,m_game_ui_custom,разыменование,"VERIFY2(m_game_ui_custom, ""game ui not initialized"");"
+xrGame\game_sv_base.cpp,730,OnEvent,CL,разыменование,"VERIFY2(CL, ""bad create client message GAME_EVENT_CREATE_CLIENT"");"
+xrGame\game_sv_capture_the_artefact.cpp,993,LoadAnomaliesItems,level_ini_file,разыменование,"VERIFY2(level_ini_file, ""level ini file not initialized"");"
+xrGame\game_sv_capture_the_artefact.cpp,1036,LoadAnomalySet,level_ini_file,разыменование,"VERIFY2(level_ini_file, ""level ini file not initialized"");"
+xrGame\game_sv_capture_the_artefact.cpp,1271,SpawnWeaponsForActor,pA,разыменование,"VERIFY2(pA, ""owner not an Actor"");"
+xrGame\game_sv_mp.cpp,405,OnEvent,pClient,разыменование *,"VERIFY2(pClient,"
+xrGame\game_sv_mp_script.cpp,58,SpawnPlayer,CL,разыменование,VERIFY(CL);
+xrGame\game_sv_mp_script.cpp,61,SpawnPlayer,ps_who,разыменование,VERIFY(ps_who);
+xrGame\InventoryOwner.cpp,340,spawn_supplies,game_object,разыменование,VERIFY(game_object);
+xrGame\Level_load.cpp,90,Load_GameSpecific_After,m_level_sound_manager,разыменование,VERIFY(m_level_sound_manager);
+xrGame\Level_network_Demo.cpp,100,RestartPlayDemo,g_pGameLevel,разыменование,VERIFY(g_pGameLevel);
+xrGame\Level_network_Demo.cpp,101,RestartPlayDemo,m_current_spectator,разыменование,VERIFY(m_current_spectator);
+xrGame\MainMenu.cpp,379,ReloadUI,m_startDialog,разыменование,VERIFY(m_startDialog);
+xrGame\material_manager.cpp,55,Load,m,разыменование,VERIFY(m);
+xrGame\Missile.cpp,150,spawn_fake_missile,alife_object,разыменование,VERIFY(alife_object);
+xrGame\moving_bones_snd_player.cpp,125,load,kinematics,разыменование,VERIFY(kinematics);
+xrGame\object_handler.cpp,62,net_Spawn,trader,разыменование,VERIFY(trader);
+xrGame\ParticlesPlayer.cpp,74,LoadParticles,K,разыменование,VERIFY(K);
+xrGame\PhraseDialog.cpp,264,load_shared,phrase,разыменование,VERIFY(phrase);
+xrGame\PHSkeleton.cpp,63,Spawn,po,разыменование,VERIFY(po);
+xrGame\PHSkeleton.cpp,67,Spawn,visual,разыменование,VERIFY(visual);
+xrGame\PHSkeleton.cpp,73,Spawn,source,разыменование,VERIFY(source);
+xrGame\player_account.cpp,14,load_account,tmp_lmngr,разыменование,VERIFY(tmp_lmngr);
+xrGame\pp_effector_distance.cpp,14,load,m_r_min_perc <= m_r_max_perc,разыменование *,VERIFY(m_r_min_perc <= m_r_max_perc);
+xrGame\restricted_object.cpp,73,net_Spawn,monster,разыменование,VERIFY(monster);
+xrGame\script_particles.cpp,187,LoadPath,m_particles,разыменование,VERIFY(m_particles);
+xrGame\smart_cover_object.cpp,32,net_Spawn,smart_cover,разыменование,VERIFY(smart_cover);
+xrGame\smart_cover_transition.cpp,72,load_animations,animation_action,разыменование,VERIFY(animation_action);
+xrGame\stalker_animation_manager.cpp,75,reload,m_skeleton_animated,разыменование,VERIFY(m_skeleton_animated);
+xrGame\stalker_animation_manager.cpp,78,reload,m_data_storage,разыменование,VERIFY(m_data_storage);
+xrGame\step_manager.cpp,78,reload,KA,разыменование,VERIFY(KA);
+xrGame\step_manager.cpp,90,reload,KA,разыменование,VERIFY(KA);
+xrGame\TorridZone.cpp,15,net_Spawn,zone,разыменование,VERIFY(zone);
+xrGame\Wound.cpp,41,load,m_Wounds[i] >= 0.0f && m_Wounds[i] <= WOUND_MAX,индексация,VERIFY(m_Wounds[i] >= 0.0f && m_Wounds[i] <= WOUND_MAX);
+xrGame\ai\monsters\control_animation.cpp,221,restart,part.blend,разыменование,VERIFY(part.blend);
+xrGame\ai\monsters\poltergeist\poltergeist.cpp,383,net_Spawn,character_physics_support(),разыменование,VERIFY(character_physics_support());
+xrGame\ai\monsters\pseudodog\psy_dog.cpp,107,spawn_phantom,pSE_Monster,разыменование,VERIFY(pSE_Monster);
+xrGame\ai\phantom\phantom.cpp,60,net_Spawn,OBJ,разыменование,VERIFY(OBJ);
+xrGame\ai\phantom\phantom.cpp,86,net_Spawn,m_enemy,разыменование,VERIFY(m_enemy);
+xrGame\ai\stalker\ai_stalker.cpp,572,net_Spawn,pKinematics,разыменование,VERIFY(pKinematics);
+xrGame\ui\UIBuyWndShared.cpp,18,Load,c > 0,как индекс,VERIFY(c > 0);
+xrGame\ui\UIHudStatesWnd.cpp,205,Load_section,Level().hud_zones_list,разыменование,VERIFY(Level().hud_zones_list);
+xrGame\ui\UIInventoryUpgradeWnd_add.cpp,155,LoadSchemes,"name && xr_strcmp(name, """")",разыменование,"VERIFY(name && xr_strcmp(name, """"));"
+xrGame\ui\UILogsWnd.cpp,190,ReLoadNews,m_filter_news && m_filter_talk,разыменование,VERIFY(m_filter_news && m_filter_talk);
+xrServerEntities\xrServer_Objects_ALife.cpp,113,load,locations[i].empty(),индексация,VERIFY(locations[i].empty());
+xrAICore\Navigation\PatrolPath\patrol_path_storage.cpp,106,load,I == m_registry.end(),разыменование,"VERIFY3(I == m_registry.end(), ""Duplicated patrol path found "", pair.first.c_str());"

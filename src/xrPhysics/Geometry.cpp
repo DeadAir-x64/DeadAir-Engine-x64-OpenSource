@@ -231,15 +231,19 @@ void CODEGeom::set_material(u16 ul_material)
 {
     if (!m_geom_transform)
         return;
+    // [DA_PORT] VERIFY вырезан в релизе: у геометрии уничтожаемого объекта (#66-семейство) userdata
+    // может быть нулём, и запись ->material разыменовывала null. Нет userdata — нечего помечать.
     if (geom())
     {
         VERIFY(dGeomGetUserData(geom()));
-        dGeomGetUserData(geom())->material = ul_material;
+        if (dGeomGetUserData(geom()))
+            dGeomGetUserData(geom())->material = ul_material;
     }
     else
     {
         VERIFY(dGeomGetUserData(m_geom_transform));
-        dGeomGetUserData(m_geom_transform)->material = ul_material;
+        if (dGeomGetUserData(m_geom_transform))
+            dGeomGetUserData(m_geom_transform)->material = ul_material;
     }
 }
 

@@ -39,3 +39,10 @@ da_port/symbols/
 # [DA_PORT] Кэш интерпретатора Python от наших инструментов
 __pycache__/
 *.pyc
+
+# [DA_PORT] CodeQL: БД (несколько ГБ) и результаты пересобираются; запросы .ql/.yml коммитятся
+da_port/codeql/db_cpp/
+da_port/codeql/results_*.sarif
+da_port/codeql/results_*.csv
+# [DA_PORT] Тур-логи heap_guard (выходы прогонов); скрипты коммитятся
+da_port/tools/heap_guard/tour/

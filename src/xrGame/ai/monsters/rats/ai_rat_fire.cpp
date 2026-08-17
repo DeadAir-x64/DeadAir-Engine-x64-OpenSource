@@ -107,6 +107,8 @@ float CAI_Rat::evaluate(const CItemManager* manager, const CGameObject* object) 
 {
     const CEntityAlive* entity_alive = smart_cast<const CEntityAlive*>(object);
     VERIFY(entity_alive);
+    if (!entity_alive) // [DA_PORT] object may be non-alive; VERIFY vanishes in release (sibling can_take() guards this cast)
+        return (flt_max);
     if (!entity_alive->g_Alive())
     {
         if ((Device.dwTimeGlobal - entity_alive->GetLevelDeathTime() < m_dwEatCorpseInterval) &&

@@ -1,4 +1,9 @@
 #include "stdafx.h"
+
+// [DA_PORT] Для переносимого номера потока в da_cform_note_thread ниже.
+#include <thread>
+#include <functional>
+
 #include "IGame_Level.h"
 #include "xr_collide_form.h"
 #include "xr_object.h"
@@ -130,7 +135,13 @@ std::atomic<u32> g_da_cform_thread_count{ 0 };
 
 void da_cform_note_thread()
 {
-    const u32 me = (u32)GetCurrentThreadId();
+    // [DA_PORT] Номер потока берётся переносимо. Здесь он нужен только чтобы РАЗЛИЧАТЬ потоки —
+    // сравнивать его с системными идентификаторами или показывать пользователю мы не собираемся,
+    // поэтому свёртка хэша к u32 годится полностью.
+    //
+    // Было GetCurrentThreadId, и это одно из мест, которыми наш x64-порт растерял
+    // кроссплатформенность; вскрылось сборкой под санитайзеры в контейнере Ubuntu (см. Lock.hpp).
+    const u32 me = (u32)std::hash<std::thread::id>{}(std::this_thread::get_id());
     const u32 known = g_da_cform_thread_count.load(std::memory_order_relaxed);
     for (u32 i = 0; i < known && i < DA_CFORM_MAX_THREADS; ++i)
         if (g_da_cform_threads[i].load(std::memory_order_relaxed) == me)

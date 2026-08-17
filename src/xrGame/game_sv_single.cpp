@@ -136,12 +136,17 @@ void game_sv_Single::OnDetach(u16 eid_who, u16 eid_what)
                 l_tpALifeInventoryItem->base()->ID_Parent = 0xffff;
 
                 CSE_ALifeDynamicObject* dynamic_object = smart_cast<CSE_ALifeDynamicObject*>(e_what);
-                VERIFY(dynamic_object);
-                dynamic_object->m_tNodeID = l_tpDynamicObject->m_tNodeID;
-                dynamic_object->m_tGraphID = l_tpDynamicObject->m_tGraphID;
-                dynamic_object->m_bALifeControl = true;
-                dynamic_object->m_bOnline = true;
-                alife().create(dynamic_object);
+                // [DA_PORT] VERIFY вырезан в релизе: если e_what не динамический ALife-объект,
+                // разыменование нуля роняло передачу предмета. Пропускаем создание, но обязательно
+                // восстанавливаем ID_Parent (снят на 0xffff строкой выше).
+                if (dynamic_object)
+                {
+                    dynamic_object->m_tNodeID = l_tpDynamicObject->m_tNodeID;
+                    dynamic_object->m_tGraphID = l_tpDynamicObject->m_tGraphID;
+                    dynamic_object->m_bALifeControl = true;
+                    dynamic_object->m_bOnline = true;
+                    alife().create(dynamic_object);
+                }
                 l_tpALifeInventoryItem->base()->ID_Parent = id;
             }
 #ifdef DEBUG

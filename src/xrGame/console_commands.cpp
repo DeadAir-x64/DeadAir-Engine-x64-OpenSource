@@ -1,4 +1,6 @@
 #include "pch_script.h"
+#include "xrCore/da_heap_guard.h" // [DA_PORT] карантин освобождённой памяти
+#include "Grenade.h" // [DA_PORT] da_grenade_test: воспроизведение вылета в физике
 #include "xrEngine/Engine.h" // [DA_PORT] da_dev_mode()
 #include "xrEngine/XR_IOConsole.h"
 #include "xrEngine/xr_ioc_cmd.h"
@@ -29,6 +31,9 @@
 #include "ai_space.h"
 #include "ai/monsters/basemonster/base_monster.h"
 #include "date_time.h"
+// [DA_PORT] Нужен для Level_ID в da_level_probe: GamePersistent.h подключается сильно ниже по
+// файлу, уже после этой команды.
+#include "xrEngine/IGame_Persistent.h"
 #include "mt_config.h"
 #include "ui/UIOptConCom.h"
 #include "UIGameSP.h"
@@ -627,6 +632,60 @@ public:
             }
         }
         da_alloc_stat_dump(false);
+    }
+};
+
+// [DA_PORT] Состояние карантина освобождённой памяти. Разбор — в xrCore/da_heap_guard.h.
+//
+// ⚠️ Команда только ПОКАЗЫВАЕТ. Включается карантин переменной окружения ДО запуска игры
+// (DA_HEAP_GUARD=1), и иначе быть не может: консоль появляется многократно позже первых выделений.
+// Готовый запуск — da_port/tools/heap_guard/run_heap_guard.cmd.
+class CCC_DaHeapGuardStat : public IConsole_Command
+{
+public:
+    CCC_DaHeapGuardStat(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/) { da_heap_guard_stat(); }
+};
+
+// [DA_PORT] Самопроверка карантина В ЖИВОЙ ИГРЕ: НАМЕРЕННОЕ обращение к освобождённой памяти.
+//
+// ЗАЧЕМ, если есть сценарий в прогонном стенде. Стенд доказывает, что работает БИБЛИОТЕКА. А здесь
+// проверяется вся цепочка целиком: карантин отравил → игра разыменовала → обработчик поймал →
+// в лог легли адрес и стек, по которым дефект можно найти. Порваться она может в любом звене, и
+// молчание любого из них выглядит одинаково — как «ошибок нет».
+//
+// ⛔ Игра после этой команды УПАДЁТ. Это и есть ожидаемый исход, ровно как у da_crash_test.
+// В логе обязан появиться адрес вида 0xDDDDDDDDDDDDDDDD — по нему и опознаётся, что упало именно
+// обращение к мертвецу, а не разыменование нуля.
+class CCC_DaHeapGuardTest : public IConsole_Command
+{
+public:
+    CCC_DaHeapGuardTest(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+    virtual void Execute(LPCSTR /*args*/)
+    {
+        if (!da_heap_guard_enabled())
+        {
+            Msg("! [DA_HEAP_GUARD] карантин выключен — проверять нечего. Запускать надо через "
+                "ЗАПУСК_контроль_кучи.cmd (DA_HEAP_GUARD=1).");
+            return;
+        }
+
+        // Блок с указателем внутри — так выглядит любой объект движка: первым полем таблица
+        // виртуальных функций или ссылка на владельца.
+        void** victim = (void**)Memory.mem_alloc(256);
+        victim[0] = victim; // осмысленный указатель, пока объект жив
+
+        Memory.mem_free(victim); // отравление + карантин
+
+        Msg("~ [DA_HEAP_GUARD] самопроверка: читаю указатель из ОСВОБОЖДЁННОГО блока %p", (void*)victim);
+        Msg("~ [DA_HEAP_GUARD] ожидается падение по адресу 00007ddddddddddd");
+        FlushLog();
+
+        // volatile, иначе оптимизатор вправе выбросить и чтение, и запись целиком.
+        void* volatile stale = victim[0];    // = 0xDDDDDDDDDDDDDDDD
+        *(volatile int*)stale = 1;           // <- падение здесь
+
+        Msg("! [DA_HEAP_GUARD] ПРОВАЛ: падения не случилось, карантин не отравил блок");
     }
 };
 
@@ -1955,6 +2014,446 @@ struct CCC_JumpToLevel : public IConsole_Command
     }
 };
 
+// [DA_PORT] Воспроизведение вылета в физике после подрыва гранаты (задача #66).
+//
+//     da_grenade_test [сколько] [через сколько кадров рвать]
+//
+// ЗАЧЕМ. Вылет случался «иногда после взрыва»: за заход тестера 3 подрыва и 1 падение. Руками такое
+// ловится долго и ненадёжно, а обход локаций гранат не бросает. Здесь подрывы делаются пачкой и
+// столько раз, сколько нужно.
+//
+// ПОЧЕМУ ИМЕННО ТАК. Гранаты кладутся НА ЗЕМЛЮ вокруг актёра и подрываются все разом через
+// заданное число кадров. Смысл в кольце: взрыв должен застать рядом чужую физику — самого актёра и
+// то, что вокруг, — потому что падало в обработчике СТОЛКНОВЕНИЯ, а не в самом взрыве.
+//
+// ⚠️ Подрыв отложен намеренно. Спавн доходит до клиента не в том же кадре, и рвать сразу означает
+// не найти ни одной гранаты — проверка молча отчиталась бы об успехе, ничего не проверив.
+// [DA_PORT] Воспроизведение вылета «child registered but not found» (задача #74).
+//
+// ЗАЧЕМ ОТДЕЛЬНАЯ КОМАНДА. Вылет нашёлся случайно — прежней версией проверки гранаты, которая
+// выдавала предметы через alife().spawn_item с родителем-актёром. Такой потомок числится за
+// актёром, но до клиента не доходит, и на выходе уборка натыкается на номер без сущности.
+//
+// ⛔ Когда я перевёл проверку гранаты на Level().spawn_item, сценарий пропал вместе с ошибкой — и
+// три прогона «без фатала» перестали что-либо доказывать: заслон не срабатывал ни разу. Поэтому
+// путь, порождающий сироту, сохранён здесь ЯВНО и отдельно. Проверка починки без него — самообман.
+class CCC_DaOrphanTest : public IConsole_Command
+{
+public:
+    CCC_DaOrphanTest(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+
+    virtual void Execute(LPCSTR args)
+    {
+        int count = 8;
+        if (args && xr_strlen(args))
+            sscanf(args, "%d", &count);
+        clamp(count, 1, 64);
+
+        if (!g_pGameLevel || !Actor() || !ai().get_alife())
+        {
+            Msg("! [DA_ORPHAN] нужен загруженный уровень с ALife");
+            return;
+        }
+
+        u32 ok = 0;
+        for (int i = 0; i < count; ++i)
+        {
+            CSE_Abstract* se = const_cast<CALifeSimulator*>(ai().get_alife())
+                                   ->spawn_item("grenade_f1", Actor()->Position(),
+                                       Actor()->ai_location().level_vertex_id(),
+                                       Actor()->ai_location().game_vertex_id(), Actor()->ID());
+            if (se)
+                ++ok;
+        }
+
+        Msg("~ [DA_ORPHAN] создано потомков актёра через ALife: %u из %d", ok, count);
+        FlushLog();
+
+        DA_AfterLoadArm(300, "quit");
+    }
+};
+
+// ⛔ ПЕРВАЯ ВЕРСИЯ ЭТОЙ ПРОВЕРКИ БЫЛА НЕГОДНОЙ, и это стоило 96 подрывов впустую.
+//
+// Она раскладывала гранаты НА ЗЕМЛЮ и рвала их напрямую через CGrenade::Destroy(). Отчёт вышел
+// бодрый: «8 прогонов, 96 подрывов, ноль вылетов». А в логах не оказалось НИ ОДНОЙ строки
+// «Destroying local grenade» — то есть путь, на котором падает (`State(eThrowEnd)` с
+// `xr_delete(m_pPhysicsShell)`), не проходился вообще. Проверка отчиталась об успехе, ничего не
+// проверив.
+//
+// Разница в том, что удаление оболочки живёт под `if (m_thrown)`, а поле это ПРИВАТНОЕ и ставится
+// только настоящим броском. Значит и бросать надо по-настоящему: граната в инвентарь, в руки,
+// выдернуть чеку, отпустить. Обходного пути нет, и искать его не нужно — как раз в обходе и была
+// ошибка.
+//
+// Второе условие вылета — из стека: CAI_Stalker::UpdateCL -> move_along_path -> CollideDynamics.
+// Нужен СТАЛКЕР, который идёт и задевает геометрию в момент её сноса. Поэтому вокруг актёра
+// заранее расставляются сталкеры, и без них проверка честно скажет, что она бессмысленна.
+namespace
+{
+enum
+{
+    da_gr_off = -1,
+    da_gr_give = 0,   // выдать гранату в инвентарь
+    da_gr_arm = 1,    // взять в руки
+    da_gr_pull = 2,   // выдернуть чеку
+    da_gr_throw = 3,  // отпустить (бросок)
+    da_gr_settle = 4, // дать взрыву и физике отработать
+};
+
+int g_da_gr_stage = da_gr_off;
+int g_da_gr_left = 0;
+int g_da_gr_settle = 0;
+u32 g_da_gr_thrown = 0;
+u32 g_da_gr_revived = 0;
+u16 g_da_gr_id = 0xffff; // номер выданной гранаты: её надо ВРУЧНУЮ положить в слот
+}
+
+class CCC_DaGrenadeStep : public IConsole_Command
+{
+public:
+    CCC_DaGrenadeStep(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+
+    virtual void Execute(LPCSTR /*args*/)
+    {
+        if (da_gr_off == g_da_gr_stage)
+            return;
+
+        if (!g_pGameLevel || !Actor())
+        {
+            Msg("! [DA_GRENADE] актёра нет — проверка прервана");
+            g_da_gr_stage = da_gr_off;
+            DA_AfterLoadArm(60, "quit");
+            return;
+        }
+
+        // ⛔ НЕ прерываемся на смерти, а поднимаем здоровье. Прежняя версия выходила с сообщением
+        // «актёр мёртв», и это оказалось не редким случаем, а НОРМОЙ: строка
+        // «cannot make saved game because actor is dead» есть даже в логах обхода локаций, где ни
+        // гранат, ни сталкеров не было. Гибнет он по разным причинам — от прыжка на уровень, от
+        // собственных взрывов, от расставленных сталкеров, — и проверка каждый раз упиралась в это
+        // вместо своей работы. g_god оказался бессилен, поэтому лечим прямо.
+        //
+        // ⚠️ Здоровье поднимается на КАЖДОМ шаге: между шагами проходят сотни кадров, и умереть за
+        // это время он успевает.
+        if (Actor()->GetfHealth() < 0.9f)
+        {
+            ++g_da_gr_revived;
+            Actor()->SetfHealth(1.0f);
+        }
+
+        switch (g_da_gr_stage)
+        {
+        case da_gr_give:
+        {
+            // ⚠️ Именно Level().spawn_item, а НЕ alife().spawn_item. Через ALife предмет создаётся
+            // серверным объектом-потомком и до клиента за сотню кадров так и не доходит — проверено:
+            // net_Find по его номеру возвращал ноль, и бросать было нечего. Level().spawn_item —
+            // тот же путь, которым пользуется штатная консольная команда выдачи в инвентарь.
+            //
+            // ⚠️ Номер он не возвращает, поэтому гранату потом ищем в самом инвентаре.
+            Level().spawn_item("grenade_f1", Actor()->Position(), false, Actor()->ID());
+            g_da_gr_id = 0xffff;
+            g_da_gr_stage = da_gr_arm;
+            DA_AfterLoadArm(120, "da_grenade_step"); // дать предмету дойти до клиента
+            break;
+        }
+
+        case da_gr_arm:
+        {
+            // ⛔ Гранату надо положить в слот РУКАМИ, и виновата в этом НАША ЖЕ правка. В Dead Air
+            // слот 14 (GRENADE_SLOT) сделан ручным, а стоковое автозаполнение мы отключили
+            // намеренно (Actor.cpp, OnItemDropUpdate) — иначе снятую гранату тут же возвращало
+            // обратно. Поэтому выданная граната ложится в рюкзак, а Activate(GRENADE_SLOT)
+            // включает ПУСТОЙ слот.
+            //
+            // Из-за этого прошлый прогон отчитался «бросок 1, бросок 2» и не бросил ничего:
+            // команды ушли в пустоту, `Destroying local grenade` в логе не появилось.
+            // Ищем гранату в самом инвентаре: номера у нас нет, зато список предметов — вот он.
+            PIItem item = nullptr;
+            for (PIItem it : Actor()->inventory().m_all)
+                if (smart_cast<CGrenade*>(it))
+                {
+                    item = it;
+                    break;
+                }
+
+            if (!item)
+            {
+                Msg("! [DA_GRENADE] гранаты в инвентаре нет — бросок невозможен");
+                g_da_gr_stage = da_gr_settle;
+                g_da_gr_settle = 1;
+                DA_AfterLoadArm(30, "da_grenade_step");
+                break;
+            }
+
+            const bool slotted = Actor()->inventory().Slot(GRENADE_SLOT, item, false, true);
+            Actor()->inventory().Activate(GRENADE_SLOT);
+            Msg("~ [DA_GRENADE] граната [%u] в слот: %s", u32(g_da_gr_id), slotted ? "да" : "НЕТ");
+            FlushLog();
+
+            g_da_gr_stage = da_gr_pull;
+            DA_AfterLoadArm(120, "da_grenade_step"); // анимация доставания
+            break;
+        }
+
+        case da_gr_pull:
+        {
+            // ⚠️ Бросок начинается ТОЛЬКО из состояния eIdle (CMissile::Action, kWPN_FIRE). Поэтому
+            // печатаем, что сейчас в руках и в каком оно состоянии: без этого «нажали, а броска
+            // нет» неотличимо от «нажали не туда».
+            PIItem active = Actor()->inventory().ActiveItem();
+            CHudItem* hud = active ? smart_cast<CHudItem*>(active) : nullptr;
+            // Число состояния печатаем как есть: бросок начинается из eIdle, а её значение
+            // сравнивать здесь не с чем — перечисление живёт в заголовке предмета, тянуть его
+            // сюда ради одной строки незачем.
+            Msg("~ [DA_GRENADE] в руках: %s, состояние %d",
+                active ? active->object().cName().c_str() : "ПУСТО", hud ? int(hud->GetState()) : -1);
+            FlushLog();
+
+            Actor()->inventory().Action(kWPN_FIRE, CMD_START);
+            g_da_gr_stage = da_gr_throw;
+            DA_AfterLoadArm(45, "da_grenade_step");
+            break;
+        }
+
+        case da_gr_throw:
+            Actor()->inventory().Action(kWPN_FIRE, CMD_STOP); // отпустили — полетела
+            ++g_da_gr_thrown;
+            Msg("~ [DA_GRENADE] бросок %u (здоровье %.2f)", g_da_gr_thrown, Actor()->GetfHealth());
+            FlushLog();
+            g_da_gr_stage = da_gr_settle;
+            // ⚠️ Ждём долго и ЧАСТЯМИ: вылет случается не во взрыве, а позже — когда физика
+            // наткнётся на снесённую геометрию. Дробим, чтобы между кусками успевать лечить актёра:
+            // одним куском в 400 кадров он успевает умереть, и дальше начинается не проверка, а
+            // разбор экрана смерти.
+            g_da_gr_settle = 5;
+            DA_AfterLoadArm(100, "da_grenade_step");
+            break;
+
+        case da_gr_settle:
+            if (--g_da_gr_settle > 0)
+            {
+                DA_AfterLoadArm(100, "da_grenade_step");
+                break;
+            }
+
+            if (--g_da_gr_left > 0)
+            {
+                g_da_gr_stage = da_gr_give;
+                DA_AfterLoadArm(30, "da_grenade_step");
+            }
+            else
+            {
+                Msg("~ [DA_GRENADE] ИТОГ: бросков выполнено %u, поднимали здоровье %u раз",
+                    g_da_gr_thrown, g_da_gr_revived);
+                FlushLog();
+                g_da_gr_stage = da_gr_off;
+                DA_AfterLoadArm(120, "quit");
+            }
+            break;
+        }
+    }
+};
+
+class CCC_DaGrenadeTest : public IConsole_Command
+{
+public:
+    CCC_DaGrenadeTest(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+
+    virtual void Execute(LPCSTR args)
+    {
+        int throws = 4;
+        int npc = 6;
+        if (args && xr_strlen(args))
+            sscanf(args, "%d %d", &throws, &npc);
+        clamp(throws, 1, 64);
+        clamp(npc, 0, 32);
+
+        if (!g_pGameLevel || !Actor() || !ai().get_alife())
+        {
+            Msg("! [DA_GRENADE] нужен загруженный уровень с ALife");
+            return;
+        }
+
+        // ⛔ Неуязвимость обязательна, и это выяснилось прогоном. Расставленные сталкеры оказались
+        // враждебными и убили актёра за 150 кадров — до первого броска. В логе осталось
+        // «cannot make saved game because actor is dead», и проверка честно прервалась, ничего не
+        // проверив. Мёртвый актёр не бросает гранат.
+        Console->Execute("g_god 1");
+
+        const Fvector center = Actor()->Position();
+        const u32 actor_lv = Actor()->ai_location().level_vertex_id();
+        const GameGraph::_GRAPH_ID actor_gv = Actor()->ai_location().game_vertex_id();
+
+        // Сталкеры кольцом в шести метрах: достаточно близко, чтобы взрыв их задел и они пошли, и
+        // достаточно далеко, чтобы не оказаться внутри актёра.
+        u32 spawned = 0;
+        for (int i = 0; i < npc; ++i)
+        {
+            const float a = PI_MUL_2 * float(i) / float(npc);
+            Fvector p = center;
+            p.x += 6.0f * _cos(a);
+            p.z += 6.0f * _sin(a);
+
+            const u32 lv = ai().level_graph().vertex(actor_lv, p);
+            if (!ai().level_graph().valid_vertex_id(lv))
+                continue;
+
+            if (const_cast<CALifeSimulator*>(ai().get_alife())
+                    ->spawn_item("stalker", p, lv, actor_gv, 0xffff))
+                ++spawned;
+        }
+
+        // ⛔ Говорим вслух, если сталкеров нет. Без них проверка всё равно отработает и напишет
+        // «чисто» — но проверять будет нечего: в стеке вылета стоит CAI_Stalker.
+        if (!spawned)
+            Msg("! [DA_GRENADE] ⛔ сталкеров расставить НЕ УДАЛОСЬ — вылет из задачи #66 так не "
+                "воспроизвести, в его стеке CAI_Stalker::UpdateCL");
+        else
+            Msg("~ [DA_GRENADE] расставлено сталкеров: %u", spawned);
+
+        Msg("~ [DA_GRENADE] бросков запланировано: %d", throws);
+        FlushLog();
+
+        g_da_gr_left = throws;
+        g_da_gr_thrown = 0;
+        g_da_gr_stage = da_gr_give;
+        DA_AfterLoadArm(150, "da_grenade_step"); // дать сталкерам появиться и разойтись
+    }
+};
+
+// [DA_PORT] Перечислить все локации графа игры — для обхода уровней прогонным стендом.
+//
+// Зачем командой, а не чтением конфигов: список берётся ИЗ ТОГО ЖЕ графа, по которому работает
+// jump_to_level. Любой другой источник (levels\, game.ltx, архивы) может разойтись с графом, и тогда
+// обход молча пропустит локацию или споткнётся на несуществующей.
+class CCC_DaListLevels : public IConsole_Command
+{
+public:
+    CCC_DaListLevels(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+
+    virtual void Execute(LPCSTR args)
+    {
+        if (!ai().get_alife())
+        {
+            Msg("! [DA_LEVELS] нужен ALife: сначала загрузите игру");
+            return;
+        }
+
+        u32 count = 0;
+        GameGraph::LEVEL_MAP::const_iterator I = ai().game_graph().header().levels().begin();
+        GameGraph::LEVEL_MAP::const_iterator E = ai().game_graph().header().levels().end();
+        for (; I != E; ++I, ++count)
+            Msg("~ [DA_LEVELS] %s", (*I).second.name().c_str());
+
+        Msg("~ [DA_LEVELS] всего локаций: %u", count);
+        FlushLog();
+
+        // `da_list_levels quit` — выйти сразу после перечисления. Нужно прогонному стенду: иначе
+        // заход за списком приходится снимать по таймауту, а это минута впустую и вердикт «зависла».
+        if (args && strstr(args, "quit"))
+            DA_AfterLoadArm(10, "quit");
+    }
+};
+
+// [DA_PORT] Один заход обхода локаций: прыгнуть на уровень, пожить там и выйти.
+//
+//     da_level_probe <локация> [кадров] [ускорение времени]
+//
+// ЗАЧЕМ ОТДЕЛЬНАЯ КОМАНДА. Сценарий состоит из ДВУХ отложенных шагов — «прыгнуть» и потом «выйти», —
+// а у da_after_load одна ячейка, цепочку в неё не уложить (это уже разобрано в da_memory_probe.cpp).
+// Здесь прыжок выполняется сразу, а выход взводится заново: к этому моменту прежняя ячейка уже
+// отработала и свободна.
+//
+// ⭐ Ускорение времени не для скорости прогона, а ради НАГРУЗКИ: при time_factor 1000 ALife начинает
+// молотить спавн и удаление объектов, переселять отряды и гонять события — то есть ровно те пути,
+// где и живут обращения к освобождённой памяти. За те же кадры проверяется многократно больше.
+class CCC_DaLevelProbe : public IConsole_Command
+{
+public:
+    CCC_DaLevelProbe(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
+
+    virtual void Execute(LPCSTR args)
+    {
+        string128 level = {};
+        int frames = 600;
+        int factor = 1000;
+
+        if (!args || !xr_strlen(args) || sscanf(args, "%127s %d %d", level, &frames, &factor) < 1)
+        {
+            Msg("! da_level_probe <локация> [кадров] [ускорение времени]");
+            return;
+        }
+
+        if (!ai().get_alife())
+        {
+            Msg("! [DA_TOUR] нужен ALife: сначала загрузите игру");
+            return;
+        }
+
+        // Локация обязана быть в графе. Молча промахнуться нельзя: прогон отчитался бы «чисто»,
+        // не побывав нигде.
+        bool found = false;
+        GameGraph::LEVEL_MAP::const_iterator I = ai().game_graph().header().levels().begin();
+        GameGraph::LEVEL_MAP::const_iterator E = ai().game_graph().header().levels().end();
+        for (; I != E; ++I)
+            if (!xr_strcmp((*I).second.name(), level))
+            {
+                found = true;
+                break;
+            }
+
+        if (!found)
+        {
+            Msg("! [DA_TOUR] ПРОВАЛ: локации \"%s\" нет в графе игры", level);
+            FlushLog();
+            return;
+        }
+
+        // [DA_PORT] Есть в графе — ещё не значит, что есть на диске. В Dead Air такие записи
+        // остались от базовой игры: l07_military числится в графе, но данных уровня под неё нет —
+        // мод заменил её своей new_military. Игрок туда не попадёт (переходы ведут на замену), а
+        // обход прыгает по ВСЕМ записям графа подряд, включая мёртвые.
+        //
+        // Без этой проверки заход отчитывался ВЫЛЕТОМ — и был прав по букве (игра действительно
+        // падала), но вводил в заблуждение по сути: дефекта в движке нет, есть мёртвая запись в
+        // данных мода. Такое надо отличать от настоящей поломки, иначе обход каждый раз показывает
+        // один и тот же «вылет», к которому все привыкают и перестают смотреть.
+        //
+        // Проверяем БЕЗ bSet: нам нужен только ответ «есть каталог или нет», переключать путь
+        // здесь нельзя — это сделает сама смена уровня.
+        //
+        // ⚠️ Метка локации ставится ЗДЕСЬ, до проверки, а не перед прыжком: обход ищет свой лог
+        // именно по ней. Пропущенный заход тоже должен быть опознан — иначе он выглядит как
+        // «лог не найден», то есть неотличимо от сбоя самой оснастки.
+        Msg("~ [DA_TOUR] локация: %s | кадров: %d | ускорение времени: %d", level, frames, factor);
+
+        if (g_pGamePersistent->Level_ID(level, "1.0", false) < 0)
+        {
+            Msg("~ [DA_TOUR] ПРОПУСК: у локации \"%s\" нет данных уровня — запись в графе игры "
+                "есть, а каталога нет (в Dead Air так осталось от базовой игры)", level);
+            FlushLog();
+            Console->Execute("quit");
+            return;
+        }
+
+        if (factor > 0)
+        {
+            string64 tf;
+            xr_sprintf(tf, sizeof(tf), "time_factor %d", factor);
+            Console->Execute(tf);
+        }
+
+        // ⚠️ Сброс лога на диск ДО прыжка: если на этой локации случится вылет, метка выше уже
+        // будет в файле, и по ней сразу видно, где именно. Без сброса хвост лога теряется.
+        FlushLog();
+
+        ai().alife().jump_to_level(level);
+        DA_AfterLoadArm(frames, "quit");
+    }
+};
+
 //#ifndef MASTER_GOLD
 class CCC_Script : public IConsole_Command
 {
@@ -3237,6 +3736,13 @@ void CCC_RegisterCommands()
     CMD1(CCC_DaMemTest, "da_mem_test");   // [DA_PORT] авто-прогон: N загрузок подряд
     CMD1(CCC_DaMemSnap, "da_mem_snap");   // [DA_PORT] снимок посреди игры: покадровые утечки
     CMD1(CCC_DaAllocStat, "da_alloc_stat"); // [DA_PORT] счётчик выделений: нужен ли другой аллокатор
+    CMD1(CCC_DaHeapGuardStat, "da_heap_guard_stat"); // [DA_PORT] карантин освобождённой памяти
+    CMD1(CCC_DaHeapGuardTest, "da_heap_guard_test"); // [DA_PORT] самопроверка: НАМЕРЕННОЕ падение
+    CMD1(CCC_DaListLevels, "da_list_levels");        // [DA_PORT] обход локаций: список из графа игры
+    CMD1(CCC_DaLevelProbe, "da_level_probe");        // [DA_PORT] обход локаций: один заход
+    CMD1(CCC_DaGrenadeTest, "da_grenade_test");      // [DA_PORT] воспроизведение вылета в физике (#66)
+    CMD1(CCC_DaGrenadeStep, "da_grenade_step");      // [DA_PORT] шаги броска, зовутся сами
+    CMD1(CCC_DaOrphanTest, "da_orphan_test");        // [DA_PORT] воспроизведение вылета уборки (#74)
     CMD1(CCC_DaPathStat, "da_path_stat"); // [DA_PORT] сколько узлов обходит поиск пути по уровню
     CMD1(CCC_DaAllocBench, "da_alloc_bench"); // [DA_PORT] цена операции: штуки -> миллисекунды
     CMD1(CCC_DaLuaMem, "da_lua_mem"); // [DA_PORT] мусор Lua по размерам блоков

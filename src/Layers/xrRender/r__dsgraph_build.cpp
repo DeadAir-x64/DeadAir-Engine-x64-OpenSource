@@ -12,9 +12,52 @@
 #include "ParticleGroup.h"
 #include "FTreeVisual.h"
 
+// [DA_PORT] Разбор расчёта видимости по частям -- см. build_subspace ниже. Копилка живёт в
+// da_gpu_timer (только R4), этот файл идёт и в ветку GL, поэтому через заглушку.
+#if RENDER == R_R4
+#   include "Layers/xrRenderPC_R4/da_gpu_timer.h"
+#   define DA_CULL_PARTS(p, s, d) da_gpu_set_cull_parts(p, s, d)
+#   define DA_CULL_DYN(c, so, se, n, h) da_gpu_set_cull_dyn(c, so, se, n, h)
+#   define DA_CULL_BODY(hom, rnd) da_gpu_set_cull_body(hom, rnd)
+#   define DA_CULL_SKEL(b, w, ns, nl, ne) da_gpu_set_cull_skel(b, w, ns, nl, ne)
+#else
+#   define DA_CULL_PARTS(p, s, d)
+#   define DA_CULL_DYN(c, so, se, n, h)
+#   define DA_CULL_BODY(hom, rnd)
+#   define DA_CULL_SKEL(b, w, ns, nl, ne)
+#endif
+
 namespace xray::render::RENDER_NAMESPACE
 {
 using namespace R_dsgraph;
+
+// [DA_PORT] Ручка прибора ожидания, объявление -- в xrRender_console.cpp.
+extern int ps_da_cull_prof;
+
+// [DA_PORT] Из чего складывается renderable_Render -- он забрал 80% динамики (0.64 мс из 0.79).
+//
+// Внутри add_leafs_dynamic каждый СКЕЛЕТНЫЙ визуал считает всю иерархию костей и следы на модели,
+// и делает это прямо в обходе видимости -- то есть в той задаче, которую главный поток ждёт
+// вхолостую. Считаем кости и следы врозь: у них разная природа и чинятся они по-разному.
+//
+// ⚠️ Копилки файловые и без синхронизации, поэтому пишутся ТОЛЬКО из основного прохода
+// (o.is_main_pass): теневые каскады идут своими контекстами на рабочих потоках, и без этого условия
+// сюда попадала бы сумма пяти разных обходов вместо одного нужного.
+//
+// Листья только СЧИТАЮТСЯ, а не хронометрируются: их на порядок больше объектов, и два обращения к
+// часам на каждый заметно исказили бы измеряемую величину. Их доля берётся вычитанием.
+static double s_da_bones_ms = 0.0;
+static double s_da_wallmarks_ms = 0.0;
+static u32 s_da_skeletons = 0;
+static u32 s_da_leafs = 0;
+
+// Скольким скелетам поза считалась ТОЧНО. Без этого числа «кости подешевели» неотличимо от
+// «скелетов стало меньше», и порог da_anim_lod нельзя было бы подобрать осмысленно.
+static u32 s_da_skel_exact = 0;
+
+// [DA_PORT] Порог точного расчёта позы, метры; 0 -- выключено. Объявление -- в xrRender_console.cpp,
+// полный разбор -- у места применения в add_leafs_dynamic.
+extern int ps_da_anim_lod;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Scene graph actual insertion and sorting ////////////////////////////////////////////////////////
@@ -507,11 +550,69 @@ void R_dsgraph_structure::add_leafs_dynamic(IRenderable* root, dxRender_Visual* 
         }
         else
         {
-            pV->CalculateBones(TRUE);
+            // [DA_PORT] Кости и следы -- врозь. Разбор у s_da_bones_ms.
+            const bool da_skel_prof = ps_da_cull_prof && o.is_main_pass;
+            CTimer da_skel_timer;
+            if (da_skel_prof)
+            {
+                ++s_da_skeletons;
+                da_skel_timer.Start();
+            }
+
+            // [DA_PORT] Точный расчёт позы -- только вблизи. Дальше работает штатный интервал.
+            //
+            // ЗАЧЕМ. Замер: CalculateBones стоит 0.49 мс на 116 скелетов в кадре -- это 82% всего
+            // renderable_Render, 65% динамики расчёта видимости и почти половина того ожидания, в
+            // котором главный поток стоит вхолостую. То есть анимация пересчитывается внутри
+            // определения видимости, на задаче, которую все ждут.
+            //
+            // ПОЧЕМУ АРГУМЕНТ. Механизм «обновлять не каждый кадр» в движке УЖЕ есть -- ранний выход
+            // в CalculateBones по UCalc_Interval, который в Kinematics.h объявлен как 100 мс (10 Гц)
+            // с авторским же комментарием. Отменяет его ровно bForceExact, и рендер передавал сюда
+            // безусловное TRUE -- для всех скелетов кадра, включая те, что в двух сотнях метров
+            // занимают несколько пикселей.
+            //
+            // ОТРАСЛЕВОЙ АНАЛОГ. Это ровно Update Rate Optimization из Unreal: дальние и закадровые
+            // модели пропускают полный расчёт позы, рекомендация Epic -- 15 Гц и ниже на подходящих
+            // дистанциях. Наши 10 Гц в неё укладываются. Приём считается самым базовым в LOD
+            // анимации и сам по себе срезает 50-70% процессорной цены анимации.
+            //
+            // Дистанция делится на отношение поля зрения тем же помощником, что и отсечка геометрии:
+            // в прицеле дальний сталкер занимает на экране больше, и порог обязан ехать вместе с
+            // увеличением, иначе анимация замедлится ровно у того, на кого игрок смотрит в упор.
+            //
+            // ⛔ ПО УМОЛЧАНИЮ ВЫКЛЮЧЕНО (0). Цена -- дальние модели анимируются 10 раз в секунду
+            // вместо частоты кадров; на дистанции это незаметно, но подбирается глазами. Отдельно
+            // проверить стоит стрельбу по дальним целям: попадания считаются по костям, и хотя
+            // игровые пути дёргают CalculateBones сами, эту связь надёжнее увидеть в игре, чем
+            // вывести рассуждением.
+            BOOL da_exact = TRUE;
+            if (ps_da_anim_lod > 0)
+            {
+                Fvector da_world_pos;
+                xform.transform_tiny(da_world_pos, pV->vis.sphere.P);
+                da_exact = da_cull_adjusted_distance(da_world_pos) <= float(ps_da_anim_lod);
+                if (da_skel_prof && da_exact)
+                    ++s_da_skel_exact;
+            }
+            else if (da_skel_prof)
+                ++s_da_skel_exact;
+
+            pV->CalculateBones(da_exact);
+
+            if (da_skel_prof)
+            {
+                s_da_bones_ms += da_skel_timer.GetElapsed_sec() * 1000.0;
+                da_skel_timer.Start();
+            }
+
             if (o.phase == CRender::PHASE_NORMAL)
             {
                 pV->CalculateWallmarks(root ? root->renderable_HUD() : false); //. bug?
             }
+
+            if (da_skel_prof)
+                s_da_wallmarks_ms += da_skel_timer.GetElapsed_sec() * 1000.0;
             for (auto& i : pV->children)
             {
                 //i->vis.obj_data = pV->getVisData().obj_data; // Наследники используют шейдерные данные от родительского визуала
@@ -527,6 +628,8 @@ void R_dsgraph_structure::add_leafs_dynamic(IRenderable* root, dxRender_Visual* 
         // Calculate distance to it's center
         Fvector Tpos;
         xform.transform_tiny(Tpos, pVisual->vis.sphere.P);
+        if (ps_da_cull_prof && o.is_main_pass)
+            ++s_da_leafs; // [DA_PORT] листья только считаем, см. разбор у s_da_bones_ms
         insert_dynamic(root, pVisual, xform, Tpos);
     }
         return;
@@ -999,8 +1102,64 @@ void R_dsgraph_structure::build_subspace()
         return;
     }
 
+    // [DA_PORT] Из чего складывается расчёт видимости: порталы / статика / динамика.
+    //
+    // ЗАЧЕМ. Замер доказал, что ожидание этого расчёта -- ЧИСТЫЙ простой главного потока (1.5
+    // украденных задачи против 22000 холостых витков), и стоит он 1.32 мс при кадре 5.50. Убрать его
+    // -- это +30% кадров. Но убрать можно только распараллеливанием, а распараллеливать надо ДОРОГОЕ:
+    // обход порталов последовательный по своей природе, и если время лежит в нём, вся затея с
+    // разделением карт визуалов по номеру потока не даст ничего.
+    //
+    // Границы выбраны по смыслу: обход секторов и порталов, обход статической геометрии (именно его
+    // и предлагали распараллелить в закрытой `#if 0` ветке ниже) и сбор динамики из дерева объектов.
+    //
+    // Только основной проход: у теневых каскадов свои вызовы, и смешивать их в одну копилку значит
+    // получить сумму пяти разных задач вместо той одной, которую ждём.
+    const bool da_prof = ps_da_cull_prof && o.is_main_pass;
+    CTimer da_timer;
+    double da_ms_portals = 0.0, da_ms_statics = 0.0;
+
+    // [DA_PORT] Динамика разбирается отдельно: первый замер отдал ей 74% (1.15 мс из 1.56), а
+    // порталам 1% -- значит дробить надо здесь. Четыре куска: сбор из дерева объектов, сортировка
+    // по дальности, определение сектора и всё остальное тело цикла.
+    //
+    // ⚠️ detect_sector меряется ПОКАДРОВЫМ накоплением, то есть двумя обращениями к часам на объект.
+    // При тысяче объектов это порядка 4% от измеряемой величины -- её собственный результат слегка
+    // завышен, и вывод «дорого» из него делать можно, а «дёшево» надёжнее.
+    CTimer da_sector_timer;
+    double da_ms_dyn_collect = 0.0, da_ms_dyn_sort = 0.0, da_ms_dyn_sector = 0.0;
+    u32 da_dyn_count = 0;
+
+    // Скольким объектам сектор реально пересчитали. Без этого числа «сектор стал 0.00» неотличимо
+    // от «сцена случайно оказалась неподвижной», и правку нельзя ни подтвердить, ни опровергнуть.
+    u32 da_dyn_sector_hits = 0;
+
+    // [DA_PORT] Тело цикла делится на два куска с разной природой: программный тест перекрытия и
+    // построение списков отрисовки. Второй уходит в игру (renderable_Render -> визуалы, кости, LOD),
+    // первый целиком наш. Лечатся они по-разному, поэтому и меряются врозь.
+    CTimer da_body_timer;
+    double da_ms_dyn_hom = 0.0, da_ms_dyn_render = 0.0;
+
+    if (da_prof)
+    {
+        // Копилки скелетов обнуляются здесь, а не в конце: их наполняет add_leafs_dynamic, которую
+        // зовут из середины этой же функции, и обнулять их после отчёта значило бы терять кадр.
+        s_da_bones_ms = 0.0;
+        s_da_wallmarks_ms = 0.0;
+        s_da_skeletons = 0;
+        s_da_leafs = 0;
+        s_da_skel_exact = 0;
+        da_timer.Start();
+    }
+
     // Traverse sector/portal structure
     PortalTraverser.traverse(Sectors[o.sector_id], o.view_frustum, o.view_pos, o.xform, o.portal_traverse_flags);
+
+    if (da_prof)
+    {
+        da_ms_portals = da_timer.GetElapsed_sec() * 1000.0;
+        da_timer.Start();
+    }
 
     // Determine visibility for static geometry hierarchy
 #if 0
@@ -1068,6 +1227,12 @@ void R_dsgraph_structure::build_subspace()
         }
     }
 
+    if (da_prof)
+    {
+        da_ms_statics = da_timer.GetElapsed_sec() * 1000.0;
+        da_timer.Start();
+    }
+
     const bool collect_dynamic_any = (o.spatial_types != 0) && psDeviceFlags.test(rsDrawDynamic);
 
     if (collect_dynamic_any)
@@ -1096,6 +1261,13 @@ void R_dsgraph_structure::build_subspace()
             g_pGamePersistent->SpatialSpace.q_frustum(lstRenderables, o.spatial_traverse_flags, o.spatial_types, o.view_frustum);
         }
 
+        if (da_prof)
+        {
+            da_ms_dyn_collect = da_timer.GetElapsed_sec() * 1000.0;
+            da_dyn_count = (u32)lstRenderables.size();
+            da_timer.Start();
+        }
+
         if (o.spatial_traverse_flags & ISpatial_DB::O_ORDERED) // this should be inside of query functions
         {
             // Exact sorting order (front-to-back)
@@ -1105,6 +1277,12 @@ void R_dsgraph_structure::build_subspace()
                     const float d2 = s2->GetSpatialData().sphere.P.distance_to_sqr(o.view_pos);
                     return d1 < d2;
                 });
+        }
+
+        if (da_prof)
+        {
+            da_ms_dyn_sort = da_timer.GetElapsed_sec() * 1000.0;
+            da_timer.Start();
         }
 
         u32 uID_LTRACK = 0xffffffff;
@@ -1133,11 +1311,45 @@ void R_dsgraph_structure::build_subspace()
         for (u32 o_it = 0; o_it < lstRenderables.size(); o_it++)
         {
             ISpatial* spatial = lstRenderables[o_it];
-            if (o.is_main_pass)
+            // [DA_PORT] Сектор определяется только тем, у кого он помечен устаревшим.
+            //
+            // ⛔ Это НЕ эвристика «раз в сколько-то кадров» и не кэш: проверка ровно та же, что
+            // стояла шагом ниже, просто теперь она стоит ДО работы, а не после.
+            //
+            // Было так: detect_sector считался для КАЖДОГО объекта в кадре, а результат уходил в
+            // spatial_updatesector, который начинается с
+            //
+            //     if (0 == (spatial.type & STYPEFLAG_INVALIDSECTOR)) return;
+            //
+            // -- то есть для неподвижного объекта посчитанное просто выбрасывалось. А стоило это
+            // недёшево: detect_sector пускает луч вниз по модели порталов И по статической геометрии
+            // (а если вниз не нашлось -- ещё два вверх), то есть до четырёх запросов к базе
+            // столкновений на объект на кадр.
+            //
+            // Флаг ведёт сам движок и ведёт полно: spatial_register взводит его новому объекту,
+            // spatial_move -- сдвинувшемуся, spatial_updatesector_internal снимает после записи
+            // сектора. Сектор зависит только от положения и статической геометрии уровня, поэтому у
+            // не сдвинувшегося объекта пересчитывать нечего.
+            //
+            // Замер: 0.47 мс из 1.20 мс всей динамики уходило именно сюда, при 355 объектах в кадре.
+            //
+            // ⚠️ Случай «detect_sector вернул недействительный сектор» ведёт себя как прежде:
+            // spatial_updatesector_internal и раньше снимал флаг, не записав номер, -- повторной
+            // попытки не было и тогда.
+            if (o.is_main_pass && (spatial->GetSpatialData().type & STYPEFLAG_INVALIDSECTOR))
             {
+                if (da_prof)
+                    da_sector_timer.Start();
+
                 const auto& entity_pos = spatial->spatial_sector_point();
                 const auto sector_id = detect_sector(entity_pos);
                 spatial->spatial_updatesector(sector_id);
+
+                if (da_prof)
+                {
+                    da_ms_dyn_sector += da_sector_timer.GetElapsed_sec() * 1000.0;
+                    ++da_dyn_sector_hits;
+                }
             }
             const auto& data = spatial->GetSpatialData();
             const auto& [type, sphere, sector_id] = std::tuple(data.type, data.sphere, data.sector_id);
@@ -1218,6 +1430,9 @@ void R_dsgraph_structure::build_subspace()
 
                         // Occlusion
                         //	casting is faster then using getVis method
+                        if (da_prof)
+                            da_body_timer.Start();
+
                         vis_data& v_orig = ((dxRender_Visual*)renderable->GetRenderData().visual)->vis;
                         vis_data v_copy = v_orig;
                         v_copy.box.xform(renderable->GetRenderData().xform);
@@ -1226,6 +1441,10 @@ void R_dsgraph_structure::build_subspace()
                         v_orig.accept_frame = v_copy.accept_frame;
                         v_orig.hom_frame = v_copy.hom_frame;
                         v_orig.hom_tested = v_copy.hom_tested;
+
+                        if (da_prof)
+                            da_ms_dyn_hom += da_body_timer.GetElapsed_sec() * 1000.0;
+
                         if (!bVisible)
                             break; // exit loop on frustums
 
@@ -1238,7 +1457,13 @@ void R_dsgraph_structure::build_subspace()
                         }
 
                         // Rendering
+                        if (da_prof)
+                            da_body_timer.Start();
+
                         renderable->renderable_Render(context_id, renderable);
+
+                        if (da_prof)
+                            da_ms_dyn_render += da_body_timer.GetElapsed_sec() * 1000.0;
                     }
                     break; // exit loop on frustums
                 }
@@ -1327,5 +1552,17 @@ void R_dsgraph_structure::build_subspace()
             TaskScheduler->Wait(*task);
     }
 #endif
+
+    // [DA_PORT] Разбор ожидания по частям -- разбор у da_prof выше. Ранних выходов между замером и
+    // этой строкой нет, единственный `return` стоит ДО старта таймера, так что счётчик не врёт
+    // недосчитанным кадром.
+    if (da_prof)
+    {
+        DA_CULL_PARTS(da_ms_portals, da_ms_statics,
+            da_ms_dyn_collect + da_ms_dyn_sort + da_timer.GetElapsed_sec() * 1000.0);
+        DA_CULL_DYN(da_ms_dyn_collect, da_ms_dyn_sort, da_ms_dyn_sector, da_dyn_count, da_dyn_sector_hits);
+        DA_CULL_BODY(da_ms_dyn_hom, da_ms_dyn_render);
+        DA_CULL_SKEL(s_da_bones_ms, s_da_wallmarks_ms, s_da_skeletons, s_da_leafs, s_da_skel_exact);
+    }
 }
 } // namespace xray::render::RENDER_NAMESPACE

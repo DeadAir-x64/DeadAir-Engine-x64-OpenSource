@@ -195,6 +195,9 @@ u32 CRestrictions::GetItemCount(const shared_str& item_sect) const
 
     VERIFY4(res, "group has no restrictions for rank", group_name.c_str(), GetRankName(m_rank).c_str());
 
+    // [DA_PORT] find_restr_item может вернуть NULL при неполном конфиге; VERIFY в релизе исчезает.
+    if (!res)
+        return 0;
     return res->second;
 }
 
@@ -205,6 +208,9 @@ u32 CRestrictions::GetGroupCount(const shared_str& group_name) const
 
     VERIFY3(res, "group has no restrictions for rank", GetRankName(m_rank).c_str());
 
+    // [DA_PORT] find_restr_item может вернуть NULL при неполном конфиге; VERIFY в релизе исчезает.
+    if (!res)
+        return 0;
     return res->second;
 }
 

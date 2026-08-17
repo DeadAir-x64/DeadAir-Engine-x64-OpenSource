@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Debug/StackTrace.h" // [DA_PORT] ловушка на выделение памяти
+#include "da_heap_guard.h" // [DA_PORT] карантин освобождённой памяти (DA_HEAP_GUARD=1)
 
 #include <SDL.h>
 
@@ -88,6 +89,12 @@
     #define xr_internal_free_size_aligned(ptr, size, alignment) free(ptr)
 #else
     #error Please, define explicitly which allocator you want to use
+#endif
+
+// [DA_PORT] Хвост есть только у чистого аллокатора. Величина читается ниже безусловно — карантином
+// при перевыделении, — поэтому у остальных путей она обязана существовать и быть нулём.
+#if !defined(USE_PURE_ALLOC)
+constexpr size_t xr_reserved_tail = 0;
 #endif
 
 xrMemory Memory;
@@ -465,12 +472,25 @@ void xrMemory::small_free(void* ptr) noexcept
     //TracyFree(ptr);
     if (ptr)
         ++da_slot()->free_calls; // [DA_PORT]
+    if (da_heap_guard_free(ptr)) // [DA_PORT]
+        return;
     xr_internal_small_free(ptr);
 }
 
 void* xrMemory::mem_realloc(void* ptr, size_t size)
 {
     //TracyFree(ptr);
+    // [DA_PORT] Под карантином перевыделение делается вручную: обычный realloc, не сумев расширить
+    // блок на месте, отдаёт старый куче САМ — мимо отравления. Хвост xr_reserved_tail передаём тот
+    // же, что и обычный путь, чтобы сборка с контролем отличалась от обычной ровно одним свойством.
+    if (void* guarded = nullptr; da_heap_guard_realloc(ptr, size + xr_reserved_tail, &guarded))
+    {
+        da_alloc_slot* slot = da_slot();
+        ++slot->realloc_calls;
+        slot->realloc_bytes += size;
+        ++slot->hist[da_bucket(size)];
+        return guarded;
+    }
     const auto result = xr_internal_realloc(ptr, size);
     //TracyAllocN(result, size, "realloc");
     // [DA_PORT] Здесь же проходит ВСЯ память LuaJIT: lua_newstate получает lua_alloc, а тот зовёт
@@ -488,6 +508,14 @@ void* xrMemory::mem_realloc(void* ptr, size_t size)
 void* xrMemory::mem_realloc(void* ptr, size_t size, size_t alignment)
 {
     //TracyFree(ptr);
+    if (void* guarded = nullptr; da_heap_guard_realloc(ptr, size + xr_reserved_tail, &guarded)) // [DA_PORT]
+    {
+        da_alloc_slot* slot = da_slot();
+        ++slot->realloc_calls;
+        slot->realloc_bytes += size;
+        ++slot->hist[da_bucket(size)];
+        return guarded;
+    }
     const auto result = xr_internal_realloc_aligned(ptr, size, alignment);
     //TracyAllocN(result, size, "realloc");
     {
@@ -506,6 +534,10 @@ void xrMemory::mem_free(void* ptr)
     // движка оно встречается сплошь и рядом и исказило бы долю освобождений.
     if (ptr)
         ++da_slot()->free_calls;
+    // [DA_PORT] Карантин перехватывает освобождение целиком: блок отравлен и придержан, куче он
+    // сейчас не отдаётся. Выключено — сразу вернёт false, и всё идёт как прежде.
+    if (da_heap_guard_free(ptr))
+        return;
     xr_internal_free(ptr);
 }
 
@@ -514,6 +546,10 @@ void xrMemory::mem_free(void* ptr, size_t alignment)
     //TracyFree(ptr);
     if (ptr)
         ++da_slot()->free_calls; // [DA_PORT]
+    // [DA_PORT] Выравненный путь при USE_PURE_ALLOC — тот же самый malloc (см. определения выше),
+    // поэтому карантин здесь применим без оговорок.
+    if (da_heap_guard_free(ptr))
+        return;
     xr_internal_free_aligned(ptr, alignment);
 }
 

@@ -60,6 +60,8 @@ void CObjectActionBase<_item_type>::stop_hiding_operation_if_any() const
 {
     CHudItem* const hud_item = smart_cast<CHudItem*>(object().inventory().ActiveItem());
     VERIFY(hud_item);
+    if (!hud_item) // [DA_PORT] ActiveItem() может быть null / не HudItem; VERIFY вырезан в релизе
+        return;
     if (!hud_item->IsHidden())
     {
         hud_item->StopCurrentAnimWithoutCallback();

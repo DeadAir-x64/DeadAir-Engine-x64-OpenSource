@@ -77,12 +77,19 @@ IC float CGameGraph::distance(const _GRAPH_ID tGraphID0, const _GRAPH_ID tGraphI
 IC bool CGameGraph::accessible(u32 const vertex_id) const
 {
     VERIFY(valid_vertex_id(vertex_id));
+    // [DA_PORT] §1 recall-audit: vertex_id может прийти из Lua/сейва невалидным; VERIFY снят в релизе.
+    // Зеркалим CLevelGraph::is_accessible — невалидная вершина считается недоступной, а не читается за
+    // границей m_enabled. Для валидных id поведение не меняется.
+    if (!valid_vertex_id(vertex_id))
+        return false;
     return (m_enabled[vertex_id]);
 }
 
 IC void CGameGraph::accessible(u32 const vertex_id, bool value) const
 {
     VERIFY(valid_vertex_id(vertex_id));
+    if (!valid_vertex_id(vertex_id)) // [DA_PORT] §1: не писать за границей m_enabled при невалидной вершине
+        return;
     m_enabled[vertex_id] = value;
 }
 
