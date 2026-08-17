@@ -42,6 +42,21 @@ static bool da_static_slot_acquire(light* L)
     if (c.st_owned && c.gen == T->da_static_gen && c.st_size == L->X.S.size)
         return true; // место уже наше и подходит по размеру
 
+    // [DA_PORT] Размер сменился — вернуть прежнюю ячейку, прежде чем брать новую.
+    //
+    // Без этого лампа копила за собой занятые прямоугольники: размер карты гуляет с дистанцией, и
+    // каждый шаг оставлял в атласе мёртвое место. Освобождаем только своё и только пока поколение
+    // не менялось: после перекладки атлас уже пуст, и удалять там нечего.
+    if (c.st_owned && c.gen == T->da_static_gen && c.st_size)
+    {
+        SMAP_Rect old;
+        Ivector2 p;
+        p.set(s32(c.st_posX), s32(c.st_posY));
+        old.setup(p, c.st_size);
+        g_da_static_alloc.release(old);
+        c.st_owned = false;
+    }
+
     SMAP_Rect R;
     if (!g_da_static_alloc.push(R, L->X.S.size))
     {

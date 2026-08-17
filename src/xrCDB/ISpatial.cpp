@@ -392,8 +392,22 @@ void ISpatial_DB::_remove(ISpatial_NODE* N, ISpatial_NODE* N_sub)
         // build (VERIFY above is a no-op in release). The original code would index
         // N->children[0xFFFFFFFF] -> access violation. Skip the prune instead of crashing,
         // and log so we can trace the upstream corruption (spatial_register/_insert path).
-        Msg("! [DA_PORT] ISpatial_DB::_remove: N_sub %p not a child of N %p, skipping prune", (void*)N_sub, (void*)N);
-        FlushLog();
+        // [DA_PORT] Сообщение придушено, а узел всё же возвращается в пул.
+        //
+        // Было два хвоста. Первый: печать без ограничителя и с принудительным сбросом на диск —
+        // соседний заслон на нечисло (выше в этом файле) печатает первые пять и далее каждый
+        // пятисотый, здесь не было ничего. Один случай за сессию безобиден, но если дерево начнёт
+        // рассогласовываться покадрово, это поток строк, а буфер лога живёт в памяти.
+        // Второй: ранний выход уносил с собой и возврат узла — он пуст, из детей родителя выпал,
+        // в пул не вернулся. Около сотни байт за случай, зато механизм ровно тот, что мы ищем.
+        static u32 da_hits = 0;
+        if (++da_hits <= 5 || (da_hits % 500) == 0)
+        {
+            Msg("! [DA_PORT] ISpatial_DB::_remove: N_sub %p не значится среди детей N %p — подрезка "
+                "пропущена (случаев %u)",
+                (void*)N_sub, (void*)N, da_hits);
+        }
+        _node_destroy(N_sub); // осиротевший узел вернуть в пул, иначе слот и его вектор потеряны
         return;
     }
     VERIFY(N_sub->_empty());

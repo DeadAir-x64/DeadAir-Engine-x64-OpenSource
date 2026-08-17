@@ -800,7 +800,9 @@ void CRender::reset_begin()
                 continue;
             try
             {
-                for (int id = 0; id < 3; ++id)
+                // [DA_PORT] Тот же счёт, что и во flushoccq (r2_R_render.cpp): слотов
+                // R__NUM_CONTEXTS, а не три. Иначе на сбросе устройства остаются занятые слоты.
+                for (int id = 0; id < R__NUM_CONTEXTS; ++id)
                     Lights_LastFrame[it]->svis[id].resetoccq();
             }
             catch (...)

@@ -23,6 +23,10 @@ float const doors::g_door_open_time = 1.4f;
 actor::actor(CAI_Stalker const& object) : m_object(object) {}
 actor::~actor()
 {
+    // [DA_PORT] Пометить разрушение ДО того, как двери получат смену состояния: они снимут нас со
+    // своего учёта, но скриптовый обработчик использования дёргать уже нельзя — см. doors_door.cpp.
+    m_destroying = true;
+
     revert_states(m_open_doors, door_state_closed);
     revert_states(m_closed_doors, door_state_open);
 }

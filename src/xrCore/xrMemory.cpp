@@ -122,15 +122,44 @@ XRCORE_API void vminfo(size_t* _free, size_t* reserved, size_t* committed)
     MEMORY_BASIC_INFORMATION memory_info;
     memory_info.BaseAddress = nullptr;
     *_free = *reserved = *committed = 0;
+    // [DA_PORT] Разбивка занятого по ТИПУ региона (подход VMMap).
+    //
+    // Замер 18.08: закоммичено 9.4 ГБ, а обход куч Windows (da_mem_heapwalk) видит меньше гигабайта,
+    // и mem_compact возвращает ровно ноль во всех 121 вызове. Значит основная память лежит НЕ в кучах
+    // CRT — ни _heapmin, ни HeapCompact до неё не дотягиваются, и «вернулось 0 МБ» это не «нечего
+    // отдавать», а «мы смотрим не туда». Одно суммарное число этого не показывает, поэтому раскладываем:
+    //   private — наши аллокации и всё, что выделено напрямую (включая память драйвера в нашем адресном
+    //             пространстве); растёт она — виноват движок или драйвер;
+    //   mapped  — файловые проекции: архивы игры, сохранения, шейдерный кэш; растёт она — течёт ФС;
+    //   image   — сами модули (DLL/EXE), величина почти постоянная, служит опорой для сверки.
+    size_t priv = 0, mapped = 0, image = 0;
     while (VirtualQuery(memory_info.BaseAddress, &memory_info, sizeof(memory_info))) //-V575
     {
         switch (memory_info.State)
         {
         case MEM_FREE: *_free += memory_info.RegionSize; break;
         case MEM_RESERVE: *reserved += memory_info.RegionSize; break;
-        case MEM_COMMIT: *committed += memory_info.RegionSize; break;
+        case MEM_COMMIT:
+            *committed += memory_info.RegionSize;
+            switch (memory_info.Type)
+            {
+            case MEM_PRIVATE: priv += memory_info.RegionSize; break;
+            case MEM_MAPPED: mapped += memory_info.RegionSize; break;
+            case MEM_IMAGE: image += memory_info.RegionSize; break;
+            default: break;
+            }
+            break;
         }
         memory_info.BaseAddress = (char*)memory_info.BaseAddress + memory_info.RegionSize;
+    }
+    // Печатаем не каждый раз: строка идёт рядом с обычной сводкой памяти, а та выводится по таймеру.
+    {
+        static size_t s_prev_priv = 0;
+        const long long d = (long long)(priv / 1024 / 1024) - (long long)(s_prev_priv / 1024 / 1024);
+        s_prev_priv = priv;
+        Msg("* [DA_MEM_VM] занято %u МБ: своя память %u МБ (%+lld), файловые проекции %u МБ, модули %u МБ",
+            (u32)(*committed / 1024 / 1024), (u32)(priv / 1024 / 1024), d,
+            (u32)(mapped / 1024 / 1024), (u32)(image / 1024 / 1024));
     }
 #elif defined(XR_PLATFORM_LINUX)
     struct sysinfo si;

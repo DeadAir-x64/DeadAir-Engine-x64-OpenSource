@@ -505,6 +505,17 @@ void CVisualMemoryManager::add_visible_object(const IGameObject* object, float t
                 const auto known = std::find(m_objects->begin(), m_objects->end(), object_id(dead_object));
                 if (known != m_objects->end())
                 {
+                    // [DA_PORT] Карта росла без единого удаления: запись заводится на КАЖДЫЙ
+                    // увиденный труп и живёт до конца сессии, а такая карта своя у каждого NPC.
+                    // Раз в тысячу записей выбрасываем протухшие — те, чей срок давно вышел: они
+                    // всё равно будут перепроверены при следующей встрече, поведение не меняется.
+                    if (m_da_dead_next_check.size() > 1000)
+                    {
+                        const u32 now = Device.dwTimeGlobal;
+                        for (auto it = m_da_dead_next_check.begin(); it != m_da_dead_next_check.end();)
+                            it = (it->second + 60000 < now) ? m_da_dead_next_check.erase(it) : std::next(it);
+                    }
+
                     u32& next_check = m_da_dead_next_check[dead_object->ID()];
                     if (Device.dwTimeGlobal < next_check)
                     {

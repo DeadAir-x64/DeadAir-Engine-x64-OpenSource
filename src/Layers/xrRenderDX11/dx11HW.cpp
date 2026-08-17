@@ -1008,12 +1008,20 @@ void da_d3d_debug_drain()
 
     static u32 s_reported = 0;
     static const u32 s_limit = 200;
-    if (s_reported > s_limit)
-        return;
 
     ID3D11InfoQueue* iq = nullptr;
     if (FAILED(HW.pDevice->QueryInterface(__uuidof(ID3D11InfoQueue), reinterpret_cast<void**>(&iq))) || !iq)
         return;
+
+    // [DA_PORT] Достигнув потолка печати, функция раньше уходила по return ДО очистки очереди —
+    // и слой проверки продолжал копить сообщения, которые уже никто не заберёт. Потолок обязан
+    // глушить ПЕЧАТЬ, а не слив: очередь сливаем всегда, пока слой включён.
+    if (s_reported > s_limit)
+    {
+        iq->ClearStoredMessages();
+        _RELEASE(iq);
+        return;
+    }
 
     const UINT64 count = iq->GetNumStoredMessages();
     for (UINT64 i = 0; i < count && s_reported < s_limit; ++i)

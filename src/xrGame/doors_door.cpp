@@ -173,6 +173,19 @@ void door::change_state(actor* initiator)
     if (!user)
         return;
 
+    // [DA_PORT] Вылет у тестера 18.08: чтение по адресу ffffffffffffffff, стек
+    // ~CCustomMonster -> ~stalker_movement_manager_obstacles -> doors::actor::~actor ->
+    // door::change_state. Сталкер уничтожается, его дверной учёт в деструкторе возвращает двери в
+    // исходное состояние — и мы на этом пути звали скриптовый обработчик использования, передавая
+    // ему игровой объект УЖЕ РАЗРУШАЕМОГО владельца. Строкой ниже `user->lua_game_object()` читает
+    // полуразобранный объект, отсюда −1 вместо указателя.
+    //
+    // Сообщать тут не о чем и по смыслу: дверь закрывается не потому, что ей кто-то пользуется, а
+    // потому, что державший её сталкер перестал существовать. Состояние двери меняется как и
+    // прежде — пропускаем только оповещение скриптов.
+    if (user->destroying())
+        return;
+
     m_object.callback(GameObject::eUseObject)(
         m_object.lua_game_object(), static_cast<CScriptGameObject*>(user->lua_game_object()));
 #ifdef DEBUG

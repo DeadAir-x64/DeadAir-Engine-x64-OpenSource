@@ -48,6 +48,17 @@ private:
     doors_type m_detected_doors;
 #endif // #ifdef DEBUG
     CAI_Stalker const& m_object;
+
+public:
+    // [DA_PORT] Идёт ли разрушение владельца.
+    //
+    // Взводится первой строкой деструктора. Дверь смотрит на этот признак перед тем, как звать
+    // скриптовый обработчик использования: у уничтожаемого сталкера обращаться к его игровому
+    // объекту уже нельзя. Разбор — в doors_door.cpp, у самой проверки.
+    bool destroying() const { return m_destroying; }
+
+private:
+    bool m_destroying{ false };
 }; // class actor
 
 } // namespace doors
