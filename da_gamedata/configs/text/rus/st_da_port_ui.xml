@@ -138,6 +138,9 @@
 	<string id="ui_mm_upscaler_quality">
 		<text>Качество</text>
 	</string>
+	<string id="ui_mm_upq_dlaa">
+		<text>DLAA (родное разрешение)</text>
+	</string>
 	<string id="ui_mm_upq_ultra_quality">
 		<text>Ультра-качество</text>
 	</string>

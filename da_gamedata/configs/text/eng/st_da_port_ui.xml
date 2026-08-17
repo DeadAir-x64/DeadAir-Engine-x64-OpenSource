@@ -28,7 +28,8 @@
 	</string>
 	<string id="ui_mm_grade_vivid">
 		<text>Vivid</text>
-	</string>	<!-- [DA_PORT] Не профиль, а признак «ползунки трогали руками»: ничего не применяет,
+	</string>
+	<!-- [DA_PORT] Не профиль, а признак «ползунки трогали руками»: ничего не применяет,
 	     поэтому настроенное вручную переживает загрузку. -->
 	<string id="ui_mm_grade_custom">
 		<text>Custom</text>
@@ -137,6 +138,9 @@
 	</string>
 	<string id="ui_mm_upscaler_quality">
 		<text>Quality</text>
+	</string>
+	<string id="ui_mm_upq_dlaa">
+		<text>DLAA (native resolution)</text>
 	</string>
 	<string id="ui_mm_upq_ultra_quality">
 		<text>Ultra quality</text>
