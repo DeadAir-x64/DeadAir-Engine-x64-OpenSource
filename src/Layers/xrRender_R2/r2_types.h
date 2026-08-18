@@ -129,7 +129,25 @@ const u32 LUMINANCE_size = 16;
 #define SE_SUN_RAIN_SMAP    5
 
 extern float ps_r2_gloss_factor;
+extern float ps_r2_gloss_min;
+
+// [DA_PORT] Пол под зеркальной отдачей источника света. Перенесено из xray-monolith/OGSR, где эта
+// ручка (r2_gloss_min) заведена давно и используется шейдерными сборками сообщества — в Enhanced
+// Shaders она прямо названа управлением шероховатостью их псевдо-PBR.
+//
+// Смысл: без пола тусклый источник даёт зеркальную составляющую около нуля, и блик на поверхности
+// то есть, то нет. Ноль по умолчанию — поведение в точности прежнее.
 IC float u_diffuse2s(float x, float y, float z)
+{
+    float v = (x + y + z) / 3.f;
+    return ps_r2_gloss_min + ps_r2_gloss_factor * ((v < 1) ? powf(v, 2.f / 3.f) : v);
+}
+
+// [DA_PORT] Тот же расчёт БЕЗ пола — только для решений «а нужен ли вообще этот проход».
+// Фаза солнца включается по условию u_diffuse2s(цвет солнца) > EPS: с ненулевым полом оно стало бы
+// истинным ВСЕГДА, и проход солнца работал бы даже в кромешной темноте. Пол задуман про яркость
+// блика, а не про то, светит ли солнце.
+IC float u_diffuse2s_nofloor(float x, float y, float z)
 {
     float v = (x + y + z) / 3.f;
     return ps_r2_gloss_factor * ((v < 1) ? powf(v, 2.f / 3.f) : v);

@@ -2023,6 +2023,39 @@ ENGINE_API float ps_r__detail_normal_fix = 0.f;
 // multiplied into the albedo. Verified in game, not assumed - see r__detail_debug 6/7.
 ENGINE_API float ps_r__detail_albedo_fix = 0.f;
 
+// [DA_PORT] Фильтрация блика по разбросу нормалей внутри пикселя (specular antialiasing).
+//
+// Родословная приёма короткая: Kaplanyan 2016 «Stable specular highlights», Tokuyoshi 2017,
+// Tokuyoshi & Kaplanyan 2019 «Improved Geometric Specular Antialiasing». Сегодня он встроен в
+// Filament, Unity HDRP и Unreal. Замер один и тот же: дисперсия нормали по экрану,
+// var = strength * (|ddx N|^2 + |ddy N|^2), с потолком.
+//
+// ⛔ ПЕРВОИСТОЧНИК ПЕРЕВОДИТ ДИСПЕРСИЮ В ШЕРОХОВАТОСТЬ — У НАС ЭТОГО СДЕЛАТЬ НЕЛЬЗЯ, и это
+// установлено по коду, а не предположено. Ширину блика в X-Ray задаёт третья координата выборки
+// из s_material, а таблица (r4_rendertarget_build_textures.cpp) состоит из ЧЕТЫРЁХ разных моделей:
+// pow(ls,16)*0.5, pow(ls,24), pow(ls,128) и «металл» pow(...,24) с рисунком. Ось немонотонная:
+// сдвиг вниз от металла даёт не расширение блика, а сужение в 128-ю степень. Поэтому «двигать
+// материал» — путь в никуда, проверено до написания кода.
+//
+// Остаётся то, к чему сводится приём при НЕИЗМЕННОЙ ширине лепестка, и это исходная формулировка
+// Toksvig 2005: если расширить блик нельзя, его надо ровно настолько же приглушить. Для степенной
+// модели с показателем n лепесток с дисперсии s^2 равносилен показателю n/(1+n*s^2), а высота пика
+// падает во столько же раз — отсюда множитель 1/(1 + power * kernel), который и применяется к
+// глянцу. Энергия при этом не выдумывается: пик теряет ровно то, что ушло бы в ширину.
+//
+// ⚠️ Чем это отличается от прежних r__detail_*_fix, которые сделали металл плоским: там гасился
+// вклад ДЕТАЛИ подобранным на глаз весом и без потолка, здесь мера снимается с ИТОГОВОЙ нормали
+// (то есть видит и базовый рельеф, и деталь, и наш отрицательный сдвиг мипов разом), а потолок
+// не даёт заматовить сцену. Ноль отключает: множитель схлопывается в единицу.
+ENGINE_API float ps_r__spec_aa = 0.f;
+// Потолок добавки. 0.15 — значение по умолчанию в Filament, взято оттуда же, а не подобрано.
+ENGINE_API float ps_r__spec_aa_max = 0.15f;
+// Показатель степени, под который считается потеря пика. 24 — срез «Blinn» и «металл» в нашей
+// таблице материалов; менять есть смысл только при замере.
+ENGINE_API float ps_r__spec_aa_power = 24.f;
+// 1 — красит сам множитель (белое = не трогаем), 2 — красит то, что снято.
+ENGINE_API int ps_r__spec_aa_debug = 0;
+
 // [DA_PORT] Paints the damping weight instead of the surface: 1 = the weight the normal path applies,
 // 2 = the weight the gloss path applies. Bright means "fully damped here", black means "untouched".
 // This exists because the weight is a rate of change measured in screen space, and there was no way to
@@ -2743,6 +2776,11 @@ void CCC_Register()
     // 1/2 paint the damping weight, 3 paints every detail-bump pixel red, 4/5 drop the detail's
     // contribution to the normal / to the gloss outright - see the shader for why 3..5 exist.
     CMD4(CCC_DaDebugInteger, "r__detail_debug", &ps_r__detail_debug, 0, 9);
+    // [DA_PORT] Фильтрация блика, см. объявления. Сила — ноль по умолчанию, картинка не меняется.
+    CMD4(CCC_Float, "r__spec_aa", &ps_r__spec_aa, 0.f, 64.f);
+    CMD4(CCC_Float, "r__spec_aa_max", &ps_r__spec_aa_max, 0.f, 1.f);
+    CMD4(CCC_Float, "r__spec_aa_power", &ps_r__spec_aa_power, 1.f, 256.f);
+    CMD4(CCC_DaDebugInteger, "r__spec_aa_debug", &ps_r__spec_aa_debug, 0, 2);
     CMD4(CCC_Float, "r__wind_scale", &ps_r__wind_scale, 0.f, 4.f); // 0 = vegetation frozen
     CMD4(CCC_Integer, "r__wind_shadow", &ps_r__wind_shadow, 0, 1); // 0 = still foliage in shadow map
     // [DA_PORT] Качание травы: 0 = как в исходном движке (по умолчанию), 1 = как в моде.

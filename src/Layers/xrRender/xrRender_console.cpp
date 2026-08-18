@@ -604,6 +604,7 @@ xr_token ext_quality_token[] = {{"qt_off", 0}, {"qt_low", 1}, {"qt_medium", 2},
 
 //- Mad Max
 float ps_r2_gloss_factor = 6.0f; // [DA_PORT] was 4.0f (author's value)
+float ps_r2_gloss_min = 0.0f; // [DA_PORT] перенос из monolith/OGSR, см. u_diffuse2s
 //- Mad Max
 
 //AVO: detail draw radius
@@ -1894,6 +1895,7 @@ void xrRender_initconsole()
     // point, set the floor at 1. Zero is not a darker setting but a broken one - it collapses the
     // specular term and the whole scene reads as flat and dead, which cost half a session once already.
     CMD4(CCC_Float, "r2_gloss_factor", &ps_r2_gloss_factor, 1.0f, 100.f);
+    CMD4(CCC_Float, "r2_gloss_min", &ps_r2_gloss_min, 0.0f, 1.f);
 //- Mad Max
 
 #ifdef DEBUG

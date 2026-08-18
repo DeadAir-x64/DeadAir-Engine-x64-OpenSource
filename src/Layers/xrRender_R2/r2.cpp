@@ -28,6 +28,10 @@ extern ENGINE_API float ps_r__reactive_motion;
 // [DA_PORT] "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
 extern ENGINE_API bool da_upscaler_active();
 extern ENGINE_API float ps_r__detail_gloss_fix;
+extern ENGINE_API float ps_r__spec_aa;
+extern ENGINE_API float ps_r__spec_aa_max;
+extern ENGINE_API float ps_r__spec_aa_power;
+extern ENGINE_API int ps_r__spec_aa_debug;
 extern ENGINE_API float ps_r__detail_normal_fix;
 extern ENGINE_API float ps_r__detail_albedo_fix;
 extern ENGINE_API int ps_r__detail_debug;
@@ -251,6 +255,16 @@ static class cl_detail_fix : public R_constant_setup
             ::ps_r__detail_albedo_fix);
     }
 } binder_detail_fix;
+
+// [DA_PORT] Фильтрация блика по разбросу нормалей, см. xr_ioc_cmd.cpp.
+static class cl_spec_aa : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_r__spec_aa, ::ps_r__spec_aa_max, ::ps_r__spec_aa_power,
+            float(::ps_r__spec_aa_debug));
+    }
+} binder_spec_aa;
 
 // [DA_PORT] Motion-vector camera matrices WITHOUT any world part, for geometry that is already in world
 // space by the time the vertex shader has it. Trees are the case: they carry their own transform in
@@ -724,6 +738,7 @@ void CRender::create()
     Resources->RegisterConstantSetup("m_VP_nojit_ws", &binder_vp_nojit_ws); // [DA_PORT] world-space geometry
     Resources->RegisterConstantSetup("m_VP_old_ws", &binder_vp_old_ws); // [DA_PORT] world-space geometry
     Resources->RegisterConstantSetup("da_detail_fix", &binder_detail_fix); // [DA_PORT] detail-bump damping
+    Resources->RegisterConstantSetup("da_spec_aa", &binder_spec_aa); // [DA_PORT] specular antialiasing
     Resources->RegisterConstantSetup("da_reactive_motion", &binder_reactive_motion); // [DA_PORT]
     Resources->RegisterConstantSetup("da_gloss_reactive", &binder_gloss_reactive); // [DA_PORT] gloss opts out of history
 #if defined(USE_DX11)
