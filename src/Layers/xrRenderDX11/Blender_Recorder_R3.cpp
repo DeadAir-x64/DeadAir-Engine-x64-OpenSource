@@ -49,16 +49,6 @@ void CBlender_Compile::r_dx11Texture(LPCSTR ResourceName, LPCSTR texture, bool r
     xr_strcpy(TexName, texture);
     fix_texture_name(TexName);
 
-    // [DA_PORT] Проверка выше ловит только НУЛЕВОЙ указатель, а пустой строки не видит — и, главное,
-    // fix_texture_name строкой выше САМО делает имя пустым, если в данных лежало одно расширение.
-    if (!TexName[0])
-    {
-        static u32 da_empty_tex = 0;
-        if (++da_empty_tex <= 5)
-            Msg("! [DA_PORT] пустое имя текстуры для семплера [%s] (в данных было [%s])", ResourceName,
-                texture);
-    }
-
     // Find index
     ref_constant C = ctable.get(ResourceName, ctable.dx9compatibility ? RC_dx11texture : u16(-1));
     // VERIFY(C);
@@ -67,6 +57,24 @@ void CBlender_Compile::r_dx11Texture(LPCSTR ResourceName, LPCSTR texture, bool r
 
     R_ASSERT(C->type == RC_dx11texture);
     u32 stage = C->samp.index;
+
+    // [DA_PORT] Сообщаем о пустом имени ТОЛЬКО здесь — после того, как выяснилось, что шейдер этот
+    // семплер действительно спрашивает.
+    //
+    // Первая версия проверки стояла сразу за fix_texture_name и врала: s_detail и s_bumpD движок
+    // привязывает безусловно, поэтому сообщение сыпалось и на материалы, у которых детали в шейдере
+    // нет вовсе, — а по такому логу легко записать в чернеющие того, кто ни при чём. Здесь же путь
+    // уже прошёл ctable.get: раз слот найден, шейдер из него читает, и пустое имя даст ноль в кадре.
+    //
+    // Проверка выше по функции ловит только НУЛЕВОЙ указатель, а пустой строки не видит — и, главное,
+    // fix_texture_name САМО делает имя пустым, если в данных лежало одно расширение.
+    if (!TexName[0])
+    {
+        static u32 da_empty_tex = 0;
+        if (++da_empty_tex <= 5)
+            Msg("! [DA_PORT] шейдер читает семплер [%s], а имя текстуры пустое (в данных было [%s]) — "
+                "поверхность уйдёт в чёрный", ResourceName, texture);
+    }
 
     passTextures.emplace_back(stage, ref_texture(RImplementation.Resources->_CreateTexture(TexName)));
 }
