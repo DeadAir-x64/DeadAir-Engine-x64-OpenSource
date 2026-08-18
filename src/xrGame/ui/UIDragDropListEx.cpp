@@ -646,10 +646,35 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
     m_cellSpacing.set(0, 0);
 }
 
+// [DA_PORT] Прибор склейки, ручка da_stack_debug.
+//
+// Зачем он: в ящике одинаковые предметы сходятся в одну ячейку, в рюкзаке — нет, и по коду обе
+// ветки выглядят одинаково. Две версии (флаг склейки у списка, сравнение состояния) проверены и
+// опровергнуты — первая грепом по actor_menu_16.xml, вторая прогоном в игре. Дальше гадать дорого:
+// пусть отказ сам назовёт свою причину.
+//
+// Ограничитель обязателен: метод зовётся на КАЖДЫЙ предмет при открытии окна, и без потолка лог
+// заливает сотнями строк, среди которых ничего не найти.
+extern ENGINE_API int ps_da_stack_debug;
+
+static u32 s_da_stack_lines = 0;
+
+static void da_stack_say(pcstr why, CInventoryItem* it)
+{
+    if (!ps_da_stack_debug || ++s_da_stack_lines > 40)
+        return;
+    Msg("! [DA_STACK] %s: %s", it ? it->m_section_id.c_str() : "?", why);
+}
+
 bool CUICellContainer::AddSimilar(CUICellItem* itm)
 {
+    CInventoryItem* dbg = (CInventoryItem*)itm->m_pData;
+
     if (!m_pParentDragDropList->IsGrouping())
+    {
+        da_stack_say("у списка выключена склейка", dbg);
         return false;
+    }
 
     //Alundaio: Don't stack equipped items
     PIItem iitem = (PIItem)itm->m_pData;
@@ -657,16 +682,53 @@ bool CUICellContainer::AddSimilar(CUICellItem* itm)
     {
         if (g_inv_highlight_equipped)
             if (iitem->m_pInventory->ItemFromSlot(iitem->BaseSlot()) == iitem)
+            {
+                da_stack_say("предмет надет (ItemFromSlot вернул его же)", dbg);
                 return false;
+            }
 
         if (pSettings->line_exist(iitem->m_section_id, "dont_stack") && pSettings->r_bool(iitem->m_section_id, "dont_stack"))
+        {
+            da_stack_say("в конфиге стоит dont_stack", dbg);
             return false;
+        }
     }
     //-Alundaio
 
     CUICellItem* i = FindSimilar(itm);
     if (i == nullptr || i == itm || itm->ChildsCount() > 0)
+    {
+        // [DA_PORT] Отдельно разбираем самый непонятный случай: похожего не нашлось. Ищем предмет
+        // ТОЙ ЖЕ СЕКЦИИ и печатаем, чем именно он не подошёл — состоянием, апгрейдами или тем, что
+        // его самого завернули как надетый. Это ровно те три условия, из которых состоит EqualTo.
+        if (ps_da_stack_debug && i == nullptr && dbg)
+        {
+            bool same_section_seen = false;
+            for (auto& it : m_ChildWndList)
+            {
+                CUICellItem* c = (CUICellItem*)it;
+                if (c == itm)
+                    continue;
+                CInventoryItem* ci = (CInventoryItem*)c->m_pData;
+                if (!ci || ci->m_section_id != dbg->m_section_id)
+                    continue;
+                same_section_seen = true;
+                da_stack_say(make_string("та же секция рядом есть, но не сошлись: состояние %.4f против %.4f, "
+                                         "апгрейды %s, инвентарь %s/%s",
+                                 dbg->GetCondition(), ci->GetCondition(),
+                                 dbg->equal_upgrades(ci->upgardes()) ? "совпали" : "РАЗНЫЕ",
+                                 dbg->m_pInventory ? "есть" : "нет", ci->m_pInventory ? "есть" : "нет")
+                                 .c_str(),
+                    dbg);
+                break;
+            }
+            if (!same_section_seen)
+                da_stack_say("в списке пока нет ни одного предмета этой секции (первый в своём роде)", dbg);
+        }
+        else if (ps_da_stack_debug && itm->ChildsCount() > 0)
+            da_stack_say("сам уже стопка", dbg);
         return false;
+    }
 
     i->PushChild(itm);
     itm->SetOwnerList(m_pParentDragDropList);
