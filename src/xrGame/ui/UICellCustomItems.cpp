@@ -99,8 +99,8 @@ bool CUIInventoryCellItem::EqualTo(CUICellItem* itm)
     // ⚠️ Цена включения честная: из склеенной стопки берётся ПРОИЗВОЛЬНЫЙ предмет, а не самый
     // свежий. В ящике это уже так и работает, просто там разброса состояний обычно нет.
     // Поэтому по умолчанию ВЫКЛЮЧЕНО: поведение мода не меняется, пока игрок сам не попросит.
-    extern ENGINE_API int ps_da_stack_any_condition;
-    if (!ps_da_stack_any_condition &&
+    extern ENGINE_API int ps_da_stack_all;
+    if (!ps_da_stack_all &&
         !fsimilar(object()->GetCondition(), ci->object()->GetCondition(), 0.01f))
     {
         return false;

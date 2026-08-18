@@ -656,6 +656,7 @@ CUICellContainer::CUICellContainer(CUIDragDropListEx* parent)
 // Ограничитель обязателен: метод зовётся на КАЖДЫЙ предмет при открытии окна, и без потолка лог
 // заливает сотнями строк, среди которых ничего не найти.
 extern ENGINE_API int ps_da_stack_debug;
+extern ENGINE_API int ps_da_stack_all;
 
 static u32 s_da_stack_lines = 0;
 
@@ -687,7 +688,9 @@ bool CUICellContainer::AddSimilar(CUICellItem* itm)
                 return false;
             }
 
-        if (pSettings->line_exist(iitem->m_section_id, "dont_stack") && pSettings->r_bool(iitem->m_section_id, "dont_stack"))
+        // [DA_PORT] da_stack_all снимает запрет — разбор у объявления ручки в xr_ioc_cmd.cpp.
+        if (!ps_da_stack_all && pSettings->line_exist(iitem->m_section_id, "dont_stack") &&
+            pSettings->r_bool(iitem->m_section_id, "dont_stack"))
         {
             da_stack_say("в конфиге стоит dont_stack", dbg);
             return false;
@@ -753,7 +756,9 @@ CUICellItem* CUICellContainer::FindSimilar(CUICellItem* itm)
                 if (iitem->m_pInventory->ItemFromSlot(iitem->BaseSlot()) == iitem)
                     continue;
 
-            if (pSettings->line_exist(iitem->m_section_id, "dont_stack") && pSettings->r_bool(iitem->m_section_id, "dont_stack"))
+            // [DA_PORT] Парная точка к AddSimilar: без неё запрет остался бы на стороне кандидата.
+            if (!ps_da_stack_all && pSettings->line_exist(iitem->m_section_id, "dont_stack") &&
+                pSettings->r_bool(iitem->m_section_id, "dont_stack"))
                 continue;
         }
         //-Alundaio
