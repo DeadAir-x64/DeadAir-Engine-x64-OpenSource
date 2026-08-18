@@ -2047,6 +2047,10 @@ ENGINE_API float ps_r__detail_albedo_fix = 0.f;
 // вклад ДЕТАЛИ подобранным на глаз весом и без потолка, здесь мера снимается с ИТОГОВОЙ нормали
 // (то есть видит и базовый рельеф, и деталь, и наш отрицательный сдвиг мипов разом), а потолок
 // не даёт заматовить сцену. Ноль отключает: множитель схлопывается в единицу.
+// [DA_PORT] Склейка одинаковых предметов независимо от состояния — разбор в UICellCustomItems.cpp.
+// Ноль = как в моде: сходятся только предметы с одинаковым состоянием.
+ENGINE_API int ps_da_stack_any_condition = 0;
+
 ENGINE_API float ps_r__spec_aa = 0.f;
 // Потолок добавки. 0.15 — значение по умолчанию в Filament, взято оттуда же, а не подобрано.
 ENGINE_API float ps_r__spec_aa_max = 0.15f;
@@ -2777,6 +2781,7 @@ void CCC_Register()
     // contribution to the normal / to the gloss outright - see the shader for why 3..5 exist.
     CMD4(CCC_DaDebugInteger, "r__detail_debug", &ps_r__detail_debug, 0, 9);
     // [DA_PORT] Фильтрация блика, см. объявления. Сила — ноль по умолчанию, картинка не меняется.
+    CMD4(CCC_Integer, "da_stack_any_condition", &ps_da_stack_any_condition, 0, 1);
     CMD4(CCC_Float, "r__spec_aa", &ps_r__spec_aa, 0.f, 64.f);
     CMD4(CCC_Float, "r__spec_aa_max", &ps_r__spec_aa_max, 0.f, 1.f);
     CMD4(CCC_Float, "r__spec_aa_power", &ps_r__spec_aa_power, 1.f, 256.f);
