@@ -3790,6 +3790,8 @@ void CCC_RegisterCommands()
         // Набор скрываемых костей: 1 шея и плечи (как в Anomaly), дальше вверх по позвоночнику.
         extern int g_da_legs_hide;
         CMD4(CCC_Integer, "da_legs_hide", &g_da_legs_hide, 0, 4);
+        extern float g_da_legs_yaw_limit;
+        CMD4(CCC_Float, "da_legs_yaw_limit", &g_da_legs_yaw_limit, 0.f, 180.f);
         // Экранный отчёт числами для подгонки — диагностика, в user.ltx не уходит.
         extern int g_da_fp_body_debug;
         CMD4(CCC_DaDebugInteger, "da_fp_body_debug", &g_da_fp_body_debug, 0, 1);
