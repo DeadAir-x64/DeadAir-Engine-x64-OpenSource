@@ -47,17 +47,26 @@ float3 da_water_sky( float3 vreflect )
 	return lerp( env0, env1, L_ambient.w );
 }
 
-// [DA_PORT] Рябь от дождя: наложение трёх волновых пакетов с несоизмеримыми периодами. Кругов от
-// капель не изображаем — им нужна своя текстура и попадание в точку удара, а поверхности нужна
-// мелкая дрожь, которая как раз и получается наложением.
+// [DA_PORT] Рябь от дождя — ВТОРЫМ СЛОЕМ ТОЙ ЖЕ КАРТЫ НОРМАЛЕЙ, а не своей формулой.
+//
+// Первая версия считала рябь как sin(x)*cos(y) + ещё два члена, и это была ошибка в самой основе:
+// произведение синуса по X на косинус по Y РАЗДЕЛИМО, то есть даёт правильную решётку из бугров,
+// выровненную по осям мира. На воде это и было видно — «квадратики», а не рябь.
+//
+// Как это делают в отрасли (Lagarde, «Water drop 2b»; Unity Production-Ready Weather; типовые
+// разборы дождевых шейдеров): берут НЕСКОЛЬКО слоёв одной карты, каждый со своим масштабом,
+// направлением и скоростью, и складывают — интерференция получается непериодической, потому что
+// периоды слоёв несоизмеримы, а сама карта не разделима.
+//
+// Нам для этого ничего нового не нужно: s_nmap уже есть и уже сэмплится дважды для волн. Рябь —
+// та же карта в мелком масштабе и вдвое быстрее, со сдвигом по двум разным направлениям.
 float2 da_water_ripples( float2 wxz, float t )
 {
-	float2 q = wxz * WATER_RIPPLE_SCALE;
-	float  a = sin( q.x * 1.7h + t * 1.00h ) * cos( q.y * 1.3h - t * 0.87h );
-	float  b = sin( (q.x + q.y) * 2.3h - t * 1.26h );
-	float  c = cos( (q.x - q.y) * 3.1h + t * 1.49h );
-	return float2( a * 0.5h + b * 0.3h + c * 0.2h,
-	               b * 0.5h - a * 0.3h + c * 0.2h );
+	float2 uv0 = wxz * WATER_RIPPLE_SCALE          + float2( 0.37h,  0.93h) * t;
+	float2 uv1 = wxz * (WATER_RIPPLE_SCALE * 1.7h) - float2( 0.81h, -0.59h) * t;
+	float2 r0  = s_nmap.Sample( smp_base, uv0 ).xy - 0.5h;
+	float2 r1  = s_nmap.Sample( smp_base, uv1 ).xy - 0.5h;
+	return r0 + r1 * 0.7h;
 }
 
 float3 calc_moon_road(float3 color, float3 vreflect, float2 tc, float depth, float Nz)
@@ -97,7 +106,10 @@ float4 main( vf I ) : SV_Target
 	// [DA_PORT] Гасим по дальности: дальше WATER_RIPPLE_FADE рябь мельче пикселя и превращается в шум,
 	// который темпоралка потом закрепит в узор — ровно та беда, что была на металле.
 	{
-		float da_rain = saturate(rain_params.z);
+		// [DA_PORT] Сила дождя лежит в .x — result.set(rain, wetness, puddles_size, dbg) в
+		// Blender_Recorder_StandartBinding.cpp. Сначала я взял .z, а это РАЗМЕР ЛУЖ, ручка с
+		// постоянным ненулевым значением: рябь из-за этого стояла всегда и в ясную погоду тоже.
+		float da_rain = saturate(rain_params.x);
 		float da_near = saturate(1.0h - da_water_dist / WATER_RIPPLE_FADE);
 		[branch] if (da_rain * da_near > 0.001h)
 			Navg.xy += da_water_ripples(I.position_w.xz, timers.x * WATER_RIPPLE_SPEED)
