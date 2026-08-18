@@ -15,6 +15,12 @@ local function da_add_options(menu)
 	-- √лушение электроники на –ыжем лесу и √енераторах.
 	-- ѕо умолчанию ¬ Ћё„≈Ќќ: так задумано модом, и молча мен€ть его замысел мы не вправе.
 	menu.gameplay_options["da_nvg_jam"] = { default = true, typ = "check" }
+
+	-- —клейка одинаковых предметов в одну €чейку, как в €щиках.
+	-- Ёто ƒ¬»∆ ќ¬јя ручка, поэтому default Ќ≈ задаЄтс€: при его наличии скрипт вз€л бы
+	-- хранение на себ€ и писал в axr_main.config, а значение живЄт в консоли.
+	-- —в€зывает их options_item в шаблоне check_da_stack_all (ui_mm_opt_16.xml).
+	menu.gameplay_options["da_stack_all"] = { typ = "check", tag = "tab_gameplay:check_da_stack_all" }
 end
 
 -- —истема колбэков мода зовЄт одноимЄнную глобальную функцию модул€ Ч так сделано в

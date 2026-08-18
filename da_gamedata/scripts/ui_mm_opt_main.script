@@ -86,12 +86,16 @@ function options_dialog:__init() super()
 	local groups = {
 		-- [DA_PORT] Ordered by affinity inside each group - no extra headings, the neighbours just
 		-- make sense: simulation together, world items together, sleep together, and so on.
+		-- [DA_PORT] –азбито на четыре группы вместо одной из двенадцати пунктов.
+		-- ѕорог читаемости Ч не более шести-семи строк под одним заголовком:
+		-- длинный список перестаЄт читатьс€ глазами и превращаетс€ в перебор.
 		{ "difficulty", { "difficulty",
 		                  "alife_stalker_pop", "alife_mutant_pop", "offline_battles", "excl_dist",
-		                  "heli_spawn",
-		                  "ground_items", "release_dropped_items",
-		                  "only_campfire", "sleep_deprived",
+		                  "heli_spawn" } },
+		{ "survival",   { "only_campfire", "sleep_deprived",
 		                  "use_battery", "da_nvg_jam", "mechanic_feature" } },
+		{ "world",      { "ground_items", "release_dropped_items" } },
+		{ "inventory",  { "da_stack_all" } },
 		{ "save",       { "important_save", "quicksave_cnt" } },
 		{ "crosshair",  { "show_crosshair", "dyn_crosshair", "crosshair_distance",
 		                  "show_enemy_health", "show_tracers" } },

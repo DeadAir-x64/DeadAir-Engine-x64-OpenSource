@@ -545,4 +545,16 @@
 	<string id="ui_mm_da_nvg_jam">
 		<text>Глушить электронику на аномальных локациях</text>
 	</string>
+	<string id="ui_mm_da_stack_all">
+		<text>Класть одинаковое в одну ячейку</text>
+	</string>
+	<string id="ui_mm_grp_survival">
+		<text>Выживание</text>
+	</string>
+	<string id="ui_mm_grp_world">
+		<text>Мир и предметы</text>
+	</string>
+	<string id="ui_mm_grp_inventory">
+		<text>Инвентарь</text>
+	</string>
 </string_table>
