@@ -31,6 +31,35 @@ float3	water_intensity;
 #endif	//	defined(USE_SOFT_WATER) && defined(NEED_SOFT_WATER)
 #include "settings_da_water.h"	// [DA_PORT] все крутилки воды — там
 
+// [DA_PORT] Дождь приходит той же константой, что и в лужи (см. da_puddles.h): z — сила дождя.
+uniform float4 rain_params;
+
+// [DA_PORT] Небо в отражении. calc_envmap сжимает вертикаль (vreflect.y*2-1), из-за чего отражённое
+// небо расходится с настоящим. Здесь то же самое, но сжатие под ключом.
+float3 da_water_sky( float3 vreflect )
+{
+	float3 d = normalize(vreflect);
+#if !WATER_SKY_MAP_FIX
+	d.y = d.y * 2.0h - 1.0h;
+#endif
+	float3 env0 = s_env0.SampleLevel( smp_base, d, 0 ).xyz;
+	float3 env1 = s_env1.SampleLevel( smp_base, d, 0 ).xyz;
+	return lerp( env0, env1, L_ambient.w );
+}
+
+// [DA_PORT] Рябь от дождя: наложение трёх волновых пакетов с несоизмеримыми периодами. Кругов от
+// капель не изображаем — им нужна своя текстура и попадание в точку удара, а поверхности нужна
+// мелкая дрожь, которая как раз и получается наложением.
+float2 da_water_ripples( float2 wxz, float t )
+{
+	float2 q = wxz * WATER_RIPPLE_SCALE;
+	float  a = sin( q.x * 1.7h + t * 1.00h ) * cos( q.y * 1.3h - t * 0.87h );
+	float  b = sin( (q.x + q.y) * 2.3h - t * 1.26h );
+	float  c = cos( (q.x - q.y) * 3.1h + t * 1.49h );
+	return float2( a * 0.5h + b * 0.3h + c * 0.2h,
+	               b * 0.5h - a * 0.3h + c * 0.2h );
+}
+
 float3 calc_moon_road(float3 color, float3 vreflect, float2 tc, float depth, float Nz)
 {
 	float cut = 4;
@@ -64,6 +93,18 @@ float4 main( vf I ) : SV_Target
 
 	float3	Navg	= (n0 + n1 - 1) * float3(da_water_amp, da_water_amp, 1.0h);
 
+#if WATER_RAIN_RIPPLES
+	// [DA_PORT] Гасим по дальности: дальше WATER_RIPPLE_FADE рябь мельче пикселя и превращается в шум,
+	// который темпоралка потом закрепит в узор — ровно та беда, что была на металле.
+	{
+		float da_rain = saturate(rain_params.z);
+		float da_near = saturate(1.0h - da_water_dist / WATER_RIPPLE_FADE);
+		[branch] if (da_rain * da_near > 0.001h)
+			Navg.xy += da_water_ripples(I.position_w.xz, timers.x * WATER_RIPPLE_SPEED)
+			         * (WATER_RIPPLE_AMP * da_rain * da_near);
+	}
+#endif
+
 	float3	Nw	= mul (float3x3(I.M1, I.M2, I.M3), Navg);
 			Nw	= normalize (Nw);
 	float3	v2point	= normalize (I.v2point);
@@ -80,12 +121,16 @@ float4 main( vf I ) : SV_Target
 	float 	ms	= xmaterial;
 	
 	float3 vreflect = reflect(normalize(v2point), normalize(Nw.xyz));
-	float3 env = calc_envmap(vreflect);
+	float3 env = da_water_sky(vreflect);
 	
 	//env = Vibrance(env,0.75);
 	
-	float	fresnel	= saturate (dot(vreflect,v2point));
-	float	power	= pow(fresnel,9);
+	// [DA_PORT] Френель по Шлику с настоящим показателем преломления воды — см. settings_da_water.h.
+	// Было pow(dot(vreflect,v2point), 9): та же форма кривой (0 сверху, 1 вскользь), но подобранная
+	// на глаз. Шлик даёт правильный порог, при котором поверхность перестаёт быть прозрачной.
+	float	da_ndv	= saturate( dot(Nw, -v2point) );
+	float	power	= WATER_FRESNEL_F0 + (1.0h - WATER_FRESNEL_F0) * pow(1.0h - da_ndv, WATER_FRESNEL_POWER);
+	float	fresnel	= power;
 
 	// [DA_PORT] Сор копится сюда, а накладывается ПОСЛЕ тумана — см. конец функции. Иначе водная
 	// дымка гасит его вместе с подводной картинкой, и лист читается лежащим на дне, а не плавающим.
@@ -251,6 +296,28 @@ float4 main( vf I ) : SV_Target
 #endif	//	USE_SOFT_WATER
 
 	//	Fogging
+#if WATER_REFRACT
+	// [DA_PORT] Преломление. Вода блендится ПОВЕРХ уже нарисованной сцены, поэтому подменить фон
+	// нельзя — можно лишь добавить разницу: копия кадра со смещением по наклону волны минус она же
+	// без смещения. При нулевом наклоне разница ровно ноль, то есть выключено значит выключено.
+	//
+	// Смещение берётся из нормали в ПРОСТРАНСТВЕ ВИДА (N уже посчитана выше): её xy — это и есть
+	// наклон волны на экране, тогда как мировые xz зависели бы от того, куда повёрнута камера.
+	// Делим на дистанцию: вблизи волна крупная и сдвиг заметен, вдали сходит на нет — иначе дальняя
+	// вода закипает пикселями, а темпоралка потом закрепляет это в узор.
+	{
+		float da_ref_near = saturate(1.0h - da_water_dist / WATER_REFRACT_FADE);
+		[branch] if (da_ref_near > 0.001h)
+		{
+			float2 da_off = N.xy * (WATER_REFRACT_STRENGTH * da_ref_near / max(da_water_dist, 1.0h));
+			float3 da_bg0 = s_image.SampleLevel( smp_rtlinear, PosTc, 0 ).xyz;
+			float3 da_bg1 = s_image.SampleLevel( smp_rtlinear, PosTc + da_off, 0 ).xyz;
+			// Вес падает с непрозрачностью: сквозь мутную глубину преломлять нечего.
+			final += (da_bg1 - da_bg0) * (WATER_REFRACT_WEIGHT * saturate(1.0h - alpha));
+		}
+	}
+#endif
+
 	final 		= lerp(fog_color, final, I.fog);
 	alpha		*= I.fog*I.fog;
 
