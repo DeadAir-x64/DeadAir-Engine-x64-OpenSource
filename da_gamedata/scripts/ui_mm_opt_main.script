@@ -8,6 +8,18 @@ function options_dialog:__init() super()
     self:InitCallBacks()
 	self.tab:SetActiveTab("video")
 	SendScriptCallback("opt_menu_on_init",self)
+
+	-- [DA_PORT] Наши пункты добавляем ЗДЕСЬ, а не колбэком выше.
+	--
+	-- Колбэк зовёт только тех, кто успел зарегистрироваться, а регистрация модулей идёт
+	-- из on_game_start (axr_main.script обходит скрипты при СТАРТЕ ИГРЫ). В главном
+	-- меню игры ещё нет, обход не выполнялся — и пункты не появлялись вовсе.
+	-- Здесь же мы уже внутри построения окна — и в меню, и в игре.
+	--
+	-- Разница записей не случайна: у da_nvg_jam есть default, значение хранит мод;
+	-- у da_stack_all default НЕТ — это движковая ручка, её связывает options_item в шаблоне.
+	self.gameplay_options["da_nvg_jam"]   = { default = true, typ = "check" }
+	self.gameplay_options["da_stack_all"] = { typ = "check", tag = "tab_gameplay:check_da_stack_all" }
 	
 	-- auto-generate UI elements for Gameplay Tab
 	local checks, lists, elements = {}, {}, {}
@@ -25,7 +37,13 @@ function options_dialog:__init() super()
 			local ctrl = self.xml:InitStatic("tab_gameplay:cap_check_axr",_st) -- ctrl needs scoped here because we pass it to wrapper or else ref will get replaced
 			
 			-- set caption text
-			ctrl:TextControl():SetText(game.translate_string("ui_mm_"..cap))
+			-- [DA_PORT] Срезаем префикс, который дублирует заголовок группы: под «Прицелом»
+			-- строка «Интерфейс: Прицел» читается дважды и мешает глазу.
+			-- Строки локализации НЕ трогаем: дубликат id в параллельно грузимых text/*.xml
+			-- даёт гонку, а подменять целиком чужой ui_st_mm.xml ради двух строк — дорого.
+			local da_strip_prefix = game.translate_string("ui_mm_"..cap)
+			da_strip_prefix = string.gsub(da_strip_prefix, "^Интерфейс: ", "")
+			ctrl:TextControl():SetText(da_strip_prefix)
 			
 			-- control
 			if (t.typ == "check") then
@@ -84,27 +102,23 @@ function options_dialog:__init() super()
 	-- belong under them. Anything not listed falls into the last group, so a new option added
 	-- later still shows up instead of silently vanishing.
 	local groups = {
-		-- [DA_PORT] Ordered by affinity inside each group - no extra headings, the neighbours just
-		-- make sense: simulation together, world items together, sleep together, and so on.
-		-- [DA_PORT] Разбито на четыре группы вместо одной из двенадцати пунктов.
-		-- Порог читаемости — не более шести-семи строк под одним заголовком:
-		-- длинный список перестаёт читаться глазами и превращается в перебор.
+		-- [DA_PORT] Было девять заголовков на тридцать шесть пунктов, и оба края мешали читать:
+		-- у пяти заголовков было по одной-две строки (заголовков больше, чем содержания),
+		-- а у «Интерфейса» — одиннадцать, то есть сплошной столбец без опор.
+		-- Стало шесть групп по 3–7 строк — тот размер, который глаз берёт целиком.
 		{ "difficulty", { "difficulty",
 		                  "alife_stalker_pop", "alife_mutant_pop", "offline_battles", "excl_dist",
 		                  "heli_spawn" } },
 		{ "survival",   { "only_campfire", "sleep_deprived",
 		                  "use_battery", "da_nvg_jam", "mechanic_feature" } },
-		{ "world",      { "ground_items", "release_dropped_items" } },
-		{ "inventory",  { "da_stack_all" } },
-		{ "save",       { "important_save", "quicksave_cnt" } },
+		{ "world",      { "ground_items", "release_dropped_items", "da_stack_all" } },
 		{ "crosshair",  { "show_crosshair", "dyn_crosshair", "crosshair_distance",
 		                  "show_enemy_health", "show_tracers" } },
-		{ "interface",  { "tips", "dynamic_news",
-		                  "hud_draw_info", "hud_draw_map", "show_weapon", "slot_hud", "mask_hud",
-		                  "letterbox", "photomode",
-		                  "localization", "debug_hud" } },
-		{ "sound",      { "radio_mod", "heli_engine_sound" } },
-		{ "controls",   { "crouch_toggle", "extra_animations" } },
+		{ "interface",  { "hud_draw_info", "hud_draw_map", "show_weapon",
+		                  "slot_hud", "mask_hud", "letterbox" } },
+		{ "misc",       { "important_save", "quicksave_cnt", "crouch_toggle", "extra_animations",
+		                  "tips", "dynamic_news", "radio_mod", "heli_engine_sound",
+		                  "photomode", "localization", "debug_hud" } },
 	}
 
 	local placed = {}

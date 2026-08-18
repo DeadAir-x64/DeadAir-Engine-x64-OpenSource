@@ -557,4 +557,7 @@
 	<string id="ui_mm_grp_inventory">
 		<text>Инвентарь</text>
 	</string>
+	<string id="ui_mm_grp_misc">
+		<text>Прочее</text>
+	</string>
 </string_table>
