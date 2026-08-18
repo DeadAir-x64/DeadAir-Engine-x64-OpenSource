@@ -20,6 +20,16 @@ function options_dialog:__init() super()
 	-- у da_stack_all default Ќ≈“ Ч это движкова€ ручка, еЄ св€зывает options_item в шаблоне.
 	self.gameplay_options["da_nvg_jam"]   = { default = true, typ = "check" }
 	self.gameplay_options["da_stack_all"] = { typ = "check", tag = "tab_gameplay:check_da_stack_all" }
+
+	-- [DA_PORT] ќдна настройка Ч один дом. ѕрицел и его динамика настраиваютс€ на своЄм
+	-- экране (вкладка Ђѕрицелї в подгонке), где виден результат. ƒубль здесь только
+	-- заставл€л гадать, где Ђнасто€ща€ї настройка.
+	local da_hidden = { "show_crosshair", "dyn_crosshair" }
+	for i = 1, #da_hidden do
+		if self.gameplay_options[da_hidden[i]] then
+			self.gameplay_options[da_hidden[i]].disabled = true
+		end
+	end
 	
 	-- auto-generate UI elements for Gameplay Tab
 	local checks, lists, elements = {}, {}, {}
@@ -102,23 +112,23 @@ function options_dialog:__init() super()
 	-- belong under them. Anything not listed falls into the last group, so a new option added
 	-- later still shows up instead of silently vanishing.
 	local groups = {
-		-- [DA_PORT] Ѕыло дев€ть заголовков на тридцать шесть пунктов, и оба кра€ мешали читать:
-		-- у п€ти заголовков было по одной-две строки (заголовков больше, чем содержани€),
-		-- а у Ђ»нтерфейсаї Ч одиннадцать, то есть сплошной столбец без опор.
-		-- —тало шесть групп по 3Ц7 строк Ч тот размер, который глаз берЄт целиком.
+		-- [DA_PORT] –аскладка по трЄм правилам из разборов настроечных экранов:
+		-- 1. группа на 3-7 строк Ч больше глаз целиком не берЄт, меньше Ч заголовков
+		--    становитс€ больше, чем содержани€;
+		-- 2. группируем по «јƒј„≈ игрока (Ђв боюї, Ђвыживаниеї), а не по подсистеме движка;
+		-- 3. частое выше, редкое и Ђдл€ продвинутыхї Ч вниз, в хвост Ђѕрочегої.
 		{ "difficulty", { "difficulty",
 		                  "alife_stalker_pop", "alife_mutant_pop", "offline_battles", "excl_dist",
 		                  "heli_spawn" } },
 		{ "survival",   { "only_campfire", "sleep_deprived",
 		                  "use_battery", "da_nvg_jam", "mechanic_feature" } },
 		{ "world",      { "ground_items", "release_dropped_items", "da_stack_all" } },
-		{ "crosshair",  { "show_crosshair", "dyn_crosshair", "crosshair_distance",
-		                  "show_enemy_health", "show_tracers" } },
+		{ "combat",     { "crosshair_distance", "show_enemy_health", "show_tracers" } },
 		{ "interface",  { "hud_draw_info", "hud_draw_map", "show_weapon",
 		                  "slot_hud", "mask_hud", "letterbox" } },
 		{ "misc",       { "important_save", "quicksave_cnt", "crouch_toggle", "extra_animations",
 		                  "tips", "dynamic_news", "radio_mod", "heli_engine_sound",
-		                  "photomode", "localization", "debug_hud" } },
+		                  "localization", "photomode", "debug_hud" } },
 	}
 
 	local placed = {}
