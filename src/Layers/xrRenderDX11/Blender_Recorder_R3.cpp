@@ -49,6 +49,16 @@ void CBlender_Compile::r_dx11Texture(LPCSTR ResourceName, LPCSTR texture, bool r
     xr_strcpy(TexName, texture);
     fix_texture_name(TexName);
 
+    // [DA_PORT] Проверка выше ловит только НУЛЕВОЙ указатель, а пустой строки не видит — и, главное,
+    // fix_texture_name строкой выше САМО делает имя пустым, если в данных лежало одно расширение.
+    if (!TexName[0])
+    {
+        static u32 da_empty_tex = 0;
+        if (++da_empty_tex <= 5)
+            Msg("! [DA_PORT] пустое имя текстуры для семплера [%s] (в данных было [%s])", ResourceName,
+                texture);
+    }
+
     // Find index
     ref_constant C = ctable.get(ResourceName, ctable.dx9compatibility ? RC_dx11texture : u16(-1));
     // VERIFY(C);

@@ -335,6 +335,16 @@ void CBlender_Compile::Stage_Texture(LPCSTR name, u32, u32 fmin, u32 fmip, u32 f
             xrDebug::Fatal(DEBUG_INFO, "Not enought textures for shader. Base texture: '%s'.", lst[0].c_str());
         N = lst[id].c_str();
     }
+    // [DA_PORT] Корень пустого имени лечится в _CreateTexture, но там уже не видно, ЧЕЙ это материал.
+    // Здесь виновник под рукой: lst[0] — базовая текстура шейдера. Управление не меняем: пустая
+    // ссылка кладётся в тот же слот, иначе разъедется нумерация стадий.
+    if (!N || !N[0])
+    {
+        static u32 da_empty_stage = 0;
+        if (++da_empty_stage <= 5)
+            Msg("! [DA_PORT] пустое имя текстуры в слоте [%s] материала с базовой текстурой [%s]", name,
+                lst.empty() ? "?" : lst[0].c_str());
+    }
     passTextures.emplace_back(Stage(), ref_texture(RImplementation.Resources->_CreateTexture(N)));
     //	i_Address				(Stage(),address);
     i_Filter(Stage(), fmin, fmip, fmag);

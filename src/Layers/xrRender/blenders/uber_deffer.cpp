@@ -42,14 +42,34 @@ void uber_deffer(CBlender_Compile& C, bool hq, LPCSTR _vspec, LPCSTR _pspec, BOO
     {
         LPCSTR detail_bump_texture = RImplementation.Resources->m_textures_description.GetBumpName(dt).c_str();
         // Detect and use detail bump
-        if (detail_bump_texture)
+        //
+        // [DA_PORT] Проверка смотрела на УКАЗАТЕЛЬ, а пустое имя пропускала — и это ронял релиз.
+        //
+        // GetBumpName возвращает shared_str; у пустой строки c_str() даёт не nullptr, а "". Условие
+        // проходило, bHasDetailBump взводился, и дальше пустое имя уезжало в _CreateTexture: тот на
+        // пустом имени срабатывал живым R_ASSERT — фатал на загрузке уровня. Второе имя получало
+        // приписанный «#» и превращалось в текстуру с именем ровно «#» (в логе: Can't find texture '#').
+        //
+        // Ровно этот случай стерегли ДВА VERIFY ниже — но VERIFY в релизе вырезан, и караул спал.
+        // Тот самый подкласс, который мы уже проходили: за VERIFY идёт зависимый вызов.
+        //
+        // Найдено 18.08.2026 на чистой установке со сторонним набором текстур CoP 2K: 59 файлов .thm
+        // в нём несут пустое имя рельефа при взведённом флаге. Порог 3 символа взят у самого VERIFY:
+        // имени короче не бывает, а «нет имени» здесь значит «нет рельефа деталей» — берём вариант
+        // шейдера с деталями, но без рельефа, вместо выборки из пустой текстуры.
+        if (detail_bump_texture && xr_strlen(detail_bump_texture) > 2)
         {
             bHasDetailBump = true;
             xr_strcpy(texDetailBump, sizeof(texDetailBump), detail_bump_texture);
             xr_strcpy(texDetailBumpX, sizeof(texDetailBumpX), detail_bump_texture);
-            VERIFY(xr_strlen(texDetailBump) > 2);
-            VERIFY(xr_strlen(texDetailBumpX) > 2);
             xr_strcat(texDetailBumpX, "#");
+        }
+        else if (detail_bump_texture && detail_bump_texture[0])
+        {
+            static u32 da_bump_name_empty = 0;
+            if (++da_bump_name_empty <= 5)
+                Msg("! [DA_PORT] негодное имя рельефа деталей [%s] у текстуры [%s] — рисую без рельефа",
+                    detail_bump_texture, dt);
         }
     }
 
