@@ -543,7 +543,7 @@
 	</string>
 	<!-- [DA_PORT] глушение электроники на Рыжем лесу и Генераторах -->
 	<string id="ui_mm_da_nvg_jam">
-		<text>Глушить электронику на аномальных локациях</text>
+		<text>Глушение электроники</text>
 	</string>
 	<string id="ui_mm_da_stack_all">
 		<text>Сортировка</text>
@@ -562,5 +562,11 @@
 	</string>
 	<string id="ui_mm_grp_combat">
 		<text>В бою</text>
+	</string>
+	<string id="ui_mm_grp_debug">
+		<text>Отладка</text>
+	</string>
+	<string id="ui_mm_ground_items">
+		<text>Вещи на земле</text>
 	</string>
 </string_table>

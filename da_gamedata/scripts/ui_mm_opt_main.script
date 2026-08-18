@@ -52,7 +52,11 @@ function options_dialog:__init() super()
 			-- Строки локализации НЕ трогаем: дубликат id в параллельно грузимых text/*.xml
 			-- даёт гонку, а подменять целиком чужой ui_st_mm.xml ради двух строк — дорого.
 			local da_strip_prefix = game.translate_string("ui_mm_"..cap)
+			-- Три семейства префиксов в подписях мода: «Игра: », «Интерфейс: », «Debug: ».
+			-- Под своим заголовком они читаются дважды и съедают ширину до галочки.
 			da_strip_prefix = string.gsub(da_strip_prefix, "^Интерфейс: ", "")
+			da_strip_prefix = string.gsub(da_strip_prefix, "^Игра: ", "")
+			da_strip_prefix = string.gsub(da_strip_prefix, "^Debug: ", "")
 			ctrl:TextControl():SetText(da_strip_prefix)
 			
 			-- control
@@ -112,23 +116,22 @@ function options_dialog:__init() super()
 	-- belong under them. Anything not listed falls into the last group, so a new option added
 	-- later still shows up instead of silently vanishing.
 	local groups = {
-		-- [DA_PORT] Раскладка по трём правилам из разборов настроечных экранов:
-		-- 1. группа на 3-7 строк — больше глаз целиком не берёт, меньше — заголовков
-		--    становится больше, чем содержания;
-		-- 2. группируем по ЗАДАЧЕ игрока («в бою», «выживание»), а не по подсистеме движка;
-		-- 3. частое выше, редкое и «для продвинутых» — вниз, в хвост «Прочего».
+		-- [DA_PORT] Раскладка сверена с НАСТОЯЩИМИ подписями, а не с именами ключей, и два
+		-- пункта оказались не тем, чем казались: show_enemy_health — это «Debug: Сквады»,
+		-- extra_animations — «Debug: Анимации». Оба ушли в отладку, а не в бой и не в прочее.
 		{ "difficulty", { "difficulty",
 		                  "alife_stalker_pop", "alife_mutant_pop", "offline_battles", "excl_dist",
 		                  "heli_spawn" } },
 		{ "survival",   { "only_campfire", "sleep_deprived",
 		                  "use_battery", "da_nvg_jam", "mechanic_feature" } },
 		{ "world",      { "ground_items", "release_dropped_items", "da_stack_all" } },
-		{ "combat",     { "crosshair_distance", "show_enemy_health", "show_tracers" } },
+		{ "combat",     { "crosshair_distance", "show_tracers" } },
 		{ "interface",  { "hud_draw_info", "hud_draw_map", "show_weapon",
-		                  "slot_hud", "mask_hud", "letterbox" } },
-		{ "misc",       { "important_save", "quicksave_cnt", "crouch_toggle", "extra_animations",
-		                  "tips", "dynamic_news", "radio_mod", "heli_engine_sound",
-		                  "localization", "photomode", "debug_hud" } },
+		                  "slot_hud", "mask_hud", "letterbox", "tips" } },
+		{ "misc",       { "important_save", "quicksave_cnt", "crouch_toggle",
+		                  "dynamic_news", "radio_mod", "heli_engine_sound",
+		                  "photomode", "localization" } },
+		{ "debug",      { "show_enemy_health", "extra_animations", "debug_hud" } },
 	}
 
 	local placed = {}
