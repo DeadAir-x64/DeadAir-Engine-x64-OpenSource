@@ -91,7 +91,7 @@ function options_dialog:__init() super()
 		                  "heli_spawn",
 		                  "ground_items", "release_dropped_items",
 		                  "only_campfire", "sleep_deprived",
-		                  "use_battery", "mechanic_feature" } },
+		                  "use_battery", "da_nvg_jam", "mechanic_feature" } },
 		{ "save",       { "important_save", "quicksave_cnt" } },
 		{ "crosshair",  { "show_crosshair", "dyn_crosshair", "crosshair_distance",
 		                  "show_enemy_health", "show_tracers" } },
