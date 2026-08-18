@@ -3563,7 +3563,34 @@ void CCC_RegisterCommands()
         {
         public:
             CCC_DaTuneDefaults(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; }
-            void Execute(pcstr) override
+
+            // [DA_PORT] Без аргументов — вернуть ВСЁ, как было. С аргументами `da_tune_defaults <имя>
+            // <имя>...` — только перечисленные величины.
+            //
+            // Зачем: кнопка «Вернуть стандартные» стоит на экране с вкладками, и сбрасывать заодно
+            // цветокоррекцию, когда игрок правит прицел, — это отменять чужую работу. Какие величины
+            // относятся к вкладке, знает скрипт окна (таблица PAGES в ui_da_tune.script) — он их и
+            // передаёт. Числа при этом остаются здесь, в одном месте: скрипт присылает ИМЕНА, а не
+            // значения, и разойтись им не с чем.
+            static bool wanted(pcstr args, pcstr name)
+            {
+                if (!args || !args[0])
+                    return true; // без списка — сбрасываем всё
+
+                // Ищем имя как ОТДЕЛЬНОЕ слово: без этого "fov" совпал бы с "hud_fov", и правка
+                // одной вкладки утащила бы величину соседней.
+                const size_t n = xr_strlen(name);
+                for (pcstr p = args; (p = strstr(p, name)) != nullptr; p += n)
+                {
+                    const bool left = (p == args) || p[-1] == ' ';
+                    const bool right = (p[n] == 0) || p[n] == ' ';
+                    if (left && right)
+                        return true;
+                }
+                return false;
+            }
+
+            void Execute(pcstr args) override
             {
                 static const struct { pcstr name; float value; } da_defaults[] = {
                     // Обзор, изображение и цветокоррекция — НАШИ значения, подобранные глазами в
@@ -3599,9 +3626,15 @@ void CCC_RegisterCommands()
                     { "da_cross_relation", 1.f },
                 };
 
-                u32 done = 0, missing = 0;
+                u32 done = 0, missing = 0, skipped = 0;
                 for (const auto& d : da_defaults)
                 {
+                    if (!wanted(args, d.name))
+                    {
+                        ++skipped;
+                        continue;
+                    }
+
                     if (!Console || !Console->GetCommand(d.name))
                     {
                         // Команды может не быть — например, величины рендера при другом рендерере.
@@ -3622,7 +3655,8 @@ void CCC_RegisterCommands()
                     Console->ExecuteCommand(buf, false);
                     ++done;
                 }
-                Msg("~ [DA_PORT] da_tune_defaults: возвращено к стандартным значениям: %u%s", done,
+                Msg("~ [DA_PORT] da_tune_defaults: возвращено к стандартным значениям: %u%s%s", done,
+                    skipped ? " (остальные не запрашивались)" : "",
                     missing ? " (часть пропущена, см. выше)" : "");
             }
         };
