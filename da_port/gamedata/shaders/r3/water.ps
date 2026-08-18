@@ -29,31 +29,45 @@ uniform float4		various;
 #if defined(USE_SOFT_WATER) && defined(NEED_SOFT_WATER)
 float3	water_intensity;
 #endif	//	defined(USE_SOFT_WATER) && defined(NEED_SOFT_WATER)
+#include "settings_da_water.h"	// [DA_PORT] все крутилки воды — там
 
-// [DA_PORT] ---- Water look ------------------------------------------------------------------------
-// Three things were missing next to what a modern X-Ray water shader does, and all three are what makes
-// water read as expensive rather than as a tinted mirror.
+// [DA_PORT] Дождь приходит той же константой, что и в лужи (см. da_puddles.h): z — сила дождя.
+uniform float4 rain_params;
 
-// 1. Depth colour. The stock shader tints deep water with a flat grey (0.1, 0.1, 0.1). Real water is a
-//    coloured filter: red is absorbed within about a metre, green survives several, blue furthest — so
-//    the colour SHIFTS with depth instead of just darkening. Shallow tint is what a boot-deep puddle
-//    over silt looks like; deep tint is the standing water in the Zone, green-black rather than blue.
-#define WATER_TINT_SHALLOW	float3(0.10, 0.16, 0.15)
-#define WATER_TINT_DEEP		float3(0.035, 0.085, 0.095)
-#define WATER_TINT_FALLOFF	0.26	// larger = the deep colour takes over closer to the shore
+// [DA_PORT] Небо в отражении. calc_envmap сжимает вертикаль (vreflect.y*2-1), из-за чего отражённое
+// небо расходится с настоящим. Здесь то же самое, но сжатие под ключом.
+float3 da_water_sky( float3 vreflect )
+{
+	float3 d = normalize(vreflect);
+#if !WATER_SKY_MAP_FIX
+	d.y = d.y * 2.0h - 1.0h;
+#endif
+	float3 env0 = s_env0.SampleLevel( smp_base, d, 0 ).xyz;
+	float3 env1 = s_env1.SampleLevel( smp_base, d, 0 ).xyz;
+	return lerp( env0, env1, L_ambient.w );
+}
 
-// 2. Shoreline foam. Where the bed comes up to meet the surface there is always broken water. Its
-//    absence is the single most obvious tell that a water plane is just a plane.
-// Narrow, because the shores here are shallow-sloped: a wide band spread over many metres of ground
-// stops reading as a shoreline and just hazes the whole surface.
-#define WATER_FOAM_WIDTH	0.25	// metres of depth over which the foam fades out
-#define WATER_FOAM_STRENGTH	0.90
-#define WATER_FOAM_COLOR	float3(0.62, 0.62, 0.58)
-
-// 3. Sun glint. There is a moon road below but nothing for the sun, so daytime water never catches the
-//    light. Tight exponent so it stays a glitter track rather than a wash.
-#define WATER_SUN_POWER		280.0
-#define WATER_SUN_STRENGTH	2.6
+// [DA_PORT] Рябь от дождя — ВТОРЫМ СЛОЕМ ТОЙ ЖЕ КАРТЫ НОРМАЛЕЙ, а не своей формулой.
+//
+// Первая версия считала рябь как sin(x)*cos(y) + ещё два члена, и это была ошибка в самой основе:
+// произведение синуса по X на косинус по Y РАЗДЕЛИМО, то есть даёт правильную решётку из бугров,
+// выровненную по осям мира. На воде это и было видно — «квадратики», а не рябь.
+//
+// Как это делают в отрасли (Lagarde, «Water drop 2b»; Unity Production-Ready Weather; типовые
+// разборы дождевых шейдеров): берут НЕСКОЛЬКО слоёв одной карты, каждый со своим масштабом,
+// направлением и скоростью, и складывают — интерференция получается непериодической, потому что
+// периоды слоёв несоизмеримы, а сама карта не разделима.
+//
+// Нам для этого ничего нового не нужно: s_nmap уже есть и уже сэмплится дважды для волн. Рябь —
+// та же карта в мелком масштабе и вдвое быстрее, со сдвигом по двум разным направлениям.
+float2 da_water_ripples( float2 wxz, float t )
+{
+	float2 uv0 = wxz * WATER_RIPPLE_SCALE          + float2( 0.37h,  0.93h) * t;
+	float2 uv1 = wxz * (WATER_RIPPLE_SCALE * 1.7h) - float2( 0.81h, -0.59h) * t;
+	float2 r0  = s_nmap.Sample( smp_base, uv0 ).xy - 0.5h;
+	float2 r1  = s_nmap.Sample( smp_base, uv1 ).xy - 0.5h;
+	return r0 + r1 * 0.7h;
+}
 
 float3 calc_moon_road(float3 color, float3 vreflect, float2 tc, float depth, float Nz)
 {
@@ -80,7 +94,28 @@ float4 main( vf I ) : SV_Target
 	float4	base= s_base.Sample( smp_base, I.tbase);
 	float3	n0	= s_nmap.Sample( smp_base, I.tnorm0.xy);
 	float3	n1	= s_nmap.Sample( smp_base, I.tnorm0.zw);
-	float3	Navg	= n0 + n1 - 1;
+	// [DA_PORT] Дальняя вода успокаивается: см. WATER_FAR_* в settings_da_water.h. v2point здесь ещё
+	// не нормализован — это вектор от камеры к точке в мире, его длина и есть дистанция в метрах.
+	float	da_water_dist	= length(I.v2point);
+	float	da_water_far	= saturate((da_water_dist - WATER_FAR_START) / max(WATER_FAR_END - WATER_FAR_START, 0.001h));
+	float	da_water_amp	= WATER_WAVE_AMP * lerp(1.0h, WATER_FAR_AMP, da_water_far);
+
+	float3	Navg	= (n0 + n1 - 1) * float3(da_water_amp, da_water_amp, 1.0h);
+
+#if WATER_RAIN_RIPPLES
+	// [DA_PORT] Гасим по дальности: дальше WATER_RIPPLE_FADE рябь мельче пикселя и превращается в шум,
+	// который темпоралка потом закрепит в узор — ровно та беда, что была на металле.
+	{
+		// [DA_PORT] Сила дождя лежит в .x — result.set(rain, wetness, puddles_size, dbg) в
+		// Blender_Recorder_StandartBinding.cpp. Сначала я взял .z, а это РАЗМЕР ЛУЖ, ручка с
+		// постоянным ненулевым значением: рябь из-за этого стояла всегда и в ясную погоду тоже.
+		float da_rain = saturate(rain_params.x);
+		float da_near = saturate(1.0h - da_water_dist / WATER_RIPPLE_FADE);
+		[branch] if (da_rain * da_near > 0.001h)
+			Navg.xy += da_water_ripples(I.position_w.xz, timers.x * WATER_RIPPLE_SPEED)
+			         * (WATER_RIPPLE_AMP * da_rain * da_near);
+	}
+#endif
 
 	float3	Nw	= mul (float3x3(I.M1, I.M2, I.M3), Navg);
 			Nw	= normalize (Nw);
@@ -98,23 +133,55 @@ float4 main( vf I ) : SV_Target
 	float 	ms	= xmaterial;
 	
 	float3 vreflect = reflect(normalize(v2point), normalize(Nw.xyz));
-	float3 env = calc_envmap(vreflect);
+	float3 env = da_water_sky(vreflect);
 	
 	//env = Vibrance(env,0.75);
 	
-	float	fresnel	= saturate (dot(vreflect,v2point));
-	float	power	= pow(fresnel,9);
+	// [DA_PORT] Френель по Шлику с настоящим показателем преломления воды — см. settings_da_water.h.
+	// Было pow(dot(vreflect,v2point), 9): та же форма кривой (0 сверху, 1 вскользь), но подобранная
+	// на глаз. Шлик даёт правильный порог, при котором поверхность перестаёт быть прозрачной.
+	float	da_ndv	= saturate( dot(Nw, -v2point) );
+	float	power	= WATER_FRESNEL_F0 + (1.0h - WATER_FRESNEL_F0) * pow(1.0h - da_ndv, WATER_FRESNEL_POWER);
+	float	fresnel	= power;
+
+	// [DA_PORT] Сор копится сюда, а накладывается ПОСЛЕ тумана — см. конец функции. Иначе водная
+	// дымка гасит его вместе с подводной картинкой, и лист читается лежащим на дне, а не плавающим.
+	float3	da_leaf_rgb	= 0.0h;
+	float	da_leaf_w	= 0.0h;
 	
 	
 #ifdef USE_REFLECTIONS
 	// [DA_PORT] Real screen-space reflections: get_reflection() now samples the scene copy (rt_SSR,
 	// bound to s_image by loose r3\effects_water.s). refl.w is the screen-edge fade -> near the screen
 	// centre the ray-marched scene colour wins, towards the borders it falls back to the sky cubemap.
-	float4 refl = calc_reflections(I.position_w, vreflect);
-	float3 c_reflection = lerp(refl.xyz, env.xyz, refl.www);
-	c_reflection = lerp(c_reflection,env,0.18);	// [DA_PORT] was 0.75 (SSR diluted to 25%), now ~82% SSR
+	// [DA_PORT] Дальняя вода отражает кубмапой, а не лучом — см. WATER_SSR_* в settings_da_water.h.
+	// Ветка настоящая, а не смешивание с нулевым весом: смысл в том, чтобы марш на дальних
+	// пикселях НЕ выполнялся вовсе.
+	float	da_ssr_fade	= saturate((da_water_dist - WATER_SSR_START) / max(WATER_SSR_END - WATER_SSR_START, 0.001h));
+	float3 c_reflection;
+
+	if (da_ssr_fade >= 0.999h)
+	{
+		c_reflection = env;
+	}
+	else
+	{
+		float4 refl = calc_reflections(I.position_w, vreflect);
+		c_reflection = lerp(refl.xyz, env.xyz, refl.www);
+		c_reflection = lerp(c_reflection,env,0.18);
+		c_reflection = lerp(c_reflection, env, da_ssr_fade);	// плавный переход к кубмапе
+	}	// [DA_PORT] was 0.75 (SSR diluted to 25%), now ~82% SSR
 #else
 	float3	c_reflection       = env;
+#endif
+
+	// [DA_PORT] Потолок выброса — разбор в settings_da_water.h (WATER_REFL_CLAMP).
+#ifdef WATER_REFL_CLAMP
+	{
+		float da_refl_lum = dot(c_reflection, float3(0.299h, 0.587h, 0.114h));
+		if (da_refl_lum > WATER_REFL_CLAMP)
+			c_reflection *= WATER_REFL_CLAMP / max(da_refl_lum, 0.0001h);
+	}
 #endif
 
 	c_reflection *= 0.95;	// [DA_PORT] was 0.5 — the reflection was being halved on top of everything else
@@ -162,16 +229,6 @@ float4 main( vf I ) : SV_Target
 
 	alpha 		*= 0.80h;	// [DA_PORT] slightly more see-through overall
 
-	//	Leaves
-	float4	leaves	= s_leaves.Sample( smp_base, I.tbase);
-			leaves.rgb *= water_intensity.r;
-	float	calc_cos = -dot(float3(I.M1.z, I.M2.z, I.M3.z),  normalize(v2point));
-	float	calc_depth = saturate(waterDepth*calc_cos);
-	float	fLeavesFactor = smoothstep(0.025, 0.05, calc_depth );
-			fLeavesFactor *= smoothstep(0.1, 0.075, calc_depth );
-	final		= lerp(final, leaves, leaves.a*fLeavesFactor);
-	alpha		= lerp(alpha, leaves.a, leaves.a*fLeavesFactor);
-
 	
 #ifdef USE_REFLECTIONS
 	final = calc_moon_road(final, vreflect, I.tbase.xy, _P.z, Nw.z);
@@ -199,17 +256,94 @@ float4 main( vf I ) : SV_Target
 		alpha  = max(alpha, foam);
 	}
 
+	// [DA_PORT] Плавающий сор: листья и веточки на поверхности. Слой был в шейдере с самого начала, но
+	// стоял ДО пены — а пена у нас процедурная и рисуется здесь, то есть закрашивала его. Теперь сор
+	// ложится последним, поверх всего: он и в жизни плавает на поверхности, а не под пеной.
+	//
+	// Окно глубины расширено. Было `smoothstep(0.025,0.05) * smoothstep(0.1,0.075)` — полоса в
+	// 2.5..10 см, то есть сор виден только на самом урезе воды и с берега почти не читается. Стало
+	// 2..60 см: на болоте и в лужах у берега он покрывает то, что и должен.
+	{
+		float	calc_cos = -dot(float3(I.M1.z, I.M2.z, I.M3.z),  normalize(v2point));
+		// [DA_PORT] Глубина БЕЗ множителя на косинус взгляда.
+		//
+		// Было `waterDepth * calc_cos`, то есть глубина ВДОЛЬ ЛУЧА. Вдали взгляд идёт вскользь, косинус
+		// стремится к нулю, и вместе с ним обнулялась «глубина» — сор пропадал ровно там, где воды
+		// больше всего видно. А окно должно спрашивать «мелко ли ЗДЕСЬ», и это свойство места, а не
+		// того, откуда на него смотрят.
+		float	calc_depth = saturate(waterDepth);
+
+		// Тина: чем глубже, тем гуще. Ложится первой — сор потом ляжет поверх неё.
+		float2	debris_uv = I.position_w.xz * WATER_DEBRIS_SCALE;
+		float4	silt	= s_leaves.Sample( smp_base, debris_uv * WATER_SILT_TILE);
+		float	fSilt	= smoothstep(0.0h, WATER_SILT_DEPTH, calc_depth) * WATER_SILT_STRENGTH;
+		final	= lerp(final, WATER_SILT_COLOR * water_intensity.r, saturate(silt.a) * fSilt);
+
+		// ---- РЯСКА -----------------------------------------------------------------------------
+		// Плавает НА поверхности, поэтому копится и накладывается за туманом (как раньше сор).
+		// Листвы здесь больше нет: она читалась мусором в воде, а нужен зелёный ковёр.
+		//
+		// Зерно берём из той же текстуры на высокой частоте — от неё нужна только альфа, цвет свой.
+		// Две повёрнутые выборки с несоизмеримым масштабом убирают решётку, крупная маска собирает
+		// ряску в пятна: она и в жизни сбивается ветром к берегу и в затишья, а не лежит ровно.
+		float2	rdrift	= float2(timers.x * WATER_RYASKA_DRIFT,
+								 timers.x * WATER_RYASKA_DRIFT * 0.6h + sin(timers.x * 0.11h) * WATER_RYASKA_SWAY);
+		float2	ruv		= (debris_uv + rdrift) * WATER_RYASKA_SCALE;
+		float2	ruv2	= mul(float2x2(0.80h, -0.60h, 0.60h, 0.80h), ruv) * WATER_DEBRIS_ROT2 + 0.37h;
+		float	g1		= s_leaves.Sample( smp_base, ruv).a;
+		float	g2		= s_leaves.Sample( smp_base, ruv2).a;
+		float	grain	= max(g1, g2);
+
+		float	patch	= s_leaves.Sample( smp_base, (debris_uv + rdrift) * WATER_RYASKA_PATCH).a;
+				patch	= saturate((patch - (1.0h - WATER_RYASKA_COVER)) * 2.5h);
+
+		float	fRyaska	= smoothstep(WATER_RYASKA_NEAR, WATER_RYASKA_NEAR * 3.0h, calc_depth);
+				fRyaska *= smoothstep(WATER_RYASKA_FAR, WATER_RYASKA_FAR * 0.6h, calc_depth);
+
+		float	ry		= saturate((grain - WATER_RYASKA_CUT) * WATER_RYASKA_SHARP) * patch * fRyaska;
+		da_leaf_rgb	= WATER_RYASKA_COLOR * water_intensity.r;
+		da_leaf_w	= saturate(ry * WATER_RYASKA_STRENGTH);
+	}
+
 #endif	//	USE_SOFT_WATER
 
 	//	Fogging
+#if WATER_REFRACT
+	// [DA_PORT] Преломление. Вода блендится ПОВЕРХ уже нарисованной сцены, поэтому подменить фон
+	// нельзя — можно лишь добавить разницу: копия кадра со смещением по наклону волны минус она же
+	// без смещения. При нулевом наклоне разница ровно ноль, то есть выключено значит выключено.
+	//
+	// Смещение берётся из нормали в ПРОСТРАНСТВЕ ВИДА (N уже посчитана выше): её xy — это и есть
+	// наклон волны на экране, тогда как мировые xz зависели бы от того, куда повёрнута камера.
+	// Делим на дистанцию: вблизи волна крупная и сдвиг заметен, вдали сходит на нет — иначе дальняя
+	// вода закипает пикселями, а темпоралка потом закрепляет это в узор.
+	{
+		float da_ref_near = saturate(1.0h - da_water_dist / WATER_REFRACT_FADE);
+		[branch] if (da_ref_near > 0.001h)
+		{
+			float2 da_off = N.xy * (WATER_REFRACT_STRENGTH * da_ref_near / max(da_water_dist, 1.0h));
+			float3 da_bg0 = s_image.SampleLevel( smp_rtlinear, PosTc, 0 ).xyz;
+			float3 da_bg1 = s_image.SampleLevel( smp_rtlinear, PosTc + da_off, 0 ).xyz;
+			// Вес падает с непрозрачностью: сквозь мутную глубину преломлять нечего.
+			final += (da_bg1 - da_bg0) * (WATER_REFRACT_WEIGHT * saturate(1.0h - alpha));
+		}
+	}
+#endif
+
 	final 		= lerp(fog_color, final, I.fog);
 	alpha		*= I.fog*I.fog;
 
+	// [DA_PORT] Сор — последним, уже за туманом: он лежит НА поверхности, толща воды его не мутит.
+	final		= lerp(final, da_leaf_rgb, da_leaf_w);
+	alpha		= max(alpha, da_leaf_w);
+
+	clip(alpha - WATER_ALPHA_CLIP);	// при нулевом пороге ничего не отбрасывает
 	return  float4   (final, alpha )                ;
 
 #else	//	NEED_SOFT_WATER
 
 	final 		= lerp(fog_color, final, I.fog);
+	clip(I.fog * I.fog - WATER_ALPHA_CLIP);
 	return  float4   (final, I.fog*I.fog )      ;
 
 #endif	//	NEED_SOFT_WATER

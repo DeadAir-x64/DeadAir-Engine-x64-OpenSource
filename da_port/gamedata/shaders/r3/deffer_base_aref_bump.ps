@@ -78,6 +78,13 @@ f_deffer 	main	( p_bumped I )
 #endif
 
 S.base.xyz = Vibrance(S.base.xyz, 1.3);
+	// [DA_PORT] Фильтрация блика: приглушаем пик там, где нормаль внутри пикселя уже не разрешается.
+	// При r__spec_aa 0 множитель равен единице. Отладка: 1 — сам множитель, 2 — снятое.
+	float da_saa = da_spec_aa_factor( Ne );
+	S.gloss *= da_saa;
+	if (da_spec_aa.w > 0.5h)
+		S.base.xyz = (da_spec_aa.w < 1.5h) ? da_saa.xxx : (1.0h - da_saa).xxx;
+
 	
 #ifndef EXTEND_F_DEFFER
 	O = pack_gbuffer(

@@ -1,0 +1,30 @@
+-- [DA_PORT] Наши пункты в настройках игры.
+--
+-- Мод сам даёт точку расширения: вкладка «Игра» строится из таблицы gameplay_options,
+-- которую наполняют по колбэку opt_menu_on_init (см. ui_mm_opt_main.script и комментарий
+-- в axr_main_options.script). Поэтому чужие файлы мы не правим вовсе — только добавляем свою запись.
+--
+-- Значение хранит сам мод: axr_main.config, секция mm_options, ключ enable_<имя>.
+-- Подпись пункта — строка ui_mm_<имя> (у нас в st_da_port_ui.xml).
+
+local function da_add_options(menu)
+	if not (menu and menu.gameplay_options) then
+		return
+	end
+
+	-- Глушение электроники на Рыжем лесу и Генераторах.
+	-- По умолчанию ВКЛЮЧЕНО: так задумано модом, и молча менять его замысел мы не вправе.
+	menu.gameplay_options["da_nvg_jam"] = { default = true, typ = "check" }
+end
+
+-- Система колбэков мода зовёт одноимённую глобальную функцию модуля — так сделано в
+-- axr_main_options.script. Этот путь работает и В ГЛАВНОМ МЕНЮ, где игры ещё нет.
+function opt_menu_on_init(menu)
+	da_add_options(menu)
+end
+
+-- А здесь второй путь, которым пользуется closecaption.script. Двойная регистрация безвредна:
+-- запись кладётся в таблицу по ключу, то есть повтор просто перезапишет её тем же самым.
+function on_game_start()
+	RegisterScriptCallback("opt_menu_on_init", da_add_options)
+end

@@ -541,4 +541,8 @@
 	<string id="ui_da_cross_relation">
 		<text>Подсветка цели</text>
 	</string>
+	<!-- [DA_PORT] глушение электроники на Рыжем лесу и Генераторах -->
+	<string id="ui_mm_da_nvg_jam">
+		<text>Глушить электронику на аномальных локациях</text>
+	</string>
 </string_table>
