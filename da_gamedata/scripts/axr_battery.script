@@ -278,19 +278,6 @@ function is_jammed()
 		return false
 	end
 
-	-- [DA_PORT] Глушение выключается в настройках игры: вкладка «Игра», пункт da_nvg_jam.
-	--
-	-- По умолчанию ВКЛЮЧЕНО — так задумано модом, и молча менять его замысел мы не вправе.
-	-- Сообщество лечит те же две локации отдельным аддоном (ferr-um, Dead Air Revolution,
-	-- «Отключение сломанного ПНВ в Рыжем лесу и Генераторах») — у нас это переключатель.
-	--
-	-- Проверка на axr_main.config обязательна: этот файл грузится раньше него, и без неё
-	-- ранний вызов уронит скрипт вместо того, чтобы просто ответить «глушим».
-	if (axr_main and axr_main.config
-	    and axr_main.config:r_value("mm_options", "enable_da_nvg_jam", 1, true) == false) then
-		return false
-	end
-
 	local jammed_levels =
 	{
 		["l10_red_forest"] = true,
@@ -303,6 +290,29 @@ function is_jammed()
 	end
 
 	return false
+end
+
+-- [DA_PORT] Отдельные ворота ТОЛЬКО для ПНВ.
+--
+-- is_jammed() гасит ТРИ вещи: ПНВ (dinamic_hud), ПДА с картой (pda) и фонарь
+-- (xr_actor зажимает заряд в 0.05). Первая версия переключателя снимала все три разом —
+-- то есть убивала весь замысел Рыжего леса, а не только нерабочий ПНВ.
+--
+-- Поэтому is_jammed остаётся авторской, а настройка влияет только здесь: карта и фонарь
+-- глушатся всегда, как и задумано.
+function is_nvg_jammed()
+	if not (is_jammed()) then
+		return false
+	end
+
+	-- Проверка на axr_main.config обязательна: файл грузится позже, и без неё ранний
+	-- вызов уронит скрипт вместо того, чтобы ответить «глушим».
+	if (axr_main and axr_main.config
+	    and axr_main.config:r_value("mm_options", "enable_da_nvg_jam", 1, true) == false) then
+		return false
+	end
+
+	return true
 end
 	
 function show_message(msg,time)

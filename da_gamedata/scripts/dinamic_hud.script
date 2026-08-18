@@ -208,7 +208,8 @@ function broken_nv()
 		
 		local helmcond = helmet_condition or 1
 		
-		if (axr_battery.is_jammed()) then
+		-- [DA_PORT] Только ПНВ слушается настройки; карта и фонарь глушатся всегда.
+		if (axr_battery.is_nvg_jammed()) then
 			helmcond = "red"
 		end
 		

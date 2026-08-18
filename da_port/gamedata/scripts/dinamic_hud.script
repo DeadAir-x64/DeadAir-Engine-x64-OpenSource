@@ -33,6 +33,18 @@ local helm_mask = false
 local rain_update = 0
 local blur_time = 0
 local drops_val = 0
+-- [DA_PORT] Сколько держать клавишу перезарядки, чтобы протереть маску, мс.
+-- Крутится из консоли: run_string dinamic_hud.MASK_HOLD_MS = 2000
+MASK_HOLD_MS = 1500
+
+-- Разрыв, после которого удержание считается новым: тики идут покадрово, четверти секунды
+-- хватает с запасом, а зависнуть в "держу" после потери фокуса не даёт.
+local MASK_HOLD_GAP = 250
+
+local mask_hold_start = nil -- когда началось текущее удержание
+local mask_hold_last = 0    -- когда пришёл последний тик удержания
+
+-- Осталось ради is_mask_cleaning: там важен сам факт "маску сейчас трут", а не число.
 local clean_mask = 0
 
 local last_slot = 0
@@ -83,8 +95,12 @@ function update()
 			helmet_hud()
 		end
 			
-		if (clean_mask > 0) then 
-			clean_mask = clean_mask-1 
+		-- [DA_PORT] Затухание счётчика больше не нужно: удержание меряется временем и
+		-- сбрасывается по разрыву. Здесь только страховка на случай, если тики оборвались
+		-- (потеря фокуса, меню) — иначе is_mask_cleaning залипнет навсегда.
+		if (mask_hold_start and (tg - mask_hold_last > MASK_HOLD_GAP)) then
+			mask_hold_start = nil
+			clean_mask = 0
 		end
 		
 		hit_effect()
@@ -192,7 +208,8 @@ function broken_nv()
 		
 		local helmcond = helmet_condition or 1
 		
-		if (axr_battery.is_jammed()) then
+		-- [DA_PORT] Только ПНВ слушается настройки; карта и фонарь глушатся всегда.
+		if (axr_battery.is_nvg_jammed()) then
 			helmcond = "red"
 		end
 		
@@ -267,6 +284,21 @@ function reset_blurs(blur, k)
 	blur_k = k
 end
 
+-- [DA_PORT] Один переиспользуемый прямоугольник вместо нового на каждую итерацию.
+--
+-- Цикл ниже — 4x10 = сорок проходов, и каждый строил `Frect()`. Это сорок обёрток luabind по
+-- 128 байт КАЖДЫЙ КАДР: замер назвал эту функцию первой среди всех источников обёрток —
+-- 12 000 штук за 300 кадров, 13.6% всех создаваемых в игре.
+--
+-- Переиспользовать безопасно: движок принимает прямоугольник ПО ЗНАЧЕНИЮ
+-- (`SetWndRect(CUIWindow*, Frect)`, ui_export_script.cpp) и копирует его в SetTextureRect —
+-- ссылку на наш объект никто не держит.
+--
+-- Нулевой держим отдельно: он не меняется вовсе, значит и присваивать в него нечего.
+local da_rect_zero = Frect():set(0,0,0,0)
+local da_rect_wnd  = Frect()
+local da_rect_tex  = Frect()
+
 function set_blurs(enabled,rect)
 	
 	local hud = get_hud()
@@ -286,7 +318,7 @@ function set_blurs(enabled,rect)
 	if not enabled then
 		for i,t in ipairs(blurs) do
 			for ii,st in ipairs(t) do
-				st:SetWndRect(Frect():set(0,0,0,0))
+				st:SetWndRect(da_rect_zero)
 			end
 		end
 		return
@@ -309,13 +341,13 @@ function set_blurs(enabled,rect)
 	for i=1,4 do
 		for ii=1,10 do
 			if (i == tm and ii == n1) then
-				blurs[tm][n1]:SetWndRect(Frect():set(rect.x,rect.y,rect.w,rect.h))
-				blurs[tm][n1]:SetTextureRect(Frect():set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
+				blurs[tm][n1]:SetWndRect(da_rect_wnd:set(rect.x,rect.y,rect.w,rect.h))
+				blurs[tm][n1]:SetTextureRect(da_rect_tex:set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
 			elseif (i == tmn and ii == n2) then
-				blurs[tmn][n2]:SetWndRect(Frect():set(rect.x,rect.y,rect.w,rect.h))
-				blurs[tmn][n2]:SetTextureRect(Frect():set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
+				blurs[tmn][n2]:SetWndRect(da_rect_wnd:set(rect.x,rect.y,rect.w,rect.h))
+				blurs[tmn][n2]:SetTextureRect(da_rect_tex:set(zbias.x1/4,zbias.y1/4,zbias.x2/4,zbias.y2/4))
 			else
-				blurs[i][ii]:SetWndRect(Frect():set(0,0,0,0))
+				blurs[i][ii]:SetWndRect(da_rect_zero)
 			end
 		end
 	end
@@ -518,14 +550,33 @@ function water_effect()
 
 end
 
+-- [DA_PORT] Протирание маски запускается ВРЕМЕНЕМ удержания, а не числом кадров.
+--
+-- Было: clean_mask рос на 2 за каждый тик удержания и падал на 1 за тик обновления, порог 60.
+-- Оба конца покадровые, поэтому порог зависел от частоты кадров: на исходных шестидесяти он
+-- набирался около секунды, а у нас при трёхстах-четырёхстах — за доли секунды. Отсюда и жалоба:
+-- игрок несколько раз подряд жмёт перезарядку, а вместо неё персонаж лезет протирать маску.
+--
+-- Стало: засекается начало удержания, и анимация играет, когда клавишу продержали MASK_HOLD_MS.
+-- Короткие нажатия не накапливаются вовсе — разрыв больше MASK_HOLD_GAP начинает отсчёт заново.
 function on_key_hold(key)
 	local bind = dik_to_bind(key)
-	if bind == key_bindings.kWPN_RELOAD then
-		clean_mask = clean_mask+2
+	if (bind ~= key_bindings.kWPN_RELOAD) then
+		return
 	end
 
-	if (clean_mask > 60) and (dinamic_hud.ishud() or (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == false)) then
+	local tg = time_global()
+	if (not mask_hold_start) or (tg - mask_hold_last > MASK_HOLD_GAP) then
+		mask_hold_start = tg
+	end
+	mask_hold_last = tg
+
+	local held = tg - mask_hold_start
+	clean_mask = held
+
+	if (held >= MASK_HOLD_MS) and (dinamic_hud.ishud() or (axr_main.config:r_value("mm_options","enable_mask_hud",1,false) == false)) then
 		if (anm_state ~= 0) then return end
+		mask_hold_start = nil
 		anm_state = 1
 		last_slot = db.actor:active_slot() or 0
         alife():create("animation_clean_mask",db.actor:position(),db.actor:level_vertex_id(),db.actor:game_vertex_id(),db.actor:id())

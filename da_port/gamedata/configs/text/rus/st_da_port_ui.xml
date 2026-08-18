@@ -543,7 +543,7 @@
 	</string>
 	<!-- [DA_PORT] глушение электроники на Рыжем лесу и Генераторах -->
 	<string id="ui_mm_da_nvg_jam">
-		<text>Глушение электроники</text>
+		<text>Глушение ПНВ</text>
 	</string>
 	<string id="ui_mm_da_stack_all">
 		<text>Сортировка</text>
