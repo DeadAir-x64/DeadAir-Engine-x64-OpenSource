@@ -386,6 +386,18 @@ bool CChangeLevelWnd::OnKeyboardAction(int dik, EUIMessages keyboard_action)
     {
         if (IsBinded(kQUIT, dik))
             OnCancel();
+        // [DA_PORT] Пробел и Enter подтверждают переход, как кнопка «Да».
+        //
+        // Окно всплывает посреди игры, курсор до этого не нужен, и тянуться мышью к кнопке ради
+        // единственного осмысленного ответа — лишнее движение. Отмена уже висит на кнопке выхода,
+        // так что клавиатурой закрываются оба исхода.
+        //
+        // Условие m_b_allow_change_level обязательно: окно показывают и на ЗАПРЕЩЁННОМ переходе,
+        // только с другим текстом и без кнопки «Да». Без проверки пробел уводил бы туда, куда
+        // мышью уйти нельзя.
+        else if (m_b_allow_change_level &&
+            (dik == SDL_SCANCODE_SPACE || dik == SDL_SCANCODE_RETURN || dik == SDL_SCANCODE_KP_ENTER))
+            OnOk();
         return true;
     }
     return inherited::OnKeyboardAction(dik, keyboard_action);
