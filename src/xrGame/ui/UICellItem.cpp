@@ -224,6 +224,9 @@ void CUICellItem::SetOwnerList(CUIDragDropListEx* p)
     //UpdateConditionProgressBar();
 }
 
+// [DA_PORT] Метка полосы состояния в ячейке: 1 - писать в лог. По умолчанию молчит.
+int g_da_cell_bar_debug = 0;
+
 void CUICellItem::UpdateConditionProgressBar()
 {
     if (!m_pConditionState)
@@ -236,6 +239,31 @@ void CUICellItem::UpdateConditionProgressBar()
         if (itm && itm->IsUsingCondition())
         {
             float cond = itm->GetCondition();
+
+            // [DA_PORT] Возвращаем оформление полосы к умолчанию ПЕРЕД разбором предмета.
+            //
+            // Ниже ветка еды снимает градиент и подложку - и не возвращает их никогда. Виджет
+            // ячейки переиспользуется под разные предметы, поэтому одна отрисованная банка тушёнки
+            // лишала градиента все последующие полосы: цвет переставал зависеть от состояния и
+            // становился одним и тем же серым. Заметнее всего на рюкзаках и броне - у них полоса
+            // длинная и стоит рядом с оружейной, у которой градиент ещё жив.
+            //
+            // Односторонний выключатель - это всегда мина: состояние, которое кто-то снял, а вернуть
+            // забыл. Лечится не в месте, где заметили, а здесь: каждый предмет начинает с умолчания.
+            m_pConditionState->UseGradient(true);
+
+            // [DA_PORT] Подложку полосы НЕ показываем.
+            //
+            // В разметке она задана цветом 62/74/74 - серо-зелёная черта во всю ширину ячейки. Она
+            // рисуется всегда, а цветной прогресс ложится поверх на долю состояния: у полного
+            // предмета полоса зелёная целиком, у изношенного хвост остаётся подложкой, а там, где
+            // прогресса нет вовсе, видна только она. На экране это читается как "серая полоска
+            // непонятно чего" - и именно на неё жаловались.
+            //
+            // Оставляем один цветной отрезок: его длина и есть состояние, а пустое место читается
+            // как пустое. Заодно снимается вопрос "почему у одних зелёная, у других серая" - серой
+            // больше нет ни у кого.
+            m_pConditionState->ShowBackground(false);
 
             CEatableItem* eitm = smart_cast<CEatableItem*>(itm);
             if (eitm)
@@ -271,9 +299,53 @@ void CUICellItem::UpdateConditionProgressBar()
             m_pConditionState->SetWndPos(Fvector2().set(x, y));
             m_pConditionState->SetProgressPos(iCeil(cond * 13.0f) / 13.0f);
             m_pConditionState->Show(true);
+
+            // [DA_PORT] Метка: `da_cell_bar_debug 1`. Пишет, ЧТО досталось этой полосе, вместо того
+            // чтобы рассуждать о цвете по коду. Раз в 2 секунды на предмет, иначе зальёт лог.
+            if (g_da_cell_bar_debug)
+            {
+                // [DA_PORT] Ограничитель ПОСЕКЦИОННЫЙ, а не общий.
+                //
+                // Первая версия держала один счётчик на все предметы, и в окно попадал только тот,
+                // кто рисуется первым: в логе был костюм, а рюкзака не было вовсе - и это читалось
+                // как «до рюкзака код не доходит». Прибор, который отвечает молчанием за чужой
+                // предмет, хуже отсутствующего: он даёт ложный вывод.
+                static xr_map<shared_str, u32> last_by_sect;
+                const shared_str sect = itm->object().cNameSect();
+                u32& last = last_by_sect[sect];
+                if (0 == last || Device.dwTimeGlobal - last > 2000)
+                {
+                    last = Device.dwTimeGlobal;
+                    Msg("~ [DA_BAR] список [%s], %s: состояние %.3f, шкала %s, градиент %s, min 0x%08X, max 0x%08X, позиция %.3f",
+                        m_pParentList ? m_pParentList->WindowName().c_str() : "нет",
+                        itm->object().cNameSect().c_str(), cond,
+                        m_pConditionState->DaUseColor() ? "вкл" : "ВЫКЛ",
+                        m_pConditionState->DaUseGradient() ? "вкл" : "ВЫКЛ",
+                        m_pConditionState->DaMinColor(), m_pConditionState->DaMaxColor(),
+                        m_pConditionState->DaProgress());
+                }
+            }
             return;
         }
     }
+    // [DA_PORT] Метка молчала про СКРЫТУЮ полосу, а по снимку игрока черта видна именно там, где
+    // предмета будто нет. Отчитываемся и здесь: иначе прибор отвечает только про тот случай,
+    // который мы и так считали исправным.
+    if (g_da_cell_bar_debug)
+    {
+        static u32 last_hidden = 0;
+        if (Device.dwTimeGlobal - last_hidden > 2000)
+        {
+            last_hidden = Device.dwTimeGlobal;
+            PIItem itm = static_cast<PIItem>(m_pData);
+            Msg("~ [DA_BAR] полоса СКРЫТА: список [%s], предмет %s, состояние используется %s, список просит полосу %s",
+                m_pParentList ? m_pParentList->WindowName().c_str() : "нет",
+                itm ? itm->object().cNameSect().c_str() : "нет",
+                (itm && itm->IsUsingCondition()) ? "да" : "нет",
+                (m_pParentList && m_pParentList->GetConditionProgBarVisibility()) ? "да" : "нет");
+        }
+    }
+
     m_pConditionState->Show(false);
 }
 

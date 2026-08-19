@@ -69,6 +69,14 @@ public:
     bool IsShownBackground() const { return m_UIBackgroundItem.GetVisible(); }
     void ShowBackground(bool status) { m_UIBackgroundItem.SetVisible(status); }
 
+    // [DA_PORT] Для метки в ячейке инвентаря: чем полоса красится на самом деле.
+    // Встроенные - поэтому не требуют экспорта из xrUICore.
+    bool DaUseColor() const { return m_bUseColor; }
+    bool DaUseGradient() const { return m_bUseGradient; }
+    u32 DaMinColor() const { return m_minColor.get(); }
+    u32 DaMaxColor() const { return m_maxColor.get(); }
+    float DaProgress() const { return m_ProgressPos.y; }
+
     void UseGradient(bool status) { m_bUseGradient = status; }
 
     pcstr GetDebugType() override { return "CUIProgressBar"; }

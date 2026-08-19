@@ -160,6 +160,9 @@ extern BOOL g_bShowHitSectors;
 extern ESingleGameDifficulty g_SingleGameDifficulty;
 //-----------------------------------------------------------
 extern float g_fTimeFactor;
+extern int g_da_time_log;
+extern float ps_da_torch_hand_delay;
+extern int g_da_cell_bar_debug;
 extern BOOL b_toggle_weapon_aim;
 
 extern float g_smart_cover_factor;
@@ -4298,6 +4301,9 @@ void CCC_RegisterCommands()
 #ifndef MASTER_GOLD
     CMD1(CCC_StartTimeSingle, "start_time_single");
     CMD4(CCC_TimeFactorSingle, "time_factor_single", &g_fTimeFactor, 0.f, 1000.0f);
+    CMD4(CCC_Integer, "da_time_log", &g_da_time_log, 0, 1);
+    CMD4(CCC_Float, "da_torch_hand_delay", &ps_da_torch_hand_delay, 0.f, 5.f);
+    CMD4(CCC_Integer, "da_cell_bar_debug", &g_da_cell_bar_debug, 0, 1);
 #endif // MASTER_GOLD
 
     g_uCommonFlags.zero();

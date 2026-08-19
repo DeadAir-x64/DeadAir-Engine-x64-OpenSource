@@ -432,6 +432,8 @@ void CUIDragDropListEx::Draw()
     };
 }
 
+extern int g_da_cell_bar_debug;
+
 void CUIDragDropListEx::Update()
 {
     inherited::Update();
@@ -449,16 +451,57 @@ void CUIDragDropListEx::Update()
         else if (this == m_drag_item->BackList())
             m_drag_item->SetBackList(NULL);
     }
+    if (!m_condition_indicator && g_da_cell_bar_debug)
+    {
+        static xr_map<void*, u32> last_nobar;
+        u32& last = last_nobar[this];
+        if (0 == last || Device.dwTimeGlobal - last > 2000)
+        {
+            last = Device.dwTimeGlobal;
+            Msg("~ [DA_BAR] слот [%s]: полосы НЕТ вовсе, предметов %u, ёмкость %u",
+                WindowName().c_str(), ItemsCount(), CellsCapacity());
+        }
+    }
+
     if (m_condition_indicator)
     {
         float condition = 0.0f;
-        if (ItemsCount())
+        const bool has_item = (ItemsCount() != 0);
+        if (has_item)
         {
             const PIItem itm = static_cast<PIItem>(GetItemIdx(0)->m_pData);
             if (itm)
                 condition = iCeil(itm->GetCondition() * 15.0f) / 15.0f;
         }
         m_condition_indicator->SetProgressPos(condition);
+
+        // [DA_PORT] Пустой слот - полосы нет вовсе.
+        //
+        // Раньше в пустом слоте просто ставился ноль, и полоса оставалась нарисованной: цветной
+        // части при нуле нет, поэтому от неё видна ровно сама планка - серая черта во всю ширину
+        // ячейки. Игрок видит её под пустыми слотами и читает как непонятный элемент интерфейса,
+        // а не как "состояние предмета, которого здесь нет".
+        //
+        // Ноль в этой полосе означает не "состояние ноль", а "показывать нечего". Значит и решать
+        // это надо видимостью, а не значением.
+        m_condition_indicator->Show(has_item);
+
+        // [DA_PORT] Метка: `da_cell_bar_debug 1`. Правка «прятать полосу пустого слота» не дала
+        // видимого результата - значит либо сюда не заходим, либо на экране не эта полоса.
+        // Спрашиваем у кода, а не гадаем по снимку.
+        if (g_da_cell_bar_debug)
+        {
+            // Ограничитель ПОСПИСОЧНЫЙ. Общий счётчик пропускал в лог только тот список, что
+            // рисуется первым, - ровно та же ошибка, что уже была в метке ячейки.
+            static xr_map<void*, u32> last_by_list;
+            u32& last_slot = last_by_list[this];
+            if (0 == last_slot || Device.dwTimeGlobal - last_slot > 2000)
+            {
+                last_slot = Device.dwTimeGlobal;
+                Msg("~ [DA_BAR] слот [%s]: предметов %u, ёмкость %u, состояние %.3f, полоса показана %s",
+                    WindowName().c_str(), ItemsCount(), CellsCapacity(), condition, has_item ? "да" : "нет");
+            }
+        }
     }
 }
 

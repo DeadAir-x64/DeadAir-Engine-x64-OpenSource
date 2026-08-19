@@ -459,6 +459,29 @@ function options_dialog:OnUpscalerChanged()
 		-- and out of reach of the mouse, and the two are separate flags in this UI. Both are set together
 		-- every time, so the control can never come back visible-but-dead.
 		combo:Enable(applicable)
+
+		-- [DA_PORT] Ступень DLAA - только у DLSS (апскейлер 6).
+		--
+		-- Реконструкции в родном разрешении у XeSS нет вовсе, у FSR она появилась лишь в 3.1, а наш
+		-- backend старее; FSR 1.0 не реконструкция в принципе. Движок это знает и молча подставляет
+		-- лучшее доступное качество, но пункт при этом ОСТАВАЛСЯ в списке: игрок выбирал DLAA с FSR,
+		-- получал 77% масштаба и никакого объяснения. Обещание в меню важнее заслона в коде.
+		--
+		-- Гасим пункт, а не вырезаем: список строит движок из общего набора токенов, и удаление
+		-- строки сдвинуло бы остальные. disable_id работает по ЗНАЧЕНИЮ токена (у DLAA это 5).
+		--
+		-- ВНИМАНИЕ: SetCurrentID работает по НОМЕРУ СТРОКИ, а не по значению - имя обманчиво. DLAA
+		-- стоит первой строкой, "ультра-качество" второй, поэтому уводим выбор в 1. Промах тут стоил
+		-- бы дорого: строка 4 - это ультра-скорость, 33% масштаба.
+		local dlaa_ok = (id == 6)
+		if dlaa_ok then
+			combo:enable_id(5)
+		else
+			combo:disable_id(5)
+			if combo:CurrentID() == 5 then
+				combo:SetCurrentID(1)
+			end
+		end
 	end
 
 	local cap = self.cap_upscaler_quality

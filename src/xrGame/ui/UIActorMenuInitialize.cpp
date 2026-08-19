@@ -229,7 +229,12 @@ void CUIActorMenu::InitializeUniversal(CUIXml& uiXml)
 
         // [DA_PORT] "backpack_over" blocker overlay: shown (via capacity->0 in UpdateOutfit) when the worn
         // outfit forbids a backpack, so the disabled slot reads clearly - same treatment as helmet_over.
-        { eInventoryBackpackList,  "dragdrop_backpack",        nullptr,               "backpack_slot_highlight", "backpack_over",    false },
+        // [DA_PORT] Полоса рюкзачного слота была не подключена: планка под ним НАРИСОВАНА в текстуре
+        // панели, узел "progess_bar_backpack" в разметке ЕСТЬ, а здесь стояло пустое значение - и
+        // заполнять планку было некому. Игрок видел вечно серую черту и читал её как "прочность на
+        // нуле". Это стандартная схема интерфейсов: пустая планка идёт в оформлении окна, а
+        // заполнение кладётся поверх во время работы; здесь просто отсутствовала вторая половина.
+        { eInventoryBackpackList,  "dragdrop_backpack",        "progess_bar_backpack", "backpack_slot_highlight", "backpack_over",    false },
     };
     static_assert(std::size(inventory_lists) == eListCount,
         "All lists should be listed in the tuple above.");
@@ -243,6 +248,10 @@ void CUIActorMenu::InitializeUniversal(CUIXml& uiXml)
         list = UIHelper::CreateDragDropListEx(uiXml, section, this, required);
         if (!list)
             continue;
+
+        // [DA_PORT] Имя из разметки: без него WindowName() возвращает имя КЛАССА, и в логе все
+        // семь панелей выглядят одинаково - отличить рюкзачную от оружейной невозможно.
+        list->SetWindowName(section);
 
         if (conditionIndicator)
         {

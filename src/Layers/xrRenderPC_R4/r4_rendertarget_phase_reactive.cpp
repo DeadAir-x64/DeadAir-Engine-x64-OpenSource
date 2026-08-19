@@ -10,6 +10,7 @@ extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API int ps_r__xess;
 extern ENGINE_API bool da_upscaler_active(); // [DA_PORT]
+extern ENGINE_API bool da_temporal_active(); // [DA_PORT] апскейлер ИЛИ наша TAA
 
 extern ENGINE_API int ps_r__reactive_selftest;
 extern ENGINE_API int ps_r__probe_center; // [DA_PORT] 0 - ярчайший пиксель, 1 - перекрестье
@@ -1773,7 +1774,7 @@ void CRenderTarget::phase_reactive()
     // Nothing but an upscaler ever reads this mask, so with all of them off the pass is pure cost.
     // [DA_PORT] Через общий список, а не перечислением: этот if уже дважды забывали обновить при
     // добавлении бэкенда, и оба раза маска молча переставала строиться.
-    if (!da_upscaler_active())
+    if (!da_temporal_active())
         return;
 
     PIX_EVENT(DA_phase_reactive);
@@ -1953,7 +1954,7 @@ void CRenderTarget::phase_reactive()
 bool CRenderTarget::da_emissive_mark_ready() const
 {
     // Маску читает только апскейлер: без него весь проход - чистые затраты.
-    return ps_r__reactive_emissive > 0.f && da_upscaler_active() && s_reactive_emissive && rt_Reactive;
+    return ps_r__reactive_emissive > 0.f && da_temporal_active() && s_reactive_emissive && rt_Reactive;
 }
 
 // То же самое для прозрачной геометрии - стекло, вода, частицы, всё из очередей mapSorted. Она тоже
@@ -1964,7 +1965,7 @@ bool CRenderTarget::da_emissive_mark_ready() const
 // заметно. Включать осознанно и смотреть.
 bool CRenderTarget::da_transparent_mark_ready() const
 {
-    return ps_r__reactive_transparent > 0.f && da_upscaler_active() && s_reactive_emissive && rt_Reactive;
+    return ps_r__reactive_transparent > 0.f && da_temporal_active() && s_reactive_emissive && rt_Reactive;
 }
 
 // [DA_PORT] Только вода. Отличие от предыдущего не в силе метки, а в том, КТО ставит отметку в
@@ -1978,7 +1979,7 @@ bool CRenderTarget::da_transparent_mark_ready() const
 //     потому что метил кадр там, где сцены ещё нет.
 bool CRenderTarget::da_water_mark_ready() const
 {
-    return ps_r__reactive_water > 0.f && da_upscaler_active() && s_reactive_emissive && rt_Reactive;
+    return ps_r__reactive_water > 0.f && da_temporal_active() && s_reactive_emissive && rt_Reactive;
 }
 
 void CRenderTarget::phase_reactive_emissive()

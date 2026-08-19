@@ -1616,7 +1616,10 @@ void CActor::StartItemPlacement(LPCSTR section, u16 item_id)
     m_item_placement_light->set_active(true);
 
     m_item_placement_glow = GEnv.Render->glow_create();
-    m_item_placement_glow->set_texture("glow\glow_torch_r2");
+    // [DA_PORT] Слэш обязан быть удвоенным: `\g` не escape-последовательность, компилятор
+    // выбрасывает слэш, и имя превращалось в "glowglow_torch_r2" — такой текстуры нет,
+    // свечение молча не находило её. Нашлось по предупреждению компилятора.
+    m_item_placement_glow->set_texture("glow\\glow_torch_r2");
     m_item_placement_glow->set_color(0.35f, 0.75f, 0.95f);
     m_item_placement_glow->set_radius(0.45f);
     m_item_placement_glow->set_active(true);

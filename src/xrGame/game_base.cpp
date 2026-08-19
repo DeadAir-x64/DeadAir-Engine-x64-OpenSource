@@ -11,6 +11,8 @@ u64 g_qwStartGameTime = 12 * 60 * 60 * 1000;
 // binds directly to this variable and persists whatever value was active to user.ltx, so once it
 // got saved as 10 it kept reasserting itself on every subsequent launch. Use a sane 1x default.
 float g_fTimeFactor = 1;
+// [DA_PORT] Замер хода времени: 1 — писать в лог раз в 5 секунд. По умолчанию молчит.
+int g_da_time_log = 0;
 u64 g_qwEStartGameTime = 12 * 60 * 60 * 1000;
 
 EGameIDs ParseStringToGameType(LPCSTR str);
@@ -256,22 +258,6 @@ ALife::_TIME_ID game_GameState::GetGameTime()
 {
     ALife::_TIME_ID result = m_qwStartGameTime +
         ALife::_TIME_ID(m_fTimeFactor * float(Level().timeServer_Async() - m_qwStartProcessorTime));
-
-    // directly, independent of what m_fTimeFactor claims, in case something else (unit mismatch,
-    // double-application, etc.) is inflating it beyond the configured factor.
-    static u32 last_log_real = 0;
-    static ALife::_TIME_ID last_log_game = 0;
-    if (Device.dwTimeGlobal - last_log_real > 5000)
-    {
-        if (last_log_real != 0)
-        {
-            double real_delta_sec = (Device.dwTimeGlobal - last_log_real) / 1000.0;
-            double game_delta_sec = (result - last_log_game) / 1000.0;
-            FlushLog();
-        }
-        last_log_real = Device.dwTimeGlobal;
-        last_log_game = result;
-    }
 
     return result;
 }

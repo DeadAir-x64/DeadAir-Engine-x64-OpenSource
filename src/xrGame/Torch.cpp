@@ -213,8 +213,13 @@ void CTorch::Switch(bool light_on)
 //   • enable_torch2 (torch2)  — клавиша игрока. Ею управляется налобный фонарь.
 // Кому из двоих подчиняется лампа, решает наличие предмета со светом: он есть — горит по torch1, нет —
 // по клавише. Это то поведение, которое подтверждено в игре, выраженное на ОДНОЙ лампе вместо двух.
-// [DA_PORT] Задержка включения света в руке, секунды. Столько идёт анимация доставания.
-static const float da_hand_torch_delay = 1.5f;
+// [DA_PORT] Задержка включения света в руке, секунды. Ручка `da_torch_hand_delay`.
+//
+// Была жёстко вписана как 1.5 — столько идёт анимация доставания, и задержка прятала свет, пока
+// предмета в руке ещё не видно. На деле это читается как «палочка загорается не сразу», то есть
+// лечение оказалось заметнее болезни. По умолчанию теперь НОЛЬ: свет появляется вместе с сигналом
+// скрипта. Прежнее поведение возвращается значением 1.5.
+float ps_da_torch_hand_delay = 0.0f;
 
 // [DA_PORT] Показывать ли СВОЙ огонёк источника света от первого лица. 0 -- не показывать
 // (по умолчанию), 1 -- как было. Разбор -- у места применения в CTorch::UpdateCL.
@@ -319,13 +324,13 @@ void CTorch::DaUpdateLightState()
     // Отсчёт ведём здесь, а не в переключателе: сюда сходятся все пути смены состояния, и здесь
     // же видно, чей это фонарь. Сталкеров это не касается — у них анимации доставания нет.
     m_da_hand_pending = false;
-    if (actor_owned)
+    if (actor_owned && ps_da_torch_hand_delay > 0.f)
     {
         if (omni)
         {
             if (0 == m_da_hand_on_time)
                 m_da_hand_on_time = Device.dwTimeGlobal;
-            if (Device.dwTimeGlobal - m_da_hand_on_time < u32(da_hand_torch_delay * 1000.f))
+            if (Device.dwTimeGlobal - m_da_hand_on_time < u32(ps_da_torch_hand_delay * 1000.f))
             {
                 omni = false; // ещё достаём
                 m_da_hand_pending = true;
@@ -334,6 +339,8 @@ void CTorch::DaUpdateLightState()
         else
             m_da_hand_on_time = 0;
     }
+    else
+        m_da_hand_on_time = 0;
 
     light_render->set_active(beam && dynamic);
     light_omni->set_active(omni && dynamic);
@@ -867,7 +874,8 @@ void CTorch::UpdateCL()
     // [DA_PORT] Пока идёт задержка доставания, состояние надо пересчитать один раз, когда время
     // выйдет: само по себе оно не изменится, а сигнала об истечении никто не пришлёт. Признак
     // снимается внутри пересчёта, поэтому кадром позже сюда уже не зайдём.
-    if (m_da_hand_pending && Device.dwTimeGlobal - m_da_hand_on_time >= u32(da_hand_torch_delay * 1000.f))
+    if (m_da_hand_pending && ps_da_torch_hand_delay > 0.f &&
+        Device.dwTimeGlobal - m_da_hand_on_time >= u32(ps_da_torch_hand_delay * 1000.f))
         DaUpdateLightState();
 
     // [DA_PORT] Either light (torch/omni or torch2/spot) being on needs position/rotation updates.
