@@ -43,6 +43,11 @@ class CTextureDescrMngr
 
     void LoadTHM(pcstr initial, bool listTHM);
     void LoadLTX(pcstr initial, bool listTHM);
+    // [DA_PORT] Список материалов, которым разрешён шестиугольный разрыв повторов.
+    void LoadHexList();
+    // Множества в xrCore нет, а неупорядоченная карта уже используется этим же классом
+    // для описаний текстур — берём её, значение не важно.
+    xr_unordered_map<shared_str, u8> m_hex_tiling;
 
 public:
     ~CTextureDescrMngr();
@@ -55,5 +60,6 @@ public:
     void GetTextureUsage(const shared_str& tex_name, bool& bDiffuse, bool& bBump) const;
     BOOL GetDetailTexture(const shared_str& tex_name, LPCSTR& res, R_constant_setup*& CS) const;
     BOOL UseSteepParallax(const shared_str& tex_name) const;
+    BOOL UseHexTiling(const shared_str& tex_name) const;
 };
 } // namespace xray::render::RENDER_NAMESPACE

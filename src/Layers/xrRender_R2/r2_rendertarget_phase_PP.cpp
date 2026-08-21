@@ -208,6 +208,16 @@ void CRenderTarget::phase_pp()
     static shared_str s_colorgrade = "da_color_grade";
     RCache.set_c(s_colorgrade, ps_r_color_base_r, ps_r_color_base_g, ps_r_color_base_b, ps_r2_vibrance_val);
 
+    // [DA_PORT] Остальные две трети ASC CDL: сдвиг и степень.
+    //
+    // ⚠️ r__color_add_* были заведены и зарегистрированы в консоли ДАВНО, но их не читал никто —
+    // ползунок двигался, картинка не менялась. Тот же самый дефект, который здесь уже однажды
+    // чинили для усиления; проверять надо ЧИТАТЕЛЯ, а не наличие команды.
+    static shared_str s_coloroffset = "da_color_offset";
+    static shared_str s_colorpower = "da_color_power";
+    RCache.set_c(s_coloroffset, ps_r_color_add_r, ps_r_color_add_g, ps_r_color_add_b, 0.f);
+    RCache.set_c(s_colorpower, ps_r_color_power_r, ps_r_color_power_g, ps_r_color_power_b, 0.f);
+
     // [DA_PORT] Sharpening strength for the upscale (RCAS, the second half of FSR 1.0).
     // y carries the motion-vector mode so that 2 shows the velocity buffer instead of the frame.
     static shared_str s_upscale = "da_upscale";

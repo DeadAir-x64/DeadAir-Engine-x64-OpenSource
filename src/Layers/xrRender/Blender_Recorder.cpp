@@ -54,6 +54,7 @@ void CBlender_Compile::_cpp_Compile(ShaderElement* _SH)
     // Analyze possibility to detail this shader
     detail_texture = nullptr;
     detail_scaler = nullptr;
+    bUseHexTiling = FALSE; // [DA_PORT] значение по умолчанию до разбора имени базовой текстуры
     LPCSTR base = nullptr;
     if (bDetail && BT->canBeDetailed())
     {
@@ -122,6 +123,11 @@ void CBlender_Compile::_cpp_Compile(ShaderElement* _SH)
 
     bUseSteepParallax =
         RImplementation.Resources->m_textures_description.UseSteepParallax(base) && BT->canUseSteepParallax();
+
+    // [DA_PORT] Разрыв повторов — решается по имени БАЗОВОЙ текстуры, той же, по которой выше
+    // определяется параллакс. Оба признака про одну и ту же поверхность, и брать их из разных
+    // мест значило бы однажды разойтись.
+    bUseHexTiling = RImplementation.Resources->m_textures_description.UseHexTiling(base);
 /*
     if (DEV->m_textures_description.UseSteepParallax(base))
     {

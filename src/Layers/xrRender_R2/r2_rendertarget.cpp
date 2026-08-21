@@ -28,6 +28,10 @@ extern ENGINE_API int ps_r__fsr3;
 
 #include "Layers/xrRender/blenders/dx11MinMaxSMBlender.h"
 #if defined(USE_DX11)
+
+// [DA_PORT] Рейкаст «над камерой есть препятствие» — для гейта лучей r__sun_shafts_indoor.
+#include "xrEngine/IGame_Level.h"
+#include "xrCDB/xr_area.h"
 #    include "Layers/xrRender/blenders/dx11HDAOCSBlender.h"
 #endif
 
@@ -1090,6 +1094,87 @@ void CRenderTarget::increment_light_marker(CBackend& cmd_list)
         reset_light_marker(cmd_list, true);
 }
 
+// [DA_PORT] «Над камерой есть препятствие» — гейт для нормированных лучей (r__sun_shafts_indoor).
+//
+// Приём штатный для индустрии и уже живущий в этом движке: КОРОТКИЙ ВЕРТИКАЛЬНЫЙ луч от камеры
+// по статической геометрии; уперся — над головой крыша/навес, ушёл в небо — открытое место.
+// Так же дождь решает, где обрывать капли (CEffect_Rain::RayPick), поэтому цена и надёжность
+// обкатаны.
+//
+// ⛔ Почему вертикально, а не на солнце. Первая версия бросала луч по направлению к солнцу на
+// 50 м — и «покрытой» оказывалась вся карта: луч ловил склоны и кроны ПО КУРСУ, хотя над головой
+// было чистое небо. Крыша — это про «прямо над головой», поэтому луч строго вверх и короткий:
+// 25 м хватает на любой ангар, а дальний лес и холмы мимо неба не задевают.
+//
+// Считается раз в кадр (кэш по dwFrame): функция зовётся и из ворот прохода, и из биндера
+// константы. Без гейта (indoor 0) в коллизию не ходим вовсе.
+static BOOL s_da_shafts_covered = FALSE;
+static u32 s_da_shafts_covered_frame = u32(-1);
+// [DA_PORT] Сглаженный множитель гейта: 1 = эффект идёт, 0 = выключен. Бинарный «крыша/открыто»
+// без сглаживания дал бы рывок картинки на пороге здания — в продакшн-реализациях god rays
+// интенсивность всегда затухает плавно (fade по позиции солнца/дистанции), а не щёлкается.
+static float s_da_shafts_gate = 1.f;
+
+bool da_sun_shafts_covered()
+{
+    return s_da_shafts_covered != FALSE;
+}
+
+// [DA_PORT] Текущее значение плавного гейта; читает биндер константы в r2.cpp.
+float da_sun_shafts_gate()
+{
+    return s_da_shafts_gate;
+}
+
+static void da_sun_shafts_update_covered()
+{
+    if (s_da_shafts_covered_frame == Device.dwFrame)
+        return;
+    s_da_shafts_covered_frame = Device.dwFrame;
+
+    const BOOL prev = s_da_shafts_covered;
+    s_da_shafts_covered = FALSE;
+    if (ps_r__sun_shafts_indoor >= 0.5f && ps_r__sun_shafts_mod && g_pGameLevel)
+    {
+        // Луч 1: строго вверх 25 м — крыши, навесы, пещеры.
+        static const Fvector up = { 0.f, 1.f, 0.f };
+        collide::rq_result RQ;
+        s_da_shafts_covered = g_pGameLevel->ObjectSpace.RayPick(Device.vCameraPosition, up, 25.f,
+                                  collide::rqtStatic, RQ, g_pGameLevel->CurrentViewEntity())
+            ? TRUE
+            : FALSE;
+
+        // Луч 2: на солнце 15 м — кроны деревьев над головой (просятся «лучи в тени у дерева»).
+        // Длина маленькая намеренно: первая версия с 50 м ловила склоны и кроны ПО КУРСУ, и
+        // «покрытой» оказывалась вся карта. 15 м хватает, чтобы дотянуться до кроны над
+        // игроком, но не до дальних холмов. При низком солнце (рассвет/закат) луч почти
+        // горизонтален и цепляет заборы и стены рядом — поэтому при высоте солнца ниже ~15°
+        // этот луч не бросаем вовсе.
+        if (!s_da_shafts_covered)
+        {
+            Fvector to_sun = g_pGamePersistent->Environment().CurrentEnv.sun_dir;
+            to_sun.invert().normalize_safe(); // sun_dir смотрит ВНИЗ по ходу света, нам — к солнцу
+            if (to_sun.y > 0.25f)
+            {
+                collide::rq_result RQ2;
+                s_da_shafts_covered = g_pGameLevel->ObjectSpace.RayPick(Device.vCameraPosition, to_sun, 15.f,
+                                          collide::rqtStatic, RQ2, g_pGameLevel->CurrentViewEntity())
+                    ? TRUE
+                    : FALSE;
+            }
+        }
+    }
+
+    // Переходы печатаем: без этого «гейт сработал/нет» угадывается по картинке, а картинка врёт.
+    if (prev != s_da_shafts_covered)
+        Msg("~ [DA_SHAFTS] покрытие над камерой: %s", s_da_shafts_covered ? "КРЫША" : "открыто");
+
+    // Цель гейта: свитч/гейт выключены или крыша над головой — эффект идёт; открытое место — в ноль.
+    const float target = (!ps_r__sun_shafts_mod || ps_r__sun_shafts_indoor < 0.5f || s_da_shafts_covered) ? 1.f : 0.f;
+    const float k = _min(1.f, Device.fTimeDelta * 5.f); // переход ~0.2-0.3 с, без рывка
+    s_da_shafts_gate += (target - s_da_shafts_gate) * k;
+}
+
 bool CRenderTarget::need_to_render_sunshafts()
 {
     if (!(RImplementation.o.advancedpp && ps_r_sun_shafts))
@@ -1097,11 +1182,19 @@ bool CRenderTarget::need_to_render_sunshafts()
 
     {
         const auto& env = g_pGamePersistent->Environment().CurrentEnv;
-        const float fValue = env.m_fSunShaftsIntensity;
+        // [DA_PORT] Считаем ТУ ЖЕ величину, что уедет в шейдер, иначе ворота и шейдер разойдутся.
+        const float fValue = da_sun_shafts_value(env.m_fSunShaftsIntensity);
         // TODO: add multiplication by sun color here
         if (fValue < 0.0001)
             return false;
     }
+
+    // [DA_PORT] Проход точно будет — кадр самое место обновить покрытие камеры.
+    da_sun_shafts_update_covered();
+
+    // [DA_PORT] Гейт «только под крышей» догнал ноль — проход не нужен вовсе, экономим кадр.
+    if (da_sun_shafts_gate() < 0.01f)
+        return false;
 
     return true;
 }

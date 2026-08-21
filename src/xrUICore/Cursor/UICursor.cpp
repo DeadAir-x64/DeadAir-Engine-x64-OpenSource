@@ -25,8 +25,12 @@ void CUICursor::InitInternal()
 
 void CUICursor::OnDeviceReset()
 {
-    correction.x = UI_BASE_WIDTH  / (float)Device.m_rcWindowClient.w;
-    correction.y = UI_BASE_HEIGHT / (float)Device.m_rcWindowClient.h;
+    // Рамка интерфейса (весь экран или ужатая центральная область): от неё и масштаб, и сдвиг.
+    float ui_w, ui_h, ui_ox, ui_oy;
+    UICore::GetUILayoutMetrics(ui_w, ui_h, ui_ox, ui_oy);
+    correction.x = UI_BASE_WIDTH / ui_w;
+    correction.y = UI_BASE_HEIGHT / ui_h;
+    layout_offset.set(ui_ox, ui_oy);
 
     SDL_Rect display;
     if (0 == SDL_GetDisplayBounds(0, &display))
@@ -61,6 +65,10 @@ CUICursor::~CUICursor()
 u32 last_render_frame = 0;
 void CUICursor::OnRender()
 {
+    // Каждокадровая точка входа UI: здесь дёшево проверить, не поменялись ли разрешение или
+    // крутилки раскладки (pillarbox/safe zone), и пересчитать масштаб со сдвигом без vid_restart.
+    UI().UpdateLayout();
+
     g_btnHint->OnRender();
     g_statHint->OnRender();
 
@@ -91,8 +99,8 @@ void CUICursor::SetUICursorPosition(Fvector2 pos)
 {
     vPos = pos;
     Ivector2 p;
-    p.x = iFloor(vPos.x / correction.x);
-    p.y = iFloor(vPos.y / correction.y);
+    p.x = iFloor(layout_offset.x + vPos.x / correction.x);
+    p.y = iFloor(layout_offset.y + vPos.y / correction.y);
     std::ignore = pInput->iSetMousePos(p);
 }
 
@@ -109,8 +117,8 @@ void CUICursor::UpdateCursorPosition(Fvector2 pos)
     {
         Ivector2 pti;
         pInput->iGetAsyncMousePos(pti);
-        vPos.x = (float)pti.x * correction.x;
-        vPos.y = (float)pti.y * correction.y;
+        vPos.x = ((float)pti.x - layout_offset.x) * correction.x;
+        vPos.y = ((float)pti.y - layout_offset.y) * correction.y;
     }
     clamp(vPos.x, 0.f, UI_BASE_WIDTH);
     clamp(vPos.y, 0.f, UI_BASE_HEIGHT);

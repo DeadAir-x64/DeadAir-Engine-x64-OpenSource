@@ -35,6 +35,23 @@ extern ENGINE_API int ps_r__spec_aa_debug;
 extern ENGINE_API float ps_r__detail_normal_fix;
 extern ENGINE_API float ps_r__detail_albedo_fix;
 extern ENGINE_API int ps_r__detail_debug;
+// [DA_PORT] Крутой параллакс: дальность, глубина, собственная тень — см. xr_ioc_cmd.cpp.
+extern ENGINE_API float ps_r__parallax_start;
+extern ENGINE_API float ps_r__parallax_stop;
+extern ENGINE_API float ps_r__parallax_depth;
+extern ENGINE_API float ps_r__parallax_shadow;
+extern ENGINE_API int ps_r__parallax_samples;
+extern ENGINE_API int ps_r__parallax_samples_min;
+extern ENGINE_API int ps_r__parallax_shadow_samples;
+extern ENGINE_API int ps_r__parallax_debug;
+// [DA_PORT] Сила затенения полостей — см. combine_1.ps.
+extern ENGINE_API float ps_r__ssao_power;
+extern ENGINE_API int ps_r__ssao_debug;
+// [DA_PORT] Разрыв повторов шестиугольной решёткой — см. da_hextile.h.
+extern ENGINE_API int ps_r__hex_tiling;
+extern ENGINE_API float ps_r__hex_scale;
+extern ENGINE_API float ps_r__hex_rot;
+extern ENGINE_API float ps_r__hex_contrast;
 extern ENGINE_API float ps_r__reactive_gloss;
 extern ENGINE_API float ps_r__reactive_gloss_min;
 extern ENGINE_API float ps_r__foliage_velocity;
@@ -266,6 +283,101 @@ static class cl_spec_aa : public R_constant_setup
     }
 } binder_spec_aa;
 
+// [DA_PORT] Крутой параллакс. Две константы, а не одна: имя "parallax" уже занято — там лежит
+// (h, -h/2, 1/dtex, 1/dtex) для СТАРОГО, некрутого параллакса, и свободных мест в нём нет.
+static class cl_da_parallax : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_r__parallax_start, ::ps_r__parallax_stop, ::ps_r__parallax_depth,
+            ::ps_r__parallax_shadow);
+    }
+} binder_da_parallax;
+
+static class cl_da_parallax2 : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, float(::ps_r__parallax_samples), float(::ps_r__parallax_samples_min),
+            float(::ps_r__parallax_shadow_samples), float(::ps_r__parallax_debug));
+    }
+} binder_da_parallax2;
+
+// [DA_PORT] Разрыв повторов: масштаб решётки, поворот, контраст весов, включатель.
+static class cl_da_hex : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_r__hex_scale, ::ps_r__hex_rot, ::ps_r__hex_contrast,
+            float(::ps_r__hex_tiling));
+    }
+} binder_da_hex;
+
+// [DA_PORT] Затенение полостей: сила и отладка.
+static class cl_da_ao : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_r__ssao_power, float(::ps_r__ssao_debug), 0.f, 0.f);
+    }
+} binder_da_ao;
+
+// [DA_PORT] Оператор тонировки и точка белого. См. tonemap в common_functions.h.
+static class cl_da_tonemap : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // 🪤 БЕЗ `::`, в отличие от соседей. ps_r_tonemap_* объявлены в xrRender_console.h, то есть
+        // ВНУТРИ xray::render::RENDER_NAMESPACE, а ps_r__parallax_* и прочие — в движке, снаружи.
+        // Одна и та же ошибка ловится с двух сторон: там `::` обязателен, здесь запрещён.
+        cmd_list.set_c(C, ps_r_tonemap_aces, ps_r_tonemap_white, 0.f, 0.f);
+    }
+} binder_da_tonemap;
+
+// [DA_PORT] Доля линейного пространства. См. da_srgb_to_linear в common_functions.h.
+static class cl_da_linear : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_r_linear_light, 0.f, 0.f, 0.f);
+    }
+} binder_da_linear;
+
+// [DA_PORT] Linear Workflow: ASC-CDL grading constants for combine_1.ps.
+// Wired to the existing Dead Air colour-grading console variables so the new shader path
+// does not require new commands and profiles keep working.
+static class cl_da_grade_slope : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_r_color_base_r, ps_r_color_base_g, ps_r_color_base_b, 0.f);
+    }
+} binder_da_grade_slope;
+
+static class cl_da_grade_offset : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_r_color_add_r, ps_r_color_add_g, ps_r_color_add_b, 0.f);
+    }
+} binder_da_grade_offset;
+
+static class cl_da_grade_power : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_r_color_power_r, ps_r_color_power_g, ps_r_color_power_b, 0.f);
+    }
+} binder_da_grade_power;
+
+static class cl_da_grade_sat : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, 1.f, 0.f, 0.f, 0.f); // default: no saturation change; .x is the sat multiplier
+    }
+} binder_da_grade_sat;
+
 // [DA_PORT] Motion-vector camera matrices WITHOUT any world part, for geometry that is already in world
 // space by the time the vertex shader has it. Trees are the case: they carry their own transform in
 // m_xform and draw as mul(m_VP, f_pos), never setting a world matrix of their own — so they inherited
@@ -303,13 +415,38 @@ static class cl_water_intensity : public R_constant_setup
     }
 } binder_water_intensity;
 
+// [DA_PORT] Итог рейкаста «над камерой крыша» на этот кадр (r2_rendertarget.cpp).
+bool da_sun_shafts_covered();
+// [DA_PORT] Плавный множитель гейта 0..1 (там же).
+float da_sun_shafts_gate();
+
 static class cl_sun_shafts_intensity : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
     {
         const auto& env = g_pGamePersistent->Environment().CurrentEnv;
-        const float fValue = env.m_fSunShaftsIntensity;
-        cmd_list.set_c(C, fValue, fValue, fValue, 0.f);
+        // [DA_PORT] Множитель и нижний порог; пересчёт общий с воротами прохода. При выключенном
+        // мастер-свитче (r__sun_shafts_mod) da_sun_shafts_value возвращает ноль, и проход
+        // отсекается ещё на воротах — сюда управление почти не доходит.
+        float fValue = da_sun_shafts_value(env.m_fSunShaftsIntensity);
+        float norm = ps_r__sun_shafts_norm;
+        float range = ps_r__sun_shafts_range;
+        if (!ps_r__sun_shafts_mod)
+        {
+            norm = 0.f;  // лучи выключены: шейдерные ручки не действуют
+            range = 0.f;
+        }
+        else
+        {
+            // [DA_PORT] Гейт «только под крышей» МЯГКО гасит саму силу эффекта, а не переключает
+            // режимы шейдера: ранняя версия на открытом месте откатывалась в стоковое суммирование,
+            // которое с boost заливало всю улицу вуалью — «молоко» при выходе из здания.
+            fValue *= da_sun_shafts_gate();
+        }
+        // [DA_PORT] .x — сила (её же читает и сток). .y/.z/.w — наши ручки: усиление тонких
+        // столбов, нормировка по длине пути, дальность действия (см. accum_volumetric_sun.ps).
+        // Другой читатель константы (sunshaftsdisplay.ps) смотрит только .x, конфликта нет.
+        cmd_list.set_c(C, fValue, ps_r__sun_shafts_gain, norm, range);
     }
 } binder_sun_shafts_intensity;
 
@@ -739,6 +876,16 @@ void CRender::create()
     Resources->RegisterConstantSetup("m_VP_old_ws", &binder_vp_old_ws); // [DA_PORT] world-space geometry
     Resources->RegisterConstantSetup("da_detail_fix", &binder_detail_fix); // [DA_PORT] detail-bump damping
     Resources->RegisterConstantSetup("da_spec_aa", &binder_spec_aa); // [DA_PORT] specular antialiasing
+    Resources->RegisterConstantSetup("da_parallax", &binder_da_parallax); // [DA_PORT] steep parallax
+    Resources->RegisterConstantSetup("da_parallax2", &binder_da_parallax2); // [DA_PORT] steep parallax
+    Resources->RegisterConstantSetup("da_hex", &binder_da_hex); // [DA_PORT] hex-tiling
+    Resources->RegisterConstantSetup("da_ao", &binder_da_ao); // [DA_PORT] затенение полостей
+    Resources->RegisterConstantSetup("da_tonemap_params", &binder_da_tonemap); // [DA_PORT] тонировка
+    Resources->RegisterConstantSetup("da_linear", &binder_da_linear); // [DA_PORT] линейный свет
+    Resources->RegisterConstantSetup("da_grade_slope", &binder_da_grade_slope); // [DA_PORT] CDL slope
+    Resources->RegisterConstantSetup("da_grade_offset", &binder_da_grade_offset); // [DA_PORT] CDL offset
+    Resources->RegisterConstantSetup("da_grade_power", &binder_da_grade_power); // [DA_PORT] CDL power
+    Resources->RegisterConstantSetup("da_grade_sat", &binder_da_grade_sat); // [DA_PORT] CDL saturation
     Resources->RegisterConstantSetup("da_reactive_motion", &binder_reactive_motion); // [DA_PORT]
     Resources->RegisterConstantSetup("da_gloss_reactive", &binder_gloss_reactive); // [DA_PORT] gloss opts out of history
 #if defined(USE_DX11)

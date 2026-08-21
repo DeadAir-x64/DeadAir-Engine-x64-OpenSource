@@ -31,6 +31,13 @@ class XRUICORE_API UICore : public CDeviceResetNotifier, public CUIResetNotifier
     Fvector2 m_scale_;
     Fvector2* m_current_scale;
 
+    // [DA_PORT] Сдвиг начала UI-координат в пикселях экрана. Нулевой на обычных экранах; ненулевой,
+    // когда интерфейс ужат в центр (pillarbox на сверхшироких) или отодвинут от краёв (safe zone).
+    // Пара к m_scale_: отдельная для постпроцесса — полноэкранные эффекты сдвигать нельзя.
+    Fvector2 m_ui_offset_;
+    Fvector2 m_pp_offset_;
+    Fvector2* m_current_offset;
+
 public:
     xr_stack<Frect> m_Scissors;
 
@@ -41,8 +48,8 @@ public:
     CUICursor& GetUICursor() { return *m_pUICursor; }
     auto& Focus() { return m_focusSystem; }
     auto& Debugger() { return m_debugger; }
-    IC float ClientToScreenScaledX(float left) const { return left * m_current_scale->x; };
-    IC float ClientToScreenScaledY(float top) const { return top * m_current_scale->y; };
+    IC float ClientToScreenScaledX(float left) const { return left * m_current_scale->x + m_current_offset->x; };
+    IC float ClientToScreenScaledY(float top) const { return top * m_current_scale->y + m_current_offset->y; };
     void ClientToScreenScaled(Fvector2& dest, float left, float top) const;
     void ClientToScreenScaled(Fvector2& src_and_dest) const;
     void ClientToScreenScaledWidth(float& src_and_dest) const;
@@ -68,6 +75,15 @@ public:
     static bool is_ultra_widescreen();
     static float get_current_kx();
     static shared_str get_xml_name(pcstr path, pcstr fn);
+
+    // [DA_PORT] Размер и положение прямоугольника экрана (в пикселях), в который укладывается
+    // интерфейс: весь экран на обычных соотношениях, центральная область 16:9 на сверхшироких
+    // (ui_pillarbox) минус отступ безопасной зоны (ui_safe_zone, процентов с каждой стороны).
+    static void GetUILayoutMetrics(float& w, float& h, float& ox, float& oy);
+    // Пересчитать m_scale_/m_ui_offset_, если со старта кадра поменялось разрешение или крутилки.
+    // Дёргается из рендера курсора (он на seqRender каждый кадр): так ползунки меню подгонки
+    // действуют сразу, без vid_restart.
+    void UpdateLayout();
 
     IUIRender::ePointType m_currentPointType;
 };

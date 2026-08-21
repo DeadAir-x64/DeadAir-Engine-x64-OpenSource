@@ -3608,9 +3608,27 @@ void CCC_RegisterCommands()
                     { "rs_c_gamma", 1.1f },       // сток 1.0
                     { "rs_c_contrast", 1.0f },
                     { "rs_c_brightness", 1.0f },
+                    // [DA_PORT] Тонировка. Ноль доли ACES и точка белого 1.7 — это ровно то
+                    // поведение, что было зашито в шейдер до появления ручек, то есть «стандартное»
+                    // здесь буквально означает «как будто их и нет».
+                    { "r__tonemap_aces", 0.f },
+                    { "r__tonemap_white", 1.7f },
+                    // [DA_PORT] Линейное пространство — отладочная величина, стандартное = выключено.
+                    // [DA_PORT] Профиль. Ноль — сток; кнопка «вернуть стандартные» ставит именно
+                    // его, а не «наш»: стандартное должно значить «как в моде без нас».
+                    { "r__grade_preset", 0.f },
+                    { "r__linear_light", 0.f },
                     { "r__color_base_r", 1.00f }, // сток 1.04
                     { "r__color_base_g", 1.00f },
                     { "r__color_base_b", 1.00f }, // сток 0.96
+                    // [DA_PORT] Остальные две трети ASC CDL. Нейтраль у сдвига — ноль, у степени —
+                    // единица; при них преобразование тождественно, картинка не меняется.
+                    { "r__color_add_r", 0.f },
+                    { "r__color_add_g", 0.f },
+                    { "r__color_add_b", 0.f },
+                    { "r__color_power_r", 1.f },
+                    { "r__color_power_g", 1.f },
+                    { "r__color_power_b", 1.f },
                     { "r2_vibrance_val", 0.f },   // сток 0.18
 
                     // Прицел — СТОКОВЫЕ значения Dead Air, разбор у объявлений в HUDCrosshair.cpp.
@@ -4457,6 +4475,16 @@ public:
         // экрана (разметка читается при создании окна), полностью - после ui_restart.
         extern XRUICORE_API int ps_ui_widescreen_layout;
         CMD4(CCC_Integer, "ui_widescreen_layout", &ps_ui_widescreen_layout, 0, 1);
+
+        // [DA_PORT] Раскладка интерфейса на сверхшироких и «с краёв»: pillarbox ужимает UI в
+        // центральные 16:9 (подробности — у переменных в xrUICore/ui_base.cpp), safe zone
+        // отодвигает его от краёв на заданный процент. Действуют сразу, без перезапуска:
+        // пересчёт делает UICore::UpdateLayout из рендера курсора. Крутятся из отдельной
+        // вкладки «Интерфейс» экранной подгонки (ui_da_tune).
+        extern XRUICORE_API int ps_ui_pillarbox;
+        CMD4(CCC_Integer, "ui_pillarbox", &ps_ui_pillarbox, 0, 1);
+        extern XRUICORE_API int ps_ui_safe_zone;
+        CMD4(CCC_Integer, "ui_safe_zone", &ps_ui_safe_zone, 0, 20);
     }
 
 #ifdef DEBUG

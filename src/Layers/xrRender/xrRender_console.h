@@ -232,6 +232,45 @@ extern BOOL xrRender_test_hw();
 // [DA_PORT] Dead Air compatibility stub variables (x32 mod commands absent in OpenXRay)
 extern ECORE_API u32 ps_r2_shadow_map_size;
 extern ECORE_API float ps_r2_sun_shafts_value;
+// [DA_PORT] Сила солнечных лучей поверх погодной, см. xrRender_console.cpp.
+extern ECORE_API float ps_r__sun_shafts_boost;
+extern ECORE_API float ps_r__sun_shafts_min;
+// [DA_PORT] Нормировка лучей по длине пути и усиление тонких столбов (лучи в помещениях).
+// Едут в шейдер в свободных компонентах sun_shafts_intensity: .y = gain, .z = norm.
+extern ECORE_API float ps_r__sun_shafts_gain;
+extern ECORE_API float ps_r__sun_shafts_norm;
+// [DA_PORT] 1 = нормированный режим только когда над камерой есть препятствие (рейкаст к солнцу,
+// как у дождя в CEffect_Rain::RayPick), 0 = нормировка везде, где включена norm.
+extern ECORE_API float ps_r__sun_shafts_indoor;
+// [DA_PORT] Дальность действия лучей в метрах (0 = без ограничения). Едет в шейдер в .w константы
+// sun_shafts_intensity: эффект полон до половины дистанции и линейно гаснет к нулю на границе.
+extern ECORE_API float ps_r__sun_shafts_range;
+// [DA_PORT] Мастер-свитч лучей (чекбокс в расширенных настройках видео):
+// 0 = лучей НЕТ ВООБЩЕ (da_sun_shafts_value возвращает ноль, проход даже не запускается),
+// 1 = улучшенный режим (порог, нормировка, гейт «только под крышей», фейд по дистанции).
+// int, а не float: чекбокс читается через Console->GetBool, который float не понимает.
+extern ECORE_API int ps_r__sun_shafts_mod;
+
+// [DA_PORT] Итоговая сила лучей. Считается В ОДНОМ месте намеренно.
+//
+// Величина нужна ДВАЖДЫ и в разных файлах: в r2_rendertarget.cpp она решает, запускать ли проход
+// вообще, а в r2.cpp уезжает в шейдер. Если посчитать её в двух местах по-разному, получается
+// ровно тот дефект, который здесь и чинится: проход отключается по погодному нулю, а множитель,
+// применённый ниже по течению, уже никого не спасает — ноль на что угодно есть ноль.
+//
+// Поэтому нижний порог именно ПОРОГ (max), а не множитель: погода Dead Air задаёт лучам ноль в
+// 804 записях из 1113, и умножать там нечего.
+inline float da_sun_shafts_value(float env_value)
+{
+    // [DA_PORT] Мастер-свитч выключен — лучей нет СОВСЕМ. Раньше здесь возвращался чистый
+    // сток (env_value), и на погоде с ненулевой интенсивностью «выключенные» лучи сыпались
+    // на всю карту — игрок справедливо считал галку сломанной. Ноль же надёжно режет проход
+    // ещё на воротах (fValue < 0.0001), так что это ещё и бесплатно по производительности.
+    if (!ps_r__sun_shafts_mod)
+        return 0.f;
+    const float scaled = env_value * ps_r__sun_shafts_boost;
+    return scaled > ps_r__sun_shafts_min ? scaled : ps_r__sun_shafts_min;
+}
 extern ECORE_API float ps_r2_aberration_val;
 extern ECORE_API float ps_r2_dof_diff_far;
 extern ECORE_API float ps_r2_dof_diff_near;
@@ -268,6 +307,16 @@ extern ECORE_API float ps_r_color_add_b;
 extern ECORE_API float ps_r_color_base_r;
 extern ECORE_API float ps_r_color_base_g;
 extern ECORE_API float ps_r_color_base_b;
+// [DA_PORT] Степень ASC CDL по каналам, см. da_apply_cdl в postprocess.ps.
+extern ECORE_API float ps_r_color_power_r;
+extern ECORE_API float ps_r_color_power_g;
+extern ECORE_API float ps_r_color_power_b;
+// [DA_PORT] Оператор тонировки и точка белого, см. tonemap в common_functions.h.
+extern ECORE_API float ps_r_tonemap_aces;
+extern ECORE_API float ps_r_linear_light;
+// [DA_PORT] Числовое зеркало выбора профиля — для встроенного настройщика.
+extern ECORE_API float ps_r_grading_preset_num;
+extern ECORE_API float ps_r_tonemap_white;
 
 // [DA_PORT] ---- Geometry cut-off by size and distance (author's optimisation) --------------------
 // Dead Air drops geometry that is too small to matter at its distance, instead of rendering every

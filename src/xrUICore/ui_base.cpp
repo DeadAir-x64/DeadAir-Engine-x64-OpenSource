@@ -216,6 +216,11 @@ UICore::UICore()
     }
     m_bPostprocess = false;
 
+    // m_ui_offset_ выставит OnDeviceReset через GetUILayoutMetrics; указатель нужен ещё до него.
+    m_ui_offset_.set(0.0f, 0.0f);
+    m_pp_offset_.set(0.0f, 0.0f);
+    m_current_offset = &m_ui_offset_;
+
     OnDeviceReset();
     OnUIReset();
 
@@ -226,8 +231,14 @@ UICore::UICore()
 
 void UICore::OnDeviceReset()
 {
-    m_scale_.set(float(Device.dwWidth) / UI_BASE_WIDTH, float(Device.dwHeight) / UI_BASE_HEIGHT);
+    float ui_w, ui_h, ui_ox, ui_oy;
+    GetUILayoutMetrics(ui_w, ui_h, ui_ox, ui_oy);
 
+    m_scale_.set(ui_w / UI_BASE_WIDTH, ui_h / UI_BASE_HEIGHT);
+    m_ui_offset_.set(ui_ox, ui_oy);
+
+    // Отсекающий объём оставляем на весь экран: геометрия интерфейса сама уходит в рамку
+    // через m_ui_offset_, а широкий объём лишним не бывает.
     m_2DFrustum.CreateFromRect(Frect().set(0.0f, 0.0f, float(Device.dwWidth), float(Device.dwHeight)));
 }
 
@@ -299,7 +310,11 @@ void UICore::pp_start()
     m_2DFrustumPP.CreateFromRect(Frect().set(0.0f, 0.0f, float(Device.dwWidth),
         float(Device.dwHeight)));
 
+    // Постпроцесс — полноэкранный (затемнение, блюр фона): ему pillarbox и safe zone не положены,
+    // поэтому у него свой масштаб и НУЛЕВОЙ сдвиг.
+    m_pp_offset_.set(0.0f, 0.0f);
     m_current_scale = &m_pp_scale_;
+    m_current_offset = &m_pp_offset_;
 
     g_current_font_scale.set(float(Device.dwWidth) / float(Device.dwWidth),
         float(Device.dwHeight) / float(Device.dwHeight));
@@ -309,6 +324,7 @@ void UICore::pp_stop()
 {
     m_bPostprocess = false;
     m_current_scale = &m_scale_;
+    m_current_offset = &m_ui_offset_;
     g_current_font_scale.set(1.0f, 1.0f);
 }
 
@@ -325,8 +341,10 @@ bool UICore::is_widescreen()
 
 float UICore::get_current_kx()
 {
-    float h = float(Device.dwHeight);
-    float w = float(Device.dwWidth);
+    // Поправка квадратных элементов (иконки, маркеры карты) считается по ЭФФЕКТИВНОМУ
+    // прямоугольнику интерфейса: с pillarbox он 16:9, и kx совпадает с обычным широким экраном.
+    float w, h, ox, oy;
+    GetUILayoutMetrics(w, h, ox, oy);
 
     float res = (h / w) / (UI_BASE_HEIGHT / UI_BASE_WIDTH);
     return res;
@@ -352,6 +370,73 @@ float UICore::get_current_kx()
 // ⚠️ Разрешение 4:3 — это не про редкое железо: список режимов строится из того, что рапортует сам
 // монитор, и 4:3 есть у любого. Достаточно понизить разрешение ради кадров.
 XRUICORE_API int ps_ui_widescreen_layout = 1;
+
+// [DA_PORT] Pillarbox: на сверхшироком экране (21:9 и шире, порог — в is_ultra_widescreen)
+// интерфейс ужимается в центральную область 16:9, а мир по-прежнему занимает весь экран.
+//
+// Зачем так. Разметки `_21` в поставке Dead Air нет ни одного файла, поэтому без pillarbox
+// сверхширокий экран берёт разметку `_16` и растягивает её по всей ширине: КПК, меню, задания и
+// инвентарь расползаются и размываются. Рисовать и поддерживать тридцать с лишним файлов `_21`
+// — отдельный большой труд; ужатие в 16:9 даёт корректный вид сразу для ВСЕХ экранов ценой
+// пустых полос по бокам. Тем же путём в Anomaly идёт DART (подбор 16:9-шаблонов для
+// сверхшироких), только у него нет доступа к движку и он двигает каждый элемент по отдельности.
+//
+// Кому это мешает: тому, кто принесёт готовый набор `_21` (сообщество Monolith их рисует, наш
+// суффикс совпадает) — он ставит `ui_pillarbox 0` и получает разметку на всю ширину.
+XRUICORE_API int ps_ui_pillarbox = 1;
+
+// [DA_PORT] Безопасная зона интерфейса, процентов с каждой из четырёх сторон (0..20).
+// Аналог safe zone из DART/GAMMA: отодвигает HUD и меню от краёв экрана. Полезна на телевизорах
+// с оверсканом и тем, кто любит HUD ближе к центру. Ноль — весь экран, как было.
+XRUICORE_API int ps_ui_safe_zone = 0;
+
+void UICore::GetUILayoutMetrics(float& w, float& h, float& ox, float& oy)
+{
+    w = float(Device.dwWidth);
+    h = float(Device.dwHeight);
+    ox = 0.0f;
+    oy = 0.0f;
+
+    if (ps_ui_pillarbox && is_ultra_widescreen())
+    {
+        const float target_w = h * (16.0f / 9.0f);
+        if (target_w < w)
+        {
+            ox = (w - target_w) * 0.5f;
+            w = target_w;
+        }
+    }
+
+    if (ps_ui_safe_zone > 0)
+    {
+        const float f = float(ps_ui_safe_zone) / 100.0f;
+        ox += w * f;
+        oy += h * f;
+        w *= 1.0f - 2.0f * f;
+        h *= 1.0f - 2.0f * f;
+    }
+}
+
+void UICore::UpdateLayout()
+{
+    // Дешёвая проверка за кадр: четыре числа против прошлых. Полный пересчёт — только при
+    // изменении (смена разрешения, ползунки меню подгонки).
+    static u32 last_w = 0, last_h = 0;
+    static int last_pillarbox = -1, last_safe_zone = -1;
+
+    if (last_w == Device.dwWidth && last_h == Device.dwHeight &&
+        last_pillarbox == ps_ui_pillarbox && last_safe_zone == ps_ui_safe_zone)
+        return;
+
+    last_w = Device.dwWidth;
+    last_h = Device.dwHeight;
+    last_pillarbox = ps_ui_pillarbox;
+    last_safe_zone = ps_ui_safe_zone;
+
+    OnDeviceReset();
+    if (m_pUICursor)
+        m_pUICursor->OnDeviceReset();
+}
 
 bool UICore::is_ultra_widescreen()
 {

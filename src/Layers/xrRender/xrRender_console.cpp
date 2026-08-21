@@ -365,7 +365,42 @@ int ps_r3_dyn_wet_surf_sm_res = 256; // 256
 u32 ps_r2_shadow_map_size = 2048;
 const xr_token qshadow_map_size_token[] = {
     {"512", 512}, {"1024", 1024}, {"1536", 1536}, {"2048", 2048}, {"3072", 3072}, {"4096", 4096}, {nullptr, 0}};
+// ⛔ [DA_PORT] МЁРТВАЯ ручка: объявлена и зарегистрирована, читателя НЕТ нигде. Двигать её
+// бесполезно. Не оживлять её на месте: в user.ltx у игроков уже лежат чужие значения (у автора
+// 0.1), и оживление сделало бы лучи впятеро слабее разом у всех. Взамен заведена чистая ручка
+// r__sun_shafts_boost с нейтральной единицей — см. ниже.
 float ps_r2_sun_shafts_value = 0.5f;
+
+// [DA_PORT] Множитель силы солнечных лучей поверх погодного. Единица — как задано погодой.
+//
+// Зачем понадобился: с линейным пространством ДОБАВОЧНЫЕ эффекты сжимаются. Итог считается как
+// альбедо × свет, лучи лежат в свете, и финальный переход в sRGB превращает удвоение яркости в
+// прибавку примерно на треть. Лучи настраивались под прежнюю кривую отклика, поэтому стали
+// бледнее — особенно на тёмных поверхностях, то есть там, где их и смотрят.
+float ps_r__sun_shafts_boost = 1.f;
+// [DA_PORT] Нижний порог силы лучей: работает там, где погода задала ноль.
+float ps_r__sun_shafts_min = 0.f;
+// [DA_PORT] Лучи в помещениях. Проход марширует луч взгляда по теневой карте солнца и СУММИРУЕТ
+// освещённые шаги, поэтому отклик пропорционален длине пути: на улице луч длинный и лучи видны,
+// в здании путь до стены короткий, а столб через окно занимает его малую долю — сумма мизерна.
+// norm=1 переводит шейдер на ДОЛЮ освещённых шагов (не зависит от длины пути), gain разгоняет
+// тонкие столбы через проёмы. На длинных лучах при gain 1 результат совпадает со стоком, поэтому
+// уличная картинка не меняется. Умолчания — сток: сначала настройка в игре, потом меню.
+float ps_r__sun_shafts_gain = 2.f;
+float ps_r__sun_shafts_norm = 0.f;
+// [DA_PORT] Гейт нормировки по покрытию над камерой. Дефолт 0: сначала настройка в игре.
+float ps_r__sun_shafts_indoor = 0.f;
+// [DA_PORT] Дальность лучей. Лучи — эффект БЛИЖНЕГО поля: столб через окно в 5-10 м от камеры.
+// Без фейда по дистанции суммарный отклик накапливается на всей глубине сцены и дальний план
+// тонет в молочной вуали (та же болезнь у всех реализаций без decay, см. GPU Gems 3 ch.13).
+// Дефолт 10 м: столбу нужна длина от просвета крыши до пола, иначе он не читается «с неба».
+// От дальнего «молока» защищают гейт/маски/фазовая функция, а не радиус.
+float ps_r__sun_shafts_range = 10.f;
+// [DA_PORT] Мастер-свитч улучшенных лучей. Дефолт 1: фича включена, чекбокс в меню её гасит.
+// ЦЕЛОЧИСЛЕННЫЙ намеренно: чекбокс меню читает значение через Console->GetBool, а тот знает
+// только CCC_Mask и CCC_Integer — для CCC_Float он всегда отвечает false, и галка открывалась
+// снятой, ничего не записывая (свитч не срабатывал).
+int ps_r__sun_shafts_mod = 1;
 float ps_r2_aberration_val = 0.f;
 float ps_r2_dof_diff_far = 0.f;
 float ps_r2_dof_diff_near = 0.f;
@@ -404,7 +439,7 @@ float ps_r_color_add_b = 0.f;
 // starting point rather than a lock.
 u32 ps_r_grading_preset = 1; // 1 = the port default below
 // [DA_PORT] Значение пункта «свой»: за пределами таблицы профилей.
-constexpr u32 da_grading_preset_custom = 6;
+constexpr u32 da_grading_preset_custom = 13;
 
 const xr_token qgrading_preset_token[] =
 {
@@ -414,9 +449,16 @@ const xr_token qgrading_preset_token[] =
     { "ui_mm_grade_cold",     3 },
     { "ui_mm_grade_faded",    4 },
     { "ui_mm_grade_vivid",    5 },
+    { "ui_mm_grade_teal",     6 },
+    { "ui_mm_grade_bleach",   7 },
+    { "ui_mm_grade_noir",     8 },
+    { "ui_mm_grade_dfn",      9 },
+    { "ui_mm_grade_techni",  10 },
+    { "ui_mm_grade_scorch",  11 },
+    { "ui_mm_grade_damp",    12 },
     // [DA_PORT] «Свой» — не профиль, а признак «ползунки трогали руками». Значение за пределами
     // таблицы профилей, поэтому применять нечего, см. CCC_GradingPreset::Execute.
-    { "ui_mm_grade_custom",   6 },
+    { "ui_mm_grade_custom",  13 },
     { nullptr, 0 }
 };
 
@@ -428,6 +470,33 @@ const xr_token qgrading_preset_token[] =
 float ps_r_color_base_r = 1.04f;
 float ps_r_color_base_g = 1.00f;
 float ps_r_color_base_b = 0.96f;
+
+// [DA_PORT] Степень в ASC CDL, по каналам. Единица — как было, картинка не меняется.
+//
+// Три величины стандарта: наклон (ps_r_color_base_*), сдвиг (ps_r_color_add_*) и степень. Первые
+// две уже были, третьей не хватало — без неё правится яркость и подъём чёрного, но не полутона,
+// а именно они и решают, читается картинка «плёнкой» или «пластиком».
+float ps_r_color_power_r = 1.f;
+float ps_r_color_power_g = 1.f;
+float ps_r_color_power_b = 1.f;
+
+// [DA_PORT] Доля ACES в тонировке: 0 — прежний расширенный Рейнхард без изменений, 1 — чистый
+// ACES (приближение Нарковича, 2016), между ними плавный переход.
+//
+// Вещественная, а не переключатель, по двум причинам. Во-первых, встроенный настройщик читает
+// значения через get_float, а тот для целочисленных команд возвращает НОЛЬ — ползунок бы не
+// работал. Во-вторых, плавный переход и сам по себе полезнее: ACES заметно контрастнее, и
+// половина дозы часто выглядит уместнее полной.
+float ps_r_tonemap_aces = 0.f;
+float ps_r_tonemap_white = 1.7f;
+
+// [DA_PORT] Доля линейного пространства в расчёте света. 0 — как было, 1 — полностью.
+//
+// ⛔ НЕ выносить в игровые настройки. Вся погода и цвета Dead Air настраивались под нынешний,
+// гамма-пространственный конвейер; при единице картинка станет иной и поначалу скорее хуже, пока
+// погоду не перенастроят заново. Это решение проекта, а не ползунок игрока — ручка отладочная,
+// чтобы увидеть масштаб расхождения и оценить объём работы.
+float ps_r_linear_light = 0.f;
 
 u32 ps_steep_parallax = 0;
 int ps_r__detail_radius = 49;
@@ -1312,6 +1381,67 @@ public:
     }
 };
 
+// [DA_PORT] Профиль задаёт ВЕСЬ цветовой конвейер, а не четыре числа, как раньше.
+//
+// Пока величин было четыре (усиление и насыщенность), профиль и был «оттенком». Теперь их
+// тринадцать: к ним добавились сдвиг и полутона ASC CDL, доля ACES, точка белого и доля линейного
+// пространства. Если профиль применяет часть, а остальное оставляет как есть, то «вернуть профиль»
+// перестаёт что-либо гарантировать — получится смесь профиля с тем, что игрок накрутил до него.
+struct da_grade_profile
+{
+    float r, g, b;    // усиление по каналам (ASC CDL: наклон)
+    float v;          // насыщенность
+    float ar, ag, ab; // сдвиг
+    float pr, pg, pb; // полутона (степень)
+    float aces;       // доля плёночной кривой
+    float white;      // точка белого
+    float lin;        // доля линейного пространства
+};
+
+// ⚠️ Профили 2..5 — это ОТТЕНКИ, и их числа подбирались ещё под гамма-пространственный конвейер.
+// С линейным светом они будут читаться иначе, чем задумывались, и однажды их стоит перебрать
+// заново. Оставлены как есть сознательно: менять их вслепую, не глядя в игру, — то же гадание.
+static const da_grade_profile da_grade_profiles[] =
+{
+    //  усиление r/g/b     насыщ.   сдвиг r/g/b            полутона r/g/b      ACES  белый линейн.
+    { 1.00f, 1.00f, 1.00f,  0.00f,  0.00f, 0.00f, 0.00f,  1.00f,1.00f,1.00f,  0.f,  1.7f, 0.f }, // 0 сток
+    { 1.00f, 1.00f, 1.00f, -0.16f,  0.00f, 0.00f, 0.00f,  1.00f,1.00f,1.03f,  0.f,  8.0f, 1.f }, // 1 наш
+    { 1.10f, 1.02f, 0.90f,  0.30f,  0.00f, 0.00f, 0.00f,  1.00f,1.00f,1.00f,  0.f,  8.0f, 1.f }, // 2 осень
+    { 0.96f, 1.00f, 1.08f,  0.10f,  0.00f, 0.00f, 0.00f,  1.00f,1.00f,1.00f,  0.f,  8.0f, 1.f }, // 3 холод
+    { 1.02f, 1.00f, 0.98f, -0.25f,  0.035f,0.035f,0.035f, 0.92f,0.92f,0.92f,  0.f,  8.0f, 1.f }, // 4 плёнка
+    { 1.06f, 1.02f, 0.98f,  0.40f,  0.00f, 0.00f, 0.00f,  1.00f,1.00f,1.00f,  0.f,  8.0f, 1.f }, // 5 сочный
+    { 1.07f, 1.00f, 0.93f,  0.15f, -0.010f,0.00f, 0.030f, 1.00f,1.00f,1.00f,  0.f,  8.0f, 1.f }, // 6 бирюза и охра
+    { 1.15f, 1.15f, 1.15f, -0.55f, -0.030f,-0.030f,-0.030f,1.12f,1.12f,1.12f, 0.5f, 8.0f, 1.f }, // 7 отбелка
+    { 1.08f, 1.08f, 1.08f, -0.90f, -0.020f,-0.020f,-0.020f,1.18f,1.18f,1.18f, 0.6f, 8.0f, 1.f }, // 8 нуар
+    { 0.72f, 0.80f, 1.00f, -0.30f,  0.00f, 0.00f, 0.020f, 1.15f,1.15f,1.15f,  0.f,  8.0f, 1.f }, // 9 ночь днём
+    { 1.05f, 1.02f, 1.02f,  0.65f,  0.00f, 0.00f, 0.00f,  1.08f,1.08f,1.08f,  0.4f, 8.0f, 1.f }, // 10 техниколор
+    { 1.12f, 1.06f, 0.95f,  0.05f,  0.020f,0.020f,0.020f, 0.92f,0.92f,0.92f,  0.f,  8.0f, 1.f }, // 11 выжженное
+    { 0.98f, 1.02f, 1.04f, -0.10f,  0.020f,0.020f,0.020f, 0.95f,0.95f,0.95f,  0.f,  8.0f, 1.f }, // 12 сырость
+};
+
+// Общее применение для ОБЕИХ команд выбора: словесной (для меню) и числовой (для настройщика).
+// Числа лежат в одном месте — разойтись двум путям не с чем.
+void da_apply_grading_preset(u32 idx)
+{
+    if (idx >= std::size(da_grade_profiles))
+        return; // «свой» и всё, что за таблицей: применять нечего
+
+    const da_grade_profile& p = da_grade_profiles[idx];
+    ps_r_color_base_r = p.r;
+    ps_r_color_base_g = p.g;
+    ps_r_color_base_b = p.b;
+    ps_r2_vibrance_val = p.v;
+    ps_r_color_add_r = p.ar;
+    ps_r_color_add_g = p.ag;
+    ps_r_color_add_b = p.ab;
+    ps_r_color_power_r = p.pr;
+    ps_r_color_power_g = p.pg;
+    ps_r_color_power_b = p.pb;
+    ps_r_tonemap_aces = p.aces;
+    ps_r_tonemap_white = p.white;
+    ps_r_linear_light = p.lin;
+}
+
 class CCC_GradingPreset : public CCC_Token
 {
 public:
@@ -1320,17 +1450,6 @@ public:
     void Execute(pcstr args) override
     {
         CCC_Token::Execute(args);
-
-        struct grade { float r, g, b, v; };
-        static const grade profiles[] =
-        {
-            { 1.00f, 1.00f, 1.00f,  0.00f }, // original - exactly as the mod shipped
-            { 1.04f, 1.00f, 0.96f,  0.18f }, // port default - gently warm
-            { 1.10f, 1.02f, 0.90f,  0.30f }, // golden autumn
-            { 0.96f, 1.00f, 1.08f,  0.10f }, // cold Zone
-            { 1.02f, 1.00f, 0.98f, -0.25f }, // faded film
-            { 1.06f, 1.02f, 0.98f,  0.40f }, // vivid
-        };
 
         // [DA_PORT] ⚠️ Хранилище у цветокоррекции должно быть ОДНО, иначе они разъезжаются.
         //
@@ -1341,16 +1460,34 @@ public:
         //
         // Теперь ползунки, тронутые руками, переводят выбор в «свой», а «свой» ничего не
         // применяет: значения переживают загрузку, потому что применять их поверх некому.
-        if (*value >= std::size(profiles))
-            return;
-
-        const u32 idx = *value;
-        ps_r_color_base_r = profiles[idx].r;
-        ps_r_color_base_g = profiles[idx].g;
-        ps_r_color_base_b = profiles[idx].b;
-        ps_r2_vibrance_val = profiles[idx].v;
+        da_apply_grading_preset(*value);
     }
 };
+
+// [DA_PORT] Тот же выбор, но ЧИСЛОМ — для встроенного настройщика.
+//
+// Зачем вторая команда. Настройщик строит ползунки и читает значения через c:get_float, а тот
+// понимает только CCC_Float: словесную команду он бы прочёл как ноль. Хранилище при этом ОДНО
+// (ps_r_grading_preset), так что разъехаться двум путям не с чем — расходятся не команды, а
+// хранилища, и вот их дублировать нельзя.
+class CCC_GradingPresetNum : public CCC_Float
+{
+    float m_shadow;
+
+public:
+    CCC_GradingPresetNum(pcstr N, float* V, float mn, float mx) : CCC_Float(N, V, mn, mx), m_shadow(0.f) {}
+
+    void Execute(pcstr args) override
+    {
+        CCC_Float::Execute(args);
+        const u32 idx = u32(*value + 0.5f); // ползунок отдаёт дробное, профиль — целый
+        ps_r_grading_preset = idx;
+        da_apply_grading_preset(idx);
+    }
+};
+
+// Числовое зеркало выбора: сюда пишет настройщик, отсюда же читает при открытии.
+float ps_r_grading_preset_num = 1.f;
 
 class CCC_memory_stats : public IConsole_Command
 {
@@ -2073,6 +2210,13 @@ void xrRender_initconsole()
     // [DA_PORT] Dead Air compatibility stub commands
     CMD3(CCC_Token, "r2_shadow_map_size",   &ps_r2_shadow_map_size, qshadow_map_size_token);
     CMD4(CCC_Float, "r2_sun_shafts_value",  &ps_r2_sun_shafts_value, 0.f, 1.f);
+    CMD4(CCC_Float, "r__sun_shafts_boost", &ps_r__sun_shafts_boost, 0.f, 8.f); // [DA_PORT]
+    CMD4(CCC_Float, "r__sun_shafts_min", &ps_r__sun_shafts_min, 0.f, 1.f); // [DA_PORT]
+    CMD4(CCC_Float, "r__sun_shafts_gain", &ps_r__sun_shafts_gain, 1.f, 8.f); // [DA_PORT]
+    CMD4(CCC_Float, "r__sun_shafts_norm", &ps_r__sun_shafts_norm, 0.f, 1.f); // [DA_PORT]
+    CMD4(CCC_Float, "r__sun_shafts_indoor", &ps_r__sun_shafts_indoor, 0.f, 1.f); // [DA_PORT]
+    CMD4(CCC_Float, "r__sun_shafts_range", &ps_r__sun_shafts_range, 0.f, 200.f); // [DA_PORT]
+    CMD4(CCC_Integer, "r__sun_shafts_mod", &ps_r__sun_shafts_mod, 0, 1); // [DA_PORT] чекбокс меню (GetBool знает только int/mask)
     CMD4(CCC_Float, "r2_aberration_val",    &ps_r2_aberration_val, 0.f, 1.f);
     CMD4(CCC_Float, "r2_dof_diff_far",      &ps_r2_dof_diff_far, 0.f, 100.f);
     CMD4(CCC_Float, "r2_dof_diff_near",     &ps_r2_dof_diff_near, 0.f, 100.f);
@@ -2098,6 +2242,8 @@ void xrRender_initconsole()
     CMD4(CCC_Float, "r2_tmp_z",              &ps_r2_tmp_z, 0.f, 1.f);
     CMD4(CCC_GradeValue, "r2_vibrance_val",  &ps_r2_vibrance_val, -1.f, 1.f); // [DA_PORT] negative = desaturate
     CMD3(CCC_GradingPreset, "r__grading_preset", &ps_r_grading_preset, qgrading_preset_token); // [DA_PORT]
+    // [DA_PORT] Числовое зеркало для настройщика: 0 — сток, 1 — наш, дальше оттенки.
+    CMD4(CCC_GradingPresetNum, "r__grade_preset", &ps_r_grading_preset_num, 0.f, 12.f);
     CMD4(CCC_Float, "r2_vignette",           &ps_r2_vignette, 0.f, 1.f);
     CMD4(CCC_Float, "r__zoom_dof",           &ps_r2_zoom_dof, 0.f, 1.f);
     CMD4(CCC_Float, "r1_dynamic_lights",    &ps_r1_dynamic_lights, 0.f, 2.f);
@@ -2108,5 +2254,20 @@ void xrRender_initconsole()
     CMD4(CCC_GradeValue, "r__color_base_r",      &ps_r_color_base_r, 0.f, 2.f);
     CMD4(CCC_GradeValue, "r__color_base_g",      &ps_r_color_base_g, 0.f, 2.f);
     CMD4(CCC_GradeValue, "r__color_base_b",      &ps_r_color_base_b, 0.f, 2.f);
+    CMD4(CCC_GradeValue, "r__color_power_r",     &ps_r_color_power_r, 0.1f, 4.f);
+    CMD4(CCC_GradeValue, "r__color_power_g",     &ps_r_color_power_g, 0.1f, 4.f);
+    CMD4(CCC_GradeValue, "r__color_power_b",     &ps_r_color_power_b, 0.1f, 4.f);
+    CMD4(CCC_Float, "r__tonemap_aces", &ps_r_tonemap_aces, 0.f, 2.f);
+    // [DA_PORT] ⛔ Потолок 8, и поднимать его БЕССМЫСЛЕННО — проверено замером 20.08.
+    //
+    // Точка белого входит в формулу в КВАДРАТЕ и в знаменателе поправки:
+    //     итог = L · (1 + L/W²) / (1 + L)
+    // При L = 1: W=1.7 даёт 0.673, W=8 — 0.508, W=32 — 0.500. То есть от 1.7 к 8 картинка
+    // меняется на четверть, а от 8 к 32 — на полтора процента, чего не видит никто.
+    //
+    // Работает ручка примерно от 1 до 5; выше поправка съедена квадратом и формула вырождается в
+    // обычный Рейнхард. Я поднимал потолок до 32 — автор разницы не увидел, и не мог.
+    CMD4(CCC_Float, "r__tonemap_white", &ps_r_tonemap_white, 0.5f, 8.f);
+    CMD4(CCC_Float, "r__linear_light", &ps_r_linear_light, 0.f, 1.f);
 }
 } // namespace xray::render::RENDER_NAMESPACE

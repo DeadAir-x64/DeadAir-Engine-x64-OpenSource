@@ -5,6 +5,14 @@
 
 #include "xrCore/Threading/ParallelForEach.hpp"
 
+// [DA_PORT] Принудительный параллакс всем, у кого есть карта высот. См. xr_ioc_cmd.cpp.
+//
+// 🪤 Объявление обязано стоять ЗДЕСЬ, до открытия пространства имён, и обращаться к нему надо через
+// `::`. Внутри xray::render::RENDER_NAMESPACE тот же extern даёт имя в ЭТОМ пространстве, и
+// линковка падает на `undefined reference to __imp__ZN4xray6render9render_r420ps_r__parallax_forceE`
+// — то есть ищет переменную, которой нигде нет. Компиляция при этом проходит молча.
+extern ENGINE_API int ps_r__parallax_force;
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // eye-params
@@ -231,6 +239,84 @@ void CTextureDescrMngr::LoadTHM(LPCSTR initial, bool listTHM)
     }
 }
 
+// [DA_PORT] Список материалов, которым разрешён шестиугольный разрыв повторов.
+//
+// Зачем список вообще. Приём годится ТОЛЬКО там, где развёртка тайловая, а признака этого в данных
+// нет: ни в .thm, ни где-либо ещё. Первый заход включил его глобально — и предметы с уникальной
+// развёрткой (бочка) превратились в кашу, потому что случайный сдвиг взял кусок из другого места
+// картинки.
+//
+// Откуда список. Отобран прибором da_port/tools/hex/classify.py прямо по картинкам: разрыв на стыке
+// краёв, доля прозрачных пикселей, наличие рисунка на краях и периодичность узора. Из 2528 текстур
+// прошли 268. Нейросеть для этого не нужна — все четыре величины меряются напрямую.
+//
+// Формат простой намеренно: имя текстуры на строку, «;» начинает примечание. Точка с запятой и
+// пустые строки пропускаются, так что прибор может писать рядом свои числа.
+void CTextureDescrMngr::LoadHexList()
+{
+    ZoneScoped;
+
+    string_path fname;
+    FS.update_path(fname, "$game_config$", "da_hex_tiling.ltx");
+    if (!FS.exist(fname))
+        return;
+
+    IReader* F = FS.r_open(fname);
+    if (!F)
+        return;
+
+    string_path line;
+    u32 count = 0;
+    while (!F->eof())
+    {
+        F->r_string(line, sizeof(line));
+
+        // Отрезаем примечание и пробелы по краям.
+        if (pstr sep = strchr(line, ';'))
+            *sep = 0;
+        if (pstr sep = strchr(line, '\t'))
+            *sep = 0;
+        pstr p = line;
+        while (*p == ' ')
+            ++p;
+        for (int i = (int)xr_strlen(p) - 1; i >= 0 && (p[i] == ' ' || p[i] == '\r'); --i)
+            p[i] = 0;
+        if (!p[0])
+            continue;
+
+        // Ключи описаний текстур хранятся с разделителем платформы, а прибор пишет через «/».
+        // Приводим к одному виду, иначе поиск не найдёт ни одной записи и список окажется
+        // «рабочим», но пустым по существу — ровно тот отказ, который никак себя не проявляет.
+        for (pstr c = p; *c; ++c)
+            if (*c == '/')
+                *c = '\\';
+        xr_strlwr(p);
+
+        m_hex_tiling[shared_str(p)] = 1;
+        ++count;
+    }
+    FS.r_close(F);
+
+#ifndef MASTER_GOLD
+    Msg("* [DA] разрыв повторов: разрешён %u материалам", count);
+#endif
+}
+
+BOOL CTextureDescrMngr::UseHexTiling(const shared_str& tex_name) const
+{
+    if (m_hex_tiling.empty())
+        return FALSE;
+
+    string_path key;
+    xr_strcpy(key, tex_name.c_str());
+    for (pstr c = key; *c; ++c)
+        if (*c == '/')
+            *c = '\\';
+    xr_strlwr(key);
+
+    return m_hex_tiling.find(shared_str(key)) != m_hex_tiling.end() ? TRUE : FALSE;
+}
+
 void CTextureDescrMngr::Load()
 {
     ZoneScoped;
@@ -247,6 +333,8 @@ void CTextureDescrMngr::Load()
     LoadTHM("$game_textures$", listTHM);
     LoadTHM("$level$", listTHM);
 
+    LoadHexList(); // [DA_PORT] см. выше
+
 #ifndef MASTER_GOLD
     Msg("%s, texture descriptions loaded for %d ms", __FUNCTION__, timer.GetElapsed_ms());
 #endif
@@ -260,6 +348,7 @@ void CTextureDescrMngr::UnLoad()
         xr_delete(it.second.m_spec);
     }
     m_texture_details.clear();
+    m_hex_tiling.clear(); // [DA_PORT] иначе список пережил бы выгрузку уровня и оброс дублями
 }
 
 CTextureDescrMngr::~CTextureDescrMngr()
@@ -292,7 +381,21 @@ BOOL CTextureDescrMngr::UseSteepParallax(const shared_str& tex_name) const
     {
         if (I->second.m_spec)
         {
-            return I->second.m_spec->m_use_steep_parallax;
+            if (I->second.m_spec->m_use_steep_parallax)
+                return TRUE;
+
+            // [DA_PORT] Замер 20.08 по всем 5985 .thm: параллакс просят 112 текстур, а карту высот
+            // несут 2020 — готовых поверхностей в восемнадцать раз больше, чем помеченных. Пометка
+            // ставилась вручную в редакторе GSC, и до большей части рук просто не дошло.
+            //
+            // Непустое имя рельефа значит, что у текстуры есть пара _bump/_bump#, а высота лежит в
+            // альфе второй — ровно то, что читает UpdateTC. Так что признак здесь тот же самый, что
+            // и у отмеченных вручную, разница только в том, кто его проставил.
+            //
+            // ⚠️ Требует перезагрузки уровня: имя шейдера собирается один раз, при постройке
+            // блендера (uber_deffer.cpp), и на лету не меняется.
+            if (::ps_r__parallax_force && I->second.m_spec->m_bump_name.size() > 2)
+                return TRUE;
         }
     }
     return FALSE;

@@ -497,6 +497,19 @@ static class cl_screen_res : public R_constant_setup
     }
 } binder_screen_res;
 
+// [DA_PORT] Разрешение на разрыв повторов ДЛЯ ЭТОЙ поверхности. Двух постоянных объектов хватает:
+// величина принимает ровно два значения, и заводить свой на каждый материал (как сделано у
+// dt_params, где у каждого масштаба свой) здесь незачем.
+static class cl_hex_allow : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override { cmd_list.set_c(C, 1.f, 0.f, 0.f, 0.f); }
+} binder_hex_allow;
+
+static class cl_hex_deny : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override { cmd_list.set_c(C, 0.f, 0.f, 0.f, 0.f); }
+} binder_hex_deny;
+
 // SM_TODO: cmd_list.hemi заменить на более "логичное" место
 static class cl_hud_params : public R_constant_setup //--#SM+#--
 {
@@ -616,6 +629,20 @@ void CBlender_Compile::SetMapping()
     // anyway.
     if (detail_scaler)
         r_Constant("dt_params", detail_scaler);
+
+    // [DA_PORT] Разрыв повторов: разрешён ли он ЭТОЙ поверхности. Разбор — в da_hextile.h.
+    //
+    // Почему по-материальная константа, а не дефайн шейдера. Дефайн потребовал бы отдельного
+    // варианта на каждый материал, а внешние дефайны блендера в имя кэша НЕ попадают
+    // (r4_shaders.cpp: options.add(m_ShaderOptions) идёт мимо sh_name) — тесселяция поэтому
+    // дописывает их к имени руками. Обойти эту мину проще, чем обезвредить: константа привязывается
+    // ровно так же, как dt_params строкой выше, и шейдер остаётся ОДИН.
+    //
+    // Привязываем ВСЕГДА, обеими ветками. Не привязать вовсе нельзя: в константном буфере осталось
+    // бы значение от предыдущей отрисовки, и запрет для одной поверхности утёк бы на следующую —
+    // отказ, который проявляется через раз и ловится тяжелее всего.
+    r_Constant("da_hex_mat", bUseHexTiling ? static_cast<R_constant_setup*>(&binder_hex_allow)
+                                           : static_cast<R_constant_setup*>(&binder_hex_deny));
 
     // other common
     for (u32 it = 0; it < RImplementation.Resources->v_constant_setup.size(); it++)

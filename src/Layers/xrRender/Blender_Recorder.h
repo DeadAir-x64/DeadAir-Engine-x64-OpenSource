@@ -27,6 +27,9 @@ public:
     bool bDetail_Diffuse;
     bool bDetail_Bump;
     BOOL bUseSteepParallax;
+    // [DA_PORT] Разрешён ли этой поверхности шестиугольный разрыв повторов. Решается по списку
+    // материалов, см. CTextureDescrMngr::UseHexTiling.
+    BOOL bUseHexTiling;
     int iElement;
 
 public:

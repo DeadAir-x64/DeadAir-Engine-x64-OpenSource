@@ -9,6 +9,11 @@ class XRUICORE_API CUICursor : public pureRender, public CDeviceResetNotifier, p
     CUIStatic* m_static{};
     Fvector2 vPrevPos{};
     Fvector2 correction;
+    // [DA_PORT] Начало рамки интерфейса в пикселях экрана (pillarbox/safe zone, см. ui_base.cpp).
+    // Курсор живёт в UI-координатах 0..1024x768, поэтому перевод из пикселей мыши и обратно
+    // обязан учитывать и масштаб рамки, и её сдвиг — иначе на сверхшироком экране курсор
+    // «уедет» от рисуемого интерфейса.
+    Fvector2 layout_offset{};
     bool bVisible{};
     bool m_bound_to_system_cursor{};
 
