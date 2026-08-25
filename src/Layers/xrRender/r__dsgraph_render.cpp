@@ -831,6 +831,11 @@ struct da_graph_prof
 {
     float sort_passes{}, sort_items{}, setup{}, setup_pass{}, setup_lmat{}, draw{}, matrix{};
     float maps{}, whole{}; // [DA_PORT] обслуживание карт проходов и весь цикл целиком
+    // [DA_PORT] Разбивка по КОНТЕКСТАМ: 0..2 -- каскады солнца, 3 -- вспомогательный (дождь, лампы),
+    // последний -- непосредственный, то есть основная сцена. Нужна, чтобы увидеть, сколько геометрии
+    // уходит в каждый каскад: если ближняя рисуется и в дальние тоже, это лишняя работа видеокарты.
+    u32 items_by_ctx[R__NUM_CONTEXTS]{};
+    float draw_by_ctx[R__NUM_CONTEXTS]{};
     u32 passes{}, items{}, mat_items{};
     float last_report{-1000.f};
 };
@@ -970,7 +975,10 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                 if (da_prof)
                 {
                     da_t.Start();
-                    da_graph_prof_get().items += u32(items.size());
+                    da_graph_prof& P = da_graph_prof_get();
+                    P.items += u32(items.size());
+                    if (context_id < R__NUM_CONTEXTS)
+                        P.items_by_ctx[context_id] += u32(items.size());
                 }
                 for (const auto& item : items)
                 {
@@ -996,7 +1004,13 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                     item.pVisual->Render(cmd_list, LOD, da_use_fast_geo(cmd_list, o.phase));
                 }
                 if (da_prof)
-                    da_graph_prof_get().draw += da_t.GetElapsed_sec() * 1000.f;
+                {
+                    da_graph_prof& P = da_graph_prof_get();
+                    const float dt = da_t.GetElapsed_sec() * 1000.f;
+                    P.draw += dt;
+                    if (context_id < R__NUM_CONTEXTS)
+                        P.draw_by_ctx[context_id] += dt;
+                }
                 if (!da_keep)
                     items.clear();
 
@@ -1110,6 +1124,18 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
         if (Device.fTimeGlobal - P.last_report > 1.f && frames)
         {
             const float k = 1.f / float(frames);
+            {
+                string512 by_ctx{};
+                for (u32 c = 0; c < R__NUM_CONTEXTS; ++c)
+                {
+                    string64 one;
+                    xr_sprintf(one, "%s%u:%u/%.2f", c ? " " : "", c,
+                        u32(float(P.items_by_ctx[c]) * k), P.draw_by_ctx[c] * k);
+                    xr_strcat(by_ctx, one);
+                }
+                Msg("~ [DA_GRAPH] по контекстам (0..2 каскады солнца, 3 вспом., 4 основная сцена) "
+                    "объектов/мс: %s", by_ctx);
+            }
             {
                 extern float g_da_ms_hom_wait;
                 Msg("~ [DA_GRAPH] на кадр: ВЕСЬ ЦИКЛ %5.3f | карты %5.3f | ожидание отсечения %5.3f",
