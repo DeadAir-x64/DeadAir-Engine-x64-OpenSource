@@ -466,32 +466,6 @@ IC void CBackend::RenderInstanced(
     PGO(Msg("PGO:DIP:%dv/%df", countV * instanceCount, PC * instanceCount));
 }
 
-// [DA_PORT] Пачка без индексного буфера -- см. объявление в R_Backend.h и da_vertex_pull.h.
-//
-// Отличие от RenderInstanced только в вызове: DrawInstanced вместо DrawIndexedInstanced. Индексный
-// буфер конвейеру не отдаётся, потому что шейдер читает индексы сам, из сырого представления.
-// Разметка входа и вершинный буфер при этом ОСТАЮТСЯ привязанными намеренно: рисовать с пустой
-// разметкой, когда шейдер объявляет входы, значит нарваться на молчаливый отброс вызова.
-IC void CBackend::RenderPulled(u32 vertexCountPerInstance, u32 instanceCount, u32 polysForStats)
-{
-    VERIFY(instanceCount && vertexCountPerInstance);
-
-    stat.render.calls++;
-    stat.render.verts += vertexCountPerInstance * instanceCount;
-    stat.render.polys += polysForStats;
-
-    ApplyPrimitieTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    SRVSManager.Apply(context_id);
-    ApplyRTandZB();
-    ApplyVertexLayout();
-    StateManager.Apply();
-    //  State manager may alter constants
-    constants.flush();
-    HW.get_context(context_id)->DrawInstanced(vertexCountPerInstance, instanceCount, 0, 0);
-
-    PGO(Msg("PGO:DIP:%dv/%df", vertexCountPerInstance * instanceCount, polysForStats));
-}
-
 IC void CBackend::Render(D3DPRIMITIVETYPE T, u32 startV, u32 PC)
 {
     //  TODO: DX11: Remove triangle fan usage from the engine

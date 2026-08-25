@@ -190,8 +190,7 @@ VertexStagingBuffer::~VertexStagingBuffer()
     Destroy();
 }
 
-// [DA_PORT] shaderReadable здесь не поддержан: выборка вершин из шейдера сделана только под DX11.
-void VertexStagingBuffer::Create(size_t size, bool allowReadBack /*= false*/, bool /*shaderReadable = false*/)
+void VertexStagingBuffer::Create(size_t size, bool allowReadBack /*= false*/)
 {
     m_Size = size;
     m_AllowReadBack = allowReadBack;
@@ -283,7 +282,7 @@ IndexStagingBuffer::~IndexStagingBuffer()
     Destroy();
 }
 
-void IndexStagingBuffer::Create(size_t size, bool allowReadBack /*= false*/, bool /*managed = true*/, bool /*shaderReadable = false*/)
+void IndexStagingBuffer::Create(size_t size, bool allowReadBack /*= false*/, bool /*managed = true*/)
 {
     m_Size = size;
     m_AllowReadBack = allowReadBack;

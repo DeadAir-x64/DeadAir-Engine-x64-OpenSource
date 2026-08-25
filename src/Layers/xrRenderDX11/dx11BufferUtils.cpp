@@ -21,20 +21,14 @@ u32 GetDeclLength(const VertexElement* decl)
 }
 
 static HRESULT CreateBuffer(ID3DBuffer** ppBuffer, const void* pData, u32 dataSize,
-    bool bDynamic, D3D_BIND_FLAG bufferType, bool shaderReadable = false)
+    bool bDynamic, D3D_BIND_FLAG bufferType)
 {
-    // [DA_PORT] Сырое представление требует размер, кратный четырём, и просить его можно только на
-    // создании. Некратный размер (индексный буфер с нечётным числом индексов) — не ошибка вызова, а
-    // штатный случай: молча отказываемся от чтения из шейдера, буфер создаётся как обычно.
-    if (shaderReadable && (dataSize % 4) != 0)
-        shaderReadable = false;
-
     D3D_BUFFER_DESC desc;
     desc.ByteWidth      = dataSize;
     desc.Usage          = bDynamic ? D3D_USAGE_DYNAMIC : D3D_USAGE_DEFAULT;
-    desc.BindFlags      = shaderReadable ? (bufferType | D3D11_BIND_SHADER_RESOURCE) : bufferType;
+    desc.BindFlags      = bufferType;
     desc.CPUAccessFlags = bDynamic ? D3D_CPU_ACCESS_WRITE : 0;
-    desc.MiscFlags      = shaderReadable ? D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS : 0;
+    desc.MiscFlags      = 0;
 
     D3D_SUBRESOURCE_DATA subData;
     subData.pSysMem = pData;
@@ -47,45 +41,14 @@ static HRESULT CreateBuffer(ID3DBuffer** ppBuffer, const void* pData, u32 dataSi
     return res;
 }
 
-static inline HRESULT CreateVertexBuffer(
-    VertexBufferHandle* ppBuffer, const void* pData, u32 dataSize, bool bDynamic, bool shaderReadable = false)
+static inline HRESULT CreateVertexBuffer(VertexBufferHandle* ppBuffer, const void* pData, u32 dataSize, bool bDynamic)
 {
-    return CreateBuffer(ppBuffer, pData, dataSize, bDynamic, D3D_BIND_VERTEX_BUFFER, shaderReadable);
+    return CreateBuffer(ppBuffer, pData, dataSize, bDynamic, D3D_BIND_VERTEX_BUFFER);
 }
 
-static inline HRESULT CreateIndexBuffer(
-    IndexBufferHandle* ppBuffer, const void* pData, u32 dataSize, bool bDynamic, bool shaderReadable = false)
+static inline HRESULT CreateIndexBuffer(IndexBufferHandle* ppBuffer, const void* pData, u32 dataSize, bool bDynamic)
 {
-    return CreateBuffer(ppBuffer, pData, dataSize, bDynamic, D3D_BIND_INDEX_BUFFER, shaderReadable);
-}
-
-// [DA_PORT] Сырое (ByteAddressBuffer) представление на уже созданный буфер геометрии.
-//
-// Формат ОБЯЗАН быть R32_TYPELESS с флагом RAW: структурное представление здесь не годится, потому
-// что тот же буфер одновременно привязан как вершинный, а структурное с этим несовместимо. В шейдере
-// это ByteAddressBuffer, читается Load/Load4 по БАЙТОВОМУ смещению — отсюда и точная раскладка полей
-// вершины в 05_ROADMAP.md: ошибка в смещении прочитает не те байты молча.
-static BufferSRVHandle CreateRawSRV(ID3DBuffer* pBuffer, u32 dataSize)
-{
-    if (!pBuffer || (dataSize % 4) != 0)
-        return nullptr;
-
-    D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
-    desc.Format = DXGI_FORMAT_R32_TYPELESS;
-    desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
-    desc.BufferEx.FirstElement = 0;
-    desc.BufferEx.NumElements = dataSize / 4;
-    desc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
-
-    BufferSRVHandle srv = nullptr;
-    const HRESULT hr = HW.pDevice->CreateShaderResourceView(pBuffer, &desc, &srv);
-    if (FAILED(hr))
-    {
-        // Не фатально: путь выборки из шейдера просто не включится для этого буфера.
-        Msg("! [DA_PORT] сырое представление буфера не создано (0x%08x), размер %u", u32(hr), dataSize);
-        return nullptr;
-    }
-    return srv;
+    return CreateBuffer(ppBuffer, pData, dataSize, bDynamic, D3D_BIND_INDEX_BUFFER);
 }
 
 static inline HRESULT CreateConstantBuffer(ConstantBufferHandle* ppBuffer, u32 dataSize)
@@ -208,11 +171,10 @@ VertexStagingBuffer::~VertexStagingBuffer()
     Destroy();
 }
 
-void VertexStagingBuffer::Create(size_t size, bool allowReadBack /*= false*/, bool shaderReadable /*= false*/)
+void VertexStagingBuffer::Create(size_t size, bool allowReadBack /*= false*/)
 {
     m_Size = size;
     m_AllowReadBack = allowReadBack;
-    m_ShaderReadable = shaderReadable;
 
     m_HostBuffer = xr_alloc<u8>(size);
     AddRef();
@@ -247,11 +209,9 @@ void VertexStagingBuffer::Unmap(bool doFlush /*= false*/)
     VERIFY(m_HostBuffer && m_Size);
 
     // Upload data to device
-    R_CHK(CreateVertexBuffer(&m_DeviceBuffer, m_HostBuffer, m_Size, false, m_ShaderReadable));
+    R_CHK(CreateVertexBuffer(&m_DeviceBuffer, m_HostBuffer, m_Size, false));
     VERIFY(m_DeviceBuffer);
     HW.stats_manager.increment_stats_vb(m_DeviceBuffer);
-    if (m_ShaderReadable)
-        m_SRV = CreateRawSRV(m_DeviceBuffer, u32(m_Size)); // [DA_PORT] выборка вершин из шейдера
 
     if (!m_AllowReadBack)
     {
@@ -270,7 +230,6 @@ void VertexStagingBuffer::Destroy()
     DiscardHostBuffer();
     m_Size = 0;
 
-    _RELEASE(m_SRV); // [DA_PORT] представление держит ссылку на буфер -- отпускать ПЕРВЫМ
     HW.stats_manager.decrement_stats_vb(m_DeviceBuffer);
     _RELEASE(m_DeviceBuffer);
 }
@@ -304,10 +263,8 @@ IndexStagingBuffer::~IndexStagingBuffer()
     Destroy();
 }
 
-void IndexStagingBuffer::Create(
-    size_t size, bool allowReadBack /*= false*/, bool /*managed = true*/, bool shaderReadable /*= false*/)
+void IndexStagingBuffer::Create(size_t size, bool allowReadBack /*= false*/, bool /*managed = true*/)
 {
-    m_ShaderReadable = shaderReadable;
     m_Size = size;
     m_AllowReadBack = allowReadBack;
 
@@ -344,9 +301,7 @@ void IndexStagingBuffer::Unmap(bool doFlush /*= false*/)
     VERIFY(m_HostBuffer && m_Size);
 
     // Upload data to device
-    R_CHK(CreateIndexBuffer(&m_DeviceBuffer, m_HostBuffer, m_Size, false, m_ShaderReadable));
-    if (m_ShaderReadable)
-        m_SRV = CreateRawSRV(m_DeviceBuffer, u32(m_Size)); // [DA_PORT] выборка индексов из шейдера
+    R_CHK(CreateIndexBuffer(&m_DeviceBuffer, m_HostBuffer, m_Size, false));
     VERIFY(m_DeviceBuffer);
     HW.stats_manager.increment_stats_ib(m_DeviceBuffer);
 
@@ -364,7 +319,6 @@ IndexBufferHandle IndexStagingBuffer::GetBufferHandle() const
 
 void IndexStagingBuffer::Destroy()
 {
-    _RELEASE(m_SRV); // [DA_PORT] см. VertexStagingBuffer::Destroy
     DiscardHostBuffer();
     m_Size = 0;
 
