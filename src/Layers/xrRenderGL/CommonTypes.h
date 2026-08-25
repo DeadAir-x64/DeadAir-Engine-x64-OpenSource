@@ -65,6 +65,9 @@ using IndexBufferHandle = GLuint;
 using VertexBufferHandle = GLuint;
 using ConstantBufferHandle = GLuint;
 using HostBufferHandle = void*;
+// [DA_PORT] Парная к DX11-ветке: выборка вершин из шейдера сделана только под DX11, здесь тип
+// объявлен ради общего заголовка BufferUtils.h и не используется.
+using BufferSRVHandle = GLuint;
 
 using VertexElement = D3DVERTEXELEMENT9;
 using InputElementDesc = unused_t;

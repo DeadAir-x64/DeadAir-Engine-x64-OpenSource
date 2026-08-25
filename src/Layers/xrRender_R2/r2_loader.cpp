@@ -384,12 +384,93 @@ void CRender::LoadBuffers(CStreamReader* base_fs, bool alternative)
             // Create and fill
             //  TODO: DX11: Check fragmentation.
             //  Check if buffer is less then 2048 kb
-            vbuffers[i].Create(vCount * vSize);
+            // [DA_PORT] true = дать буферу сырое представление для выборки вершин из шейдера.
+            // Просим только у геометрии УРОВНЯ: она статична и живёт до выгрузки, а флаги ставятся
+            // на создании. Отказ не фатален -- путь pulling для такого буфера просто не включится.
+            vbuffers[i].Create(vCount * vSize, false, true);
             u8* pData = static_cast<u8*>(vbuffers[i].Map());
             fs->r(pData, vCount * vSize);
             vbuffers[i].Unmap(true); // upload vertex data
 
             //			fs->advance			(vCount*vSize);
+        }
+
+        // [DA_PORT] Сколько среди буферов РАЗНЫХ форматов вершин.
+        //
+        // Решает архитектуру выборки вершин из шейдера (vertex pulling): там весь уровень читается
+        // одним StructuredBuffer по SV_VertexID, и на каждый отдельный формат нужен свой путь и
+        // свой шейдер. Три формата — работа обозримая, тридцать — другой разговор. Замер разовый,
+        // на загрузке, стоит один проход по объявлениям.
+        {
+            xr_vector<const VertexElement*> unique_decls;
+            for (u32 i = 0; i < count; ++i)
+            {
+                const VertexElement* d = decls[i].begin();
+                bool seen = false;
+                for (const VertexElement* u : unique_decls)
+                    if (dcl_equal(u, d))
+                    {
+                        seen = true;
+                        break;
+                    }
+                if (!seen)
+                    unique_decls.push_back(d);
+            }
+            // [DA_PORT] Раскладка полей — построчно. Гадать по размеру нельзя: шейдер читает
+            // Nh/T/B как float4, а лежат они упакованными в D3DCOLOR по 4 байта, и без точных
+            // смещений выборка из структурного буфера прочитает не те байты МОЛЧА.
+            static const auto type_name = [](u32 t) -> pcstr
+            {
+                switch (t)
+                {
+                case D3DDECLTYPE_FLOAT1: return "float1";
+                case D3DDECLTYPE_FLOAT2: return "float2";
+                case D3DDECLTYPE_FLOAT3: return "float3";
+                case D3DDECLTYPE_FLOAT4: return "float4";
+                case D3DDECLTYPE_D3DCOLOR: return "D3DCOLOR";
+                case D3DDECLTYPE_UBYTE4: return "ubyte4";
+                case D3DDECLTYPE_SHORT2: return "short2";
+                case D3DDECLTYPE_SHORT4: return "short4";
+                case D3DDECLTYPE_UBYTE4N: return "ubyte4n";
+                case D3DDECLTYPE_SHORT2N: return "short2n";
+                case D3DDECLTYPE_SHORT4N: return "short4n";
+                case D3DDECLTYPE_FLOAT16_2: return "half2";
+                case D3DDECLTYPE_FLOAT16_4: return "half4";
+                default: return "?";
+                }
+            };
+            static const auto usage_name = [](u32 u) -> pcstr
+            {
+                switch (u)
+                {
+                case D3DDECLUSAGE_POSITION: return "POSITION";
+                case D3DDECLUSAGE_NORMAL: return "NORMAL";
+                case D3DDECLUSAGE_TANGENT: return "TANGENT";
+                case D3DDECLUSAGE_BINORMAL: return "BINORMAL";
+                case D3DDECLUSAGE_TEXCOORD: return "TEXCOORD";
+                case D3DDECLUSAGE_COLOR: return "COLOR";
+                default: return "?";
+                }
+            };
+            for (size_t u = 0; u < unique_decls.size(); ++u)
+                for (const VertexElement* e = unique_decls[u]; e && e->Type != D3DDECLTYPE_UNUSED; ++e)
+                    Msg("* [DA_PORT]   формат %u поле: смещение %2u  %-9s %s%u", u32(u), e->Offset,
+                        type_name(e->Type), usage_name(e->Usage), e->UsageIndex);
+
+            // [DA_PORT] Сколько буферов РЕАЛЬНО получили сырое представление. Проверка обязательна:
+            // отказ здесь молчаливый по построению (см. CreateRawSRV), а «просили» и «дали» — разные
+            // вещи. Путь выборки из шейдера включается только там, где представление есть.
+            u32 with_srv = 0;
+            for (u32 i = 0; i < count; ++i)
+                if (vbuffers[i].GetSRV())
+                    ++with_srv;
+
+            Msg("* [DA_PORT] геометрия уровня: буферов вершин %u, разных форматов %u, с сырым "
+                "представлением %u%s", count, u32(unique_decls.size()), with_srv,
+                alternative ? " (урезанный поток)" : "");
+            for (size_t u = 0; u < unique_decls.size(); ++u)
+                Msg("* [DA_PORT]   формат %u: вершина %u байт, полей %u", u32(u),
+                    GetDeclVertexSize(unique_decls[u], 0), GetDeclLength(unique_decls[u]));
         }
         fs->close();
     }
@@ -412,12 +493,35 @@ void CRender::LoadBuffers(CStreamReader* base_fs, bool alternative)
             // Create and fill
             //  TODO: DX11: Check fragmentation.
             //  Check if buffer is less then 2048 kb
-            ibuffers[i].Create(iCount * 2);
+            // [DA_PORT] Размер округляется ВВЕРХ до кратности четырём ради сырого представления.
+            //
+            // Индексов в треугольниках кратно трём, и при нечётном числе треугольников iCount*2 не
+            // делится на четыре — сырое представление такого буфера создать нельзя, и замер показал,
+            // что так отваливались 10 буферов из 12. Лишние два байта никогда не читаются как
+            // индексы: отрисовка идёт по настоящему числу, а не по размеру буфера. Хвост обнуляем,
+            // чтобы в видеопамять не уезжал мусор из кучи.
+            const u32 ib_bytes = iCount * 2;
+            const u32 ib_bytes_padded = (ib_bytes + 3) & ~3u;
+            ibuffers[i].Create(ib_bytes_padded, false, true, true);
             u8* pData = static_cast<u8*>(ibuffers[i].Map());
-            fs->r(pData, iCount * 2);
+            fs->r(pData, ib_bytes);
+            if (ib_bytes_padded > ib_bytes)
+                ZeroMemory(pData + ib_bytes, ib_bytes_padded - ib_bytes);
             ibuffers[i].Unmap(true); // upload index data
 
             //			fs().advance		(iCount*2);
+        }
+
+        // [DA_PORT] Сколько индексных буферов получили сырое представление -- см. вершинные выше.
+        // Отказ здесь ожидаем и нормален: сырое представление требует размер, кратный четырём, а у
+        // буфера с нечётным числом индексов его нет. Такой буфер просто не пойдёт по пути pulling.
+        {
+            u32 with_srv = 0;
+            for (u32 i = 0; i < count; ++i)
+                if (ibuffers[i].GetSRV())
+                    ++with_srv;
+            Msg("* [DA_PORT] геометрия уровня: буферов индексов %u, с сырым представлением %u%s", count,
+                with_srv, alternative ? " (урезанный поток)" : "");
         }
         fs->close();
     }

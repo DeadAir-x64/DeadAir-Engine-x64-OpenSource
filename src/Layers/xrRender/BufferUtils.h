@@ -51,7 +51,12 @@ class VertexStagingBuffer
 public:
     ~VertexStagingBuffer();
 
-    void Create(size_t size, bool allowReadBack = false);
+    // [DA_PORT] shaderReadable: дать буферу «сырое» представление, чтобы вершины можно было читать
+    // ИЗ ШЕЙДЕРА по индексу (vertex pulling, см. 05_ROADMAP.md), а не только через разметку входа.
+    // Просим только для геометрии уровня: флаги ставятся на СОЗДАНИИ, задним числом их не добавить.
+    // ⚠️ Сырое представление требует размер, кратный четырём — иначе создание буфера падает.
+    void Create(size_t size, bool allowReadBack = false, bool shaderReadable = false);
+    BufferSRVHandle GetSRV() const { return m_SRV; }
     bool IsValid() const;
     void* Map(size_t offset = 0, size_t size = 0, bool read = false);
     void Unmap(bool doFlush = false);
@@ -94,9 +99,11 @@ private:
 
     VertexBufferHandle m_DeviceBuffer{};
     HostBufferHandle m_HostBuffer{};
+    BufferSRVHandle m_SRV{}; // [DA_PORT] сырое представление для выборки из шейдера
     size_t m_Size{};
     u32 m_RefCounter{};
     bool m_AllowReadBack{}; // specifies whether host will want to have the data back (e.g. skinning code)
+    bool m_ShaderReadable{}; // [DA_PORT] см. Create
 };
 
 class IndexStagingBuffer
@@ -104,7 +111,9 @@ class IndexStagingBuffer
 public:
     ~IndexStagingBuffer();
 
-    void Create(size_t size, bool allowReadBack = false, bool managed = true);
+    // [DA_PORT] shaderReadable — см. одноимённый параметр у VertexStagingBuffer.
+    void Create(size_t size, bool allowReadBack = false, bool managed = true, bool shaderReadable = false);
+    BufferSRVHandle GetSRV() const { return m_SRV; }
     bool IsValid() const;
     void* Map(size_t offset = 0, size_t size = 0, bool read = false);
     void Unmap(bool doFlush = false);
@@ -147,9 +156,11 @@ private:
 
     IndexBufferHandle m_DeviceBuffer{};
     HostBufferHandle m_HostBuffer{};
+    BufferSRVHandle m_SRV{}; // [DA_PORT] сырое представление для выборки из шейдера
     size_t m_Size{};
     u32 m_RefCounter{};
     bool m_AllowReadBack{}; // specifies whether host will want to have the data back (e.g. skinning code)
+    bool m_ShaderReadable{}; // [DA_PORT] см. Create
 };
 
 /**

@@ -275,6 +275,8 @@ using VertexBufferHandle    = ID3D11Buffer*;
 using IndexBufferHandle     = ID3D11Buffer*;
 using ConstantBufferHandle  = ID3D11Buffer*;
 using HostBufferHandle      = void*;
+// [DA_PORT] Чтение буфера геометрии ИЗ ШЕЙДЕРА (vertex pulling) -- см. 05_ROADMAP.md.
+using BufferSRVHandle       = ID3D11ShaderResourceView*;
 
 using VertexElement         = D3DVERTEXELEMENT9;
 using InputElementDesc      = D3D11_INPUT_ELEMENT_DESC;
