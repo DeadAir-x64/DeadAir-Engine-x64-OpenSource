@@ -854,18 +854,18 @@ ICF void CBackend::set_VS(SVS* _vs)
 }
 
 IC bool CBackend::CBuffersNeedUpdate(
-    ref_cbuffer buf1[MaxCBuffers], ref_cbuffer buf2[MaxCBuffers], u32& uiMin, u32& uiMax)
+    ref_cbuffer buf1[MaxCBuffers], dx11ConstantBuffer* const buf2[MaxCBuffers], u32& uiMin, u32& uiMax)
 {
     bool bRes = false;
     int i = 0;
-    while ((i < MaxCBuffers) && (buf1[i] == buf2[i]))
+    while ((i < MaxCBuffers) && (buf1[i]._get() == buf2[i]))
         ++i;
 
     uiMin = i;
 
     for (; i < MaxCBuffers; ++i)
     {
-        if (buf1[i] != buf2[i])
+        if (buf1[i]._get() != buf2[i])
         {
             bRes = true;
             uiMax = i;
@@ -879,6 +879,19 @@ IC bool CBackend::CBuffersNeedUpdate(
 // прохода — больше, чем состояния, шейдеры, текстуры и матрицы вместе. Внутри три разных дела:
 // сброс отображений, перетасовка массивов умных указателей (счётчик ссылок АТОМАРНЫЙ) и обход
 // таблицы с привязкой. Лечатся по-разному, поэтому меряем порознь.
+// [DA_PORT] Биты стадий для m_cbStageMask (см. R_Backend.h) и ручка сравнения r__cb_stage_skip.
+enum : u32
+{
+    DA_CB_STAGE_PS = 1u << 0,
+    DA_CB_STAGE_VS = 1u << 1,
+    DA_CB_STAGE_GS = 1u << 2,
+    DA_CB_STAGE_HS = 1u << 3,
+    DA_CB_STAGE_DS = 1u << 4,
+    DA_CB_STAGE_CS = 1u << 5,
+    DA_CB_STAGE_ALL = 0x3Fu,
+};
+extern int ps_da_cb_stage_skip;
+
 extern int ps_da_graph_prof;
 extern float g_da_const_unmap, g_da_const_shuffle, g_da_const_bind, g_da_const_loaders;
 
@@ -912,37 +925,60 @@ IC void CBackend::set_Constants(R_constant_table* C)
 
     //  Setup constant tables
     {
-        ref_cbuffer aPixelConstants[MaxCBuffers];
-        ref_cbuffer aVertexConstants[MaxCBuffers];
-        ref_cbuffer aGeometryConstants[MaxCBuffers];
+        // [DA_PORT] Снимок предыдущего набора буферов — СЫРЫМИ указателями, а не ref_cbuffer.
+        //
+        // ЗАЧЕМ. Замер (r__graph_prof) назвал эту перетасовку самой дорогой частью настройки
+        // констант: 0.77 мс на кадр из 1.98 — больше, чем привязка буферов и обработчики по
+        // отдельности. Работы здесь нет никакой, это чистая цена типа: копия 84 умных указателей
+        // (шесть стадий по MaxCBuffers) — это 84 атомарных увеличения счётчика, зануление членов —
+        // ещё 84 уменьшения, и столько же при выходе из области видимости. Около 250 атомарных
+        // операций на КАЖДУЮ смену прохода, а их в кадре под восемь сотен.
+        //
+        // ⛔ Почему владеть снимком не нужно. Он живёт до конца функции и используется ровно для
+        // одного — сравнения «изменился ли слот» в CBuffersNeedUpdate, без разыменования. Сами
+        // буферы принадлежат таблицам констант проходов, а те живут, пока загружен уровень.
+        //
+        // 🪤 Единственный способ подорваться — если бы между занулением членов и сравнением кто-то
+        // успел освободить буфер и получить НОВЫЙ по тому же адресу: сравнение сказало бы «не
+        // изменилось» и слот остался бы непривязанным. Поэтому порядок важен и его нельзя менять:
+        // между этим циклом и сравнением идёт только раскладка уже существующих ссылок из таблицы,
+        // выделений памяти там нет.
+        dx11ConstantBuffer* aPixelConstants[MaxCBuffers]{};
+        dx11ConstantBuffer* aVertexConstants[MaxCBuffers]{};
+        dx11ConstantBuffer* aGeometryConstants[MaxCBuffers]{};
 #ifdef USE_DX11
-        ref_cbuffer aHullConstants[MaxCBuffers];
-        ref_cbuffer aDomainConstants[MaxCBuffers];
-        ref_cbuffer aComputeConstants[MaxCBuffers];
+        dx11ConstantBuffer* aHullConstants[MaxCBuffers]{};
+        dx11ConstantBuffer* aDomainConstants[MaxCBuffers]{};
+        dx11ConstantBuffer* aComputeConstants[MaxCBuffers]{};
 #endif
 
-        for (int i = 0; i < MaxCBuffers; ++i)
+        // [DA_PORT] Обходим только те стадии, которые хоть раз получали буфер (см. m_cbStageMask).
+        // Ручка r__cb_stage_skip 0 возвращает обход всех шести — чтобы сравнить в одной сборке.
+        const u32 da_stage_mask = ps_da_cb_stage_skip ? m_cbStageMask : DA_CB_STAGE_ALL;
+
+        const auto da_snapshot = [](ref_cbuffer* members, dx11ConstantBuffer** snap)
         {
-            aPixelConstants[i] = m_aPixelConstants[i];
-            aVertexConstants[i] = m_aVertexConstants[i];
-            aGeometryConstants[i] = m_aGeometryConstants[i];
+            for (int i = 0; i < MaxCBuffers; ++i)
+            {
+                snap[i] = members[i]._get();
+                members[i] = 0;
+            }
+        };
 
+        if (da_stage_mask & DA_CB_STAGE_PS)
+            da_snapshot(m_aPixelConstants, aPixelConstants);
+        if (da_stage_mask & DA_CB_STAGE_VS)
+            da_snapshot(m_aVertexConstants, aVertexConstants);
+        if (da_stage_mask & DA_CB_STAGE_GS)
+            da_snapshot(m_aGeometryConstants, aGeometryConstants);
 #ifdef USE_DX11
-            aHullConstants[i] = m_aHullConstants[i];
-            aDomainConstants[i] = m_aDomainConstants[i];
-            aComputeConstants[i] = m_aComputeConstants[i];
+        if (da_stage_mask & DA_CB_STAGE_HS)
+            da_snapshot(m_aHullConstants, aHullConstants);
+        if (da_stage_mask & DA_CB_STAGE_DS)
+            da_snapshot(m_aDomainConstants, aDomainConstants);
+        if (da_stage_mask & DA_CB_STAGE_CS)
+            da_snapshot(m_aComputeConstants, aComputeConstants);
 #endif
-
-            m_aPixelConstants[i] = 0;
-            m_aVertexConstants[i] = 0;
-            m_aGeometryConstants[i] = 0;
-
-#ifdef USE_DX11
-            m_aHullConstants[i] = 0;
-            m_aDomainConstants[i] = 0;
-            m_aComputeConstants[i] = 0;
-#endif
-        }
         if (da_cprof)
         {
             g_da_const_shuffle += da_ct.GetElapsed_sec() * 1000.f;
@@ -960,32 +996,38 @@ IC void CBackend::set_Constants(R_constant_table* C)
             {
                 VERIFY((uiBufferIndex & CB_BufferIndexMask) < MaxCBuffers);
                 m_aPixelConstants[uiBufferIndex & CB_BufferIndexMask] = it->second;
+                m_cbStageMask |= DA_CB_STAGE_PS;
             }
             else if ((uiBufferIndex & CB_BufferTypeMask) == CB_BufferVertexShader)
             {
                 VERIFY((uiBufferIndex & CB_BufferIndexMask) < MaxCBuffers);
                 m_aVertexConstants[uiBufferIndex & CB_BufferIndexMask] = it->second;
+                m_cbStageMask |= DA_CB_STAGE_VS;
             }
             else if ((uiBufferIndex & CB_BufferTypeMask) == CB_BufferGeometryShader)
             {
                 VERIFY((uiBufferIndex & CB_BufferIndexMask) < MaxCBuffers);
                 m_aGeometryConstants[uiBufferIndex & CB_BufferIndexMask] = it->second;
+                m_cbStageMask |= DA_CB_STAGE_GS;
             }
 #ifdef USE_DX11
             else if ((uiBufferIndex & CB_BufferTypeMask) == CB_BufferHullShader)
             {
                 VERIFY((uiBufferIndex & CB_BufferIndexMask) < MaxCBuffers);
                 m_aHullConstants[uiBufferIndex & CB_BufferIndexMask] = it->second;
+                m_cbStageMask |= DA_CB_STAGE_HS;
             }
             else if ((uiBufferIndex & CB_BufferTypeMask) == CB_BufferDomainShader)
             {
                 VERIFY((uiBufferIndex & CB_BufferIndexMask) < MaxCBuffers);
                 m_aDomainConstants[uiBufferIndex & CB_BufferIndexMask] = it->second;
+                m_cbStageMask |= DA_CB_STAGE_DS;
             }
             else if ((uiBufferIndex & CB_BufferTypeMask) == CB_BufferComputeShader)
             {
                 VERIFY((uiBufferIndex & CB_BufferIndexMask) < MaxCBuffers);
                 m_aComputeConstants[uiBufferIndex & CB_BufferIndexMask] = it->second;
+                m_cbStageMask |= DA_CB_STAGE_CS;
             }
 #endif
             else
@@ -997,7 +1039,7 @@ IC void CBackend::set_Constants(R_constant_table* C)
         u32 uiMin;
         u32 uiMax;
 
-        if (CBuffersNeedUpdate(m_aPixelConstants, aPixelConstants, uiMin, uiMax))
+        if ((da_stage_mask & DA_CB_STAGE_PS) && CBuffersNeedUpdate(m_aPixelConstants, aPixelConstants, uiMin, uiMax))
         {
             ++uiMax;
 
@@ -1012,7 +1054,7 @@ IC void CBackend::set_Constants(R_constant_table* C)
             HW.get_context(context_id)->PSSetConstantBuffers(uiMin, uiMax - uiMin, &tempBuffer[uiMin]);
         }
 
-        if (CBuffersNeedUpdate(m_aVertexConstants, aVertexConstants, uiMin, uiMax))
+        if ((da_stage_mask & DA_CB_STAGE_VS) && CBuffersNeedUpdate(m_aVertexConstants, aVertexConstants, uiMin, uiMax))
         {
             ++uiMax;
 
@@ -1026,7 +1068,7 @@ IC void CBackend::set_Constants(R_constant_table* C)
             HW.get_context(context_id)->VSSetConstantBuffers(uiMin, uiMax - uiMin, &tempBuffer[uiMin]);
         }
 
-        if (CBuffersNeedUpdate(m_aGeometryConstants, aGeometryConstants, uiMin, uiMax))
+        if ((da_stage_mask & DA_CB_STAGE_GS) && CBuffersNeedUpdate(m_aGeometryConstants, aGeometryConstants, uiMin, uiMax))
         {
             ++uiMax;
 
@@ -1040,7 +1082,7 @@ IC void CBackend::set_Constants(R_constant_table* C)
             HW.get_context(context_id)->GSSetConstantBuffers(uiMin, uiMax - uiMin, &tempBuffer[uiMin]);
         }
 
-        if (CBuffersNeedUpdate(m_aHullConstants, aHullConstants, uiMin, uiMax))
+        if ((da_stage_mask & DA_CB_STAGE_HS) && CBuffersNeedUpdate(m_aHullConstants, aHullConstants, uiMin, uiMax))
         {
             ++uiMax;
 
@@ -1054,7 +1096,7 @@ IC void CBackend::set_Constants(R_constant_table* C)
             HW.get_context(context_id)->HSSetConstantBuffers(uiMin, uiMax - uiMin, &tempBuffer[uiMin]);
         }
 
-        if (CBuffersNeedUpdate(m_aDomainConstants, aDomainConstants, uiMin, uiMax))
+        if ((da_stage_mask & DA_CB_STAGE_DS) && CBuffersNeedUpdate(m_aDomainConstants, aDomainConstants, uiMin, uiMax))
         {
             ++uiMax;
 
@@ -1068,7 +1110,7 @@ IC void CBackend::set_Constants(R_constant_table* C)
             HW.get_context(context_id)->DSSetConstantBuffers(uiMin, uiMax - uiMin, &tempBuffer[uiMin]);
         }
 
-        if (CBuffersNeedUpdate(m_aComputeConstants, aComputeConstants, uiMin, uiMax))
+        if ((da_stage_mask & DA_CB_STAGE_CS) && CBuffersNeedUpdate(m_aComputeConstants, aComputeConstants, uiMin, uiMax))
         {
             ++uiMax;
 

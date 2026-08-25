@@ -3,11 +3,62 @@
 
 namespace xray::render::RENDER_NAMESPACE
 {
+
+// [DA_PORT] ---- Разбор накопления света по частям: da_accum_prof N ----------------------------
+//
+// ЗАЧЕМ. После перевода видимости на главный поток и расширения пула контекстов фаза света стоит
+// 1.40 мс, и внутри неё самая крупная оставшаяся величина — накопление, 0.33 мс. Это ЧИСТО
+// процессорное время подачи: на видеокарте зона света занимает доли миллисекунды. При 15 источниках
+// это ~22 мкс на лампу при трёх вызовах отрисовки — то есть время уходит не на отрисовку.
+//
+// Версий, куда именно, четыре, и правки у них разные:
+//   1) смена цели рендера и видового окна, которую accum_spot делает ЗАНОВО на каждую лампу;
+//   2) трафаретная маска — два прохода по объёму со сменой отсечения и состояния трафарета;
+//   3) матрицы тени и текстурных координат — десяток умножений 4x4 на лампу;
+//   4) раздача констант ПО ИМЕНАМ: каждый set_c ищет имя двоичным поиском со сравнением строк
+//      и возвращает СЧИТАЮЩИЙ ССЫЛКИ указатель, то есть пара атомарных операций сверху.
+//
+// Мерить одним числом бесполезно — оно уже есть и ничего не говорит. Поэтому семь зон.
+//
+// ⚠️ Часы берутся напрямую (std::chrono), а не через CTimer: у того getElapsedTime виртуальный,
+// и на сотне замеров за кадр вызов по таблице пошёл бы в ту же величину, которую прибор проверяет.
+int ps_da_accum_prof = 0;
+
+using da_ac_clock = std::chrono::high_resolution_clock;
+
+double g_da_ac_rt = 0.0;    // phase_accumulator: цель рендера + видовое окно
+double g_da_ac_mask = 0.0;  // трафаретная маска: два прохода по объёму
+double g_da_ac_xf = 0.0;    // матрицы тени и текстурных координат
+double g_da_ac_elem = 0.0;  // установка прохода (set_Element)
+double g_da_ac_const = 0.0; // раздача констант по именам
+double g_da_ac_draw = 0.0;  // сама отрисовка объёма
+double g_da_ac_tail = 0.0;  // хвост: копия при отсутствии fp16-смешивания, ножницы, маркер
+u32 g_da_ac_spot = 0;       // конусов накоплено
+double g_da_ac_point = 0.0; // накопление точечных ламп целиком (прежним прибором НЕ покрыто)
+u32 g_da_ac_points = 0;     // точечных накоплено
+
+#define DA_AC_MARK(acc)                                                                        \
+    do                                                                                         \
+    {                                                                                          \
+        if (da_prof)                                                                           \
+        {                                                                                      \
+            const auto da_now = da_ac_clock::now();                                            \
+            (acc) += std::chrono::duration<double, std::milli>(da_now - da_mark).count();       \
+            da_mark = da_now;                                                                  \
+        }                                                                                      \
+    } while (0)
+
 // extern Fvector du_cone_vertices[DU_CONE_NUMVERTEX];
 
 void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
 {
+    // [DA_PORT] Разбор по зонам — пояснение у объявления счётчиков выше.
+    const bool da_prof = ps_da_accum_prof > 0;
+    da_ac_clock::time_point da_mark;
+    if (da_prof)
+        da_mark = da_ac_clock::now();
     phase_accumulator(cmd_list);
+    DA_AC_MARK(g_da_ac_rt);
     RImplementation.Stats.l_visible++;
 
     // *** assume accumulator already setup ***
@@ -49,7 +100,9 @@ void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
         // *** in practice, 'cause we "clear" it back to 0x1 it usually allows us to > 200 lights :)
         //	Done in blender!
         // cmd_list.set_ColorWriteEnable		(FALSE);
+        DA_AC_MARK(g_da_ac_mask); // [DA_PORT] до сюда — подготовка маски без смены прохода
         cmd_list.set_Element(s_accum_mask->E[SE_MASK_SPOT]); // masker
+        DA_AC_MARK(g_da_ac_elem); // [DA_PORT] сюда же ложится и второй set_Element ниже
 
         // backfaces: if (stencil>=1 && zfail)			stencil = light_id
         cmd_list.set_CullMode(CULL_CW);
@@ -83,6 +136,7 @@ void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
     // nv-stencil recompression
     if (RImplementation.o.nvstencil)
         u_stencil_optimize(cmd_list);
+    DA_AC_MARK(g_da_ac_mask);
 
     // *****************************	Minimize overdraw	*************************************
     // Select shader (front or back-faces), *** back, if intersect near plane
@@ -170,6 +224,7 @@ void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
     Device.mView.transform_tiny(L_pos, L->position);
     Device.mView.transform_dir(L_dir, L->direction);
     L_dir.normalize();
+    DA_AC_MARK(g_da_ac_xf);
 
     // Draw volume with projective texgen
     {
@@ -191,6 +246,7 @@ void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
             m_Shadow = m_Lmap;
         }
         cmd_list.set_Element(shader->E[_id]);
+        DA_AC_MARK(g_da_ac_elem);
 
         cmd_list.set_CullMode(CULL_CW); // back
 
@@ -204,6 +260,7 @@ void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
         cmd_list.set_c("m_shadow", m_Shadow);
         cmd_list.set_ca("m_lmap", 0, m_Lmap._11, m_Lmap._21, m_Lmap._31, m_Lmap._41);
         cmd_list.set_ca("m_lmap", 1, m_Lmap._12, m_Lmap._22, m_Lmap._32, m_Lmap._42);
+        DA_AC_MARK(g_da_ac_const);
 
         // Fetch4 : enable
         //		if (RImplementation.o.HW_smap_FETCH4)	{
@@ -261,6 +318,7 @@ void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
         //			HW.pDevice->SetSamplerState	( 0, D3DSAMP_MIPMAPLODBIAS, FOURCC_GET1 );
         //		}
     }
+    DA_AC_MARK(g_da_ac_draw);
 
     // blend-copy
     if (!RImplementation.o.fp16_blend)
@@ -313,6 +371,9 @@ void CRenderTarget::accum_spot(CBackend& cmd_list, light* L)
     increment_light_marker(cmd_list);
 
     u_DBT_disable();
+    DA_AC_MARK(g_da_ac_tail);
+    if (da_prof)
+        ++g_da_ac_spot;
 }
 
 void CRenderTarget::accum_volumetric(CBackend& cmd_list, light* L)

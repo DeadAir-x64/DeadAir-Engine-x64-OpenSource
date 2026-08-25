@@ -826,6 +826,14 @@ float g_da_pass_state = 0.f, g_da_pass_shaders = 0.f, g_da_pass_const = 0.f, g_d
       g_da_pass_mat = 0.f;
 // [DA_PORT] Разбивка самого set_Constants — заполняется в dx11R_Backend_Runtime.h.
 float g_da_const_unmap = 0.f, g_da_const_shuffle = 0.f, g_da_const_bind = 0.f, g_da_const_loaders = 0.f;
+
+// [DA_PORT] Пропускать стадии конвейера, ни разу не получавшие буфер констант (r__cb_stage_skip).
+//
+// Замер r__graph_prof назвал перетасовку набора буферов самой дорогой частью настройки констант:
+// 0.77 мс на кадр. Работы там нет — обход шести стадий по 14 слотов на каждую смену прохода, а в
+// деле обычно две стадии: остальные четыре нужны тесселяции и вычислительным проходам. Ноль
+// возвращает прежний обход всех шести, чтобы сравнить в ОДНОЙ сборке.
+int ps_da_cb_stage_skip = 1;
 // [DA_PORT] Ожидание отсечения (HOM) — см. r2_R_calculate.cpp.
 float g_da_ms_hom_wait = 0.f;
 namespace

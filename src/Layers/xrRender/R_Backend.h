@@ -85,6 +85,16 @@ public:
     ref_cbuffer m_aHullConstants[MaxCBuffers];
     ref_cbuffer m_aDomainConstants[MaxCBuffers];
 
+    // [DA_PORT] Какие стадии конвейера хоть раз получали буфер констант: биты 0..5 —
+    // пиксельная, вершинная, геометрическая, оболочки, области, вычислительная.
+    //
+    // Настройка констант обходит ВСЕ шесть стадий по MaxCBuffers слотов — 84 слота на каждую
+    // смену прохода, а их в кадре под восемь сотен. В деле же обычно две стадии: остальные
+    // четыре существуют ради тесселяции и вычислительных проходов, и в сценах без них массивы
+    // пусты от начала до конца. Бит ставится при раскладке и НИКОГДА не снимается, поэтому
+    // пропуск не может потерять очистку уже занятой стадии.
+    u32 m_cbStageMask{ 0 };
+
     D3D_PRIMITIVE_TOPOLOGY m_PrimitiveTopology;
     ID3DInputLayout* m_pInputLayout;
     u32 dummy0; // Padding to avoid warning
@@ -616,7 +626,10 @@ private:
     void ApplyVertexLayout();
     void ApplyRTandZB();
     void ApplyPrimitieTopology(D3D_PRIMITIVE_TOPOLOGY Topology);
-    bool CBuffersNeedUpdate(ref_cbuffer buf1[MaxCBuffers], ref_cbuffer buf2[MaxCBuffers], u32& uiMin, u32& uiMax);
+    // [DA_PORT] Второй набор — СЫРЫЕ указатели: это снимок предыдущего состояния, владеть им
+    // не нужно. Прежняя версия принимала ref_cbuffer, и снятие снимка стоило 84 атомарных
+    // операции на каждую смену прохода. См. пояснение в dx11R_Backend_Runtime.h.
+    bool CBuffersNeedUpdate(ref_cbuffer buf1[MaxCBuffers], dx11ConstantBuffer* const buf2[MaxCBuffers], u32& uiMin, u32& uiMax);
 
 public:
     // [DA_PORT] Читает ли текущий вершинный шейдер развёртку. Разбор — у da_vs_needs_uv.

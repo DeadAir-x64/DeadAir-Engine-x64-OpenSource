@@ -67,6 +67,12 @@ extern double g_da_lp_pack;
 extern double g_da_lp_wait;
 extern double g_da_lp_smap;
 extern double g_da_lp_accum;
+// [DA_PORT] Разбор накопления по зонам — объявления в r3_rendertarget_accum_spot.cpp.
+extern int ps_da_accum_prof;
+extern double g_da_ac_rt, g_da_ac_mask, g_da_ac_xf, g_da_ac_elem, g_da_ac_const, g_da_ac_draw, g_da_ac_tail;
+extern u32 g_da_ac_spot;
+extern double g_da_ac_point;
+extern u32 g_da_ac_points;
 extern u32 g_da_lp_lights;
 extern u32 g_da_lp_accums;
 extern u32 g_da_lp_waves;
@@ -747,6 +753,23 @@ void CRender::Render()
         g_da_lp_wait = g_da_lp_smap = g_da_lp_accum = 0.0;
         g_da_lp_lights = g_da_lp_accums = g_da_lp_waves = g_da_lp_starved = g_da_lp_free_ctx = g_da_lp_max_flight = g_da_lp_queued = 0;
         --ps_da_light_prof;
+    }
+
+    // [DA_PORT] Разбор накопления по зонам: da_accum_prof N. Печатается отдельно от da_light_prof,
+    // потому что отвечает на следующий вопрос — не «сколько стоит накопление», а «из чего оно».
+    if (ps_da_accum_prof > 0)
+    {
+        const double total = g_da_ac_rt + g_da_ac_mask + g_da_ac_xf + g_da_ac_elem + g_da_ac_const +
+            g_da_ac_draw + g_da_ac_tail;
+        Msg("~ [DA_ACCUM] конусов %u | цель %5.3f | маска %5.3f | матрицы %5.3f | проход %5.3f | "
+            "константы %5.3f | отрисовка %5.3f | хвост %5.3f | всего %5.3f мс || точечных %u на %5.3f мс",
+            g_da_ac_spot, g_da_ac_rt, g_da_ac_mask, g_da_ac_xf, g_da_ac_elem, g_da_ac_const,
+            g_da_ac_draw, g_da_ac_tail, total, g_da_ac_points, g_da_ac_point);
+
+        g_da_ac_rt = g_da_ac_mask = g_da_ac_xf = g_da_ac_elem = g_da_ac_const = 0.0;
+        g_da_ac_draw = g_da_ac_tail = g_da_ac_point = 0.0;
+        g_da_ac_spot = g_da_ac_points = 0;
+        --ps_da_accum_prof;
     }
 
     // Postprocess

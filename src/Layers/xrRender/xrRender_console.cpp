@@ -1889,6 +1889,10 @@ void xrRender_initconsole()
         extern int ps_da_light_prof;
         CMD4(CCC_DaDebugInteger, "da_light_prof", &ps_da_light_prof, 0, 1000);
 
+        // [DA_PORT] Разбор самого накопления по зонам: цель / маска / матрицы / константы / отрисовка.
+        extern int ps_da_accum_prof;
+        CMD4(CCC_DaDebugInteger, "da_accum_prof", &ps_da_accum_prof, 0, 1000);
+
         // [DA_PORT] Не собирать статику при обходе для ламп. 0 — как было, 1 — только у ламп с
         // годным кэшем статики, 2 — у всех (⚠️ замер потолка, тени от статики пропадут).
         extern int ps_da_light_skip_static;
@@ -2128,6 +2132,10 @@ void xrRender_initconsole()
         // [DA_PORT] разбивка цикла отрисовки графа изнутри: где именно лежат миллисекунды prim.
         extern int ps_da_graph_prof;
         CMD4(CCC_DaDebugInteger, "r__graph_prof", &ps_da_graph_prof, 0, 1);
+
+        // [DA_PORT] Пропуск неиспользуемых стадий при настройке констант. 0 — прежний обход всех.
+        extern int ps_da_cb_stage_skip;
+        CMD4(CCC_DaDebugInteger, "r__cb_stage_skip", &ps_da_cb_stage_skip, 0, 1);
     }
     {
         // [DA_PORT] группировка проходов по таблице констант — включает ранний выход set_Constants.

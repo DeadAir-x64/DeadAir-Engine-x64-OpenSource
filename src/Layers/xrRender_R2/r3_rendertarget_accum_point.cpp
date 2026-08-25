@@ -2,8 +2,21 @@
 
 namespace xray::render::RENDER_NAMESPACE
 {
+
+// [DA_PORT] Счётчики разбора накопления живут в r3_rendertarget_accum_spot.cpp — там же пояснение.
+extern int ps_da_accum_prof;
+extern double g_da_ac_point;
+extern u32 g_da_ac_points;
+using da_ac_clock = std::chrono::high_resolution_clock;
 void CRenderTarget::accum_point(CBackend& cmd_list, light* L)
 {
+    // [DA_PORT] Точечные лампы прежним прибором НЕ покрывались вовсе: таймер стоял только на
+    // конусах (см. r3_rendertarget_accum_spot.cpp). Пока не знаем их долю — «накопление 0.33 мс»
+    // остаётся неполным числом, а неполное число уводит правку не туда.
+    const bool da_prof = ps_da_accum_prof > 0;
+    da_ac_clock::time_point da_t0;
+    if (da_prof)
+        da_t0 = da_ac_clock::now();
     phase_accumulator(cmd_list);
     RImplementation.Stats.l_visible++;
 
@@ -224,5 +237,11 @@ void CRenderTarget::accum_point(CBackend& cmd_list, light* L)
     increment_light_marker(cmd_list);
 
     u_DBT_disable();
+
+    if (da_prof)
+    {
+        g_da_ac_point += std::chrono::duration<double, std::milli>(da_ac_clock::now() - da_t0).count();
+        ++g_da_ac_points;
+    }
 }
 } // namespace xray::render::RENDER_NAMESPACE
