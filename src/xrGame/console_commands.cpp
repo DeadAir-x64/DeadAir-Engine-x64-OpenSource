@@ -3363,6 +3363,16 @@ void CCC_RegisterCommands()
         extern float ps_da_aim_align;
         CMD4(CCC_Float, "da_aim_align", &ps_da_aim_align, 0.f, 1.f);
 
+        // [DA_PORT] ВРЕМЕННЫЙ след анимаций рук: какой цикл, у какого ствола, на какие части модели.
+        // Разбор — у объявления в player_hud.cpp.
+        extern int ps_da_anim_trace;
+        CMD4(CCC_Integer, "da_anim_trace", &ps_da_anim_trace, 0, 1);
+
+        // [DA_PORT] Скорость переезда посадки руки в скриптовой сцене: вход и выход, доля в секунду.
+        extern float ps_da_scene_seat_in, ps_da_scene_seat_out;
+        CMD4(CCC_Float, "da_scene_seat_in", &ps_da_scene_seat_in, 0.5f, 20.f);
+        CMD4(CCC_Float, "da_scene_seat_out", &ps_da_scene_seat_out, 0.5f, 40.f);
+
         // [DA_PORT] Печать подобранного положения оружия В ГОТОВОМ ВИДЕ ДЛЯ .ltx.
         //
         // Зачем именно так. Во всей линейке X-Ray выравнивание мушки — РУЧНАЯ работа по конфигу

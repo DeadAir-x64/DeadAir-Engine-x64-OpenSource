@@ -540,6 +540,23 @@ void hud_item_measures::update(Fmatrix& attach_offset)
     attach_offset.translate_over(m_item_attach[0]);
 }
 
+// [DA_PORT] ВРЕМЕННЫЙ след анимаций рук: da_anim_trace 1.
+//
+// Повод: у части стволов одноручная сцена подбора не видна — левая рука не двигается, оружие просто
+// уезжает вниз. Первый прибор (он писал только во время сцены) показал, что цикл сцены ложится
+// правильно и никто его во время сцены не перебивает. Значит различие где-то ещё, и сравнивать надо
+// ДВА прогона целиком — на сломанном стволе и на рабочем, — а для этого в записи должно стоять имя
+// ствола. Отдельная ручка, потому что пишется каждая смена цикла рук, а их за секунду много.
+int ps_da_anim_trace = 0;
+
+// [DA_PORT] Скорость переезда посадки занятой руки, доля в секунду: вход и выход.
+//
+// У первоисточника это 2.5 и 5. Вход медленный намеренно — рука не должна «клевать» на старте. А на
+// ВЫХОДЕ ждать нечего: цикл доигран, руке остаётся только вернуться на ствол, и полсекунды здесь
+// читаются как задержка. Поэтому выход быстрее.
+float ps_da_scene_seat_in = 2.5f;
+float ps_da_scene_seat_out = 9.f;
+
 attachable_hud_item::~attachable_hud_item()
 {
     IRenderVisual* v = m_model->dcast_RenderVisual();
@@ -607,6 +624,18 @@ u32 attachable_hud_item::anim_play(const shared_str& anm_name_b, BOOL bMixIn, co
     const motion_descr& M = anm->m_animations[rnd_idx];
 
     IKinematicsAnimated* ka = smart_cast<IKinematicsAnimated*>(m_model);
+
+    // [DA_PORT] ВРЕМЕННЫЙ прибор: кто играет на руках, пока идёт скриптовая сцена.
+    //
+    // Повод: у части стволов одноручная сцена подбора не видна — рука не двигается, оружие просто
+    // уезжает вниз. Ошибок в логе при этом НЕТ, цикл сцены находится и запускается. Значит его
+    // затирают, и затирать может только сам ствол: его цикл покоя ложится в том числе на нулевую
+    // часть модели, а она общая для обеих рук. Кто и когда переигрывает — видно только отсюда.
+    if (ps_da_anim_trace || (m_parent && m_parent->da_script_anim_active()))
+        Msg("~ [DA_ANIM] ствол [%s] играет [%s] (место %u, подмешивание %s, сцена идёт %s)",
+            m_sect_name.c_str(), anim_name_r, u32(m_attach_place_idx), bMixIn ? "да" : "нет",
+            (m_parent && m_parent->da_script_anim_active()) ? "ДА" : "нет");
+
     const u32 ret = m_parent->anim_play(m_attach_place_idx, M.mid, bMixIn, md, speed, m_monolithic ? ka : nullptr);
 
     if (ka)
@@ -682,6 +711,12 @@ player_hud::~player_hud()
         GEnv.Render->model_Delete(v);
     }
 
+    if (m_model_2)
+    {
+        IRenderVisual* v = m_model_2->dcast_RenderVisual();
+        GEnv.Render->model_Delete(v);
+    }
+
     for (auto& [name, item] : m_pool)
     {
         xr_delete(item);
@@ -703,6 +738,13 @@ void player_hud::load(const shared_str& player_hud_sect)
         GEnv.Render->model_Delete(v);
     }
 
+    if (m_model_2)
+    {
+        IRenderVisual* v = m_model_2->dcast_RenderVisual();
+        GEnv.Render->model_Delete(v);
+        m_model_2 = nullptr;
+    }
+
     if (!pSettings->section_exist(m_sect_name))
     {
         if (b_reload)
@@ -719,12 +761,45 @@ void player_hud::load(const shared_str& player_hud_sect)
 
     const shared_str& model_name = pSettings->r_string(m_sect_name, "visual");
     m_model = smart_cast<IKinematicsAnimated*>(GEnv.Render->model_Create(model_name.c_str()));
+
+    // [DA_PORT] Вторая копия ТОЙ ЖЕ модели: у первой прячем левую руку, у второй правую.
+    //
+    // Идентификаторы костей и наборов движений у копий совпадают — модель одна, — поэтому цикл,
+    // найденный по первой, законно играется на второй, а список привязок общий.
+    //
+    // ⚠️ Имя кости плеча у разных сборок разное: у первоисточника l_clavicle, у моделей от CoC
+    // встречается bip01_l_clavicle. Перебираем оба и говорим вслух, если не нашли ни одного —
+    // без сокрытия руки задвоятся, и это надо видеть в логе, а не разгадывать по экрану.
+    m_model_2 = smart_cast<IKinematicsAnimated*>(GEnv.Render->model_Create(model_name.c_str()));
+    if (m_model && m_model_2)
+    {
+        const auto da_hide_arm = [&](IKinematicsAnimated* model, pcstr n1, pcstr n2, pcstr side)
+        {
+            IKinematics* k = model->dcast_PKinematics();
+            u16 id = k->LL_BoneID(n1);
+            if (id == BI_NONE)
+                id = k->LL_BoneID(n2);
+            if (id == BI_NONE)
+            {
+                Msg("! [DA_PORT] руки: не нашёл кость %s плеча (%s / %s) в [%s] — половинки рук "
+                    "задвоятся", side, n1, n2, model_name.c_str());
+                return;
+            }
+            k->LL_SetBoneVisible(id, FALSE, TRUE);
+        };
+
+        da_hide_arm(m_model, "l_clavicle", "bip01_l_clavicle", "левого");
+        da_hide_arm(m_model_2, "r_clavicle", "bip01_r_clavicle", "правого");
+    }
+
     load_ancors();
     // Msg("hands visual changed to [%s] [%s] [%s]", model_name.c_str(), b_reload ? "R" : "", m_attached_items[0] ? "Y" : "");
 
     if (!b_reload)
     {
         m_model->PlayCycle("hand_idle_doun");
+        if (m_model_2)
+            m_model_2->PlayCycle("hand_idle_doun");
     }
     else
     {
@@ -736,6 +811,34 @@ void player_hud::load(const shared_str& player_hud_sect)
     }
     m_model->dcast_PKinematics()->CalculateBones_Invalidate();
     m_model->dcast_PKinematics()->CalculateBones(TRUE);
+    if (m_model_2)
+    {
+        m_model_2->dcast_PKinematics()->CalculateBones_Invalidate();
+        m_model_2->dcast_PKinematics()->CalculateBones(TRUE);
+    }
+}
+
+// [DA_PORT] Посадка половины рук: 0 — правая, 1 — левая.
+//
+// Если своего предмета у половины нет, берём посадку чужого: одиночный ствол держат ДВЕ руки, и
+// левая обязана стоять там же, где правая. Пустые руки садятся по секции сцены — иначе они встают
+// в начало координат интерфейса, то есть заметно не там, где задумано.
+Fvector player_hud::da_attach_pos(u8 part) const
+{
+    if (m_attached_items[part])
+        return m_attached_items[part]->hands_attach_pos();
+    if (m_attached_items[part ? 0 : 1])
+        return m_attached_items[part ? 0 : 1]->hands_attach_pos();
+    return m_da_script_hands_pos;
+}
+
+Fvector player_hud::da_attach_rot(u8 part) const
+{
+    if (m_attached_items[part])
+        return m_attached_items[part]->hands_attach_rot();
+    if (m_attached_items[part ? 0 : 1])
+        return m_attached_items[part ? 0 : 1]->hands_attach_rot();
+    return m_da_script_hands_rot;
 }
 
 void player_hud::load_ancors()
@@ -795,6 +898,10 @@ void player_hud::render_hud(u32 context_id, IRenderable* root)
 
     if (m_model)
         GEnv.Render->add_Visual(context_id, root, m_model->dcast_RenderVisual(), m_transform);
+
+    // [DA_PORT] Вторая половина рук — своя матрица, своя посадка. Разбор у объявления m_model_2.
+    if (m_model_2)
+        GEnv.Render->add_Visual(context_id, root, m_model_2->dcast_RenderVisual(), m_transform_2);
 
     // ⛔ Во время скриптовой сцены чужие предметы в руках НЕ рисуем.
     //
@@ -863,62 +970,77 @@ void player_hud::update(const Fmatrix& cam_trans)
     }
 
     update_inertion(trans);
-    update_additional(trans);
 
     attachable_hud_item* item0 = m_attached_items[0];
     attachable_hud_item* item1 = m_attached_items[1];
 
+    // [DA_PORT] Надстройки предметов идут КАЖДАЯ В СВОЮ половину: оружие правит правую матрицу,
+    // предмет левой руки — левую. Прежде обе ложились на одну, и качка от оружия ехала по всему
+    // костяку. trans_b — состояние ДО надстроек: к нему возвращается рука, отданная сцене.
+    const Fmatrix trans_b = trans;
+    Fmatrix trans_2 = trans;
+
+    if (item0)
+        item0->update_hud_additional(trans);
+    if (item1)
+        item1->update_hud_additional(trans_2);
+
+    if (item0 && !item1)
+        trans_2 = trans;
+    else if (item1 && !item0)
+        trans = trans_2;
+
     const bool monolithic = item0 && item0->m_monolithic || item1 && item1->m_monolithic;
     if (!m_model || monolithic)
+    {
         m_transform = trans;
+        m_transform_2 = trans_2;
+    }
     else
     {
-        Fvector ypr{};
-        // [DA_PORT] ⚠️ Во время скриптовой сцены посадку рук задаёт СЦЕНА, а не предмет в руках.
+        // [DA_PORT] Посадка рук — ПО ПОЛОВИНАМ. Разбор устройства у объявления m_model_2.
         //
-        // Здесь проверка шла только на наличие предмета, и при живом оружии посадка бралась из его
-        // конфига — выверенная под держание ствола. Сцена же нарисована от своей посадки, поэтому
-        // руки стартовали не оттуда: на экране это читалось как рывок снизу вверх.
-        //
-        // Ровно этим объясняется, почему с пустыми руками всё выглядело правильно: там предмета
-        // нет, и до нашей ветки исполнение доходило.
-        //
-        // ⛔ Убрать оружие заранее не помогает: hide_weapon прячет HUD, но attachable_hud_item
-        // остаётся прикреплённым, и item0 продолжает быть не пустым. Проверено замером: слот и
-        // active_item не менялись все 60 тактов ожидания.
-        // ⚠️ Для ОДНОРУКОЙ сцены посадку не перебиваем: вторая рука держит оружие, и она обязана
-        // остаться там, где её ставит конфиг ствола.
-        const bool da_scene = da_script_anim_active() && !m_da_script_one_hand;
+        // Две копии модели дают то, чего не было с одной: правой руке можно оставить посадку
+        // ствола, а левой отдать посадку сцены. Раньше выбор был один на обе, и одноручная сцена
+        // обязана была врать: цикл нарисован от своей посадки, а жил на оружейной.
+        Fvector m1pos = da_attach_pos(0), m2pos = da_attach_pos(1);
+        Fvector m1rot = da_attach_rot(0), m2rot = da_attach_rot(1);
 
-        if (da_scene)
-            ypr = m_da_script_hands_rot;
-        else if (item0)
-            ypr = item0->hands_attach_rot();
-        else if (item1)
-            ypr = item1->hands_attach_rot();
-        else
-            // [DA_PORT] Предмета нет — поворот рук тоже берём из секции скриптовой анимации.
-            //
-            // Раньше здесь оставался ноль, и читалось только положение. Секция задаёт посадку
-            // ПАРОЙ, как и у обычного ствола (hands_position + hands_orientation), поэтому у сцен
-            // с заданным поворотом руки вставали развёрнутыми не туда — а предмет в них считается
-            // ОТ ЭТОЙ ЖЕ матрицы и уезжал вместе с ними.
-            ypr = m_da_script_hands_rot;
+        const bool da_scene = da_script_anim_active();
 
-        ypr.mul(PI / 180.f);
-        m_attach_offset.setHPB(ypr.x, ypr.y, ypr.z);
+        if (da_scene && (m_da_script_hand == 2 || (!item0 && !item1)))
+        {
+            // Сцена владеет обеими руками (или в руках вовсе ничего) — посадка целиком её.
+            m1pos = m2pos = m_da_script_hands_pos;
+            m1rot = m2rot = m_da_script_hands_rot;
+            trans = trans_b;
+            trans_2 = trans_b;
+        }
+        else if (m_da_script_seat_k > 0.f)
+        {
+            // Одноручная сцена: посадка ЗАНЯТОЙ руки плавно переезжает к посадке сцены, вторая
+            // остаётся на посадке своего предмета. Плавно — иначе рука прыгает на входе и выходе;
+            // сам множитель ведётся в конце update.
+            const bool right = (m_da_script_hand_seat == 0);
+            Fvector& hp = right ? m1pos : m2pos;
+            Fvector& hr = right ? m1rot : m2rot;
+            hp.lerp(hp, m_da_script_hands_pos, m_da_script_seat_k);
+            hr.lerp(hr, m_da_script_hands_rot, m_da_script_seat_k);
 
-        Fvector tmp{};
-        if (da_scene)
-            tmp = m_da_script_hands_pos;
-        else if (item0)
-            tmp = item0->hands_attach_pos();
-        else if (item1)
-            tmp = item1->hands_attach_pos();
-        else
-            // [DA_PORT] Предмета нет — берём посадку рук из секции скриптовой анимации.
-            // Без этого руки встают в начало координат HUD, то есть заметно не там, где задумано.
-            tmp = m_da_script_hands_pos;
+            Fmatrix tb = trans_b;
+            if (right)
+            {
+                tb.inertion(trans, m_da_script_seat_k);
+                trans = tb;
+            }
+            else
+            {
+                tb.inertion(trans_2, m_da_script_seat_k);
+                trans_2 = tb;
+            }
+        }
+
+        Fvector tmp = m1pos;
 
         // [DA_PORT] Поправка игрока к положению оружия в руках, МЕТРЫ.
         //
@@ -970,12 +1092,32 @@ void player_hud::update(const Fmatrix& cam_trans)
             tmp.z += ps_da_hud_pos_z * da_k;
         }
 
-        m_attach_offset.translate_over(tmp);
+        // Поправка игрока сдвигает ВЕСЬ узел рук, поэтому ложится на обе половины одинаково.
+        const Fvector da_shift = { tmp.x - m1pos.x, tmp.y - m1pos.y, tmp.z - m1pos.z };
+        m1pos = tmp;
+        m2pos.add(da_shift);
+
+        m1rot.mul(PI / 180.f);
+        m_attach_offset.setHPB(m1rot.x, m1rot.y, m1rot.z);
+        m_attach_offset.translate_over(m1pos);
+
+        m2rot.mul(PI / 180.f);
+        m_attach_offset_2.setHPB(m2rot.x, m2rot.y, m2rot.z);
+        m_attach_offset_2.translate_over(m2pos);
+
         m_transform.mul(trans, m_attach_offset);
+        m_transform_2.mul(trans_2, m_attach_offset_2);
 
         m_model->UpdateTracks();
         m_model->dcast_PKinematics()->CalculateBones_Invalidate();
         m_model->dcast_PKinematics()->CalculateBones(TRUE);
+
+        if (m_model_2)
+        {
+            m_model_2->UpdateTracks();
+            m_model_2->dcast_PKinematics()->CalculateBones_Invalidate();
+            m_model_2->dcast_PKinematics()->CalculateBones(TRUE);
+        }
     }
 
     // [DA_PORT] Кости предмета скриптовой сцены двигаем ТУТ ЖЕ, раз в кадр.
@@ -993,16 +1135,24 @@ void player_hud::update(const Fmatrix& cam_trans)
         // разу на каждый контекст — считать в ней одно и то же несколько раз незачем.
         if (m_da_script_item_attached)
         {
-            IKinematics* k = m_model ? smart_cast<IKinematics*>(m_model) : nullptr;
+            // [DA_PORT] Предмет сцены висит на ТОЙ ЖЕ половине, что и её рука: иначе он считался бы
+            // от правой матрицы, пока рука с ним живёт на левой, и уезжал бы от ладони.
+            // lh_lead_gun — просьба секции взять точку хвата оружия, то есть правую, независимо от
+            // играющей руки; она и решает выбор половины.
             const u16 idx = m_da_script_item_lead_gun ? u16(0) : m_da_script_item_attach;
+            const bool left = !m_da_script_item_lead_gun && (m_da_script_hand == 1) && m_model_2;
+            IKinematicsAnimated* model = left ? m_model_2 : m_model;
+            const Fmatrix& base = left ? m_transform_2 : m_transform;
+
+            IKinematics* k = model ? smart_cast<IKinematics*>(model) : nullptr;
             if (k && idx < m_ancors.size())
             {
                 const Fmatrix ancor = k->LL_GetTransform(m_ancors[idx]);
-                m_da_script_item_transform.mul(m_transform, ancor);
+                m_da_script_item_transform.mul(base, ancor);
                 m_da_script_item_transform.mulB_43(m_da_script_item_offset);
             }
             else
-                m_da_script_item_transform.mul(m_transform, m_da_script_item_offset);
+                m_da_script_item_transform.mul(base, m_da_script_item_offset);
         }
         else
             m_da_script_item_transform.mul(m_transform, m_da_script_item_offset);
@@ -1018,34 +1168,100 @@ void player_hud::update(const Fmatrix& cam_trans)
 
     if (item1)
         item1->update(true);
+
+    // [DA_PORT] Рука снимается с задачи, как только СВОЙ цикл доигран — не дожидаясь, пока скрипт
+    // позовёт остановку.
+    //
+    // Зачем. Скрипт закрывает сцену по своему расписанию (у обыска это отдельное событие времени), и
+    // между «цикл кончился» и «скрипт спохватился» рука висела в последней позе. Отпустить замок
+    // раньше безопасно: сцену как таковую мы не разбираем — ни предмет, ни отрисовку не трогаем, —
+    // только возвращаем руке право играть покой ствола. Полную уборку по-прежнему делает остановка.
+    if (m_da_script_hand != u8(-1) && m_da_script_one_hand && m_da_script_anim_end &&
+        Device.dwTimeGlobal >= m_da_script_anim_end)
+    {
+        m_da_script_hand = u8(-1);
+        if (attachable_hud_item* hi = m_attached_items[0])
+            if (hi->m_parent_hud_item)
+                hi->m_parent_hud_item->PlayAnimIdle();
+    }
+
+    // Переезд посадки: вход медленный, выход быстрый — разбор у объявления ps_da_scene_seat_in.
+    if (m_da_script_hand != u8(-1))
+        m_da_script_seat_k += Device.fTimeDelta * ps_da_scene_seat_in;
+    else
+        m_da_script_seat_k -= Device.fTimeDelta * ps_da_scene_seat_out;
+
+    clamp(m_da_script_seat_k, 0.f, 1.f);
 }
 
+// [DA_PORT] Раскладка цикла по копиям модели рук — устройство перенесено из первоисточника.
+//
+// Половин две: правая живёт на m_model, левая на m_model_2 (у каждой копии спрятана чужая рука).
+// Отсюда и замок: пока скриптовая сцена владеет рукой, обычная анимация предмета на неё не идёт —
+// раньше её перебивал цикл покоя ствола, потому что модель была одна и нулевая часть костяка
+// доставалась тому, кто сыграл последним.
+//
+// Правая копия играет части 0 и 2, левая — 0, 1 и 2. Разница не опечатка: у правой части 1 отвечает
+// за спрятанную левую руку, и трогать её незачем.
+void player_hud::da_play_blend(u16 pid, const MotionID& M, BOOL bMixIn, float speed, bool script_anim)
+{
+    switch (pid)
+    {
+    case 0: // обе руки
+    {
+        if (!script_anim && m_da_script_hand == 2)
+            return;
+        // ⚠️ Вниз уходим БЕЗ признака сцены: каждая половина проверяет свой замок сама. Иначе
+        // двурукая сцена сняла бы замок и с той руки, которой владеет другая сцена.
+        da_play_blend(1, M, bMixIn, speed, false);
+        da_play_blend(2, M, bMixIn, speed, false);
+        break;
+    }
+    case 1: // левая
+    {
+        if (!script_anim && m_da_script_hand == 1)
+            return;
+        if (!m_model_2)
+            return;
+        const u16 pc = m_model_2->partitions().count();
+        for (u16 i = 0; i < pc; ++i)
+        {
+            if (CBlend* B = m_model_2->PlayCycle(i, M, bMixIn))
+                B->speed *= speed;
+        }
+        m_model_2->dcast_PKinematics()->CalculateBones_Invalidate();
+        break;
+    }
+    case 2: // правая
+    {
+        if (!script_anim && m_da_script_hand == 0)
+            return;
+        if (!m_model)
+            return;
+        const u16 pc = m_model->partitions().count();
+        for (u16 i = 0; i < pc; ++i)
+        {
+            if (i == 1)
+                continue;
+            if (CBlend* B = m_model->PlayCycle(i, M, bMixIn))
+                B->speed *= speed;
+        }
+        m_model->dcast_PKinematics()->CalculateBones_Invalidate();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+// part: 0 — предмет правой руки (оружие), 1 — предмет левой (детектор).
 u32 player_hud::anim_play(u16 part, const MotionID& M, BOOL bMixIn, const CMotionDef*& md, float speed, IKinematicsAnimated* itemModel)
 {
     if (!itemModel && m_model)
     {
-        u16 part_id = u16(-1);
-        if (attached_item(0) && attached_item(1))
-            part_id = m_model->partitions().part_id((part == 0) ? "right_hand" : "left_hand");
-        // [DA_PORT] Однорукая скриптовая сцена: цикл ложится ТОЛЬКО на свою руку.
-        //
-        // Стоковое условие выше требует занятых обеих рук - для двурукого хвата. Сцене этого мало:
-        // она хочет двигать левой, пока правая держит ствол. Части модели те же самые, поэтому
-        // достаточно разрешить их выбор ещё и здесь.
-        else if (m_da_script_one_hand)
-            part_id = m_model->partitions().part_id((part == 0) ? "right_hand" : "left_hand");
-
-        const u16 pc = m_model->partitions().count();
-        for (u16 pid = 0; pid < pc; ++pid)
-        {
-            if (pid == 0 || pid == part_id || part_id == u16(-1))
-            {
-                CBlend* B = m_model->PlayCycle(pid, M, bMixIn);
-                R_ASSERT(B);
-                B->speed *= speed;
-            }
-        }
-        m_model->dcast_PKinematics()->CalculateBones_Invalidate();
+        // Один предмет ведёт ОБЕ руки: он в них и держится двумя. Два предмета — каждый свою.
+        const u16 pid = (attached_item(0) && attached_item(1)) ? ((part == 0) ? u16(2) : u16(1)) : u16(0);
+        da_play_blend(pid, M, bMixIn, speed, false);
     }
 
     return motion_length(M, md, speed, itemModel);
@@ -1249,10 +1465,21 @@ u32 player_hud::da_script_anim_play(u8 hand, pcstr section, pcstr anim, bool mix
     // оружие и рисоваться. Признак нужен трём местам сразу — выбору части в anim_play, посадке рук
     // и отрисовке прикреплённого, поэтому он поле, а не довод.
     m_da_script_one_hand = (hand != 2);
-    const u16 part = (hand == 1) ? 1 : 0;
+    // Замок владения: пока сцена держит руку, цикл предмета на неё не ложится (см. da_play_blend).
+    m_da_script_hand = hand;
+    m_da_script_hand_seat = (hand == 0) ? u8(0) : u8(1);
+    // Половина модели: обе — 0, правая — 2, левая — 1. Соответствие взято из первоисточника.
+    const u16 part = (hand == 2) ? u16(0) : (hand == 0 ? u16(2) : u16(1));
+
+    Msg("~ [DA_ANIM] сцена: секция [%s], цикл [%s] -> движение [%s], рука %u, длина %u мс, "
+        "прикреплено [%s] + [%s]",
+        section, anim, M.name.c_str(), u32(hand), target_ms,
+        m_attached_items[0] ? m_attached_items[0]->m_sect_name.c_str() : "-",
+        m_attached_items[1] ? m_attached_items[1]->m_sect_name.c_str() : "-");
 
     const CMotionDef* md = nullptr;
-    const u32 length = anim_play(part, M.mid, mix_in ? TRUE : FALSE, md, eff_speed, nullptr);
+    da_play_blend(part, M.mid, mix_in ? TRUE : FALSE, eff_speed, true);
+    const u32 length = motion_length(M.mid, md, eff_speed, nullptr);
 
     m_da_script_anim_end = length ? (Device.dwTimeGlobal + length) : 0;
     m_da_script_anim_on = true;
@@ -1274,8 +1501,10 @@ void player_hud::da_script_item_release()
 
 void player_hud::da_script_anim_stop()
 {
-    if (m_da_script_anim_on)
-
+    // [DA_PORT] Здесь стоял `if (m_da_script_anim_on)` БЕЗ тела: телом молча становилась следующая
+    // строка, а всё остальное шло безусловно. Проверка ничего не охраняла. Снятие модели предмета и
+    // так безвредно при пустой сцене, поэтому поведение оставлено прежним, а обманчивая строка
+    // убрана: следующий читающий не должен думать, что тут есть заслон.
     da_script_item_release();
 
     // [DA_PORT] После ОДНОРУКОЙ сцены просим оружие переиграть покой.
@@ -1293,6 +1522,8 @@ void player_hud::da_script_anim_stop()
                 hi->m_parent_hud_item->PlayAnimIdle();
     }
     m_da_script_one_hand = false;
+    // Снимаем замок владения — с этого мига предмет снова волен играть на своей руке.
+    m_da_script_hand = u8(-1);
 
     m_da_script_anim_on = false;
     // Гасим только СВОЮ отметку. Насильно обрывать цикл незачем: если в руках есть предмет, его
@@ -1593,17 +1824,23 @@ void player_hud::detach_item(CHudItem* item)
 
 void player_hud::calc_transform(u16 attach_slot_idx, const Fmatrix& offset, Fmatrix& result) const
 {
+    // [DA_PORT] Предмет считается от СВОЕЙ половины рук: нулевая привязка живёт на правой копии,
+    // первая на левой. Раньше обе брались от одной модели, и предмет левой руки ехал за правой.
+    const bool left = (attach_slot_idx != 0) && (m_model_2 != nullptr);
+    IKinematicsAnimated* model = left ? m_model_2 : m_model;
+    const Fmatrix& base = left ? m_transform_2 : m_transform;
+
     const attachable_hud_item* item = m_attached_items[attach_slot_idx];
-    if (item && !item->m_monolithic)
+    if (item && !item->m_monolithic && model && attach_slot_idx < m_ancors.size())
     {
-        IKinematics* k = smart_cast<IKinematics*>(m_model);
+        IKinematics* k = smart_cast<IKinematics*>(model);
         const Fmatrix ancor_m = k->LL_GetTransform(m_ancors[attach_slot_idx]);
-        result.mul(m_transform, ancor_m);
+        result.mul(base, ancor_m);
         result.mulB_43(offset);
     }
     else
     {
-        result.mul(m_transform, offset);
+        result.mul(base, offset);
         VERIFY(!fis_zero(DET(result)));
     }
 }

@@ -149,6 +149,14 @@ public:
     };
 
     void calc_transform(u16 attach_slot_idx, const Fmatrix& offset, Fmatrix& result) const;
+
+    // [DA_PORT] Раскладка цикла по КОПИЯМ модели рук. Разбор — у определения в player_hud.cpp.
+    //   pid 0 — обе руки, 1 — левая (m_model_2), 2 — правая (m_model).
+    // script_anim: цикл ставит скриптовая сцена, замок владения на неё не действует.
+    void da_play_blend(u16 pid, const MotionID& M, BOOL bMixIn, float speed, bool script_anim);
+    // Посадка рук по половинам: 0 — правая, 1 — левая. Если своего предмета нет, берётся чужой.
+    Fvector da_attach_pos(u8 part) const;
+    Fvector da_attach_rot(u8 part) const;
     void tune(Ivector values);
     u32 motion_length(const MotionID& M, const CMotionDef*& md, float speed, IKinematicsAnimated* itemModel) const;
     u32 motion_length(const shared_str& anim_name, const shared_str& hud_name, const CMotionDef*& md);
@@ -209,6 +217,29 @@ private:
 
     Fmatrix m_transform{ Fidentity };
     IKinematicsAnimated* m_model{};
+
+    // [DA_PORT] ВТОРАЯ КОПИЯ модели рук — только левая рука. Разбор у player_hud::load.
+    //
+    // Посадка рук (hands_position/orientation) — одна матрица на костяк. Пока модель одна, левую и
+    // правую руку нельзя посадить порознь, и одноручная сцена обязана быть кривой: цикл нарисован
+    // от своей посадки, а живёт на посадке ствола. Две копии одной модели с разными спрятанными
+    // руками дают каждой половине СВОЮ матрицу, свою посадку и свою анимацию.
+    IKinematicsAnimated* m_model_2{};
+    Fmatrix m_transform_2{ Fidentity };
+    Fmatrix m_attach_offset_2{};
+
+    // Какой рукой владеет скриптовая сцена: 0 — правая, 1 — левая, 2 — обе, u8(-1) — ничем.
+    // Пока владеет, оружие на эту руку играть не может (замок в da_play_blend).
+    u8 m_da_script_hand{ u8(-1) };
+    // Плавный переезд посадки занятой руки к посадке сцены: 0 — посадка предмета, 1 — сцены.
+    // Набор 2.5 в секунду, спад 5 — как в первоисточнике: иначе рука прыгает на входе и выходе.
+    float m_da_script_seat_k{ 0.f };
+    // Чья посадка переезжает: 0 — правая, 1 — левая. Помним ОТДЕЛЬНО от m_da_script_hand, потому
+    // что после конца сцены владение снимается сразу, а посадка возвращается ещё полсекунды —
+    // и возвращать её надо той же руке, а не первой попавшейся.
+    u8 m_da_script_hand_seat{ 1 };
+
+    // Кости у обеих копий одинаковые (модель одна), поэтому список привязок общий.
     xr_vector<u16> m_ancors;
     attachable_hud_item* m_attached_items[2]{};
     xr_unordered_map<shared_str, attachable_hud_item*> m_pool;
