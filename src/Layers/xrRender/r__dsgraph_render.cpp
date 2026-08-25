@@ -823,11 +823,14 @@ float g_da_pass_state = 0.f, g_da_pass_shaders = 0.f, g_da_pass_const = 0.f, g_d
       g_da_pass_mat = 0.f;
 // [DA_PORT] Разбивка самого set_Constants — заполняется в dx11R_Backend_Runtime.h.
 float g_da_const_unmap = 0.f, g_da_const_shuffle = 0.f, g_da_const_bind = 0.f, g_da_const_loaders = 0.f;
+// [DA_PORT] Ожидание отсечения (HOM) — см. r2_R_calculate.cpp.
+float g_da_ms_hom_wait = 0.f;
 namespace
 {
 struct da_graph_prof
 {
     float sort_passes{}, sort_items{}, setup{}, setup_pass{}, setup_lmat{}, draw{}, matrix{};
+    float maps{}, whole{}; // [DA_PORT] обслуживание карт проходов и весь цикл целиком
     u32 passes{}, items{}, mat_items{};
     float last_report{-1000.f};
 };
@@ -842,6 +845,10 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
 {
     PIX_EVENT_CTX(cmd_list, dsgraph_render_graph);
     RImplementation.BasicStats.Primitives.Begin(); // XXX: Refactor a bit later
+
+    CTimer da_whole;
+    if (ps_da_graph_prof)
+        da_whole.Start();
 
     // [DA_PORT] instance-probe: печатаем прошлый кадр и обнуляем счётчики на новый. Только для
     // основного цветового прохода — теневые каскады и лампы считать не даём, иначе цифры смешают
@@ -885,11 +892,16 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                 continue;
             }
 
-            map.get_any_p(nrmPasses);
             CTimer da_t;
             const bool da_prof = ps_da_graph_prof != 0;
             if (da_prof)
                 da_t.Start();
+            map.get_any_p(nrmPasses);
+            if (da_prof)
+            {
+                da_graph_prof_get().maps += da_t.GetElapsed_sec() * 1000.f;
+                da_t.Start();
+            }
             std::sort(nrmPasses.begin(), nrmPasses.end(), cmp_pass<mapNormal_T::value_type*>);
             if (da_prof)
                 da_graph_prof_get().sort_passes += da_t.GetElapsed_sec() * 1000.f;
@@ -989,12 +1001,16 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                     items.clear();
 
             }
+            if (da_prof)
+                da_t.Start();
             nrmPasses.clear();
             if (!da_keep)
             {
                 map.clear();
                 invalidate_pass_item_cache(_priority, iPass); // [DA_PORT] карта очищена — указатель мёртв
             }
+            if (da_prof)
+                da_graph_prof_get().maps += da_t.GetElapsed_sec() * 1000.f;
         }
     }
 
@@ -1083,6 +1099,7 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
     if (ps_da_graph_prof)
     {
         da_graph_prof& P = da_graph_prof_get();
+        P.whole += da_whole.GetElapsed_sec() * 1000.f;
         static u32 frames = 0;
         static u32 last_frame = u32(-1);
         if (last_frame != Device.dwFrame)
@@ -1093,6 +1110,12 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
         if (Device.fTimeGlobal - P.last_report > 1.f && frames)
         {
             const float k = 1.f / float(frames);
+            {
+                extern float g_da_ms_hom_wait;
+                Msg("~ [DA_GRAPH] на кадр: ВЕСЬ ЦИКЛ %5.3f | карты %5.3f | ожидание отсечения %5.3f",
+                    P.whole * k, P.maps * k, g_da_ms_hom_wait * k);
+                g_da_ms_hom_wait = 0.f;
+            }
             Msg("~ [DA_GRAPH] на кадр: сорт.проходов %5.3f | настройка %5.3f = проход %5.3f + "
                 "материал %5.3f (проходов %u) | сорт.объектов %5.3f | отрисовка %5.3f (объектов %u) | "
                 "динамика %5.3f",
