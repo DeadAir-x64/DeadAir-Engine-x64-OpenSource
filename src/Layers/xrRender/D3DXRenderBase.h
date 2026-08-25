@@ -95,7 +95,17 @@ public:
         // а в раздаче контекстов.
         // Поиск оставлен обычным циклом: у конкурента здесь std::countr_zero, но <bit> в этой
         // единице трансляции недоступен, а перебор четырёх битов ничего не стоит.
-        constexpr auto parallel_mask = (1ul << R__NUM_PARALLEL_CONTEXTS) - 1;
+        // [DA_PORT] r__max_parallel_ctx — сколько контекстов РАЗДАВАТЬ, при том что собрано их
+        // R__NUM_PARALLEL_CONTEXTS. Нужна для честного сравнения: число контекстов задаётся на
+        // компиляции, и без этой ручки каждый замер требовал бы полной пересборки всего движка
+        // (макрос меняет размер vis_data, лежащей внутри каждого визуала).
+        //
+        // ⚠️ Ниже трёх опускать нельзя: три контекста забирают каскады солнца. Зажимаем снизу.
+        extern int ps_da_max_parallel_ctx;
+        const u32 limit = (ps_da_max_parallel_ctx <= 0)
+            ? R__NUM_PARALLEL_CONTEXTS
+            : u32(std::min<int>(ps_da_max_parallel_ctx, R__NUM_PARALLEL_CONTEXTS));
+        const auto parallel_mask = (1ul << (limit < 4u ? 4u : limit)) - 1;
         const auto available = ~contexts_used.to_ulong() & parallel_mask;
         if (!available)
             return R_dsgraph_structure::INVALID_CONTEXT_ID;

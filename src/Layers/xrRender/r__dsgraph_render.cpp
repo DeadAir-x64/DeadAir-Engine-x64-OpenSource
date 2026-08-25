@@ -818,6 +818,9 @@ int ps_da_graph_prof = 0;
 // [DA_PORT] Включено по умолчанию: замер без прибора дал render 3.79 -> 3.66 мс (-3.4%), GPU не
 // изменился (3.39 -> 3.36), картинка проверена в игре. Выключатель оставлен для разбора.
 int ps_da_pass_sort_ctable = 1; // [DA_PORT] см. cmp_pass
+
+// [DA_PORT] Ограничитель раздачи контекстов — см. D3DXRenderBase::alloc_context. 0 = все собранные.
+int ps_da_max_parallel_ctx = 0;
 // [DA_PORT] Копилки для разбивки set_Pass — заполняются в R_Backend_Runtime.h, см. там пояснение.
 float g_da_pass_state = 0.f, g_da_pass_shaders = 0.f, g_da_pass_const = 0.f, g_da_pass_tex = 0.f,
       g_da_pass_mat = 0.f;

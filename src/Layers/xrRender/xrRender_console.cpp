@@ -2139,6 +2139,11 @@ void xrRender_initconsole()
         extern int ps_da_main_cull_mt;
         CMD4(CCC_DaDebugInteger, "r__main_cull_mt", &ps_da_main_cull_mt, 0, 1);
     }
+    {
+        // [DA_PORT] сколько параллельных контекстов раздавать (0 = все собранные, минимум 4).
+        extern int ps_da_max_parallel_ctx;
+        CMD4(CCC_DaDebugInteger, "r__max_parallel_ctx", &ps_da_max_parallel_ctx, 0, 16);
+    }
 #endif
     {
         // [DA_PORT] зонд разбора статики: da_vis_dump <кадров> пишет, какая проверка сняла визуал.

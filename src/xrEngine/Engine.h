@@ -18,7 +18,15 @@
 
 // TODO: this should be in render configuration
 #define R__NUM_SUN_CASCADES         (3u) // csm/s.ligts
-#define R__NUM_AUX_CONTEXTS         (1u) // rain/s.lights
+// [DA_PORT] Было (1u). Замер фазы света: 122 обхода теневых ламп на 4 параллельных контекста дают
+// 31 волну и 30 нехваток, а ожидание списков — 0.38 мс, самая дорогая часть фазы (1.58 мс, вдвое
+// больше gbuffer). Контексты делятся между каскадами солнца и лампами; каскадам нужно три, всё
+// остальное достаётся лампам. Пять вспомогательных дают восемь параллельных.
+//
+// ⚠️ Макрос задаёт размер marker[R__NUM_CONTEXTS] в vis_data (vis_common.h), а она лежит ВНУТРИ
+// каждого визуала и читается из xrGame (getVisData().hom_frame). Поля после marker сдвигаются,
+// поэтому пересобирать и выкладывать надо ВСЁ, а не только рендер.
+#define R__NUM_AUX_CONTEXTS         (5u) // rain/s.lights
 #define R__NUM_PARALLEL_CONTEXTS    (R__NUM_SUN_CASCADES + R__NUM_AUX_CONTEXTS)
 #define R__NUM_CONTEXTS             (R__NUM_PARALLEL_CONTEXTS + 1/* imm */)
 
