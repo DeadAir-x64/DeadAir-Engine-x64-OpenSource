@@ -1,4 +1,5 @@
 #include	"common.h"
+#include	"da_vertex_pull.h"	// [DA_PORT] выборка вершин из шейдера
 
 #if defined(USE_R2_STATIC_SUN) && !defined(USE_LM_HEMI)
 #define	v_in	v_static_color	
@@ -7,8 +8,34 @@
 #endif
 
 
-v2p_bumped main( v_in I )
+v2p_bumped main( v_in I, uint da_vid : SV_VertexID, uint da_iid : SV_InstanceID )
 {
+	// [DA_PORT] Выборка вершин из шейдера -- разбор в da_vertex_pull.h и в deffer_base_flat.vs.
+	//
+	// Подстановка идёт В САМОЕ НАЧАЛО, до первого чтения полей: ниже I.T.w/I.B.w/I.Nh.w читаются
+	// ДО распаковки (строки с unpack_D3DCOLOR идут сильно позже), и вставь мы её после -- часть
+	// величин посчиталась бы по старым данным. Поля отдаются в том же виде, что и разметка входа,
+	// поэтому родные распаковки ниже остаются нетронутыми.
+	bool da_pull_skip = false;
+	if (da_pull_control.x != 0)
+	{
+		uint da_count = asuint(da_pull_objects[da_iid]).z;
+		da_pull_skip  = (da_vid >= da_count);
+
+		da_pulled_vertex V = da_pull_fetch(da_iid, min(da_vid, da_count - 1));
+		I.P		= V.P;
+		I.Nh	= V.Nh;
+		I.T		= V.T;
+		I.B		= V.B;
+		I.tc	= V.tc;
+#ifdef	USE_LM_HEMI
+		I.lmh	= V.lmh;
+#endif
+#if defined(USE_R2_STATIC_SUN) && !defined(USE_LM_HEMI)
+		I.color	= V.color;
+#endif
+	}
+
 //	I.color.rgb 	= I.color.bgr;	//	Swizzle to compensate DX9/DX10 format mismatch
 	float4	w_pos	= I.P				;
 	float2 	tc		= unpack_tc_base	(I.tc,I.T.w,I.B.w);	// copy tc
@@ -73,6 +100,10 @@ v2p_bumped main( v_in I )
 #ifdef	USE_LM_HEMI
 	O.lmh 			= unpack_tc_lmap	(I.lmh);
 #endif
+	// [DA_PORT] Хвост пачки уводим за ближнюю плоскость -- треугольник отсекается целиком.
+	if (da_pull_skip)
+		O.hpos = float4(0,0,-1,1);
+
 	return	O;
 }
 

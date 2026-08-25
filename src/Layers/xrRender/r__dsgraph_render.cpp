@@ -760,6 +760,7 @@ constexpr u32 da_pull_srv_slot_inds = 15;
 
 struct da_pull_item
 {
+    SGeometry* geom{}; // [DA_PORT] обязателен: без set_Geometry разметка входа пуста, см. ниже
     VertexStagingBuffer* vb{};
     IndexStagingBuffer* ib{};
     u32 vBase{};
@@ -786,6 +787,14 @@ void da_pull_note(pcstr reason)
 bool da_render_static_pull(CBackend& cmd_list, mapNormalItems& items)
 {
     if (!ps_da_static_pull)
+        return false;
+
+    // [DA_PORT] Только основной проход. В теневом та же статика рисуется УРЕЗАННЫМ потоком
+    // (Fvisual::m_fast, вершина 12 байт вместо 32, свои буферы) и своими шейдерами. Выборка
+    // отсюда читала бы главный буфер с шагом 32, то есть не те байты, и молча. Заслон дублирует
+    // тот, что и так дают отсутствующие в теневых шейдерах константы da_pull_*, но полагаться
+    // на одно лишь отсутствие констант неправильно: завтра их туда добавят.
+    if (RImplementation.get_context(cmd_list.context_id).o.phase != CRender::PHASE_NORMAL)
         return false;
 
     R_constant* c_control = cmd_list.get_c("da_pull_control")._get();
@@ -819,8 +828,11 @@ bool da_render_static_pull(CBackend& cmd_list, mapNormalItems& items)
         if (M->dwPrimitives == 0)
             continue;
 
-        pull.push_back(da_pull_item{M->p_rm_Vertices, M->p_rm_Indices, M->vBase, M->iBase,
-            M->dwPrimitives * 3, index});
+        if (!M->rm_geom)
+            continue;
+
+        pull.push_back(da_pull_item{&*M->rm_geom, M->p_rm_Vertices, M->p_rm_Indices, M->vBase,
+            M->iBase, M->dwPrimitives * 3, index});
     }
 
     if (pull.size() < 2)
@@ -832,6 +844,8 @@ bool da_render_static_pull(CBackend& cmd_list, mapNormalItems& items)
     // Группируем по паре буферов: в одном вызове читается одно сырое представление.
     std::sort(pull.begin(), pull.end(), [](const da_pull_item& a, const da_pull_item& b)
         {
+            if (a.geom != b.geom)
+                return std::less<const void*>{}(a.geom, b.geom);
             if (a.vb != b.vb)
                 return std::less<const void*>{}(a.vb, b.vb);
             if (a.ib != b.ib)
@@ -846,7 +860,8 @@ bool da_render_static_pull(CBackend& cmd_list, mapNormalItems& items)
     for (size_t begin = 0; begin < pull.size();)
     {
         size_t end = begin + 1;
-        while (end < pull.size() && pull[end].vb == pull[begin].vb && pull[end].ib == pull[begin].ib &&
+        while (end < pull.size() && pull[end].geom == pull[begin].geom &&
+            pull[end].vb == pull[begin].vb && pull[end].ib == pull[begin].ib &&
             (end - begin) < da_pull_max_objects)
             ++end;
 
@@ -883,6 +898,15 @@ bool da_render_static_pull(CBackend& cmd_list, mapNormalItems& items)
             polys += it.indexCount / 3;
         }
 
+        // ⛔ [DA_PORT] Без этого падало с разыменованием нуля в ApplyVertexLayout.
+        //
+        // Разметка входа берётся из decl, который ставит именно set_Geometry, а в релизе VERIFY(decl)
+        // вырезан — поэтому пустой decl не ругался, а сразу валил игру. Обычный путь зовёт
+        // set_Geometry внутри Fvisual::Render, пакетная отрисовка деревьев — явно; здесь его не было.
+        //
+        // Занулить разметку вместо этого НЕЛЬЗЯ: так делают, когда у шейдера нет объявленных входов,
+        // а у нас они остались ради отката на старый путь. Разметка обязана быть настоящей.
+        cmd_list.set_Geometry(pull[begin].geom);
         cmd_list.SRVSManager.SetVSResource(da_pull_srv_slot_verts, pull[begin].vb->GetSRV());
         cmd_list.SRVSManager.SetVSResource(da_pull_srv_slot_inds, pull[begin].ib->GetSRV());
         cmd_list.set_c(c_control, 1.f, 0.f, 0.f, 0.f);

@@ -2124,6 +2124,12 @@ void xrRender_initconsole()
         extern int ps_da_matrix_dedup;
         CMD4(CCC_DaDebugInteger, "r__matrix_dedup", &ps_da_matrix_dedup, 0, 1);
     }
+    {
+        // [DA_PORT] выборка вершин из шейдера: статика одного прохода рисуется одним вызовом.
+        // По умолчанию ВЫКЛЮЧЕНО — путь новый и меняет состав отрисовки, нужен чистый A/B.
+        extern int ps_da_static_pull;
+        CMD4(CCC_DaDebugInteger, "r__static_pull", &ps_da_static_pull, 0, 1);
+    }
 #endif
     {
         // [DA_PORT] зонд разбора статики: da_vis_dump <кадров> пишет, какая проверка сняла визуал.
