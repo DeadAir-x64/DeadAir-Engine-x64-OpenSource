@@ -433,6 +433,9 @@ int ps_da_static_dedup = 1;
 // [DA_PORT] Регистрируется консолью как r__matrix_dedup. Определение da_matrix_dedup_exact — ниже.
 int ps_da_matrix_dedup = 0;
 
+// [DA_PORT] Регистрируется консолью как r__static_pull. Выборка вершин из шейдера, см. ниже.
+int ps_da_static_pull = 0;
+
 namespace
 {
 // [DA_PORT] Ключ идентичности геометрии: (rm_geom, vBase, iBase) у объектов с IRender_Mesh, иначе —
@@ -651,8 +654,27 @@ void da_static_dedup_exact(mapNormalItems& items)
     u32 removed = 0;
     for (size_t read = 0; read < items.size(); ++read)
     {
+        dxRender_Visual* V = items[read].pVisual;
+
+        // ⛔ [DA_PORT] Снимать дубли можно ТОЛЬКО там, где положение запечено в вершины.
+        //
+        // Первая версия этого не проверяла и сравнивала один диапазон геометрии — а у деревьев и
+        // кустов (MT_TREE_ST/MT_TREE_PM) экземпляры одного вида ДЕЛЯТ геометрию, и отличаются
+        // матрицей xform, своей у каждого. Дедуп выбрасывал все копии кроме одной, а какая уцелеет
+        // — решала сортировка по площади на экране, то есть камера. В игре это выглядело как
+        // «кусты и деревья то появляются, то пропадают при повороте и приближении».
+        //
+        // Тот же довод закрывает и всё остальное с собственной матрицей. Оставляем обычную статику,
+        // у которой мировая матрица единичная: там совпадение диапазона действительно означает одни
+        // и те же треугольники в одном и том же месте.
+        if (!V || (V->Type != MT_NORMAL && V->Type != MT_PROGRESSIVE))
+        {
+            items[write++] = items[read];
+            continue;
+        }
+
         u32 vcount{};
-        da_instance_probe_key_t key = da_instance_probe_key(items[read].pVisual, vcount);
+        da_instance_probe_key_t key = da_instance_probe_key(V, vcount);
         if (seen.insert(key).second)
             items[write++] = items[read];
         else
@@ -721,6 +743,179 @@ void da_matrix_dedup_exact(mapMatrixItems& items)
                 removed, running);
         }
     }
+}
+
+// [DA_PORT] --- Выборка вершин из шейдера: слияние вызовов статики -------------------------------
+//
+// Разбор, замеры и раскладка форматов — da_port/docs/05_ROADMAP.md. Коротко: объекты одного прохода
+// рисуются ОДНИМ DrawInstanced, где номер экземпляра (SV_InstanceID) выбирает объект, а SV_VertexID
+// нумерует места в его списке индексов. Всё нужное про объект — три числа, потому что у статики
+// мировая матрица единичная.
+//
+// ⚠️ Отключается САМО, если в шейдере нет констант da_pull_*: игрок со старыми шейдерами просто
+// рисует по-старому. Ровно тот же заслон, что у пакетной отрисовки деревьев.
+constexpr u32 da_pull_max_objects = 256; // столько же в da_vertex_pull.h — расходиться нельзя
+constexpr u32 da_pull_srv_slot_verts = 14; // регистры t14/t15 в da_vertex_pull.h
+constexpr u32 da_pull_srv_slot_inds = 15;
+
+struct da_pull_item
+{
+    VertexStagingBuffer* vb{};
+    IndexStagingBuffer* ib{};
+    u32 vBase{};
+    u32 iBase{};
+    u32 indexCount{};
+    size_t original_order{};
+};
+
+void da_pull_note(pcstr reason)
+{
+    static std::atomic<u32> reported{0};
+    static pcstr seen[5]{};
+    const u32 slot = reported.load(std::memory_order_relaxed);
+    for (u32 i = 0; i < slot && i < 5; ++i)
+        if (seen[i] == reason)
+            return;
+    if (slot >= 5)
+        return;
+    seen[slot] = reason;
+    reported.store(slot + 1, std::memory_order_relaxed);
+    Msg("* [DA_PORT] статика пачками: %s", reason);
+}
+
+bool da_render_static_pull(CBackend& cmd_list, mapNormalItems& items)
+{
+    if (!ps_da_static_pull)
+        return false;
+
+    R_constant* c_control = cmd_list.get_c("da_pull_control")._get();
+    R_constant* c_objects = cmd_list.get_c("da_pull_objects")._get();
+    if (!c_control || !c_objects)
+    {
+        da_pull_note("в шейдере нет констант da_pull_* — рисуем по-старому");
+        return false;
+    }
+
+    // Шейдер инстансный, но пачки может не быть — тогда он обязан рисовать по-старому.
+    cmd_list.set_c(c_control, 0.f, 0.f, 0.f, 0.f);
+    if (items.size() < 2)
+        return false;
+
+    static thread_local xr_vector<da_pull_item> pull;
+    pull.clear();
+
+    for (size_t index = 0; index < items.size(); ++index)
+    {
+        dxRender_Visual* V = items[index].pVisual;
+        // Только обычная статика: у прогрессивной геометрии диапазон зависит от уровня детализации,
+        // у деревьев свой путь, у скелетов своя матрица на каждого.
+        if (V->Type != MT_NORMAL)
+            continue;
+        IRender_Mesh* M = da_as_mesh(V);
+        if (!M || !M->p_rm_Vertices || !M->p_rm_Indices)
+            continue;
+        if (!M->p_rm_Vertices->GetSRV() || !M->p_rm_Indices->GetSRV())
+            continue;
+        if (M->dwPrimitives == 0)
+            continue;
+
+        pull.push_back(da_pull_item{M->p_rm_Vertices, M->p_rm_Indices, M->vBase, M->iBase,
+            M->dwPrimitives * 3, index});
+    }
+
+    if (pull.size() < 2)
+    {
+        da_pull_note("в проходе меньше двух пригодных объектов");
+        return false;
+    }
+
+    // Группируем по паре буферов: в одном вызове читается одно сырое представление.
+    std::sort(pull.begin(), pull.end(), [](const da_pull_item& a, const da_pull_item& b)
+        {
+            if (a.vb != b.vb)
+                return std::less<const void*>{}(a.vb, b.vb);
+            if (a.ib != b.ib)
+                return std::less<const void*>{}(a.ib, b.ib);
+            return a.original_order < b.original_order;
+        });
+
+    static thread_local xr_vector<u8> drawn;
+    drawn.assign(items.size(), 0);
+    u32 groups = 0, instances = 0;
+
+    for (size_t begin = 0; begin < pull.size();)
+    {
+        size_t end = begin + 1;
+        while (end < pull.size() && pull[end].vb == pull[begin].vb && pull[end].ib == pull[begin].ib &&
+            (end - begin) < da_pull_max_objects)
+            ++end;
+
+        const u32 count = u32(end - begin);
+        if (count < 2)
+        {
+            begin = end;
+            continue; // одиночку дешевле оставить обычному пути
+        }
+
+        void* raw = nullptr;
+        cmd_list.get_ConstantDirect("da_pull_objects", da_pull_max_objects * sizeof(Fvector4), &raw, nullptr, nullptr);
+        if (!raw)
+        {
+            da_pull_note("константный буфер меньше пачки — уходим на обычный путь");
+            return false;
+        }
+
+        // Числа кладутся БИТАМИ: байтовые смещения доходят до десятков миллионов, а float32 точно
+        // считает целые лишь до 16.7 млн — значение молча округлилось бы. Шейдер читает asuint.
+        auto* storage = static_cast<Fvector4*>(raw);
+        u32 max_indices = 0, polys = 0;
+        for (u32 i = 0; i < count; ++i)
+        {
+            const da_pull_item& it = pull[begin + i];
+            const u32 v_byte = it.vBase * 32u;
+            const u32 i_byte = it.iBase * 2u;
+            u32* dst = reinterpret_cast<u32*>(&storage[i]);
+            dst[0] = v_byte;
+            dst[1] = i_byte;
+            dst[2] = it.indexCount;
+            dst[3] = 0;
+            max_indices = std::max(max_indices, it.indexCount);
+            polys += it.indexCount / 3;
+        }
+
+        cmd_list.SRVSManager.SetVSResource(da_pull_srv_slot_verts, pull[begin].vb->GetSRV());
+        cmd_list.SRVSManager.SetVSResource(da_pull_srv_slot_inds, pull[begin].ib->GetSRV());
+        cmd_list.set_c(c_control, 1.f, 0.f, 0.f, 0.f);
+        cmd_list.RenderPulled(max_indices, count, polys);
+
+        for (size_t i = begin; i < end; ++i)
+            drawn[pull[i].original_order] = 1;
+        ++groups;
+        instances += count;
+        begin = end;
+    }
+
+    // Возвращаем состояние: следующий проход может рисовать что угодно.
+    cmd_list.set_c(c_control, 0.f, 0.f, 0.f, 0.f);
+    cmd_list.SRVSManager.SetVSResource(da_pull_srv_slot_verts, nullptr);
+    cmd_list.SRVSManager.SetVSResource(da_pull_srv_slot_inds, nullptr);
+
+    if (!groups)
+        return false;
+
+    {
+        static std::atomic<bool> reported{false};
+        if (!reported.exchange(true))
+            Msg("* [DA_PORT] статика пачками: %u объектов за %u вызовов вместо %u, одиночно осталось %u",
+                instances, groups, instances, u32(items.size()) - instances);
+    }
+
+    size_t write = 0;
+    for (size_t read = 0; read < items.size(); ++read)
+        if (!drawn[read])
+            items[write++] = items[read];
+    items.resize(write);
+    return true;
 }
 
 // [DA_PORT] Досортировка статики внутри шейдер-группы по странице геометрии (r__static_sort_geom).
@@ -852,6 +1047,13 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                 // сортировка уже сделана, порядок вставки становится последовательным по странице).
                 if (ps_da_static_dedup)
                     da_static_dedup_exact(items);
+
+#ifdef USE_DX11
+                // [DA_PORT] r__static_pull 1: то, что удалось нарисовать пачками, из списка убрано.
+                // Если после этого список пуст — рисовать больше нечего.
+                if (da_render_static_pull(cmd_list, items) && items.empty())
+                    continue;
+#endif
 
                 for (const auto& item : items)
                 {
