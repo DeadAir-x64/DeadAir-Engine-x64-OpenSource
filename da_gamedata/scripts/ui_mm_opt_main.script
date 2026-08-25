@@ -131,7 +131,7 @@ function options_dialog:__init() super()
 		                  "da_fp_body" } },
 		-- [DA_PORT] Свой раздел: наборы анимаций употребления вещей и паркур.
 		{ "animations", { "da_item_anims", "da_wear_anims", "da_skin_anims",
-		                  "da_body_search_anim", "da_parkour" } },
+		                  "da_body_search_anim", "da_backpack_anim", "da_parkour" } },
 		{ "misc",       { "important_save", "quicksave_cnt", "crouch_toggle",
 		                  "dynamic_news", "radio_mod", "heli_engine_sound",
 		                  "photomode", "localization" } },

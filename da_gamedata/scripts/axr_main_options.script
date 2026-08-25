@@ -136,6 +136,7 @@ function opt_menu_on_init(menu)
 	-- demonized_ledge_grabbing.load_settings перебивает значение этим.
 	menu.gameplay_options["da_skin_anims"] = {default=da_item_anims.default_label(), debug_only=false, typ="list", list=da_item_anims.labels()}
 	menu.gameplay_options["da_body_search_anim"] = {default=true, debug_only=false, typ="check"}
+	menu.gameplay_options["da_backpack_anim"] = {default=true, debug_only=false, typ="check"}
 	-- [DA_PORT] По умолчанию ВЫКЛЮЧЕНО: движения пока подставные, а точка перехвата в движке
 	-- срабатывает не только на действие игрока. Разбор - в da_wear_anims.script.
 	menu.gameplay_options["da_wear_anims"] = {default=da_item_anims.default_label(), debug_only=false, typ="list", list=da_item_anims.labels()}

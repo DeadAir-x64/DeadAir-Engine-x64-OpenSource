@@ -1,4 +1,5 @@
 #include "pch_script.h"
+#include "xrScriptEngine/script_engine.hpp"
 #include "UIGameSP.h"
 #include "Actor.h"
 #include "Level.h"
@@ -154,7 +155,29 @@ bool CUIGameSP::IR_UIOnKeyboardPress(int dik)
     case kINVENTORY:
     {
         if (!pActor->inventory_disabled())
-            ShowActorMenu();
+        {
+            // [DA_PORT] Перехват намерения открыть рюкзак — по образцу обыска тела (ActorInput.cpp).
+            //
+            // Кому это нужно: анимация возни с рюкзаком. Она обязана отыграть ДО того, как окно
+            // откроется, иначе игрок видит содержимое сразу, а сцена догоняет его поверх меню.
+            //
+            // Скрипт отвечает ложью — окно не открываем; по концу сцены он открывает его сам через
+            // get_hud():ShowActorMenu(). Тот путь сюда не возвращается, поэтому по кругу не пойдёт.
+            //
+            // ⚠️ Спрашиваем ТОЛЬКО на открытие. ShowActorMenu — переключатель, и на закрытии
+            // перехват означал бы «сыграть сцену, чтобы закрыть окно», то есть меню не закрылось бы
+            // вовсе, пока сцена идёт.
+            bool allow = true;
+            if (ActorMenu && !ActorMenu->IsShown())
+            {
+                luabind::functor<bool> before;
+                if (GEnv.ScriptEngine->functor("_G.da_before_inventory", before))
+                    allow = before();
+            }
+
+            if (allow)
+                ShowActorMenu();
+        }
 
         break;
     }

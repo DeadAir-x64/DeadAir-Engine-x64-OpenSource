@@ -616,6 +616,10 @@
 		<text>Skinning animations</text>
 	</string>
 
+	<string id="ui_mm_da_backpack_anim">
+		<text>Backpack opening animation</text>
+	</string>
+
 	<string id="ui_mm_da_body_search_anim">
 		<text>Body search animation</text>
 	</string>

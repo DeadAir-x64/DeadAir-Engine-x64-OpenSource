@@ -644,6 +644,10 @@
 		<text>Анимации свежевания</text>
 	</string>
 
+	<string id="ui_mm_da_backpack_anim">
+		<text>Анимация открытия рюкзака</text>
+	</string>
+
 	<string id="ui_mm_da_body_search_anim">
 		<text>Анимация обыска тел</text>
 	</string>
