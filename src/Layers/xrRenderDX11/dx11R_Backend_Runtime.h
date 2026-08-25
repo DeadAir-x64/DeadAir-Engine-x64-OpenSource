@@ -875,12 +875,24 @@ IC bool CBackend::CBuffersNeedUpdate(
     return bRes;
 }
 
+// [DA_PORT] Разбивка set_Constants (r__graph_prof 1). Замер показал: константы это 75% настройки
+// прохода — больше, чем состояния, шейдеры, текстуры и матрицы вместе. Внутри три разных дела:
+// сброс отображений, перетасовка массивов умных указателей (счётчик ссылок АТОМАРНЫЙ) и обход
+// таблицы с привязкой. Лечатся по-разному, поэтому меряем порознь.
+extern int ps_da_graph_prof;
+extern float g_da_const_unmap, g_da_const_shuffle, g_da_const_bind, g_da_const_loaders;
+
 IC void CBackend::set_Constants(R_constant_table* C)
 {
     // caching
     if (ctable == C)
         return;
     ctable = C;
+
+    CTimer da_ct;
+    const bool da_cprof = ps_da_graph_prof != 0;
+    if (da_cprof)
+        da_ct.Start();
     xforms.unmap();
     hemi.unmap();
     tree.unmap();
@@ -888,6 +900,11 @@ IC void CBackend::set_Constants(R_constant_table* C)
     LOD.unmap();
 #endif
     StateManager.UnmapConstants();
+    if (da_cprof)
+    {
+        g_da_const_unmap += da_ct.GetElapsed_sec() * 1000.f;
+        da_ct.Start();
+    }
     if (0 == C)
         return;
 
@@ -926,6 +943,12 @@ IC void CBackend::set_Constants(R_constant_table* C)
             m_aComputeConstants[i] = 0;
 #endif
         }
+        if (da_cprof)
+        {
+            g_da_const_shuffle += da_ct.GetElapsed_sec() * 1000.f;
+            da_ct.Start();
+        }
+
         R_constant_table::cb_table::iterator it = C->m_CBTable[context_id].begin();
         R_constant_table::cb_table::iterator end = C->m_CBTable[context_id].end();
         for (; it != end; ++it)
@@ -1088,6 +1111,12 @@ IC void CBackend::set_Constants(R_constant_table* C)
         */
     }
 
+    if (da_cprof)
+    {
+        g_da_const_bind += da_ct.GetElapsed_sec() * 1000.f;
+        da_ct.Start();
+    }
+
     // process constant-loaders
     R_constant_table::c_table::iterator it = C->table.begin();
     R_constant_table::c_table::iterator end = C->table.end();
@@ -1098,6 +1127,9 @@ IC void CBackend::set_Constants(R_constant_table* C)
         if (Cs && Cs->handler)
             Cs->handler->setup(*this, Cs);
     }
+
+    if (da_cprof)
+        g_da_const_loaders += da_ct.GetElapsed_sec() * 1000.f;
 }
 
 ICF void CBackend::ApplyRTandZB()

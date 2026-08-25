@@ -776,13 +776,67 @@ bool cmp_ssa(const T &lhs, const T &rhs)
 // SPass::equal), and only after tens of thousands of frames, because it needs the data to line up.
 // Ordering by ssa with the pass pointer as tie-break is a proper strict weak ordering and keeps the
 // original intent: front-to-back by ssa, identical passes (deduplicated, so same pointer) adjacent.
+// [DA_PORT] r__pass_sort_ctable 1: группировать проходы по ТАБЛИЦЕ КОНСТАНТ.
+//
+// Замер: настройка прохода — 0.79 мс на кадр, и 1.15 из них съедает set_Constants, где почти
+// половина уходит на перетасовку 84 умных указателей с АТОМАРНЫМ счётчиком ссылок. Но у
+// set_Constants есть ранний выход `if (ctable == C) return`, который сейчас почти не срабатывает:
+// проходы отсортированы по площади на экране, и таблицы чередуются. При этом разных шейдеров 20 на
+// 313 проходов — то есть таблиц КРАТНО меньше, чем проходов. Сгруппировав по таблице, мы не
+// удешевляем вызов, а убираем большую его часть целиком.
+//
+// ⚠️ Порядок «спереди назад» внутри таблицы СОХРАНЁН: он помогает видеокарте отбрасывать
+// перекрытые пиксели заранее. Меняется только порядок МЕЖДУ таблицами, и это компромисс, который
+// обязан подтвердить замер — отсюда выключатель.
+extern int ps_da_pass_sort_ctable;
+
 template <typename T>
 bool cmp_pass(const T& left, const T& right)
 {
+    if (ps_da_pass_sort_ctable)
+    {
+        const void* lc = left->first ? left->first->constants._get() : nullptr;
+        const void* rc = right->first ? right->first->constants._get() : nullptr;
+        if (lc != rc)
+            return std::less<const void*>{}(lc, rc);
+    }
     if (left->second.ssa != right->second.ssa)
         return left->second.ssa > right->second.ssa;
     return left->first < right->first;
 }
+
+// [DA_PORT] Разбивка цикла отрисовки графа изнутри (r__graph_prof 1, печать раз в секунду).
+//
+// Зачем: счётчик prim (BasicStats.Primitives) меряет ВЕСЬ этот цикл одним числом — 1.73 мс, — и по
+// нему нельзя понять, где они лежат. А из 4.25 мс кадра сумма всех именованных счётчиков даёт лишь
+// 2.31: почти половина времени рендера не учтена НИЧЕМ (свет и тени в R2/R4 не заполняются вовсе,
+// см. пометку в D3DXRenderBase.cpp). Прежде чем что-то чинить, надо знать, что чинить: сегодняшний
+// день стоил отката ровно потому, что направление выбиралось по догадке, а не по замеру.
+//
+// Мерим ФАЗАМИ, а не объектами: таймер на каждый объект исказил бы то, что измеряет.
+int ps_da_graph_prof = 0;
+// [DA_PORT] Включено по умолчанию: замер без прибора дал render 3.79 -> 3.66 мс (-3.4%), GPU не
+// изменился (3.39 -> 3.36), картинка проверена в игре. Выключатель оставлен для разбора.
+int ps_da_pass_sort_ctable = 1; // [DA_PORT] см. cmp_pass
+// [DA_PORT] Копилки для разбивки set_Pass — заполняются в R_Backend_Runtime.h, см. там пояснение.
+float g_da_pass_state = 0.f, g_da_pass_shaders = 0.f, g_da_pass_const = 0.f, g_da_pass_tex = 0.f,
+      g_da_pass_mat = 0.f;
+// [DA_PORT] Разбивка самого set_Constants — заполняется в dx11R_Backend_Runtime.h.
+float g_da_const_unmap = 0.f, g_da_const_shuffle = 0.f, g_da_const_bind = 0.f, g_da_const_loaders = 0.f;
+namespace
+{
+struct da_graph_prof
+{
+    float sort_passes{}, sort_items{}, setup{}, setup_pass{}, setup_lmat{}, draw{}, matrix{};
+    u32 passes{}, items{}, mat_items{};
+    float last_report{-1000.f};
+};
+da_graph_prof& da_graph_prof_get()
+{
+    static da_graph_prof p;
+    return p;
+}
+} // namespace
 
 void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, bool da_keep)
 {
@@ -832,17 +886,47 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
             }
 
             map.get_any_p(nrmPasses);
+            CTimer da_t;
+            const bool da_prof = ps_da_graph_prof != 0;
+            if (da_prof)
+                da_t.Start();
             std::sort(nrmPasses.begin(), nrmPasses.end(), cmp_pass<mapNormal_T::value_type*>);
+            if (da_prof)
+                da_graph_prof_get().sort_passes += da_t.GetElapsed_sec() * 1000.f;
             for (const auto& it : nrmPasses)
             {
-                cmd_list.set_Pass(it->first);
-                cmd_list.apply_lmaterial();
+                if (da_prof)
+                {
+                    // Разделяем: set_Pass это смена шейдеров и состояний, apply_lmaterial —
+                    // поиск константы ПО ИМЕНИ плюс запись констант освещения. Что из двух дорого,
+                    // по общему числу не видно, а лечится это по-разному.
+                    da_graph_prof& P = da_graph_prof_get();
+                    da_t.Start();
+                    cmd_list.set_Pass(it->first);
+                    const float t_pass = da_t.GetElapsed_sec() * 1000.f;
+                    da_t.Start();
+                    cmd_list.apply_lmaterial();
+                    const float t_lmat = da_t.GetElapsed_sec() * 1000.f;
+                    P.setup_pass += t_pass;
+                    P.setup_lmat += t_lmat;
+                    P.setup += t_pass + t_lmat;
+                    ++P.passes;
+                }
+                else
+                {
+                    cmd_list.set_Pass(it->first);
+                    cmd_list.apply_lmaterial();
+                }
 
 
                 mapNormalItems& items = it->second;
                 items.ssa = 0;
 
+                if (da_prof)
+                    da_t.Start();
                 std::sort(items.begin(), items.end(), cmp_ssa<_NormalItem>);
+                if (da_prof)
+                    da_graph_prof_get().sort_items += da_t.GetElapsed_sec() * 1000.f;
 #ifdef USE_DX11
                 // [DA_PORT] Деревья, которые удалось сложить в пачки, уже нарисованы и из списка
                 // убраны. Если после этого список пуст — рисовать больше нечего.
@@ -871,6 +955,11 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                 if (ps_da_static_dedup)
                     da_static_dedup_exact(items);
 
+                if (da_prof)
+                {
+                    da_t.Start();
+                    da_graph_prof_get().items += u32(items.size());
+                }
                 for (const auto& item : items)
                 {
                     const float LOD = calcLOD(item.ssa, item.pVisual->vis.sphere.R);
@@ -894,6 +983,8 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
 
                     item.pVisual->Render(cmd_list, LOD, da_use_fast_geo(cmd_list, o.phase));
                 }
+                if (da_prof)
+                    da_graph_prof_get().draw += da_t.GetElapsed_sec() * 1000.f;
                 if (!da_keep)
                     items.clear();
 
@@ -928,6 +1019,10 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
             }
 
             map.get_any_p(matPasses);
+            CTimer da_tm;
+            const bool da_prof_m = ps_da_graph_prof != 0;
+            if (da_prof_m)
+                da_tm.Start();
             std::sort(matPasses.begin(), matPasses.end(), cmp_pass<mapMatrix_T::value_type*>);
             for (const auto& it : matPasses)
             {
@@ -974,9 +1069,51 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                 }
                 items.clear();
             }
+            if (da_prof_m)
+                da_graph_prof_get().matrix += da_tm.GetElapsed_sec() * 1000.f;
             matPasses.clear();
             map.clear();
             invalidate_pass_item_cache(_priority, iPass); // [DA_PORT] карта очищена — указатель мёртв
+        }
+    }
+
+    // [DA_PORT] Отчёт раз в секунду. Числа НАКОПИТЕЛЬНЫЕ за секунду по всем проходам и приоритетам
+    // (граф рисуется по многу раз за кадр: основной проход, каскады солнца, каждая теневая лампа) —
+    // поэтому делим на число кадров, чтобы получить цену КАДРА, а не одного захода.
+    if (ps_da_graph_prof)
+    {
+        da_graph_prof& P = da_graph_prof_get();
+        static u32 frames = 0;
+        static u32 last_frame = u32(-1);
+        if (last_frame != Device.dwFrame)
+        {
+            ++frames;
+            last_frame = Device.dwFrame;
+        }
+        if (Device.fTimeGlobal - P.last_report > 1.f && frames)
+        {
+            const float k = 1.f / float(frames);
+            Msg("~ [DA_GRAPH] на кадр: сорт.проходов %5.3f | настройка %5.3f = проход %5.3f + "
+                "материал %5.3f (проходов %u) | сорт.объектов %5.3f | отрисовка %5.3f (объектов %u) | "
+                "динамика %5.3f",
+                P.sort_passes * k, P.setup * k, P.setup_pass * k, P.setup_lmat * k,
+                u32(float(P.passes) * k), P.sort_items * k, P.draw * k, u32(float(P.items) * k),
+                P.matrix * k);
+            Msg("~ [DA_GRAPH]   проход изнутри: состояния %5.3f | шейдеры %5.3f | константы %5.3f | "
+                "текстуры %5.3f | матрицы %5.3f",
+                g_da_pass_state * k, g_da_pass_shaders * k, g_da_pass_const * k, g_da_pass_tex * k,
+                g_da_pass_mat * k);
+            Msg("~ [DA_GRAPH]   константы изнутри: сброс %5.3f | перетасовка %5.3f | привязка %5.3f | "
+                "обработчики %5.3f",
+                g_da_const_unmap * k, g_da_const_shuffle * k, g_da_const_bind * k,
+                g_da_const_loaders * k);
+            g_da_pass_state = g_da_pass_shaders = g_da_pass_const = g_da_pass_tex = g_da_pass_mat = 0.f;
+            g_da_const_unmap = g_da_const_shuffle = g_da_const_bind = g_da_const_loaders = 0.f;
+
+            const float report_time = Device.fTimeGlobal;
+            P = da_graph_prof{};
+            P.last_report = report_time;
+            frames = 0;
         }
     }
 

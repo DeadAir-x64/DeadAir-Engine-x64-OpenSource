@@ -2124,6 +2124,16 @@ void xrRender_initconsole()
         extern int ps_da_matrix_dedup;
         CMD4(CCC_DaDebugInteger, "r__matrix_dedup", &ps_da_matrix_dedup, 0, 1);
     }
+    {
+        // [DA_PORT] разбивка цикла отрисовки графа изнутри: где именно лежат миллисекунды prim.
+        extern int ps_da_graph_prof;
+        CMD4(CCC_DaDebugInteger, "r__graph_prof", &ps_da_graph_prof, 0, 1);
+    }
+    {
+        // [DA_PORT] группировка проходов по таблице констант — включает ранний выход set_Constants.
+        extern int ps_da_pass_sort_ctable;
+        CMD4(CCC_DaDebugInteger, "r__pass_sort_ctable", &ps_da_pass_sort_ctable, 0, 1);
+    }
 #endif
     {
         // [DA_PORT] зонд разбора статики: da_vis_dump <кадров> пишет, какая проверка сняла визуал.

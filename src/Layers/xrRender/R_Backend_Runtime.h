@@ -128,8 +128,55 @@ IC void CBackend::set_Matrices(SMatrixList* matrix_list)
     }
 }
 
+// [DA_PORT] Разбивка set_Pass по подвызовам (r__graph_prof 1).
+//
+// Замер показал: настройка прохода стоит 0.509 мс на кадр при 459 проходах и это ДОРОЖЕ самой
+// отрисовки (0.44 мс). Внутри шесть разных дел, и лечатся они по-разному, поэтому меряем порознь.
+// Копилки и флаг определены в r__dsgraph_render.cpp; в нуле стоит одну проверку int.
+extern int ps_da_graph_prof;
+extern float g_da_pass_state, g_da_pass_shaders, g_da_pass_const, g_da_pass_tex, g_da_pass_mat;
+
 IC void CBackend::set_Pass(SPass* P)
 {
+    if (ps_da_graph_prof)
+    {
+        CTimer t;
+        t.Start();
+        set_States(P->state);
+        g_da_pass_state += t.GetElapsed_sec() * 1000.f;
+
+        t.Start();
+#ifdef USE_OGL
+        if (P->pp)
+            set_PP(P->pp);
+        else
+#endif
+        {
+            set_PS(P->ps);
+            set_VS(P->vs);
+#ifdef USE_DX11
+            set_GS(P->gs);
+            set_HS(P->hs);
+            set_DS(P->ds);
+            set_CS(P->cs);
+#endif
+        }
+        g_da_pass_shaders += t.GetElapsed_sec() * 1000.f;
+
+        t.Start();
+        set_Constants(P->constants);
+        g_da_pass_const += t.GetElapsed_sec() * 1000.f;
+
+        t.Start();
+        set_Textures(P->T);
+        g_da_pass_tex += t.GetElapsed_sec() * 1000.f;
+
+        t.Start();
+        set_Matrices(P->M);
+        g_da_pass_mat += t.GetElapsed_sec() * 1000.f;
+        return;
+    }
+
     set_States(P->state);
 #ifdef USE_OGL
     if (P->pp)
