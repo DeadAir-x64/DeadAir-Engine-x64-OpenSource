@@ -1,0 +1,64 @@
+#include "common.h"
+
+uniform float4 		consts; // {1/quant,1/quant,diffusescale,ambient}
+//uniform float4 		array	[200] : register(c12);
+//tbuffer DetailsData
+//{
+	uniform float4 		array[61*4];
+//}
+
+v2p_flat 	main (v_detail v, uint instance_id : SV_InstanceID)
+{
+	v2p_flat 		O;
+	// index
+	// [DA_PORT] Номер экземпляра приходит от видеокарты, а не из вершины.
+	//
+	// Раньше в буфере лежала 61 копия одной травинки, и каждая вершина несла номер своей копии.
+	// Теперь копия одна, а размножает её сам вызов отрисовки - буфер вершин меньше в 61 раз,
+	// и та же горстка вершин читается из кэша.
+	int 	i 	= int(instance_id) * 4;
+	float4  m0 	= array[i+0];
+	float4  m1 	= array[i+1];
+	float4  m2 	= array[i+2];
+	float4  c0 	= array[i+3];
+
+	// Transform pos to world coords
+	float4 	pos;
+ 	pos.x 		= dot	(m0, v.pos);
+ 	pos.y 		= dot	(m1, v.pos);
+ 	pos.z 		= dot	(m2, v.pos);
+	pos.w 		= 1;
+
+	// Normal in world coords
+	float3 	norm;	
+		norm.x 	= pos.x - m0.w	;
+		norm.y 	= pos.y - m1.w	+ .75f;	// avoid zero
+		norm.z	= pos.z - m2.w	;
+
+	// Final out
+	float4	Pp 	= mul		(m_WVP,	pos				);
+	O.hpos 		= Pp;
+
+	// [DA_PORT] Motion vectors - see deffer_detail_w_flat.vs for the note on wind.
+#ifdef DA_VELOCITY
+	O.hpos_curr	= mul( m_VP_nojit, pos );
+	O.hpos_old	= mul( m_WVP_old, pos );
+#endif
+#ifdef DA_VELOCITY
+	// [DA_PORT] Jitter applied here, after the positions the motion vectors are built from,
+	// so those stay clean. Zero unless FSR 2 is running.
+	O.hpos.xy += m_taa_jitter.xy * O.hpos.w;
+#endif
+	O.N 		= mul		(m_WV,  normalize(norm)	);
+	float3	Pe	= mul		(m_WV,  pos				);
+	O.tcdh 		= float4	((v.misc * consts).xyyy	);
+
+# if defined(USE_R2_STATIC_SUN)
+	O.tcdh.w	= c0.x;								// (,,,dir-occlusion)
+# endif
+
+	O.position	= float4	(Pe, 		c0.w		);
+
+	return O;
+}
+FXVS;

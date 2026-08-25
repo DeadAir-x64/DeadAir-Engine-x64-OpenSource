@@ -1,0 +1,273 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition = trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = supplies_1
+buy_item_condition_factor = 0.50
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_trasher_9, {=actor_week_in_zone(8)} discount_trasher_8, {=actor_week_in_zone(7)} discount_trasher_7, {=actor_week_in_zone(6)} discount_trasher_6, {=actor_week_in_zone(5)} discount_trasher_5, {=actor_week_in_zone(4)} discount_trasher_4, {=actor_week_in_zone(3)} discount_trasher_3, {=actor_week_in_zone(2)} discount_trasher_2, {=actor_week_in_zone(1)} discount_trasher_1 
+
+[trade_generic_buy]:trasher
+
+dok_1                 = 0.18, 0.18
+dok_2                 = 0.18, 0.18
+dok_3                 = 0.18, 0.18
+dok_4                 = 0.18, 0.18
+dok_5                 = 0.18, 0.18
+dok_6                 = 0.18, 0.18
+dok_7                 = 0.18, 0.18
+dok_8                 = 0.18, 0.18
+lab_diary_1           = 0.18, 0.18
+lab_diary_2           = 0.18, 0.18
+lab_diary_3           = 0.18, 0.18
+box_lab_1             = 0.18, 0.18
+
+af_thing_1               = 0.1, 0.1 ;60% cost
+af_thing_2               = 0.1, 0.1
+af_thing_3               = 0.1, 0.1
+af_thing_4               = 0.1, 0.1
+af_thing_5               = 0.1, 0.1
+af_medusa                = 0.1, 0.1
+af_vyvert                = 0.1, 0.1
+af_gravi                 = 0.1, 0.1
+af_cristall_flower       = 0.18, 0.18 ;108% cost
+af_night_star            = 0.18, 0.18
+af_gold_fish             = 0.18, 0.18
+af_slime                 = 0.1, 0.1
+af_slug                  = 0.1, 0.1
+af_mica                  = 0.1, 0.1
+af_blood                 = 0.1, 0.1
+af_mincer_meat           = 0.1, 0.1
+af_pellicle              = 0.1, 0.1
+af_baloon                = 0.1, 0.1
+af_soul                  = 0.18, 0.18
+af_thorn                 = 0.1, 0.1
+af_crystal_thorn         = 0.1, 0.1
+af_sea_urchin            = 0.1, 0.1
+af_fuzz_kolobok          = 0.1, 0.1
+af_electra_sparkler      = 0.18, 0.18
+af_electra_flash         = 0.18, 0.18
+af_electra_moonlight     = 0.18, 0.18
+af_dummy_dummy           = 0.12, 0.12
+af_dummy_battery         = 0.18, 0.18
+af_ice                   = 0.18, 0.18
+af_drop                  = 0.1, 0.1
+af_cristall              = 0.18, 0.18
+af_fireball              = 0.18, 0.18
+af_eye                   = 0.1, 0.1
+af_dummy_glassbeads      = 0.12, 0.12
+af_fire                  = 0.18, 0.18
+af_compass               = 0.18, 0.18
+af_oasis_heart           = 0.18, 0.18
+jup_b1_half_artifact     = 0.1, 0.1
+af_quest_b14_twisted     = 0.1, 0.1
+
+[trade_generic_sell]:trasher
+
+af_thing_1                      = ;NO TRADE
+af_thing_2                      = ;NO TRADE
+af_thing_3                      = ;NO TRADE
+af_thing_4                      = ;NO TRADE
+af_thing_5                      = ;NO TRADE
+af_medusa                       = ;NO TRADE
+af_vyvert                       = ;NO TRADE
+af_gravi                        = ;NO TRADE
+af_cristall_flower              = ;NO TRADE
+af_night_star                   = ;NO TRADE
+af_gold_fish                    = ;NO TRADE
+af_slime                        = ;NO TRADE
+af_slug                         = ;NO TRADE
+af_mica                         = ;NO TRADE
+af_blood                        = ;NO TRADE
+af_mincer_meat                  = ;NO TRADE
+af_pellicle                     = ;NO TRADE
+af_baloon                       = ;NO TRADE
+af_soul                         = ;NO TRADE
+af_thorn                        = ;NO TRADE
+af_crystal_thorn                = ;NO TRADE
+af_sea_urchin                   = ;NO TRADE
+af_fuzz_kolobok                 = ;NO TRADE
+af_electra_sparkler             = ;NO TRADE
+af_electra_flash                = ;NO TRADE
+af_electra_moonlight            = ;NO TRADE
+af_dummy_dummy                  = ;NO TRADE
+af_dummy_battery                = ;NO TRADE
+af_ice                          = ;NO TRADE
+af_drop                         = ;NO TRADE
+af_cristall                     = ;NO TRADE
+af_fireball                     = ;NO TRADE
+af_eye                          = ;NO TRADE
+af_dummy_glassbeads             = ;NO TRADE
+af_fire                         = ;NO TRADE
+af_compass                      = ;NO TRADE
+af_oasis_heart                  = ;NO TRADE
+jup_b1_half_artifact            = ;NO TRADE
+af_quest_b14_twisted            = ;NO TRADE
+mutant_part_krovosos_jaw        = ;NO TRADE
+mutant_part_boar_leg            = ;NO TRADE
+mutant_part_chimera_kogot       = ;NO TRADE
+mutant_part_dog_tail            = ;NO TRADE
+mutant_part_flesh_eye           = ;NO TRADE
+mutant_part_psevdodog_tail      = ;NO TRADE
+mutant_part_snork_leg           = ;NO TRADE
+mutant_part_snork_mask          = ;NO TRADE
+mutant_part_tushkano_head       = ;NO TRADE
+mutant_part_pseudogigant_eye    = ;NO TRADE
+mutant_part_pseudogigant_hand   = ;NO TRADE
+mutant_part_chimera_claw        = ;NO TRADE
+mutant_part_cat_tail            = ;NO TRADE
+mutant_part_burer_hand          = ;NO TRADE
+mutant_part_zombi_hand          = ;NO TRADE
+mutant_part_controller_hand     = ;NO TRADE
+mutant_part_controller_glass    = ;NO TRADE
+mutant_part_fracture_hand       = ;NO TRADE
+mutant_part_krovosos_heart      = ;NO TRADE
+mutant_part_boar_tusk           = ;NO TRADE
+mutant_part_chimera_heart       = ;NO TRADE
+mutant_part_dog_liver           = ;NO TRADE
+mutant_part_dog_heart           = ;NO TRADE
+mutant_part_cat_thyroid         = ;NO TRADE
+mutant_part_cat_claw            = ;NO TRADE
+mutant_part_psevdodog_fang      = ;NO TRADE
+mutant_part_burer_brain         = ;NO TRADE
+mutant_part_psy_dog_brain       = ;NO TRADE
+
+[supplies_1]
+;[repair]
+sharpening_stones		= 1, 0.7
+sharpening_stones_4		= 1, 0.7
+grease					= 1, 0.7
+steel_wool				= 1, 0.7
+glue_b_2				= 3, 0.7
+glue_a_2				= 2, 0.7
+glue_e_2				= 1, 0.7
+sewing_kit_b			= 2, 0.7
+sewing_kit_b_4			= 1, 0.7
+sewing_kit_a			= 2, 0.7
+sewing_kit_a_4			= 1, 0.7
+textile_patch_b			= 1, 0.7
+textile_patch_m			= 1, 0.7
+textile_patch_e			= 1, 0.7
+
+cleaning_kit_p_3        = 1, 1
+cleaning_kit_s_3        = 1, 1
+toolkit_p               = 1, 1
+toolkit_p_2               = 1, 1
+toolkit_p_3               = 1, 1
+toolkit_p_4               = 1, 1
+repairkit_p             = 1, 1
+toolkit_s               = 1, 1
+toolkit_s_2               = 1, 1
+toolkit_s_3               = 1, 1
+toolkit_s_4               = 1, 1
+repairkit_s             = 1, 1
+
+;[food]
+bread					= 2, 0.75
+breadold                = 2, 1
+energy_drink			= 1, 0.75
+water_drink				= 1, 0.75
+conserva				= 1, 0.5
+tushonka				= 1, 0.25
+tomato					= 1, 0.5
+corn					= 1, 0.25
+nuts					= 1, 0.25
+chocolate				= 1, 0.25
+salmon					= 1, 0.25
+raisins					= 1, 0.25
+beer					= 1, 0.5
+vodka_3					= 2, 1
+vodka_quality_3			= 1, 0.5
+flask_3        			= 1, 1
+cigarettes_3 			= 1, 0.25
+cigarettes_lucky_3		= 1, 0.25
+cigarettes_russian_3	= 1, 0.5
+tobacco_3				= 1, 0.25
+mineral_water_3			= 1, 0.75
+
+;[drugs]
+survival_kit			= 1, 0.25
+antirad					= 1, 1
+bandage					= 4, 0.75
+medkit					= 2, 1
+drug_coagulant_5		= 1, 1
+drug_antidot_2			= 1, 0.5
+drug_radioprotector_2	= 1, 0.75
+drug_charcoal_5			= 1, 1
+
+;[weapon]
+wpn_knife2				= 1, 0.5
+wpn_knife3				= 1, 1
+wpn_binoc				= 1, 1
+wpn_hand_axe			= 1, 0.2
+wpn_hand_shovel			= 1, 0.2
+wpn_hand_crowbar		= 1, 0.2
+wpn_hand_hammer			= 1, 0.2
+
+grenade_f1			    = 1, 0.8
+grenade_rgd5			= 1, 0.8
+
+
+;[ammo]
+ammo_9x18_fmj			= 3, 0.9
+ammo_9x18_pmm			= 1, 0.75
+ammo_9x19_fmj			= 3, 0.75
+ammo_9x19_pbp			= 1, 0.75
+ammo_12x70_buck			= 3, 0.9
+ammo_12x76_zhekan		= 1, 0.75
+
+;[armor]
+novice_outfit			= 1, 1
+trenchcoat_outfit		= 1, 1
+helm_cloth_mask			= 1, 1
+helm_respirator 		= 1, 1
+
+af_frames				= 1, 0.25
+
+lead_box				= 2, 1
+af_iam				    = 1, 1
+
+;[misc]
+beadspread              = 1, 1
+backpack_light        	= 1, 1
+itm_qr		            = 1, 1
+itm_backpack			= 1, 1
+device_flashlight		= 1, 1
+device_glowstick		= 1, 1
+device_lighter			= 1, 1
+device_kerosinka		= 1, 1
+geiger					= 1, 1
+detector_simple			= 1, 1
+fieldcooker				= 1, 0.75
+cooking					= 3, 1
+kerosene_5				= 1, 0.5
+charcoal_3				= 3, 1
+explo_jerrycan_fuel_8		        = 1, 1
+explo_balon_gas_8			= 1, 0.5
+matches					= 4, 1
+batteries				= 1, 1
+batteries_ccell			= 1, 0.75
+
+;[trash]
+grooming               = 1, 0.25
+spareparts             = 3, 0.9
+cards                  = 1, 0.25
+boots                  = 1, 0.25
+swiss                  = 1, 0.25
+porn                   = 1, 0.25
+porn2                  = 1, 0.25
+survivalguide          = 1, 0.25
+tarpaulin              = 1, 0.5
+rope                   = 2, 0.5
+synthrope              = 2, 0.9
+cutlery                = 1, 0.25
+grease                 = 1, 0.75
+steel_wool             = 1, 0.75
+copper_coil            = 1, 0.5
+textolite              = 1, 0.25
+transistors            = 1, 0.25
+capacitors             = 1, 0.25
+colophony              = 1, 0.25

@@ -1,0 +1,64 @@
+function is_equipped()
+	if (db.actor) then
+		
+		if not (db.actor:active_slot() == 1) then 
+			return false 
+		end
+	
+		local obj = db.actor:active_item()
+		if (obj) then
+			return(string.match(tostring(obj:section()),"knife"))
+		end
+	end
+return false
+end
+
+function get_condition()
+local cond = 1
+	if (is_equipped()) then
+		local obj = db.actor:active_item()
+		cond = obj:condition()
+	end
+return cond
+end
+
+function can_loot(monster)
+	if (db.actor) then
+		-- DA: с пустыми руками active_item отдаёт пустоту, а сюда заходят при свежевании
+		local obj = db.actor:active_item()
+		if not (obj) then return true end
+		local name = obj:section()
+		local is_boar = string.match(tostring(monster),"boar")
+		local is_chimera = string.match(tostring(monster),"chimera")
+		local is_pseudo = string.match(tostring(monster),"gigant")
+
+		if (is_boar or is_chimera or is_pseudo) and ((name == "wpn_knife") or (name == "wpn_knife2")) then
+			return false
+		end
+	end
+return true
+end
+
+function degradate()
+	local num = 0
+	if (is_equipped()) then
+		local obj = db.actor:active_item()
+		local cond = obj:condition()
+		local name = obj:section()
+		if (name == "wpn_knife") then num = 0.04 end
+		if (name == "wpn_knife2") then num = 0.03 end
+		if (name == "wpn_knife3") then num = 0.04 end
+		if (name == "wpn_knife4") then num = 0.03 end
+		if (name == "wpn_knife5") then num = 0.02 end
+		
+		if db.actor:has_info("perk_butcher") then
+			num = num*0.75
+		end
+		
+		if (cond > num) then 
+			obj:set_condition(cond-num) 
+		else
+			obj:set_condition(0.01)
+		end
+	end
+end

@@ -1,0 +1,43 @@
+; [DA_PORT] Дополнительные наборы движений для моделей рук.
+;
+; Зачем это нужно. Ссылки на .omf лежат ВНУТРИ .ogf, то есть добавить анимацию к готовой модели
+; обычно можно только пересобрав её в SDK. Здесь тот же приём вынесен наружу: движок при загрузке
+; модели смотрит сюда и подгружает перечисленные файлы.
+;
+; Слева — имя модели без пути и расширения, справа — образец пути от gamedata\meshes\.
+; Подстановка разрешена, тогда берутся все подходящие файлы папки.
+;
+; ⚠️ Скелет должен совпадать. Набор движений от другой сборки подойдёт, только если имена костей
+; те же; иначе руки сложатся неверно — движок об этом не предупредит.
+
+[da_hud_animations]
+; Перечислены ВСЕ модели рук Dead Air: она меняется вместе с костюмом. Доцепить набор надо к
+; каждой, иначе в экзоскелете руки не двинутся, а в комбинезоне двинутся — и это читалось бы как
+; случайный сбой, а не как незаполненный список.
+
+wpn_hand_01                      = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_bandit_merc             = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_bandit_novice           = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_bandit_trench           = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_cs1                     = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_cs2                     = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_cs3a                    = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_cs3b                    = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_duty_ps5m               = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_duty_psz9d              = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_ecologist_guard         = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_ecologist_ssp99         = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_ecologist_ssp99m        = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_exo                     = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_exolight                = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_freedom_guard           = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_freedom_guardian        = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_freedom_wind            = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_loner_novice            = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_loner_seva              = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_loner_sunrise           = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_merc_suit               = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_military_berill         = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_military_skat9          = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_monolith_suit           = anomaly_weapons\hud_hands_animation\*.omf
+wpn_hand_no_outfit               = anomaly_weapons\hud_hands_animation\*.omf

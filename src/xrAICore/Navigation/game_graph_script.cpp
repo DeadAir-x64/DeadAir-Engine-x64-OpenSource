@@ -92,7 +92,18 @@ void CGameGraph::script_register(lua_State* luaState)
         }),
         def("gg_distance", +[](u32 vid1, u32 vid2)
         {
-            const auto game_graph = GEnv.AISpace->game_graph();
+            // [DA_PORT] ⛔ Здесь стояло `const auto game_graph = ...`, то есть КОПИЯ графа.
+            //
+            // game_graph() возвращает ССЫЛКУ, и `auto` без & копирует объект целиком. Копия
+            // поверхностная, а ~CGameGraph делает xr_delete(m_current_level_cross_table) и закрывает
+            // чтеца — то есть каждый вызов из скрипта СНОСИЛ живую кросс-таблицу графа. Дальше ею
+            // пользуется весь ИИ, и падение приезжает много позже и в другом месте.
+            //
+            // В скриптах самого Dead Air этот вызов не встречается, поэтому дефект спящий, но любой
+            // аддон его будит. Дефект указан автором порта Dead Air Refined.
+            const CGameGraph& game_graph = GEnv.AISpace->game_graph();
+            if (!game_graph.valid_vertex_id(vid1) || !game_graph.valid_vertex_id(vid2))
+                return 0.f;
             const auto p1 = game_graph.vertex(vid1)->game_point();
             const auto p2 = game_graph.vertex(vid2)->game_point();
             return p1.distance_to(p2);

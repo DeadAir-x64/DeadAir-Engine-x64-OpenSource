@@ -246,6 +246,10 @@ public:
     void ResetActionQueue();
     // Actor only
     void SetActorPosition(Fvector pos);
+    // [DA_PORT] skip_collision_correct — вести актёра без разбора столкновений (скриптовые сцены),
+    // keep_speed — не гасить скорость. Разбор у реализации.
+    void SetActorPosition(Fvector pos, bool skip_collision_correct);
+    void SetActorPosition(Fvector pos, bool skip_collision_correct, bool keep_speed);
     void SetActorDirection(float dir);
     void SetNpcPosition(Fvector pos);
     void DisableHitMarks(bool disable);
@@ -373,6 +377,11 @@ public:
     void ActorLookAtPoint(Fvector point);
     void IterateInventory(luabind::functor<bool> functor, luabind::adl::object object);
     void IterateInventoryBox(luabind::functor<bool> functor, luabind::adl::object object);
+    void IterateBelt(luabind::functor<bool> functor, luabind::adl::object object); // [DA_PORT] пояс
+    u32 GetActorMovementState(); // [DA_PORT] набор битов EMoveCommand
+    void UnblockAllSlots(); // [DA_PORT] сброс счётчика блокировок, см. реализацию
+    void MoveItemToRuck(CScriptGameObject* pItem); // [DA_PORT]
+    void MoveItemToSlot(CScriptGameObject* pItem, u16 slot_id); // [DA_PORT]
     void MarkItemDropped(CScriptGameObject* item);
     bool MarkedDropped(CScriptGameObject* item);
     void UnloadMagazine();

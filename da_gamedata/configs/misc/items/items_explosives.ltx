@@ -1,0 +1,852 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;; DEPLOYABLE CIVILIAN EXPLOSIVES ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+[explo_jerrycan_fuel_8]:identity_immunities,delayed_action_fuse,default_weapon_params ;x8
+$spawn 				= "weapons\explosive\mobiltank"
+$prefetch 			= 16
+class				= S_EXPLO
+cform				= skeleton
+visual				= dynamics\balon\kanistra.ogf
+radius				= 68; 50
+description			= st_jerrycan_fuel_descr
+inv_name			= st_jerrycan_fuel
+inv_name_short		= st_jerrycan_fuel
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 0
+inv_grid_y         = 49
+cost				= 1500
+inv_weight			= 7.52
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+blast				= 3.8
+blast_r				= 5.6
+blast_impulse		= 126
+;delete
+blast_impulse_factor = 1
+frags				= 39
+frags_r				= 28
+frag_hit			= 0.09
+frag_hit_impulse	= 48
+hit_type_blast		= explosion
+hit_type_frag		= fire_wound
+up_throw_factor		= 0.46
+wm_size                  = 0.1
+explode_particles		 = explosions\explosion_mobiltank
+light_color		         = 1.9,1.3,0.5
+light_range		         = 30.0
+light_time 		         = 1
+;трассы от осколков
+fragment_speed				= 96		;скорость осколков (м/с)
+explode_duration		 = 3		;подолжительность взрыва (с)
+time_to_explode			= 1.f
+wallmark_section		= explosion_marks
+;звуки
+snd_explode = weapons\explo\kanistra_01
+snd_explode1 = weapons\explo\kanistra_02
+snd_explode2 = weapons\explo\kanistra_03
+snd_explode2 = weapons\explo\kanistra_04
+immunities_sect			= explosive_jerrycan_immunities_sect
+repair_part_bonus	 	= 0.02
+
+use1_functor                             = itms_manager.inv_item_pour_menu
+use1_action_functor                      = itms_manager.inv_item_pour
+
+
+[explo_jerrycan_fuel_7]:explo_jerrycan_fuel_8
+
+description			= st_jerrycan_fuel2_descr
+inv_name			= st_jerrycan_fuel2
+inv_name_short			= st_jerrycan_fuel2
+inv_grid_x         = 2
+
+cost				= 1350
+inv_weight			= 6.78
+
+[explo_jerrycan_fuel_6]:explo_jerrycan_fuel_8
+description			= st_jerrycan_fuel3_descr
+inv_name			= st_jerrycan_fuel3
+inv_name_short			= st_jerrycan_fuel3
+inv_grid_x         = 4
+
+cost				= 1200
+inv_weight			= 6.04
+
+[explo_jerrycan_fuel_5]:explo_jerrycan_fuel_8
+
+description			= st_jerrycan_fuel4_descr
+inv_name			= st_jerrycan_fuel4
+inv_name_short			= st_jerrycan_fuel4
+inv_grid_x         = 6
+
+cost				= 1050
+inv_weight			= 5.30
+
+[explo_jerrycan_fuel_4]:explo_jerrycan_fuel_8
+description			= st_jerrycan_fuel5_descr
+inv_name			= st_jerrycan_fuel5
+inv_name_short			= st_jerrycan_fuel5
+inv_grid_x         = 8
+
+cost				= 900
+inv_weight			= 4.56
+
+[explo_jerrycan_fuel_3]:explo_jerrycan_fuel_8
+description			= st_jerrycan_fuel6_descr
+inv_name			= st_jerrycan_fuel6
+inv_name_short			= st_jerrycan_fuel6
+inv_grid_x         = 10
+
+cost				= 750
+inv_weight			= 3.82
+
+repair_part_bonus	 	= 0.02
+
+[explo_jerrycan_fuel_2]:explo_jerrycan_fuel_8
+description			= st_jerrycan_fuel7_descr
+inv_name			= st_jerrycan_fuel7
+inv_name_short			= st_jerrycan_fuel7
+inv_grid_x         = 12
+
+cost				= 600
+inv_weight			= 3.08
+
+[explo_jerrycan_fuel]:explo_jerrycan_fuel_8
+description			= st_jerrycan_fuel8_descr
+inv_name			= st_jerrycan_fuel8
+inv_name_short			= st_jerrycan_fuel8
+inv_grid_x         = 14
+
+cost				= 450
+inv_weight			= 2.34
+
+[explo_jerrycan_fuel_0]:identity_immunities
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= II_ATTCH
+cform				= skeleton
+visual				= dynamics\balon\kanistra.ogf
+radius				= 68; 50
+
+description			= st_jerrycan_fuel_empty_descr
+inv_name			= st_jerrycan_fuel_empty
+inv_name_short		= st_jerrycan_fuel_empty
+
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 16
+inv_grid_y         = 49
+
+cost				= 300
+inv_weight			= 1.6
+
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+
+immunities_sect			= explosive_jerrycan_immunities_sect
+
+repair_part_bonus	 	= 0.02
+
+[explosive_jerrycan_immunities_sect]
+;коэффициенты для попаданий различными типами хитов
+burn_immunity			= 2.0
+strike_immunity			= 0.0
+shock_immunity			= 1.0
+wound_immunity			= 0.0
+radiation_immunity		= 0.0
+telepatic_immunity		= 0.0
+chemical_burn_immunity	= 0.0
+explosion_immunity		= 2.0
+fire_wound_immunity		= 5.0
+
+[explo_metalcan_powder]:identity_immunities,instant_action_fuse,default_weapon_params
+$spawn 				= "weapons\explosive\mobiltank"
+$prefetch 			= 16
+class				= S_EXPLO
+cform				= skeleton
+visual				= dynamics\workshop_room\banka_kraski_1.ogf
+radius				= 68; 50
+
+description			= st_metalcan_powder_descr
+inv_name			= st_metalcan_powder
+inv_name_short			= st_metalcan_powder
+
+inv_grid_width     = 1
+inv_grid_height    = 1
+inv_grid_x         = 18
+inv_grid_y         = 47
+
+cost				= 600
+
+
+
+inv_weight			= 1.081
+
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+
+;-------------------------------------------------------------------------------
+blast				= 1.6
+blast_r				= 1.8
+blast_impulse		= 63
+;delete
+blast_impulse_factor = 1
+
+frags				= 77
+frags_r				= 14
+frag_hit			= 0.08
+frag_hit_impulse	= 56
+
+hit_type_blast		= explosion
+hit_type_frag		= fire_wound
+
+up_throw_factor		= 0.13
+;-------------------------------------------------------------------------------
+wm_size                  = 0.1
+
+explode_particles		 = explosions\explosion_mobiltank
+
+light_color		         = 1.9,1.3,0.5
+light_range		         = 30.0
+light_time 		         = 1
+
+;трассы от осколков
+fragment_speed				= 163		;скорость осколков (м/с)
+explode_duration		 = 0		;подолжительность взрыва (с)
+time_to_explode			= 0.f
+;wallmarks
+wallmark_section		= explosion_marks
+
+;звуки
+snd_explode = weapons\explo\kanistra_01
+snd_explode1 = weapons\explo\kanistra_02
+snd_explode2 = weapons\explo\kanistra_03
+snd_explode2 = weapons\explo\kanistra_04
+immunities_sect			= explosive_metalcan_powder_immunities_sect
+
+repair_part_bonus	 	= 0.01
+
+[explosive_metalcan_powder_immunities_sect]
+;коэффициенты для попаданий различными типами хитов
+burn_immunity			= 2.0
+strike_immunity			= 0.0
+shock_immunity			= 1.0
+wound_immunity			= 0.0
+radiation_immunity		= 0.0
+telepatic_immunity		= 0.0
+chemical_burn_immunity	= 0.0
+explosion_immunity		= 2.0
+fire_wound_immunity		= 5.0
+
+[explo_balon_gas_8]:identity_immunities,delayed_action_fuse,default_weapon_params
+$spawn 				= "weapons\explosive\mobiltank"
+$prefetch 			= 16
+class				= S_EXPLO
+cform				= skeleton
+visual				= dynamics\balon\gaz_balon.ogf
+radius				= 68; 50
+
+description			= st_balon_gas_descr
+inv_name			= st_balon_gas
+inv_name_short		= st_balon_gas
+
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 0
+inv_grid_y         = 47
+
+cost				= 1500
+
+
+
+inv_weight			= 8.0
+
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+
+;-------------------------------------------------------------------------------
+blast				= 4.6
+blast_r				= 6.4
+blast_impulse		= 130
+;delete
+blast_impulse_factor = 1
+
+frags				= 28
+frags_r				= 36
+frag_hit			= 0.11
+frag_hit_impulse	= 66
+
+hit_type_blast		= explosion
+hit_type_frag		= fire_wound
+
+up_throw_factor		= 0.54
+;-------------------------------------------------------------------------------
+wm_size                  = 0.1
+
+explode_particles		 = explosions\explosion_barrel
+
+light_color		         = 1.9,1.3,0.5
+light_range		         = 30.0
+light_time 		         = 1
+
+;трассы от осколков
+fragment_speed				= 206		;скорость осколков (м/с)
+
+explode_duration		 = 2		;подолжительность взрыва (с)
+time_to_explode			= 1.f
+;wallmarks
+wallmark_section		= explosion_marks
+
+;звуки
+snd_explode = weapons\explo\kanistra_01
+snd_explode1 = weapons\explo\kanistra_02
+snd_explode2 = weapons\explo\kanistra_03
+snd_explode2 = weapons\explo\kanistra_04
+immunities_sect			= explosive_balon_gas_immunities_sect
+
+repair_part_bonus	 	= 0.03
+
+use1_functor                             = itms_manager.inv_item_pour_menu
+use1_action_functor                      = itms_manager.inv_item_pour
+
+
+[explo_balon_gas_7]:explo_balon_gas_8
+$spawn 				= "weapons\explosive\explo_balon_gas_7"
+description			= st_balon_gas2_descr
+inv_name			= st_balon_gas2
+inv_name_short			= st_balon_gas2
+
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 2
+inv_grid_y         = 47
+cost				= 1350
+inv_weight			= 7.5
+
+
+[explo_balon_gas_6]:explo_balon_gas_8
+$spawn 				= "weapons\explosive\explo_balon_gas_6"
+description			= st_balon_gas3_descr
+inv_name			= st_balon_gas3
+inv_name_short			= st_balon_gas3
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 4
+inv_grid_y         = 47
+cost				= 1200
+inv_weight			= 7.0
+
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+
+
+[explo_balon_gas_5]:explo_balon_gas_8
+$spawn 				= "weapons\explosive\explo_balon_gas_5"
+description			= st_balon_gas4_descr
+inv_name			= st_balon_gas4
+inv_name_short			= st_balon_gas4
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 6
+inv_grid_y         = 47
+cost				= 1050
+inv_weight			= 6.5
+
+
+[explo_balon_gas_4]:explo_balon_gas_8
+$spawn 				= "weapons\explosive\explo_balon_gas_4"
+description			= st_balon_gas5_descr
+inv_name			= st_balon_gas5
+inv_name_short		= st_balon_gas5
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 8
+inv_grid_y         = 47
+cost				= 900
+inv_weight			= 6.0
+
+
+[explo_balon_gas_3]:explo_balon_gas_8
+$spawn 				= "weapons\explosive\explo_balon_gas_3"
+description			= st_balon_gas6_descr
+inv_name			= st_balon_gas6
+inv_name_short			= st_balon_gas6
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 10
+inv_grid_y         = 47
+cost				= 750
+inv_weight			= 5.5
+
+
+[explo_balon_gas_2]:explo_balon_gas_8
+$spawn 				= "weapons\explosive\explo_balon_gas_2"
+description			= st_balon_gas7_descr
+inv_name			= st_balon_gas7
+inv_name_short			= st_balon_gas7
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 12
+inv_grid_y         = 47
+cost				= 600
+inv_weight			= 5.0
+
+
+[explo_balon_gas]:explo_balon_gas_8
+$spawn 				= "weapons\explosive\explo_balon_gas_8"
+description			= st_balon_gas8_descr
+inv_name			= st_balon_gas8
+inv_name_short			= st_balon_gas8
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 14
+inv_grid_y         = 47
+cost				= 450
+inv_weight			= 4.5
+
+
+[explo_balon_gas_0]:identity_immunities
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= II_ATTCH
+cform				= skeleton
+visual				= dynamics\balon\gaz_balon.ogf
+radius				= 68
+
+description			= st_balon_gas_empty_descr
+inv_name			= st_balon_gas_empty
+inv_name_short			= st_balon_gas_empty
+
+inv_grid_width     = 2
+inv_grid_height    = 2
+inv_grid_x         = 16
+inv_grid_y         = 47
+
+cost				= 300
+
+
+
+inv_weight			= 4.0
+
+attach_angle_offset		= -0.287979, 1.560923, 1.544060
+attach_position_offset		= 0.096910, -0.013594, 0.107925
+attach_bone_name		= bip01_r_hand
+auto_attach				= false
+
+repair_part_bonus	 	= 0.03
+
+[explosive_balon_gas_immunities_sect]
+;коэффициенты для попаданий различными типами хитов
+burn_immunity			= 2.0
+strike_immunity			= 0.0
+shock_immunity			= 1.0
+wound_immunity			= 0.0
+radiation_immunity		= 0.0
+telepatic_immunity		= 0.0
+chemical_burn_immunity	= 0.0
+explosion_immunity		= 2.0
+fire_wound_immunity		= 5.0
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;; IEDs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+[ied_rpg]:identity_immunities
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= II_ANTIR
+cform				= skeleton
+visual          	= dynamics\weapons\wpn_ied\wpn_ied_rpg.ogf
+inv_vol = 1
+
+description			= st_ied_rpg_descr
+inv_name			= st_ied_rpg
+inv_name_short			= st_ied_rpg
+
+inv_grid_width			= 1
+inv_grid_height			= 2
+inv_grid_x			= 19
+inv_grid_y			= 47
+
+cost				= 1800
+inv_weight			= 1.89
+
+attach_angle_offset   = -1.5708,0.1919,3.1416    ;устанавливаетсљ в радианах Angle*PI/180
+attach_position_offset  = 0.075, 0.066, 0.023
+attach_bone_name    = bip01_l_hand
+auto_attach       = false
+
+; eatable item
+eat_health = 0
+eat_satiety = 0
+eat_power = 0
+eat_radiation = 0
+eat_alcohol = 0
+eat_portions_num = 1
+wounds_heal_perc = 0
+
+use1_functor                             = itms_manager.inv_item_dismantle_menu
+use1_action_functor                      = itms_manager.inv_item_dismantle
+
+;-------------------------------------------------------------------------------
+
+[rpg_blow]:explosive_barrel
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= II_EXPLO            
+cform				= skeleton
+
+script_binding			= m_mines.add_actor_mine
+
+visual				= dynamics\weapons\wpn_ied\wpn_ied_rpg.ogf
+
+inv_name			= 
+inv_name_short		=
+inv_weight        	= 1.89
+
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 19
+inv_grid_y			= 47
+;вещь невозможно подобрать
+can_take			= false
+
+cost				= 3000
+;-------------------------------------------------------------------------------
+blast				= 4.3
+blast_r				= 7.2
+blast_impulse		= 205
+;delete
+blast_impulse_factor = 1
+
+
+frags				= 153
+frags_r				= 36
+frag_hit			= 0.03
+frag_hit_impulse	= 28
+
+hit_type_blast		= explosion
+hit_type_frag		= fire_wound
+
+up_throw_factor		= 0.76
+
+;-------------------------------------------------------------------------------
+wm_size                  = 0.1
+
+explode_particles		 = explosions\explosion_04
+
+light_color		         = 1.9,1.3,0.5
+light_range		         = 30.0
+light_time 		         = 1
+
+;трассы от осколков
+fragment_speed				= 230		;скорость осколков (м/с)
+
+explode_duration			 = 0		;подолжительность взрыва (с)
+time_to_explode			= 0.f
+
+;звуки
+snd_explode				= weapons\explo\rpg7_explode_01
+snd_explode1				= weapons\explo\rpg7_explode_02
+snd_explode2				= weapons\explo\rpg7_explode_03
+immunities_sect			= ied_rpg_immunities_sect
+;wallmarks
+wallmark_section		= explosion_marks
+
+[ied_rpg_immunities_sect]
+burn_immunity			= 2.0
+strike_immunity			= 0.0
+shock_immunity			= 1.0
+wound_immunity			= 0.0
+radiation_immunity		= 0.0
+telepatic_immunity		= 0.0
+chemical_burn_immunity	= 0.0
+explosion_immunity		= 2.0
+fire_wound_immunity		= 5.0
+
+eat_portions_num = 1
+; food item
+animation_slot  = 4
+;hud item
+hud = wpn_vodka_hud
+
+[ied]:identity_immunities
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= II_ANTIR
+cform				= skeleton
+visual				= dynamics\weapons\wpn_ied\wpn_ied.ogf
+
+description			= st_ied_descr
+inv_name			= st_ied
+inv_name_short			= st_ied
+
+inv_grid_width			= 1
+inv_grid_height			= 2
+inv_grid_x			= 19
+inv_grid_y			= 49
+
+cost				= 2600
+
+inv_weight			= 2.165
+
+attach_angle_offset   = -1.5708,0.1919,3.1416    ;устанавливаетсљ в радианах Angle*PI/180
+attach_position_offset  = 0.075, 0.066, 0.023
+attach_bone_name    = bip01_l_hand
+auto_attach       = false
+
+; eatable item
+eat_health = 0
+eat_satiety = 0
+eat_power = 0
+eat_radiation = 0
+eat_alcohol = 0
+eat_portions_num = 1
+
+wounds_heal_perc = 0
+
+use1_functor                             = itms_manager.inv_item_dismantle_menu
+use1_action_functor                      = itms_manager.inv_item_dismantle
+
+;-------------------------------------------------------------------------------
+[ied_blow]:explosive_barrel
+$spawn 				= "devices\roubles"
+$prefetch 			= 16
+class				= II_EXPLO            
+cform				= skeleton
+
+script_binding			= m_mines.add_actor_mine
+
+visual				= dynamics\weapons\wpn_ied\wpn_ied.ogf
+
+inv_name			= st_ied
+inv_name_short			= st_ied
+
+inv_grid_width			= 1
+inv_grid_height			= 2
+inv_grid_x			= 19
+inv_grid_y			= 49
+
+cost				= 3700
+
+can_take			= false
+;-------------------------------------------------------------------------------
+blast				= 5.7
+blast_r				= 12.9
+blast_impulse		= 274
+;delete
+blast_impulse_factor = 1
+
+
+frags				= 5
+frags_r				= 74
+frag_hit			= 0.06
+frag_hit_impulse	= 43
+
+hit_type_blast		= explosion
+hit_type_frag		= fire_wound
+
+up_throw_factor		= 1.0
+;-------------------------------------------------------------------------------
+wm_size                  = 0.1
+
+explode_particles		 = explosions\explosion_mobiltank
+
+light_color		         = 1.9,1.3,0.5
+light_range		         = 30.0
+light_time 		         = 1
+
+;трассы от осколков
+fragment_speed				= 220		;скорость осколков (м/с)
+
+explode_duration		 = 0		;подолжительность взрыва (с)
+time_to_explode			= 0.f
+
+;wallmarks
+wallmark_section		= explosion_marks
+
+;звуки
+snd_explode				= weapons\explo\rpg7_explode_01
+snd_explode1				= weapons\explo\rpg7_explode_02
+snd_explode2				= weapons\explo\rpg7_explode_03
+immunities_sect			= ied_immunities_sect
+
+[ied_immunities_sect]
+burn_immunity			= 2.0
+strike_immunity			= 0.0
+shock_immunity			= 1.0
+wound_immunity			= 0.0
+radiation_immunity		= 0.0
+telepatic_immunity		= 0.0
+chemical_burn_immunity	= 0.0
+explosion_immunity		= 2.0
+fire_wound_immunity		= 5.0
+
+eat_portions_num = 1
+; food item
+animation_slot  = 4
+;hud item
+hud = wpn_vodka_hud
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;; MINES ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;Swartz - Added landmines below.
+
+[mine]:identity_immunities
+GroupControlSection   = spawn_group
+discovery_dependency  =
+$spawn 				= "devices\play"
+cform                   = skeleton
+class         = II_ANTIR
+visual				= dynamics\weapons\wpn_pfm1\wpn_pfm1.ogf     
+inv_vol = 1
+
+inv_name        			= st_mine_name
+inv_name_short      		= st_mine_name
+description                     = st_mine_descr
+
+inv_weight        	= 0.751
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 18
+inv_grid_y			= 48
+cost          = 1200
+
+attach_angle_offset   = -1.5708,0.1919,3.1416    ;устанавливаетсљ в радианах Angle*PI/180
+attach_position_offset  = 0.075, 0.066, 0.023
+attach_bone_name    = bip01_l_hand
+auto_attach       = false
+
+; eatable item
+eat_health = 0
+eat_satiety = 0
+eat_power = 0
+eat_radiation = 0
+eat_alcohol = 0
+eat_portions_num = 1
+
+wounds_heal_perc = 0
+            
+; Собстно мина которая на земле
+[mine_blow]:explosive_barrel
+
+GroupControlSection	= spawn_group
+discovery_dependency =
+$spawn 				= "sm\scripts\mina_blow"
+$prefetch			= 16
+class				= II_EXPLO            
+cform				= skeleton
+
+script_binding			= m_mines.add_actor_mine
+
+visual				= dynamics\weapons\wpn_pfm1\wpn_pfm1.ogf
+
+inv_name			= 
+inv_name_short		=
+inv_weight        	= 0.751
+
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 18
+inv_grid_y			= 48
+;вещь невозможно подобрать
+can_take			= false
+
+cost				= 1500
+;-------------------------------------------------------------------------------
+blast				= 3.18
+blast_r				= 2.26
+blast_impulse		= 126
+;delete
+blast_impulse_factor = 1
+
+
+frags				= 0
+frags_r				= 0
+frag_hit			= 0.04
+frag_hit_impulse	= 8
+
+hit_type_blast		= explosion
+hit_type_frag		= fire_wound
+
+up_throw_factor		= 0.1
+;-------------------------------------------------------------------------------
+wm_size                  = 0.01
+
+explode_particles		 = explosions\explosion_01
+
+light_color		         = 1.9,1.4,0.5
+light_range		         = 25.0
+light_time 		         = 0.85
+
+;трассы от осколков
+fragment_speed				= 170		;скорость осколков (м/с)
+
+explode_duration			 = 0		;подолжительность взрыва (с)
+time_to_explode			= 0.f
+
+;звуки
+snd_explode = weapons\explo\mine_01
+snd_explode1 = weapons\explo\mine_02
+snd_explode2 = weapons\explo\mine_03
+
+immunities_sect			= personnel_mine_immunities_sect
+;wallmarks
+wallmark_section		= explosion_marks
+
+[personnel_mine_immunities_sect]
+;коэффициенты для попаданий различными типами хитов
+burn_immunity			= 2.0
+strike_immunity			= 0.0
+shock_immunity			= 1.0
+wound_immunity			= 0.0
+radiation_immunity		= 0.0
+telepatic_immunity		= 0.0
+chemical_burn_immunity	= 0.0
+explosion_immunity		= 2.0
+fire_wound_immunity		= 5.0
+
+eat_portions_num = 1
+; food item
+animation_slot  = 4
+;hud item
+hud = wpn_vodka_hud
+
+[mine_actor]:mine_blow
+
+[mine_wire]:mine
+visual				= dynamics\weapons\wpn_ied\wpn_ied.ogf  
+inv_vol = 1
+
+inv_name        			= st_mine_wire
+inv_name_short      		= st_mine_wire
+description                 = st_mine_wire_descr
+
+inv_weight        	= 0.751
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 18
+inv_grid_y			= 49
+cost          = 1500
+
+[mine_wire_blow]:mine_blow
+script_binding		= m_mines.add_actor_mine
+visual				= dynamics\weapons\wpn_ied\wpn_mine_wire.ogf
+blast				= 7
+blast_r				= 1
+blast_impulse		= 50
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

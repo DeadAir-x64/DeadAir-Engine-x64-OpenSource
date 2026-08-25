@@ -1,0 +1,63 @@
+#include "common.h"
+#include "da_shader_ids.h"
+// [DA_PORT] Разрыв повторов разрешён ТОЛЬКО этому шейдеру. Разбор — в da_hextile.h.
+//
+// Дефайн обязан стоять ДО sload.h. Приём годится лишь там, где развёртка тайловая: у
+// импосторов и дальних болванок текстура лежит АТЛАСОМ, у частиц — тем более, и случайный
+// сдвиг взял бы там кусок из соседней ячейки. Проверено на бочке: каша.
+#define DA_HEX_ALLOW 1
+#include "sload.h"
+
+f_deffer main( p_flat I )
+{
+  f_deffer	O;
+
+  // diffuse
+  float3 D	= tbase		(I.tcdh);	// IN:  rgb.a
+
+#ifdef	USE_TDETAIL
+//	D.rgb	= 2*D.rgb*tex2D	(s_detail, I.tcdbump).rgb;
+	D.rgb	= 2*D.rgb * s_detail.Sample( smp_base, I.tcdbump ).rgb;
+#endif
+
+	// hemi,sun,material
+	float 	ms	= xmaterial		;
+#ifdef USE_LM_HEMI
+//	float4	lm 	= tex2D( s_hemi, I.lmh );
+	float4	lm 	= s_hemi.Sample( smp_rtlinear, I.lmh );
+//	float 	h   	= dot( lm.rgb, 1.h/3.h );
+	float 	h   	= get_hemi(lm);
+# ifdef USE_R2_STATIC_SUN
+//		 	ms 	= lm.w			;
+			ms 	= get_sun(lm);
+# endif
+#else
+	float 	h	= I.position.w	;
+# ifdef USE_R2_STATIC_SUN
+		 	ms	= I.tcdh.w		;
+# endif
+#endif
+
+  // 2. Standart output
+  float4 Ne		= float4( normalize((float3)I.N.xyz), h*H_MODELS );
+  O				= pack_gbuffer(
+										Ne,
+										float4( I.position.xyz + Ne.xyz*def_virtualh/2.h, ms ),
+										float4( D.rgb, def_gloss ) );	// OUT: rgb.gloss
+
+	// [DA_PORT] Motion vector: how far this surface travelled across the screen since the previous
+	// frame, in NDC. The perspective divide is done here rather than in the vertex shader because the
+	// interpolation has to happen on the clip-space values — dividing first and interpolating after
+	// gives a different, wrong answer on anything at an angle to the camera.
+#ifdef DA_VELOCITY
+#ifdef DA_DEBUG_SHADER_IDS
+	O.velocity = DA_ID_FLAT;
+#else
+	O.velocity = I.hpos_curr.xy / I.hpos_curr.w - I.hpos_old.xy / I.hpos_old.w;
+	// [DA_PORT] Moving pixels distrust their history - see da_motion_reactive.
+	O.reactive = max( O.reactive, da_motion_reactive(O.velocity) );
+#endif
+#endif
+
+  return O;
+}

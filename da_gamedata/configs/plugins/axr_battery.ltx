@@ -1,0 +1,38 @@
+[config]
+pda_drain = true  	;PDA
+nv_drain = true   	;Night vision
+fl_drain = true   	;Headlamp
+dt_drain = true		;Detector
+; [DA_PORT] Container for artifact: OFF.
+; Contained artefacts hanging on the belt no longer drain the battery.
+; Rates stay in [main] untouched (aac 0.0001, aam 0.0002) - flip this back to true to restore.
+; Turning the whole feature off also skips a full inventory walk on every battery update
+; (updateContainers -> iterate_inventory in axr_battery.script).
+af_drain = false	;Container for artifact
+exo_drain = true 	;Exoskeleton
+
+[main] ;Drain amount every 10 second of use
+pda_drain_speed = 0.0001
+nv_drain_speed	= 0.002
+fl_drain_speed	= 0.0005
+dt1_drain_speed	= 0.001
+dt2_drain_speed	= 0.002
+dt3_drain_speed	= 0.003
+dt4_drain_speed	= 0.004
+iam_drain_speed = 0.0
+aac_drain_speed = 0.0001
+aam_drain_speed = 0.0002
+
+[battery_sections]
+batteries_ccell
+batteries
+batteries_dead
+
+[batteries_ccell]
+power = 0.93									; 0.99 because condition is never 1.0, it's 0.999e+
+
+[batteries]
+power = 0.52
+
+[batteries_dead]
+power = 0.14

@@ -57,6 +57,20 @@ public:
     ~HUD_SOUND_COLLECTION();
 
     HUD_SOUND_COLLECTION() : m_alias(nullptr) {};
+
+    // [DA_PORT] Копирование ЗАПРЕЩЕНО, перемещение разрешено.
+    //
+    // Класс хранится ПО ЗНАЧЕНИЮ в xr_vector внутри HUD_SOUND_COLLECTION_LAYERED, а тот растёт
+    // через resize(size + 1). При перевыделении вектор копировал элементы и уничтожал исходники, а
+    // деструктор делает DestroySound -> snd.destroy(). То есть каждый новый слой звука УНИЧТОЖАЛ
+    // источники всех предыдущих, хотя копии продолжали числить их своими.
+    //
+    // Перемещение это чинит: у перемещённого объекта m_sound_items пуст, и его деструктор ничего
+    // не трогает. noexcept обязателен - без него вектор всё равно предпочтёт копирование.
+    HUD_SOUND_COLLECTION(const HUD_SOUND_COLLECTION&) = delete;
+    HUD_SOUND_COLLECTION& operator=(const HUD_SOUND_COLLECTION&) = delete;
+    HUD_SOUND_COLLECTION(HUD_SOUND_COLLECTION&&) noexcept = default;
+    HUD_SOUND_COLLECTION& operator=(HUD_SOUND_COLLECTION&&) noexcept = default;
     shared_str m_alias; //Alundaio: For use when it's part of a layered Collection
 
     xr_vector<HUD_SOUND_ITEM> m_sound_items; //Alundaio: made public

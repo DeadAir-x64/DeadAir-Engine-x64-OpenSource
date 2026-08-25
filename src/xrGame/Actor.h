@@ -41,6 +41,7 @@ class ENGINE_API CBoneInstance;
 class ENGINE_API CBlend;
 class CWeaponList;
 class CEffectorBobbing;
+class CDaScriptCamEffector; // [DA_PORT] перехват камеры из скрипта
 class CHolderCustom;
 struct SShootingEffector;
 struct SSleepEffector;
@@ -340,6 +341,16 @@ public:
     IC CCameraBase* cam_Active() { return cameras[cam_active]; }
     IC CCameraBase* cam_FirstEye() { return cameras[eacFirstEye]; }
 
+    // [DA_PORT] Перехват камеры скриптом (паркур, сцены). Разбор — в da_script_cam.h.
+    //
+    // Указатель НЕ владеющий: эффектор принадлежит менеджеру камер, тот его и удаляет. Чтобы после
+    // чужого снятия здесь не остался висячий указатель, при создании вешаем колбэк на удаление —
+    // он обнуляет поле. Без него любой сброс эффекторов (смена уровня, смерть) оставлял бы мину.
+    CDaScriptCamEffector* da_script_cam() const { return m_da_script_cam; }
+    CDaScriptCamEffector* da_script_cam_init();
+    void da_script_cam_remove();
+    void da_script_cam_forget(); // колбэк менеджера: эффектор снят, ссылку обнулить
+
     EActorCameras active_cam() const { return cam_active; } // KD: we need to know which cam is active outside actor methods
     virtual void cam_Set(EActorCameras style); //Alundaio: made public
 
@@ -360,6 +371,7 @@ protected:
     Fvector vPrevCamDir;
     float fCurAVelocity;
     CEffectorBobbing* pCamBobbing;
+    CDaScriptCamEffector* m_da_script_cam{}; // [DA_PORT] не владеем, см. da_script_cam_init
 
     //менеджер эффекторов, есть у каждого актрера
     CActorCameraManager* m_pActorEffector;

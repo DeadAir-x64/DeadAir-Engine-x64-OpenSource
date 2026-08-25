@@ -1,0 +1,100 @@
+-- [DA_PORT] Проверка отряда подстановкой висячего бойца.
+--
+-- Повод: вылет у игрока (сборка 07d02d13) -- чтение по адресу 0x4adbeaf2 в
+-- CSE_ALifeDynamicObject::synchronize_location, вызванном из
+-- CSE_ALifeOnlineOfflineGroup::switch_offline. Не ноль, а мусор: указатель на уже
+-- освобождённого бойца. Проверка на ноль в том месте стояла, проверки живости -- нет.
+--
+-- Тест воспроизводит условие НАМЕРЕННО, а не ждёт совпадения: создаёт отряд, освобождает
+-- серверный объект бойца, НЕ снимая его с учёта в отряде, и после этого дёргает отряд.
+-- Без правки это падение; с правкой -- строка в логе и живая игра.
+--
+-- Запуск: run_string("da_test_squad.run()")   (движку нужен ключ -dev)
+
+local function say(fmt, ...)
+	local ok, s = pcall(string.format, fmt, ...)
+	log("~ [DA_TEST_SQUAD] " .. (ok and s or fmt))
+end
+
+-- Секция отряда берётся из настроек умного места рядом с игроком: жёстко зашитая могла бы
+-- не существовать в этой сборке мода, и тест провалился бы не по делу.
+local function pick_squad_section()
+	local ini = system_ini()
+	for _, sec in ipairs({ "stalker_sim_squad_novice", "sim_squad_novice", "stalker_sim_squad_regular" }) do
+		if ini:section_exist(sec) then
+			return sec
+		end
+	end
+	return nil
+end
+
+function run()
+	local sim = alife()
+	if not sim then
+		say("ALife недоступен")
+		return
+	end
+
+	local actor = db.actor
+	if not actor then
+		say("актёра нет")
+		return
+	end
+
+	local section = pick_squad_section()
+	if not section then
+		say("ПРОПУСК: не нашёл ни одной известной секции отряда")
+		return
+	end
+
+	local pos = actor:position()
+	local squad = sim:create(section, pos, actor:level_vertex_id(), actor:game_vertex_id())
+	if not squad then
+		say("не удалось создать отряд секции %s", section)
+		return
+	end
+	say("создан отряд id[%s] секции %s", tostring(squad.id), section)
+
+	-- Состав. Бойцов создаёт сам отряд; если их нет -- проверять нечего.
+	local members = {}
+	for k in squad:squad_members() do
+		local id = k.id or (k.object and k.object.id)
+		if id then
+			members[#members + 1] = id
+		end
+	end
+	say("бойцов в отряде: %d", #members)
+	if #members < 2 then
+		say("ПРОПУСК: нужно хотя бы двое, чтобы отряд пережил потерю первого")
+		sim:release(sim:object(squad.id), true)
+		return
+	end
+
+	-- Вот она, подстановка: освобождаем ПЕРВОГО бойца, оставляя запись о нём в составе.
+	-- Именно такой указатель и разыменовывался при уходе отряда в офлайн.
+	local victim = sim:object(members[1])
+	if not victim then
+		say("первый боец уже недоступен -- подставлять нечего")
+		return
+	end
+	say("освобождаю бойца id[%d], НЕ снимая с учёта", members[1])
+	sim:release(victim, true)
+
+	-- Теперь дёргаем отряд теми путями, что были в стеке вылета.
+	local se_squad = sim:object(squad.id)
+	if not se_squad then
+		say("отряд исчез вместе с бойцом -- дальше проверять нечего")
+		return
+	end
+
+	say("вызываю update() отряда")
+	local ok1, err1 = pcall(function() se_squad:update() end)
+	say("update: %s", ok1 and "прошёл" or tostring(err1))
+
+	say("выкидываю отряд из онлайна")
+	local ok2, err2 = pcall(function() sim:set_switch_offline(squad.id, true) end)
+	say("switch_offline: %s", ok2 and "прошёл" or tostring(err2))
+
+	say("ИТОГ: игра жива -- висячий боец не уронил отряд")
+	sim:release(sim:object(squad.id), true)
+end

@@ -58,6 +58,17 @@ public:
 
 public:
     IC virtual ~CGameGraph();
+
+    // [DA_PORT] Копирование ЗАПРЕЩЕНО, и это не вкусовщина.
+    //
+    // Деструктор делает xr_delete(m_current_level_cross_table) и закрывает чтеца. Копия
+    // поверхностная, поэтому её деструктор сносит ЖИВЫЕ данные графа, которыми пользуется весь ИИ.
+    // Так уже было в gg_distance: `const auto g = ai().game_graph()` вместо ссылки.
+    //
+    // Запрет здесь превращает такую описку в ОШИБКУ СБОРКИ. Прогон анализатора находит её один раз
+    // и только там, где смотрели; запрет ловит её всегда и у всех, включая мододелов.
+    CGameGraph(const CGameGraph&) = delete;
+    CGameGraph& operator=(const CGameGraph&) = delete;
     IC const CHeader& header() const;
     IC bool mask(const svector<_LOCATION_ID, GameGraph::LOCATION_TYPE_COUNT>& M,
         const _LOCATION_ID E[GameGraph::LOCATION_TYPE_COUNT]) const;

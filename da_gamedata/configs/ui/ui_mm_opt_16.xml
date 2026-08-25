@@ -1,4 +1,4 @@
-﻿<w>
+<w>
 	<!-- [DA_PORT] Настоящая разметка настроек Dead Air лежит ТОЛЬКО здесь, в файле _16.
 	     Файл без суффикса, который движок брал бы на экране 4:3 или 5:4, остался от основы Call of
 	     Chernobyl: там нет ни одной строки мода. Поэтому порт берёт широкоформатную разметку и на
@@ -293,10 +293,10 @@
 		<!-- [DA_PORT] added by the x64 port: the "Image" and "Colour correction" groups moved out of
 		     the menu entirely. Both are judged by eye, and the menu covers the very picture they are
 		     judged on; they now live in the in-game tuner this button opens. -->
-		<cap_grp_da_tune x="215" y="326" width="330" height="22">
+		<cap_grp_da_tune x="215" y="446" width="330" height="22">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_da_tune</text>
 		</cap_grp_da_tune>
-		<btn_da_tune x="215" y="356" width="200" height="26">
+		<btn_da_tune x="215" y="476" width="200" height="26">
 			<text align="c" y="0" font="letterica16" r="191" g="191" b="191">ui_mm_da_tune_btn</text>
 			<text_color>
 				<e r="191" g="191" b="191"/>
@@ -306,6 +306,30 @@
 			</text_color>
 			<texture>ui_button_ordinary</texture>
 		</btn_da_tune>
+
+		<!-- [DA_PORT] Раскладка интерфейса: pillarbox ужимает UI в центральные 16:9 на
+		     сверхшироких экранах (21:9+), безопасная зона отодвигает его от краёв на заданный
+		     процент, третья галка принудительно берёт широкую (_16) разметку. Движковые
+		     крутилки: UICore::UpdateLayout пересчитывает раскладку при изменении, поэтому
+		     действуют сразу (depend="runtime"), без vid_restart. -->
+		<cap_grp_ui_layout x="215" y="330" width="330" height="22">
+			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_ui_layout</text>
+		</cap_grp_ui_layout>
+		<cap_ui_pillarbox x="215" y="360" width="140" height="21" complex_mode="1">
+			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_ui_pillarbox</text>
+		</cap_ui_pillarbox>
+		<check_ui_pillarbox x="360" y="358" width="30" height="21">
+			<options_item entry="ui_pillarbox" group="mm_opt_video" depend="runtime"/>
+		</check_ui_pillarbox>
+		<cap_ui_safe_zone x="215" y="390" width="140" height="21" complex_mode="1">
+			<text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_ui_safe_zone</text>
+		</cap_ui_safe_zone>
+		<track_ui_safe_zone x="360" y="388" width="135" height="21" step="1" is_integer="1">
+			<options_item entry="ui_safe_zone" group="mm_opt_video" depend="runtime"/>
+		</track_ui_safe_zone>
+		<cap_ui_safe_zone_val x="500" y="390" width="60" height="21">
+			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
+		</cap_ui_safe_zone_val>
 </tab_video>
 
     <!-- [DA_PORT] Performance tab. Every knob here buys frame rate at the cost of picture;
@@ -486,7 +510,7 @@
 		<cap_grp_fx x="8" y="4" width="290" height="20" complex_mode="1">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_fx</text>
 		</cap_grp_fx>
-		<!-- [DA_PORT] �����: ����, �� ��������� � �������� ������ ����� -->
+		<!-- [DA_PORT] -->
 		<cap_grp_rain x="8" y="4" width="290" height="20" complex_mode="1">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_rain</text>
 		</cap_grp_rain>
@@ -496,6 +520,13 @@
 		<cap_light_distance_val x="246" y="2" width="52" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_light_distance_val>
+        <cap_da_sun_shafts_mod x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">da_sun_shafts_mod</text>
+        </cap_da_sun_shafts_mod>
+        <check_da_sun_shafts_mod x="115" y="0" width="30" height="21">
+            <options_item entry="r__sun_shafts_mod" group="mm_opt_video" depend="runtime"/>
+        </check_da_sun_shafts_mod>
+
 		<cap_particles_distance_val x="246" y="2" width="52" height="21">
 			<text align="l" r="220" g="220" b="220" font="letterica16"></text>
 		</cap_particles_distance_val>
@@ -565,6 +596,25 @@
             <options_item entry="r2_steep_parallax" group="mm_opt_video" depend="restart"/>
         </check_r2_steep_parallax>
 
+        <!-- [DA_PORT] Рельеф всем, у кого есть карта высот, а не только помеченным вручную.
+             Требует перезагрузки уровня: имя шейдера собирается один раз. -->
+        <cap_da_parallax_force x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">da_parallax_force</text>
+        </cap_da_parallax_force>
+        <check_da_parallax_force x="115" y="0" width="30" height="21">
+            <options_item entry="r__parallax_force" group="mm_opt_video" depend="restart"/>
+        </check_da_parallax_force>
+
+        <!-- [DA_PORT] Разрыв повторов шестиугольной решёткой. Живьём, БЕЗ перезагрузки -
+             поэтому depend не ставим: пометить лишнего так же вредно, как недоставить. -->
+        <cap_da_hex_tiling x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">da_hex_tiling</text>
+        </cap_da_hex_tiling>
+        <check_da_hex_tiling x="115" y="0" width="30" height="21">
+            <options_item entry="r__hex_tiling" group="mm_opt_video"/>
+        </check_da_hex_tiling>
+
+
 		
         <cap_r2_sun_quality x="25" y="2" width="90" height="21" complex_mode="1" >
             <text align="l" font="letterica16" r="95" g="92" b="79">da_sun_quality</text>
@@ -621,7 +671,7 @@
             <options_item entry="r2_ls_bloom_kernel_scale" group="mm_opt_video_adv"/>
         </track_bloom>
 		
-		<!-- [DA_PORT] ����� -->
+		<!-- [DA_PORT] -->
 		<cap_puddles x="25" y="2" width="90" height="21" complex_mode="1" >
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_puddles</text>
         </cap_puddles>
@@ -923,6 +973,10 @@
 		<cap_grp_inventory x="8" y="4" width="290" height="20" complex_mode="1">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_inventory</text>
 		</cap_grp_inventory>
+		<!-- [DA_PORT] Свой раздел под анимации: наборы употребления вещей и паркур -->
+		<cap_grp_animations x="8" y="4" width="290" height="20" complex_mode="1">
+			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_animations</text>
+		</cap_grp_animations>
 		<cap_grp_misc x="8" y="4" width="290" height="20" complex_mode="1">
 			<text align="l" font="graffiti19" r="175" g="175" b="170">ui_mm_grp_misc</text>
 		</cap_grp_misc>
@@ -1007,9 +1061,9 @@
         <check_axr x="162" y="0" width="30" height="21">
         </check_axr>
 
-        <!-- [DA_PORT] ������� ��� ��������� �����. ������� �� check_axr: ��� �������� ������ ��� �
-             axr_main.config, � ����� ���������� ����������, � ��������� � options_item. ������� �
-             ������ � gameplay_options �� ������ ���� default � ����� ������ ������ � �� ����. -->
+        <!-- [DA_PORT] Галочка для ДВИЖКОВОЙ ручки. Отличие от check_axr: там значение хранит мод в
+             axr_main.config, а здесь консольная переменная, и связывает её options_item. Поэтому у
+             записи в gameplay_options не должно быть default — иначе скрипт возьмёт её на себя. -->
         <check_da_stack_all x="162" y="0" width="30" height="21">
             <options_item entry="da_stack_all" group="mm_opt_gameplay"/>
         </check_da_stack_all>
@@ -1062,7 +1116,7 @@
 		
 		<cap_keyboardsetup x="0" y="75" width="10" height="10">
 			<texture a="0">ui_brokenline</texture>
-			<text>В </text>
+			<text> </text>
 		</cap_keyboardsetup>
 
         <key_binding x="238" y="160" width="280" height="380">

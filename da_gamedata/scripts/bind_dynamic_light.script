@@ -1,0 +1,259 @@
+---------------------------------------------------------------------------------------------------
+-- Physic objects binding
+----------------------------------------------------------------------------------------------------
+
+function on_game_start()
+	--RegisterScriptCallback("on_key_press",on_key_press)
+end 
+
+local lights = {}
+local switch
+
+
+function on_key_press(key)
+	if (key == 34) then --G
+		switch = true
+	end
+
+	if (key == 35) then --H
+		switch = false
+	end
+end
+
+
+local light_switchers = {
+--marsh
+["k00_marsh_switch_lights_white_6m_glass_0003"] = "lights_white_6m_glass_0003",
+["k00_marsh_switch_lights_white_6m_glass_0001"] = "lights_white_6m_glass_0001",
+["k00_marsh_switch_lights_white_6m_glass_0005"] = "lights_white_6m_glass_0005",
+--escape
+--["l01_escape_switch_light_galogen_1_glass_0004"] = "light_galogen_1_glass_0004",
+}
+
+
+local light_night = {
+["k00_marsh"] = {
+---[[
+["lights_white_6m_glass_0002"] = true,
+["lights_white_8m_glass_0001"] = true,
+["lights_white_8m_glass_0002"] = true,
+["light_alarm_glass"] = true,
+--]]
+},
+
+["l01_escape"] = {
+["light_alarm_glass"] = true,
+["light_alarm_glass_0007"] = true,
+["light_sharnir_1_0000"] = true,
+["light_sharnir_1_0001"] = true,
+["light_white_12m_glass_0000"] = true,
+},
+
+["l05_bar"] = {
+---[[
+["light_alarm_glass_0001"] = true,
+["light_alarm_glass_0002"] = true,
+["light_alarm_glass_0003"] = true,
+["light_alarm_glass_0004"] = true,
+["light_alarm_glass_0005"] = true,
+["light_alarm_glass_0007"] = true,
+["light_alarm_glass_0008"] = true,
+["light_alarm_glass_0009"] = true,
+["light_alarm_glass_0011"] = true,
+["light_alarm_glass_0013"] = true,
+["light_alarm_glass_0022"] = true,
+["light_alarm_glass_0023"] = true,
+["light_alarm_glass_0025"] = true,
+--]]
+["light_wire_1_0000"] = true,
+["light_wire_1_0004"] = true,
+},
+
+}
+
+light_glass = {
+	["dynamics\\light\\light_sharnir_1"] = true,
+	["dynamics\\light\\light_white_glass"] = true,
+	["dynamics\\light\\light_wire_1_glass"] = true,
+	["dynamics\\light\\light_alarm_glass"] = true,
+	["dynamics\\light\\light_alarm_white_glass"] = true,
+	["dynamics\\light\\light_uglovaya_1_glass"] = true,
+}
+
+light_bulb = {
+	["dynamics\\light\\light_sharnir_1"] = true,
+	["dynamics\\light\\light_white_glass"] = true,
+	["dynamics\\light\\light_wire_1_glass"] = true,
+	["dynamics\\light\\light_uglovaya_1_glass"] = true,
+}
+
+light_switch = {
+	["dynamics\\el_tehnika\\table_lamp_01"] = true,
+}
+
+function init(obj)
+	local visual = obj:get_visual_name()
+	--if (visual == [[dynamics\light\light_alarm_glass]]) then 
+		obj:bind_object(generic_light_binder(obj))
+	--end
+	lights[obj:name()] = obj:id()
+end
+
+
+function switch_light_from_table(name)
+	xr_sound.set_sound_play(db.actor:id(),"torch_switch2")
+	printf(tostring(name))
+	local lamp_name = light_switchers[name]
+	printf(tostring(lamp_name))
+	local id = lights[lamp_name]
+	printf(tostring(id))
+	if not (id and level.object_by_id(id)) then return end
+	
+	local obj = level.object_by_id(id)
+	-- DA: get_hanging_lamp отдаёт пустоту, если объект не лампа;
+	-- запрашивался он при этом трижды подряд.
+	local lamp = obj:get_hanging_lamp()
+	if not (lamp) then return end
+	if (lamp:is_on()) then
+		lamp:turn_off()
+	else
+		lamp:turn_on()
+	end
+	
+end
+
+
+
+
+---------------------------------------------------------------------------------------------
+class "generic_light_binder" (object_binder)
+function generic_light_binder:__init(obj) super(obj)
+	
+	local se_obj = alife_object(self.object:id())
+	if (DEV_DEBUG_DEV) and (se_obj) and (not self.object:get_visual_name()) then
+		printf("generic_light_binder - fake light: "..self.object:name())
+		--alife():release(se_obj)
+		return
+	end
+	
+	
+	if (IsLastStandMode() and (se_obj) and (self.object:get_visual_name() ~= "dynamics\\light\\light_galogen_1_glass")) then
+		alife():release(se_obj)
+		return
+	end
+	
+	
+	if (light_glass[self.object:get_visual_name()]) and (math.random() > 0.7) then	
+		self.object:start_particles("ogsm\\ogsm_flies","link")
+	end
+
+	--sound_object(sound_theme.theme["wind_storm1"].path):play_at_pos(self.object, self.object:position(), 0, sound_object.s3d + sound_object.looped)
+end
+
+function generic_light_binder:reload(section)
+end
+
+function generic_light_binder:reinit()
+end
+
+local tg = 0
+function generic_light_binder:update(delta)
+	
+	---[[
+	-- [DA_PORT] Обработчики вешаются на смене секции, а не каждое обновление.
+	--
+	-- Три set_callback стояли в теле update, то есть переустанавливались каждый раз. Каждая
+	-- установка внутри движка уничтожает и заводит заново две ссылки в реестре Lua
+	-- (CScriptCallbackEx::set -> clear -> пересоздание, script_callback_ex.h). Замер
+	-- da_object_dump именно на лампах показал 23 объекта по 8-12 мс в одном кадре.
+	--
+	-- ОСТОРОЖНО: вешать их РОВНО ОДИН РАЗ нельзя. Обработчик снимает modules.script:241 на
+	-- каждом переключении секции у объектов типа stype_item, и на физических объектах это уже
+	-- дало дефект «дверь открывается один раз». Здесь схемы через initialize_obj не заводятся,
+	-- то есть путь снятия не пройден - но полагаться на это нельзя, схему лампе могут дать
+	-- позже. Условие то же самое, что у физических объектов, и стоит ровно столько же.
+	local da_st = db.storage[self.object:id()]
+	local da_section = da_st and da_st.active_section
+	if not (self.da_cb_once) or (self.da_cb_section ~= da_section) then
+		self.da_cb_once = true
+		self.da_cb_section = da_section
+		self.object:set_callback(callback.hit, generic_light_binder.hit_callback, self)
+		self.object:set_callback(callback.death, generic_light_binder.death_callback, self)
+		self.object:set_callback(callback.use_object, generic_light_binder.use_callback, self)
+	end
+	
+	
+	--self.object:set_tip_text(self.object:name())
+	---[[
+	if (light_switch[self.object:get_visual_name()]) then
+		self.object:set_tip_text(game.translate_string("st_light_switch"))
+	end
+	--]]
+	
+	
+	if not (self.object:get_hanging_lamp():is_on()) then
+		self.object:stop_particles("ogsm\\ogsm_flies","link")
+	end
+	
+	--self.object:get_hanging_lamp():turn_on()
+	
+	---[[
+	if (tg > time_global()) then return end
+	tg = time_global()+1000
+	
+	if (switch == true) then
+		self.object:get_hanging_lamp():turn_on()
+	elseif (switch == false) then
+		self.object:get_hanging_lamp():turn_off()
+	elseif (light_night[level.name()] and light_night[level.name()][self.object:name()] and is_night()) then
+		self.object:get_hanging_lamp():turn_on()
+	elseif (light_night[level.name()] and light_night[level.name()][self.object:name()] and not is_night()) then
+		self.object:get_hanging_lamp():turn_off()
+	end
+	--]]
+	--]]
+end
+
+function generic_light_binder:net_spawn(data)
+end
+
+function generic_light_binder:net_destroy()
+end
+
+function generic_light_binder:net_save_relevant()
+	return true
+end
+
+function generic_light_binder:save(packet)
+end
+
+function generic_light_binder:load(reader)
+end
+
+function generic_light_binder:use_callback(obj, who)
+	local visual = self.object:get_visual_name()
+	
+	if (DEV_DEBUG_DEV) then
+		printf(tostring(self.object:name()).."  "..tostring(visual))
+	end
+	
+	if not (light_switch[visual]) then return end
+	
+	if (obj:get_hanging_lamp():is_on()) then
+		obj:get_hanging_lamp():turn_off()
+		xr_sound.set_sound_play(db.actor:id(),"torch_switch1")
+	else
+		obj:get_hanging_lamp():turn_on()
+		xr_sound.set_sound_play(db.actor:id(),"torch_switch1")
+	end
+end
+
+function generic_light_binder:hit_callback(obj, amount, local_direction, who, bone_index)
+end
+
+function generic_light_binder:death_callback(victim, who)
+end
+
+function is_night()
+	return db.actor ~= nil and (level.get_time_hours() < 5 or level.get_time_hours() > 18)
+end

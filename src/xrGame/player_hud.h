@@ -152,7 +152,49 @@ public:
     void tune(Ivector values);
     u32 motion_length(const MotionID& M, const CMotionDef*& md, float speed, IKinematicsAnimated* itemModel) const;
     u32 motion_length(const shared_str& anim_name, const shared_str& hud_name, const CMotionDef*& md);
+
+    // [DA_PORT] Длина цикла из ЛЮБОЙ секции с анимациями рук, включая скриптовые сцены.
+    // Отличие от motion_length выше: та требует attachable_hud_item, то есть настоящий предмет в
+    // руках, а у сцены его может не быть вовсе.
+    u32 da_script_motion_length(pcstr section, pcstr anim, float speed);
     void OnMovementChanged(ACTOR_DEFS::EMoveCommand cmd) const;
+
+    // [DA_PORT] Анимация рук, запущенная СКРИПТОМ, без предмета в руках.
+    //
+    // Зачем отдельный путь. Обычная анимация рук привязана к предмету: attachable_hud_item требует
+    // в секции item_visual и падает без него. А скриптовой сцене (паркур) предмет не нужен вовсе —
+    // нужны только руки и цикл на них. Поэтому берём от секции ТОЛЬКО набор движений и играем его
+    // на модели рук напрямую.
+    //
+    // Возвращает длительность в миллисекундах, ноль — если секции или движения нет.
+    // target_ms — под какую длительность растянуть цикл; 0 — играть как записан.
+    u32 da_script_anim_play(u8 hand, pcstr section, pcstr anim, bool mix_in, float speed, u32 target_ms = 0);
+    void da_script_anim_stop();
+    void da_script_item_release();
+    bool da_script_anim_active() const;
+
+private:
+    // Наборы движений для скриптовых анимаций, по одному на секцию. Держим их, а не создаём заново:
+    // загрузка перебирает строки конфига и ищет циклы в модели, а зовут её каждое подтягивание.
+    xr_map<shared_str, player_hud_motion_container> m_da_script_motions;
+    u32 m_da_script_anim_end{};
+    bool m_da_script_anim_on{}; // сцена идёт от play до stop, см. da_script_anim_active
+    Fvector m_da_script_hands_pos{}; // посадка рук на время скриптовой анимации
+    Fvector m_da_script_hands_rot{}; // поворот рук на время скриптовой анимации, ГРАДУСЫ
+    bool m_da_script_item_root_lock{true}; // подавлять ли корневую кость предмета сцены
+    bool m_da_script_one_hand{false}; // сцена играет ОДНОЙ рукой, вторая держит оружие
+    // Модель предмета в руках на время скриптовой анимации: бутылка, аптечка и прочее.
+    // Владеем ею сами — создаём при запуске, удаляем при остановке.
+    IKinematicsAnimated* m_da_script_item_model{};
+    Fmatrix m_da_script_item_offset{};
+    u16 m_da_script_item_attach{};
+    // Крепить к кости руки (обычный случай) или ставить собственной матрицей.
+    bool m_da_script_item_attached{ true };
+    // Брать точку хвата оружия независимо от руки — ключ lh_lead_gun у первоисточника.
+    bool m_da_script_item_lead_gun{};
+    // Готовое преобразование, считается раз в кадр вместе с костями.
+    Fmatrix m_da_script_item_transform{};
+public:
 
 private:
     void load_ancors();

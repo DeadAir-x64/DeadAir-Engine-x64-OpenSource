@@ -77,6 +77,19 @@ function opt_video_adv:InitControls(x, y, xml, handler)
 	ctl = xml:InitCheck("video_adv:check_r2_steep_parallax", _st)
 	table.insert(handler.m_preconditions, {func=mode_ge_25, control=_st})
 
+	-- [DA_PORT] Рельеф всем, у кого есть карта высот. Требует перезагрузки уровня.
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_da_parallax_force", _st)
+	ctl = xml:InitCheck("video_adv:check_da_parallax_force", _st)
+	table.insert(handler.m_preconditions, {func=mode_ge_25, control=_st})
+
+	-- [DA_PORT] Разрыв повторов текстур. Действует сразу, перезагрузка не нужна.
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_da_hex_tiling", _st)
+	ctl = xml:InitCheck("video_adv:check_da_hex_tiling", _st)
+	table.insert(handler.m_preconditions, {func=mode_ge_25, control=_st})
+
+
 	_st	= xml:InitStatic("video_adv:templ_item", nil)
 	xml:InitStatic("video_adv:cap_r2_gloss_factor", _st)
 	handler.r2_gloss_factor_track = xml:InitTrackBar("video_adv:track_r2_gloss_factor", _st)
@@ -105,6 +118,12 @@ function opt_video_adv:InitControls(x, y, xml, handler)
 	_st = xml:InitStatic("video_adv:templ_item", nil)
 	xml:InitStatic("video_adv:cap_sun_shafts", _st)
 	ctl = xml:InitComboBox("video_adv:combo_sun_shafts", _st)
+	table.insert(handler.m_preconditions, {func=mode_ge_25, control=_st})
+
+	-- [DA_PORT] Улучшенные солнечные лучи (вкл/выкл всей связки: помещения, фаза, фейды).
+	_st = xml:InitStatic("video_adv:templ_item", nil)
+	xml:InitStatic("video_adv:cap_da_sun_shafts_mod", _st)
+	ctl = xml:InitCheck("video_adv:check_da_sun_shafts_mod", _st)
 	table.insert(handler.m_preconditions, {func=mode_ge_25, control=_st})
 
 	_st = xml:InitStatic("video_adv:templ_item", nil)

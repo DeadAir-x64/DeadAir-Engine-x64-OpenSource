@@ -829,6 +829,49 @@ void CKinematicsAnimated::Load(const char* N, IReader* data, u32 dwFlags)
         m_Motions.back().motions.create(nm, data, bones);
     }
 
+    // [DA_PORT] Дополнительные наборы движений для модели, объявленные КОНФИГОМ.
+    //
+    // Зачем. Ссылки на .omf лежат ВНУТРИ .ogf, то есть добавить анимацию к готовой модели можно
+    // только пересобрав её в SDK. У Anomaly модель рук ссылается на папку подстановкой
+    // (hud_hands_animation\\*.omf), поэтому чужие моды просто кладут туда свой файл и он
+    // подхватывается. У нашей модели рук такой ссылки НЕТ, и перенесённые анимации рук молча не
+    // находились.
+    //
+    // Здесь тот же приём, но снаружи: список «модель → папка с .omf» читается из
+    // $game_config$\\da_hud_animations.ltx. Правка модели не нужна, а мододелам достаточно
+    // положить файл и дописать строку.
+    //
+    // Имя секции — имя модели БЕЗ пути и расширения (wpn_hand_no_outfit), ключ omf — папка от
+    // $game_meshes$, можно с подстановкой.
+    if (pSettings && pSettings->section_exist("da_hud_animations"))
+    {
+        string_path model_key;
+        {
+            string_path tmp;
+            xr_strcpy(tmp, N);
+            pstr slash = strrchr(tmp, '\\');
+            xr_strcpy(model_key, slash ? slash + 1 : tmp);
+        }
+
+        if (pSettings->line_exist("da_hud_animations", model_key))
+        {
+            string_path mask;
+            xr_strcpy(mask, pSettings->r_string("da_hud_animations", model_key));
+
+            FS_FileSet fset;
+            FS.file_list(fset, "$game_meshes$", FS_ListFiles, mask);
+            for (const auto& f : fset)
+                loadOMF(f.name.c_str());
+
+            if (fset.empty())
+                Msg("! [DA_PORT] da_hud_animations: по образцу [%s] для [%s] ничего не найдено",
+                    mask, model_key);
+            else
+                Msg("~ [DA_PORT] da_hud_animations: к [%s] добавлено наборов движений: %u",
+                    model_key, u32(fset.size()));
+        }
+    }
+
     R_ASSERT2(m_Motions.size(), make_string("section '%s'\nmodel '%s'", current_player_hud_sect.c_str(), N).c_str());
 
     m_Partition = m_Motions[0].motions.partition();

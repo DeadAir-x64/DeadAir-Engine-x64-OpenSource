@@ -1,0 +1,432 @@
+local sim_objects_registry = nil
+local props_ini = ini_file("misc\\simulation_objects_props.ltx")
+config = ini_file_ex("ai_tweaks\\simulation_objects.ltx")
+quest_config = ini_file_ex("ai_tweaks\\quest_linked_levels.ltx")
+
+local ALLOW_NPC_LEVEL_TRANSITION = true
+
+local default_squad_behaviour = {	
+	["actor"]			= 0,
+	["all"]				= 0, --1,
+	["base"] 			= 0, --1,
+	["lair"]			= 0,
+	["resource"] 		= 0, --2,
+	["squad"] 			= 0,
+	["surge"]			= 0, --3,
+	["territory"]		= 0  --1
+}
+
+local default_monster_behaviour = {	
+	["actor"]			= 0,
+	["base"] 			= 0,
+	["lair"]			= 1,
+	["monster"]			= 1,
+	["resource"] 		= 0,
+	["squad"] 			= 0,
+	["surge"]			= 0,
+	["territory"]		= 1
+}
+
+class "simulation_objects_registry"
+function simulation_objects_registry:__init()
+	self.objects = {}
+end
+
+function simulation_objects_registry:register(obj)
+	self:get_props(obj)
+	self:update_avaliability(obj)
+end
+
+function simulation_objects_registry:update_avaliability(obj)
+	if (obj:clsid() == clsid.online_offline_group_s) then 
+		return
+	end 
+	
+	if (obj:sim_available() and xr_logic.pick_section_from_condlist(alife():actor(), obj, obj.sim_avail) == "true") then
+		self.objects[obj.id] = obj
+	else
+		self.objects[obj.id] = nil
+	end
+end
+
+function simulation_objects_registry:get_props(obj)
+	local cls = obj:clsid()
+	if (cls == clsid.online_offline_group_s) then 
+		return
+	end
+	
+	obj.props = {}
+	
+	local props_section
+	if (cls == clsid.online_offline_group_s) then
+		if (props_ini:section_exist(obj:section_name())) then 
+			props_section = obj:section_name()
+		else 
+			props_section = "default_squad"
+		end
+	elseif (cls == clsid.script_actor) then 
+		props_section = "actor"
+	else 
+		if (props_ini:section_exist(obj:name())) then 
+			props_section = obj:name()
+		else 
+			props_section = "default"
+		end
+	end
+
+	if not (props_ini:section_exist(props_section)) then 
+		printf("invalid section for props_ini %s",props_section)
+		return
+	end
+	
+	local n = props_ini:line_count(props_section)
+	local result, prop_name, prop_condlist
+	local tonumber = tonumber
+	for j=0,n-1 do
+		result, prop_name, prop_condlist = props_ini:r_line_ex(props_section,j,"","")
+		if prop_name == "sim_avail" then
+			obj.sim_avail = xr_logic.parse_condlist(nil, "simulation_object", "sim_avail", prop_condlist)
+		else
+			obj.props[prop_name] = tonumber(prop_condlist)
+		end
+	end
+	if obj.sim_avail == nil then
+		obj.sim_avail = xr_logic.parse_condlist(nil, "simulation_object", "sim_avail", "true")
+	end
+end
+
+function simulation_objects_registry:unregister(obj)
+	self.objects[obj.id] = nil
+end
+
+function get_sim_obj_registry()
+	if sim_objects_registry == nil then
+		sim_objects_registry = simulation_objects_registry()
+	end
+	return sim_objects_registry
+end
+
+--***********************************************************************************************
+--*										SIMULATION_LOCAL_FUNCTIONS								*
+--***********************************************************************************************
+
+
+function sim_dist_to(obj1 , obj2)
+	local pos1,lv1,gv1 = obj1:get_location()
+	local pos2,lv2,gv2 = obj2:get_location()
+	return utils.graph_distance(gv1, gv2)
+end
+
+local function evaluate_prior_by_dist(target, squad)
+	local dist = sim_dist_to(target, squad)
+	if dist < 1 then
+		dist = 1
+	end
+	return 1 + 1/dist
+end
+
+
+function is_on_monolith_level(obj)
+	local gg = game_graph()
+	if not obj then return false end
+	-- [DA_PORT] Через памятку: те же неизменные данные графа.
+	local level = da_level_name(da_level_of_vertex(obj.m_game_vertex_id))
+	
+	return smart_terrain.monolith_home[level] or smart_terrain.monolith_near[level]
+end
+
+
+-- [DA_PORT] Памятка «вершина графа -> номер уровня» и «номер уровня -> имя».
+--
+-- Это НЕИЗМЕНЯЕМЫЕ данные: граф уровней читается при загрузке игры и за сессию не меняется ни на
+-- одну вершину. А спрашивали их заново каждый раз.
+--
+-- Цена была вот в чём. Поиск цели для отряда обходит ВЕСЬ реестр симуляции - замер на Баре дал 408
+-- объектов, - и на каждом зовёт evaluate_prior, а тот проверяет уровень. Один такой вызов делает
+-- game_graph() и две gg:vertex(): три обращения в движок, и каждое отдаёт в Lua НОВЫЙ объект, то
+-- есть мусор. Итого около 1224 выделений за один поиск цели.
+--
+-- Замер: обновление отряда стоило 2.4-4.1 мс и 180 КБ мусора за вызов, и 181 КБ из них приходились
+-- ровно на evaluate_prior. Мусор кормит сборщик, чьи паузы и давали рывки кадра.
+--
+-- Памятка наполняется по первому спросу и после первого прохода отвечает без обращений в движок.
+local da_level_of_gv = {}
+local da_name_of_level = {}
+
+function da_level_of_vertex(gvid)
+	local lid = da_level_of_gv[gvid]
+	if (lid == nil) then
+		lid = game_graph():vertex(gvid):level_id()
+		da_level_of_gv[gvid] = lid
+	end
+	return lid
+end
+
+function da_level_name(lid)
+	local nm = da_name_of_level[lid]
+	if (nm == nil) then
+		nm = alife():level_name(lid)
+		da_name_of_level[lid] = nm
+	end
+	return nm
+end
+
+function is_on_the_same_level(obj1, obj2)
+	return obj1 and obj2 and da_level_of_vertex(obj1.m_game_vertex_id) == da_level_of_vertex(obj2.m_game_vertex_id) or false
+end
+
+
+function print_path(obj1, obj2)
+	local gg = game_graph()
+
+	if not (obj1 and obj2) then return false end
+	
+	-- [DA_PORT] Через памятку: те же неизменные данные графа.
+	local obj1_level = da_level_name(da_level_of_vertex(obj1.m_game_vertex_id))
+	local obj2_level = da_level_name(da_level_of_vertex(obj2.m_game_vertex_id))
+	
+	printf("MOVE "..obj1:name().."("..obj1_level..") TO "..obj2:name().."("..obj2_level..")")
+end
+
+function is_on_the_linked_level(obj1, obj2)
+	local gg = game_graph()
+
+
+	if not (obj1 and obj2) then return false end
+	
+	-- [DA_PORT] Через памятку: те же неизменные данные графа.
+	local obj1_level = da_level_name(da_level_of_vertex(obj1.m_game_vertex_id))
+	local obj2_level = da_level_name(da_level_of_vertex(obj2.m_game_vertex_id))
+	
+	--printf(obj1_level..":"..obj2_level)
+	local result = string.find(config:r_value(obj1_level,"target_maps",0,""),obj2_level)
+	
+	return result
+end
+
+function evaluate_prior(target, squad)
+
+	-- [DA_PORT] Класс объекта спрашивается ОДИН раз, а не трижды подряд: ниже стояли три ветки,
+	-- и каждая звала target:clsid() заново, на каждый из 408 объектов реестра.
+	local da_cls = target:clsid()
+
+	-- [DA_PORT] alife() убран отсюда в ту единственную ветку, где он нужен (отряды). Здесь он
+	-- выполнялся для КАЖДОГО объекта, а у смарт-террейнов - подавляющего большинства - не
+	-- использовался вовсе, только сорил.
+	local prior = 5
+	
+	local check = nil --(squad:name() == "duty_sim_squad_advanced23759")
+	
+	if (check) then
+		printf(squad:name().." | "..target:name())
+		--print_path(squad,target)
+	end
+	
+	if (da_cls == clsid.script_actor) then
+		if not (is_on_the_same_level(target, squad)) then
+			return -1
+		end
+
+		if not (target:target_precondition(squad)) then
+			return -1
+		end
+
+	elseif (da_cls == clsid.online_offline_group_s) then
+
+		local sim = alife()
+		if (squad.id == target.id) then
+			return -1
+		end
+		
+		---[[
+		if (not target.smart_id) then
+			return -1
+		end
+		--]]
+
+		---[[
+		if (not is_on_the_same_level(squad, target)) then
+		
+			if (is_squad_monster[squad.player_id]) then 
+				return -1
+			end
+			
+			if not is_on_the_linked_level(squad, target) then
+				return -1
+			end
+
+			if is_on_the_linked_level(sim:actor(), target) and not is_on_the_same_level(sim:actor(), squad) then
+				return -1
+			end
+
+			if is_on_the_same_level(sim:actor(), target) then
+				return -1
+			end
+
+			if not (ALLOW_NPC_LEVEL_TRANSITION) then
+				return -1
+			end
+			
+		end
+		--]]
+		
+		-- [DA_PORT] Имя спрашивается один раз на строку, а не дважды: каждый вызов :name()
+		-- отдаёт в Lua НОВУЮ строку, то есть мусор.
+		local da_sq_name = squad:name()
+		if not (string.find(da_sq_name,"sim_squad") or string.find(da_sq_name,"simulation")) then
+			return -1
+		end
+		
+		local da_tg_name = target:name()
+		if not (string.find(da_tg_name,"sim_squad") or string.find(da_tg_name,"simulation")) then
+			return -1
+		end
+
+		-- If target squad is in safe zone, ignore them.
+		if (xr_combat_ignore.safe_zone_npcs[squad.id]) then
+			return -1
+		end
+
+		if (xr_combat_ignore.safe_zone_npcs[target.id]) then
+			return -1
+		end
+
+		-- Prevent cluster-fucks
+		local target_of_my_target = target.assigned_target_id and sim:object(target.assigned_target_id)
+		if (target_of_my_target and target_of_my_target:clsid() == clsid.online_offline_group_s) then
+			return -1
+		end
+
+		if not (target:target_precondition(squad)) then
+			return -1
+		end
+		
+		local rel = sim_squad_fighting.get_squad_relations(squad,target)
+		if (rel > -1000) then
+			return -1
+		end
+		
+		local power1 = sim_squad_fighting.get_squad_power(squad)
+		local power2 = sim_squad_fighting.get_squad_power(target)
+		
+		if (power1 < power2*1.3) then
+			return -1
+		end
+		
+		prior = prior*2.0*evaluate_prior_by_dist(squad,target)
+		--printf(squad:name().." | "..target:name().." = "..prior)
+
+	elseif (da_cls == clsid.smart_terrain) then
+	
+		if (target.disabled) then
+			return -1
+		end
+
+		if (SIMBOARD.smarts[target.id] == nil or SIMBOARD.smarts[target.id].squads == nil) then
+			return -1
+		end
+		
+		-- monster to non-monster smarts
+		--[[
+		if (is_squad_monster[squad.player_id]) and (target.faction) and (target.faction ~= "monster") then 
+			return -1
+		end
+		--]]
+		
+		if (SIMBOARD.smarts[target.id] and SIMBOARD.smarts[target.id].population > target.max_population) then
+			return -1
+		end
+		
+		---[[
+		-- Level travel
+		if not (is_on_the_same_level(target, squad)) then
+		
+			-- monster between levels
+			if (is_squad_monster[squad.player_id]) then 
+				return -1
+			end
+			
+			-- [DA_PORT] alife() нужен ниже (sim:actor()), и берётся ИМЕННО здесь: сюда доходит
+			-- только отряд, у которого цель на другом уровне, - холодный путь. Монстры отсеяны
+			-- строкой выше, а смарт на своём уровне до этого блока не доходит вовсе.
+			local sim = alife()
+			
+			-- jumping through levels
+			if not is_on_the_linked_level(squad, target) then
+				return -1
+			end
+
+			-- moving near actor level from far levels
+			if is_on_the_linked_level(sim:actor(), target) and not is_on_the_same_level(sim:actor(), squad) then
+				return -1
+			end
+
+			-- moving to actor level at all
+			if is_on_the_same_level(sim:actor(), target) then
+				return -1
+			end
+
+			if not (ALLOW_NPC_LEVEL_TRANSITION) then
+				return -1
+			end
+		end
+		
+		--
+	-- priorize target based on target props
+	
+	local target_koeff = target.props[squad.player_id]
+	
+	
+	if (target_koeff ~= nil) then 
+		prior = prior + (1*target_koeff)
+	end
+	
+		if (is_squad_monster[squad.player_id]) then 
+			for k,v in pairs (default_monster_behaviour) do
+				target_koeff = target.props[k] or 0
+				prior = prior + (v*target_koeff)
+			end
+		else 
+			for k,v in pairs (default_squad_behaviour) do
+				target_koeff = target.props[k] or 0
+				---[[
+				if ((k == "base") and (target_koeff > 0)) then
+					
+					
+					if ((comm == "stalker") and (in_time_interval(18,6)))
+					or ((comm == "csky") and (in_time_interval(18,6)))
+					or ((comm == "dolg") and (in_time_interval(17,7)))
+					or ((comm == "ecolog") and (in_time_interval(17,10)))
+					or ((comm == "bandit") and (in_time_interval(18,6)))
+					or ((comm == "army") and (in_time_interval(18,6)))
+					or ((comm == "killer") and (in_time_interval(17,5)))
+					or ((comm == "monolith") and (in_time_interval(18,4)))
+					then
+						--printf("--BASE")
+						prior = prior*10*evaluate_prior_by_dist(target, squad)
+					end
+				end
+				--]]
+				prior = prior + (v*target_koeff)
+			end
+		end
+	end
+	
+	
+	local comm = squad:get_squad_community()
+	
+	if (comm == "monolith") and not is_on_monolith_level(target) then
+		return -1
+	end
+	
+	---[[
+	if (check) then
+		printf("SQUAD: "..squad:name().." CHECK: "..target:name().." PRIOR: "..prior.." FINAL: "..round(prior))
+	end
+	--]]
+	
+	--printf(squad:name().." | "..target:name().." = "..prior.. " ["..sim_dist_to(squad,target).."]")
+	
+	return round(prior)
+end
+

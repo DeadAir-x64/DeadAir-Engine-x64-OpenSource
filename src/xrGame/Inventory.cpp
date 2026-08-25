@@ -1167,6 +1167,24 @@ bool CInventory::Eat(PIItem pIItem)
     if (pItemToEat->object().H_Parent()->ID() != entity_alive->ID())
         return false;
 
+    // [DA_PORT] Запрет использования из скрипта — ДО того, как предмет будет употреблён.
+    //
+    // ⛔ Прежде вызов `_G.CInventory__eat` стоял НИЖЕ `UseBy`, то есть после того, как вещь уже
+    // съедена: отказ скрипта не отменял ничего, он лишь портил возврат. Комментарий в _g.script
+    // при этом обещал обратное — «returning false will prevent the item from being used».
+    //
+    // Кому это нужно: модам, которые заменяют мгновенное употребление АНИМАЦИЕЙ (FDDA и родня).
+    // Они обязаны перехватить намерение, проиграть сцену и употребить вещь сами, в нужный момент.
+    {
+        luabind::functor<bool> before;
+        if (GEnv.ScriptEngine->functor("_G.da_before_item_use", before))
+        {
+            if (!before(smart_cast<CGameObject*>(pItemToEat->object().H_Parent())->lua_game_object(),
+                    smart_cast<CGameObject*>(pIItem)->lua_game_object()))
+                return false;
+        }
+    }
+
     if (!pItemToEat->UseBy(entity_alive))
         return false;
 
@@ -1614,6 +1632,15 @@ void CInventory::TryDeactivateActiveSlot()
         Activate(NO_ACTIVE_SLOT);
         SetPrevActiveSlot(NextActiveSlot);
     }
+}
+
+// [DA_PORT] Разбор — у CScriptGameObject::UnblockAllSlots.
+void CInventory::DaUnblockAllSlots()
+{
+    for (u8& count : m_blocked_slots)
+        count = 0;
+
+    TryActivatePrevSlot();
 }
 
 void CInventory::BlockSlot(u16 slot_id)

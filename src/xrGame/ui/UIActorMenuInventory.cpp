@@ -1,4 +1,6 @@
 #include "StdAfx.h"
+// [DA_PORT] нужен для перехвата надевания скриптом
+#include "xrScriptEngine/script_engine.hpp"
 #include "UIActorMenu.h"
 #include "UITradeBar.h"
 #include "Inventory.h"
@@ -621,6 +623,31 @@ bool CUIActorMenu::ToSlot(CUICellItem* itm, bool force_place, u16 slot_id)
     // looks like "won't equip". Also flags a BaseSlot != target mismatch (bad/absent config "slot").
     {
         PIItem occ = m_pActorInvOwner->inventory().ItemFromSlot(slot_id);
+    }
+
+    // [DA_PORT] Перехват НАДЕВАНИЯ брони, шлема и рюкзака.
+    //
+    // Кому нужно: анимации надевания. Они обязаны отыграть ДО того, как вещь встанет в слот, иначе
+    // игрок сразу видит результат, а сцена догоняет его поверх.
+    //
+    // ⚠️ Точка выбрана именно здесь, а НЕ в CInventory::Slot. Slot() зовётся и движком: при
+    // загрузке сохранения, при спавне, при восстановлении снаряжения. Перехват там срабатывал бы
+    // на каждую загрузку и оставлял игрока без брони. ToSlot вызывается только действием игрока -
+    // перетаскиванием или двойным щелчком в инвентаре.
+    //
+    // Скрипт возвращает ложь - вещь не надеваем. Дальше он сам доодевает её по концу сцены через
+    // db.actor:move_to_slot, а тот путь идёт через CInventory::Slot и сюда не возвращается.
+    if (slot_id == OUTFIT_SLOT || slot_id == HELMET_SLOT || slot_id == BACKPACK_SLOT)
+    {
+        luabind::functor<bool> before;
+        if (GEnv.ScriptEngine->functor("_G.da_before_wear", before))
+        {
+            if (CGameObject* go = smart_cast<CGameObject*>(iitem))
+            {
+                if (!before(go->lua_game_object(), (u16)slot_id))
+                    return false;
+            }
+        }
     }
 
     bool b_own_item = (iitem->parent_id() == m_pActorInvOwner->object_id());

@@ -1,0 +1,363 @@
+#include "common.h"
+/*
+struct 	v2p
+{
+//D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX3
+	float4 	color:		COLOR0;		// multiplier, color.w = noise_amount
+	float4	gray:		COLOR1;		// (.3,.3,.3.,amount)
+ 	float2 	tc0: 		TEXCOORD0;	// base1 (duality)
+ 	float2 	tc1: 		TEXCOORD1;	// base2 (duality)
+ 	float2 	tc2: 		TEXCOORD2;	// base  (noise)
+};
+*/
+
+Texture2D 	s_base0;
+Texture2D 	s_base1;
+Texture2D 	s_noise;
+uniform float4 		c_brightness;
+
+// [DA_PORT] Colour grading from the options sliders: rgb = per-channel gain (r__color_base_r/g/b),
+// w = vibrance (r2_vibrance_val). The mod has had these sliders all along, but nothing in the renderer
+// read the values, so moving them did nothing. At gain 1/1/1 and vibrance 0 this is a no-op.
+uniform float4		da_color_grade;
+
+// [DA_PORT] ASC CDL: ÑÐ´Ð²Ð¸Ð³ Ð¸ ÑÑ‚ÐµÐ¿ÐµÐ½ÑŒ Ð¿Ð¾ ÐºÐ°Ð½Ð°Ð»Ð°Ð¼. ÐÐ°ÐºÐ»Ð¾Ð½ Ð¸ Ð½Ð°ÑÑ‹Ñ‰ÐµÐ½Ð½Ð¾ÑÑ‚ÑŒ ÑƒÐ¶Ðµ Ð»ÐµÐ¶Ð°Ñ‚ Ð²
+// da_color_grade Ð²Ñ‹ÑˆÐµ. Ð ÑƒÑ‡ÐºÐ¸: r__color_add_* Ð¸ r__color_power_*.
+//
+// âš ï¸ r__color_add_* Ð¡Ð£Ð©Ð•Ð¡Ð¢Ð’ÐžÐ’ÐÐ›Ð˜ Ð¸ Ð±Ñ‹Ð»Ð¸ Ð·Ð°Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¸Ñ€Ð¾Ð²Ð°Ð½Ñ‹ Ð² ÐºÐ¾Ð½ÑÐ¾Ð»Ð¸, Ð½Ð¾ Ð¸Ñ… Ð½Ð¸ÐºÑ‚Ð¾ Ð½Ðµ Ñ‡Ð¸Ñ‚Ð°Ð» â€”
+// Ð¿Ð¾Ð»Ð·ÑƒÐ½Ð¾Ðº Ð´Ð²Ð¸Ð³Ð°Ð»ÑÑ, Ð° ÐºÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° Ð½Ðµ Ð¼ÐµÐ½ÑÐ»Ð°ÑÑŒ. Ð¢Ð¾Ñ‚ Ð¶Ðµ Ð´ÐµÑ„ÐµÐºÑ‚, Ñ‡Ñ‚Ð¾ ÐºÐ¾Ð³Ð´Ð°-Ñ‚Ð¾ Ð±Ñ‹Ð» Ñƒ ÑƒÑÐ¸Ð»ÐµÐ½Ð¸Ñ.
+uniform float4		da_color_offset;
+uniform float4		da_color_power;
+
+// Vibrance, not plain saturation: it lifts the muted colours and leaves the already-vivid ones alone,
+// so foliage and rust gain depth without the picture turning into a poster.
+float3 da_apply_vibrance(float3 c, float amount)
+{
+	float mx = max(c.r, max(c.g, c.b));
+	float mn = min(c.r, min(c.g, c.b));
+	float sat = mx - mn;              // how colourful this pixel already is
+	float luma = dot(c, float3(0.2126, 0.7152, 0.0722));
+	// The less saturated the pixel, the more it gets pushed.
+	return lerp(luma.xxx, c, 1.0 + amount * (1.0 - sat));
+}
+
+// [DA_PORT] Ð¦Ð²ÐµÑ‚Ð¾ÐºÐ¾Ñ€Ñ€ÐµÐºÑ†Ð¸Ñ Ð¿Ð¾ ASC CDL â€” Ð¾Ñ‚Ñ€Ð°ÑÐ»ÐµÐ²Ð¾Ð¹ ÑÑ‚Ð°Ð½Ð´Ð°Ñ€Ñ‚ Ð¸ ÑÐ°Ð¼Ð¾Ðµ Ð¿Ñ€Ð¾ÑÑ‚Ð¾Ðµ Ð¸Ð· Ñ‚Ð¾Ñ‡Ð½Ð¾Ð³Ð¾:
+// Ð´ÐµÑÑÑ‚ÑŒ Ñ‡Ð¸ÑÐµÐ», Ñ‡Ð¸ÑÑ‚Ð°Ñ Ð°Ñ€Ð¸Ñ„Ð¼ÐµÑ‚Ð¸ÐºÐ°, Ð¿Ñ€ÐµÐ¾Ð±Ñ€Ð°Ð·Ð¾Ð²Ð°Ð½Ð¸Ðµ Ð¾Ð±Ñ€Ð°Ñ‚Ð¸Ð¼Ð¾ (Ð² Ð¾Ñ‚Ð»Ð¸Ñ‡Ð¸Ðµ Ð¾Ñ‚ Ñ‚Ñ€Ñ‘Ñ…Ð¼ÐµÑ€Ð½Ð¾Ð¹ Ñ‚Ð°Ð±Ð»Ð¸Ñ†Ñ‹).
+//
+// ÐŸÐ¾Ñ€ÑÐ´Ð¾Ðº Ð¸Ð· ÑÐ¿ÐµÑ†Ð¸Ñ„Ð¸ÐºÐ°Ñ†Ð¸Ð¸ Ð¡Ð¢Ð ÐžÐ“Ð˜Ð™: Ð½Ð°ÐºÐ»Ð¾Ð½, ÑÐ´Ð²Ð¸Ð³, ÑÑ‚ÐµÐ¿ÐµÐ½ÑŒ, Ð¸ Ð»Ð¸ÑˆÑŒ Ð·Ð°Ñ‚ÐµÐ¼ Ð½Ð°ÑÑ‹Ñ‰ÐµÐ½Ð½Ð¾ÑÑ‚ÑŒ.
+// ÐŸÐµÑ€ÐµÑÑ‚Ð°Ð²Ð¸Ñ‚ÑŒ Ð½ÐµÐ»ÑŒÐ·Ñ â€” Ð°Ñ€Ð¸Ñ„Ð¼ÐµÑ‚Ð¸ÐºÐ° Ð½ÐµÐºÐ¾Ð¼Ð¼ÑƒÑ‚Ð°Ñ‚Ð¸Ð²Ð½Ð°, Ñ€ÐµÐ·ÑƒÐ»ÑŒÑ‚Ð°Ñ‚ Ð²Ñ‹Ð¹Ð´ÐµÑ‚ Ð´Ñ€ÑƒÐ³Ð¸Ð¼.
+float3 da_apply_cdl( float3 c )
+{
+	c = c * da_color_grade.rgb + da_color_offset.rgb;
+
+	// âš ï¸ ÐžÐ±Ñ€ÐµÐ·ÐºÐ° Ð¿Ð¾ Ð½ÑƒÐ»ÑŽ Ð¾Ð±ÑÐ·Ð°Ð½Ð° ÑÑ‚Ð¾ÑÑ‚ÑŒ ÐœÐ•Ð–Ð”Ð£ ÑÐ´Ð²Ð¸Ð³Ð¾Ð¼ Ð¸ ÑÑ‚ÐµÐ¿ÐµÐ½ÑŒÑŽ. pow Ð¾Ñ‚ Ð¾Ñ‚Ñ€Ð¸Ñ†Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾Ð³Ð¾
+	// Ñ‡Ð¸ÑÐ»Ð° Ð´Ð°Ñ‘Ñ‚ NaN, Ð° ÑÐ´Ð²Ð¸Ð³ Ð»ÐµÐ³ÐºÐ¾ ÑƒÐ²Ð¾Ð´Ð¸Ñ‚ ÐºÐ°Ð½Ð°Ð» Ð½Ð¸Ð¶Ðµ Ð½ÑƒÐ»Ñ. ÐÐ° ÑÐ°Ð¼Ð¸ Ð²ÐµÐ»Ð¸Ñ‡Ð¸Ð½Ñ‹ ÑÐ¿ÐµÑ†Ð¸Ñ„Ð¸ÐºÐ°Ñ†Ð¸Ñ
+	// Ð¾Ð³Ñ€Ð°Ð½Ð¸Ñ‡ÐµÐ½Ð¸Ð¹ Ð½Ðµ Ð½Ð°ÐºÐ»Ð°Ð´Ñ‹Ð²Ð°ÐµÑ‚ â€” Ð¾Ð³Ñ€Ð°Ð½Ð¸Ñ‡Ð¸Ð²Ð°ÐµÑ‚ÑÑ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð¿Ñ€Ð¾Ð¼ÐµÐ¶ÑƒÑ‚Ð¾Ñ‡Ð½Ñ‹Ð¹ Ñ€ÐµÐ·ÑƒÐ»ÑŒÑ‚Ð°Ñ‚.
+	c = max( c, 0.0 );
+
+	c = pow( c, da_color_power.rgb );
+
+	if ( da_color_grade.w > 0.001 )
+		c = da_apply_vibrance( c, da_color_grade.w );
+
+	return c;
+}
+
+// [DA_PORT] ---- Upscale for r__render_scale (groundwork for FSR 1.0) --------------------------------
+// This pass is where the finished frame reaches the screen, so when the scene is rendered smaller than
+// the window this Sample() IS the upscale â€” and a plain bilinear stretch is exactly what looks soft.
+// Replaced with a Catmull-Rom bicubic fetch, which reconstructs edges far better at the same bandwidth.
+//
+// The scene's own size comes from pos_decompression_params2 (the engine binds it to the render-target
+// resolution, .xy = size, .zw = 1/size), so no new engine-side constant is needed. screen_res stays the
+// window size, so comparing the two tells us whether any upscaling is happening at all.
+// NB: pos_decompression_params2 is already declared further up the common.h include chain â€” declaring
+// it again here is a compile error ("redefinition"), which silently swaps this shader for stub_default.
+uniform float4		screen_res;
+
+float3 da_sample_bicubic(Texture2D tex, float2 uv)
+{
+	const float2 src_size = pos_decompression_params2.xy;
+	const float2 inv_src  = pos_decompression_params2.zw;
+
+	float2 sample_pos = uv * src_size;
+	float2 tex_pos1   = floor(sample_pos - 0.5) + 0.5;
+	float2 f          = sample_pos - tex_pos1;
+
+	// Catmull-Rom weights
+	float2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+	float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+	float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+	float2 w3 = f * f * (-0.5 + 0.5 * f);
+
+	// Fold the two inner taps into one bilinear fetch: 9 taps become 5.
+	float2 w12      = w1 + w2;
+	float2 offset12 = w2 / max(w12, 0.0001);
+
+	float2 tc0  = (tex_pos1 - 1.0)      * inv_src;
+	float2 tc3  = (tex_pos1 + 2.0)      * inv_src;
+	float2 tc12 = (tex_pos1 + offset12) * inv_src;
+
+	float3 result = 0.0;
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc0.y ), 0).rgb * (w12.x * w0.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc0.x,  tc12.y), 0).rgb * (w0.x  * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc12.y), 0).rgb * (w12.x * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc3.x,  tc12.y), 0).rgb * (w3.x  * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc3.y ), 0).rgb * (w12.x * w3.y);
+	return result;
+}
+
+// Only pay for it when the scene really is smaller than the window; at 100% scale this returns the
+// plain bilinear sample, i.e. byte-identical to stock.
+float3 da_fetch_scene(Texture2D tex, float2 uv)
+{
+	if (pos_decompression_params2.x < screen_res.x - 0.5)
+		return da_sample_bicubic(tex, uv);
+
+	return tex.Sample(smp_rtlinear, uv).rgb;
+}
+
+uniform float4 da_upscale;   // x = sharpening strength (r__upscale_sharpness / 100)
+
+// [DA_PORT] Adaptive sharpening for the upscale - the RCAS half of FSR 1.0.
+//
+// Upscaling always softens: the bicubic fetch above reconstructs edges well, but detail that existed
+// below the render resolution cannot come back on its own. A plain unsharp mask would bring it back
+// along with ringing halos and amplified noise. This does it adaptively instead: the strength is
+// limited per pixel by how much headroom the local neighbourhood has before clipping, so flat areas
+// and near-white/near-black regions are left alone and only genuine edges are pushed.
+//
+// Four taps in a cross, sampled in SCENE texels (pos_decompression_params2.zw), not screen ones -
+// sharpening must act on the pixels that actually exist, otherwise it just re-sharpens interpolation.
+float3 da_sharpen_texel(Texture2D tex, float2 uv, float3 centre, float strength, float2 texel)
+{
+
+	float3 up    = da_fetch_scene(tex, uv + float2(0.0, -texel.y));
+	float3 left  = da_fetch_scene(tex, uv + float2(-texel.x, 0.0));
+	float3 right = da_fetch_scene(tex, uv + float2( texel.x, 0.0));
+	float3 down  = da_fetch_scene(tex, uv + float2(0.0,  texel.y));
+
+	float3 mn = min(min(up, down), min(left, right));
+	float3 mx = max(max(up, down), max(left, right));
+
+	// How much room is left before the result would clip, per channel. Near 0 or 1 there is none, so
+	// the sharpening fades out by itself instead of producing halos.
+	float3 headroom = min(mn, 1.0 - mx) / max(mx, 0.0001);
+	float amount = sqrt(saturate(min(headroom.r, min(headroom.g, headroom.b))));
+
+	// Negative weight on the neighbours, normalised so overall brightness is preserved.
+	float w = -amount * strength * 0.25;
+	float3 sharpened = (up + down + left + right) * w + centre;
+	return max(sharpened / (1.0 + 4.0 * w), 0.0);
+}
+
+// [DA_PORT] ÐžÐ±Ñ‘Ñ€Ñ‚ÐºÐ° ÑÐ¾ ÑÑ‚Ð°Ñ€Ñ‹Ð¼ Ð¿Ð¾Ð²ÐµÐ´ÐµÐ½Ð¸ÐµÐ¼ - Ñ‚ÐµÐºÑÐµÐ» ÑÑ†ÐµÐ½Ñ‹. Ð‘Ð¸ÐºÑƒÐ±Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ð¿ÑƒÑ‚ÑŒ Ð½Ðµ Ñ‚Ñ€Ð¾Ð½ÑƒÑ‚.
+float3 da_sharpen_upscaled(Texture2D tex, float2 uv, float3 centre, float strength)
+{
+	return da_sharpen_texel(tex, uv, centre, strength, pos_decompression_params2.zw);
+}
+
+// [DA_PORT] Ð¢Ð¾ Ð¶Ðµ ÑÐ°Ð¼Ð¾Ðµ, Ð½Ð¾ Ð´Ð»Ñ Ð’Ð«Ð¥ÐžÐ”Ð Ð²Ñ€ÐµÐ¼ÐµÐ½Ð½Ð¾Ð³Ð¾ Ð°Ð¿ÑÐºÐµÐ¹Ð»ÐµÑ€Ð°, Ð° Ð½Ðµ Ð´Ð»Ñ Ð½Ð¸Ð·ÐºÐ¾Ñ€Ð°Ð·Ñ€ÐµÑˆÑ‘Ð½Ð½Ð¾Ð¹ ÑÑ†ÐµÐ½Ñ‹.
+//
+// ÐžÑ‚Ð»Ð¸Ñ‡Ð¸Ðµ Ð¾Ð´Ð½Ð¾ Ð¸ Ð¾Ð½Ð¾ Ð¿Ñ€Ð¸Ð½Ñ†Ð¸Ð¿Ð¸Ð°Ð»ÑŒÐ½Ð¾Ðµ: Ð¾Ñ‚ÑÑ‡Ñ‘Ñ‚Ñ‹ Ð±ÐµÑ€ÑƒÑ‚ÑÑ ÐŸÐ ÐžÐ¡Ð¢ÐžÐ™ Ð±Ð¸Ð»Ð¸Ð½ÐµÐ¹Ð½Ð¾Ð¹ Ð²Ñ‹Ð±Ð¾Ñ€ÐºÐ¾Ð¹, Ð±ÐµÐ· da_fetch_scene.
+// Ð¢Ð° Ð¿Ð¾Ð´ ÐºÐ°Ð¿Ð¾Ñ‚Ð¾Ð¼ Ð´ÐµÐ»Ð°ÐµÑ‚ Ð±Ð¸ÐºÑƒÐ±Ð¸Ñ‡ÐµÑÐºÑƒÑŽ Ñ€ÐµÐºÐ¾Ð½ÑÑ‚Ñ€ÑƒÐºÑ†Ð¸ÑŽ, ÐºÐ¾Ð³Ð´Ð° ÑÑ†ÐµÐ½Ð° Ð¼ÐµÐ½ÑŒÑˆÐµ Ð¾ÐºÐ½Ð°, Ð¸ Ð½Ð°Ð¿Ð¸ÑÐ°Ð½Ð° Ð¾Ð½Ð° Ð¿Ð¾Ð´
+// Ð½Ð¸Ð·ÐºÐ¾Ðµ Ñ€Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ð¸Ðµ. ÐŸÑ€Ð¾Ð³Ð½Ð°Ñ‚ÑŒ ÐµÑ‘ Ð¿Ð¾ ÐºÐ°Ð´Ñ€Ñƒ, ÐºÐ¾Ñ‚Ð¾Ñ€Ñ‹Ð¹ Ð°Ð¿ÑÐºÐµÐ¹Ð»ÐµÑ€ ÑƒÐ¶Ðµ ÑÐ¾Ð±Ñ€Ð°Ð» Ð² Ð¿Ð¾Ð»Ð½Ð¾Ð¼ Ñ€Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ð¸Ð¸, Ð·Ð½Ð°Ñ‡Ð¸Ñ‚
+// Ð²Ð¾ÑÑÑ‚Ð°Ð½Ð°Ð²Ð»Ð¸Ð²Ð°Ñ‚ÑŒ ÑƒÐ¶Ðµ Ð²Ð¾ÑÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð½Ð¾Ðµ: ÑÐ¾ÑÐµÐ´Ð½Ð¸Ðµ Ð¾Ñ‚ÑÑ‡Ñ‘Ñ‚Ñ‹ Ð±ÐµÑ€ÑƒÑ‚ÑÑ Ð½Ðµ Ð¾Ñ‚Ñ‚ÑƒÐ´Ð°, Ð½ÐµÑ€ÐµÐ·ÐºÐ°Ñ Ð¼Ð°ÑÐºÐ° Ð²Ñ‹Ñ‡Ð¸Ñ‚Ð°ÐµÑ‚
+// Ð½ÐµÐ²ÐµÑ€Ð½Ð¾Ðµ ÑÑ€ÐµÐ´Ð½ÐµÐµ, Ð¸ Ð²Ð¼ÐµÑÑ‚Ð¾ Ñ€ÐµÐ·ÐºÐ¾ÑÑ‚Ð¸ Ð¿Ð¾Ð»ÑƒÑ‡Ð°ÐµÑ‚ÑÑ Ñ€Ð°Ð·Ð²Ð°Ð» ÐºÑ€Ð°Ñ‘Ð² - Ð½Ð° Ð³Ð»Ð°Ð· Ñ‡Ð¸Ñ‚Ð°ÐµÑ‚ÑÑ ÐºÐ°Ðº Â«Ð²ÑÑ‘ Ð¿Ð¸ÐºÑÐµÐ»ÑŒÐ½Ð¾ÐµÂ».
+// Ð Ð¾Ð²Ð½Ð¾ Ð½Ð° ÑÑ‚Ð¾ Ñ Ð¸ Ð½Ð°ÑÑ‚ÑƒÐ¿Ð¸Ð», ÐºÐ¾Ð³Ð´Ð° Ð¿ÐµÑ€ÐµÐ¸ÑÐ¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ð» Ð¿Ð¾Ð¼Ð¾Ñ‰Ð½Ð¸Ðº Ñ†ÐµÐ»Ð¸ÐºÐ¾Ð¼.
+float3 da_sharpen_output(Texture2D tex, float2 uv, float3 centre, float strength, float2 texel)
+{
+	float3 up    = tex.Sample(smp_rtlinear, uv + float2(0.0, -texel.y)).rgb;
+	float3 left  = tex.Sample(smp_rtlinear, uv + float2(-texel.x, 0.0)).rgb;
+	float3 right = tex.Sample(smp_rtlinear, uv + float2( texel.x, 0.0)).rgb;
+	float3 down  = tex.Sample(smp_rtlinear, uv + float2(0.0,  texel.y)).rgb;
+
+	float3 mn = min(min(up, down), min(left, right));
+	float3 mx = max(max(up, down), max(left, right));
+
+	float3 headroom = min(mn, 1.0 - mx) / max(mx, 0.0001);
+	float amount = sqrt(saturate(min(headroom.r, min(headroom.g, headroom.b))));
+
+	float w = -amount * strength * 0.25;
+	float3 sharpened = (up + down + left + right) * w + centre;
+	return max(sharpened / (1.0 + 4.0 * w), 0.0);
+}
+// -------------------------------------------------------------------------------------------------
+
+// [DA_PORT] Gamma / brightness / contrast, x = 1/gamma, y = brightness/2, z = contrast/2,
+// w = 1 when the hardware gamma ramp is NOT doing the job and this has to.
+uniform float4 da_gamma;
+
+// Deliberately the same curve the engine builds for the hardware ramp (CGammaControl::GenLUT), so the
+// result matches what the sliders produced on the original DX9 build rather than being a new look.
+// At gamma 1 / brightness 1 / contrast 1 it reduces exactly to the identity.
+float3 da_apply_gamma(float3 c)
+{
+	const float B = da_gamma.y;
+	const float C = da_gamma.z;
+	float3 v = pow(max(c, 0.0), da_gamma.x);
+	return (C + 0.5) * v + (B - 0.5) * 0.5 - C * 0.5 + 0.25;
+}
+
+// [DA_PORT] Motion-vector debug view, switched on with "r__motion_vectors 2" (da_gamma.w carries the
+// mode). Vectors are in NDC and tiny â€” a fast pan moves a pixel a few hundredths of the screen â€” so
+// they are scaled up hard and split by sign: red/green for the two directions of horizontal movement,
+// blue for vertical. Still geometry reads black, and that is the point of looking at it.
+Texture2D s_velocity;
+
+// [DA_PORT] FSR 2 output. When the upscaler ran, the frame is already at output resolution and
+// reconstructed - it must be sampled 1:1, with no bicubic stretch of our own on top.
+Texture2D s_fsr2;
+
+float3 da_debug_velocity(float2 uv)
+{
+	float2 v = s_velocity.Sample(smp_rtlinear, uv).xy;
+
+	// [DA_PORT] ÐœÐÐ›Ð˜ÐÐžÐ’Ð«Ð™ - Ð² Ð±ÑƒÑ„ÐµÑ€Ðµ Ð ÐžÐ’ÐÐž Ð½Ð¾Ð»ÑŒ, Ñ‚Ð¾ ÐµÑÑ‚ÑŒ ÑÑŽÐ´Ð° Ð½Ð¸ÐºÑ‚Ð¾ Ð½Ðµ Ð¿Ð¸ÑÐ°Ð».
+	//
+	// Ð Ð°Ð½ÑŒÑˆÐµ ÑÑ‚Ð¾Ñ‚ ÑÐ»ÑƒÑ‡Ð°Ð¹ Ð±Ñ‹Ð» Ð½ÐµÐ¾Ñ‚Ð»Ð¸Ñ‡Ð¸Ð¼ Ð¾Ñ‚ Â«Ð¾Ð±ÑŠÐµÐºÑ‚ ÑÑ‚Ð¾ÑÐ» Ð½Ð° Ð¼ÐµÑÑ‚ÐµÂ»: Ð¾Ð±Ð° Ð´Ð°Ð²Ð°Ð»Ð¸ Ñ‡Ñ‘Ñ€Ð½Ñ‹Ð¹. Ð Ð´Ð»Ñ Ð°Ð¿ÑÐºÐµÐ¹Ð»ÐµÑ€Ð°
+	// ÑÑ‚Ð¾ Ð¿Ñ€Ð¸Ð½Ñ†Ð¸Ð¿Ð¸Ð°Ð»ÑŒÐ½Ð¾ Ñ€Ð°Ð·Ð½Ñ‹Ðµ Ð²ÐµÑ‰Ð¸ - Ð½Ð¾Ð»ÑŒ Ð¾Ð½ Ñ‡Ð¸Ñ‚Ð°ÐµÑ‚ ÐºÐ°Ðº Â«Ð¿Ð¸ÐºÑÐµÐ»ÑŒ Ð½Ðµ Ð´Ð²Ð¸Ð³Ð°Ð»ÑÑÂ» Ð¸ ÑƒÐ²ÐµÑ€ÐµÐ½Ð½Ð¾ Ð¿ÐµÑ€ÐµÐ½Ð¾ÑÐ¸Ñ‚
+	// Ð¸ÑÑ‚Ð¾Ñ€Ð¸ÑŽ, Ñ‚Ð¾Ð³Ð´Ð° ÐºÐ°Ðº Ð½Ð° ÑÐ°Ð¼Ð¾Ð¼ Ð´ÐµÐ»Ðµ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð½ÐµÑ‚ Ð²Ð¾Ð²ÑÐµ. Ð Ð¾Ð²Ð½Ð¾ Ð½Ð° ÑÑ‚Ð¾Ð¹ Ð´Ð²ÑƒÑÐ¼Ñ‹ÑÐ»ÐµÐ½Ð½Ð¾ÑÑ‚Ð¸ Ð¼Ñ‹ Ð¿Ð¾Ñ‚ÐµÑ€ÑÐ»Ð¸
+	// Ð´ÐµÐ½ÑŒ: Ð¿ÑƒÑÑ‚Ð¾Ð¹ Ð±ÑƒÑ„ÐµÑ€ Ð²Ñ‹Ð³Ð»ÑÐ´ÐµÐ» ÐºÐ°Ðº Ð¸ÑÐ¿Ñ€Ð°Ð²Ð½Ñ‹Ð¹, Ð¿Ð¾Ñ‚Ð¾Ð¼Ñƒ Ñ‡Ñ‚Ð¾ Ñ‡Ñ‘Ñ€Ð½Ð¾Ðµ Ð¿Ð¾Ð»Ðµ Ð½Ð¸ÐºÐ¾Ð³Ð¾ Ð½Ðµ ÑÐ¼ÑƒÑ‰Ð°Ð»Ð¾.
+	if (v.x == 0.0 && v.y == 0.0)
+		return float3(0.7, 0.0, 0.7);
+
+	// Ð’ÐµÐºÑ‚Ð¾Ñ€Ñ‹ Ð² NDC Ð¸ Ð¾Ñ‡ÐµÐ½ÑŒ Ð¼Ð°Ð»Ñ‹ - Ð±Ñ‹ÑÑ‚Ñ€Ñ‹Ð¹ Ñ€Ð°Ð·Ð²Ð¾Ñ€Ð¾Ñ‚ ÑÐ´Ð²Ð¸Ð³Ð°ÐµÑ‚ Ð¿Ð¸ÐºÑÐµÐ»ÑŒ Ð½Ð° ÑÐ¾Ñ‚Ñ‹Ðµ Ð´Ð¾Ð»Ð¸ ÑÐºÑ€Ð°Ð½Ð°, Ð¿Ð¾ÑÑ‚Ð¾Ð¼Ñƒ
+	// Ð¼Ð°ÑÑˆÑ‚Ð°Ð± Ð±Ð¾Ð»ÑŒÑˆÐ¾Ð¹. ÐšÑ€Ð°ÑÐ½Ñ‹Ð¹ Ð¸ Ð·ÐµÐ»Ñ‘Ð½Ñ‹Ð¹ - Ð´Ð²Ðµ ÑÑ‚Ð¾Ñ€Ð¾Ð½Ñ‹ Ð³Ð¾Ñ€Ð¸Ð·Ð¾Ð½Ñ‚Ð°Ð»Ð¸, ÑÐ¸Ð½Ð¸Ð¹ - Ð²ÐµÑ€Ñ‚Ð¸ÐºÐ°Ð»ÑŒ.
+	float2 s = v * 200.0;
+	return float3(saturate(s.x), saturate(-s.x), saturate(abs(s.y)));
+}
+
+// [DA_PORT] The reactive mask itself, switched on with "r__motion_vectors 4". White is where the
+// upscalers have been told not to trust their history. Worth looking at directly rather than inferring
+// from the picture: a mask that misses a moving figure and a mask that covers it but is ignored look
+// exactly the same on screen, and every attempt to tell them apart by tuning numbers is wasted.
+Texture2D s_reactive;
+
+// [DA_PORT] Eye-space depth, switched on with "r__motion_vectors 5".
+//
+// For the one question that keeps deciding things: what is in the position buffer where the sky is?
+// Our temporal work all reads a zero there as "nothing was drawn here", and nothing ever writes the
+// sky's position - so if that buffer is not cleared, it holds whatever the last frame that DID have
+// geometry there left, and the sky gets reprojected as though it sat at that distance.
+//
+// Green means the pixel reads as sky. Red is the depth itself. A sky that comes up red is the bug.
+float3 da_debug_depth(float2 uv)
+{
+// [DA_PORT] s_position is Texture2DMS under USE_MSAA (common_samplers.h), and a multisampled
+// texture object has no Sample method at all - the shader then fails to COMPILE and the engine
+// quietly swaps in stub_default.ps. Same shape as the stock reads in common_functions.h.
+#ifndef USE_MSAA
+	const float z = s_position.Sample(smp_nofilter, uv).z;
+#else
+	const float z = s_position.Load(int2(uv * pos_decompression_params2.xy), 0).z;
+#endif
+	return float3(saturate(abs(z) * 0.02), abs(z) < 0.001 ? 1.0 : 0.0, 0.0);
+}
+
+float3 da_debug_reactive(float2 uv)
+{
+	const float r = s_reactive.Sample(smp_rtlinear, uv).x;
+	// Red is the honest value; green is the same thing amplified twentyfold. A mask holding a few
+	// hundredths and a mask holding nothing at all are the same black in plain grey, and those two
+	// call for opposite fixes - so the view has to separate them by itself.
+	return float3(saturate(r), saturate(r * 20.0), 0.0);
+}
+
+// [DA_PORT] Ñîáñòâåííî öâåòîêîððåêöèÿ: äâå ãðàäèåíòíûå òàáëèöû è âåñà ìåæäó íèìè.
+Texture2D 	s_grad0;
+Texture2D 	s_grad1;
+uniform float4 		c_colormap;
+
+// [DA_PORT] ---- Âàðèàíò ñ öâåòîêîððåêöèåé: ïî÷åìó ýòîò ôàéë âîîáùå ïîÿâèëñÿ ----------------
+//
+// Ïîñòîáðàáîòêà âûáèðàåò ýëåìåíò øåéäåðà ïî îäíîìó ïðèçíàêó: âêëþ÷åíà ëè öâåòîêîððåêöèÿ
+// (u_need_CM, ñì. r2_rendertarget_phase_PP.cpp). Ýëåìåíò 0 - postprocess.ps, ýëåìåíò 4 - âîò
+// ýòîò. Âåñü íàø ïîðò ïîñòîáðàáîòêè æèë ÒÎËÜÊÎ â ïåðâîì, è ñòîèëî çîíå âêëþ÷èòü ñâîþ
+// öâåòîêîððåêöèþ, êàäð óõîäèë âî âòîðîé - ñòîêîâûé, íè÷åãî ïðî àïñêåéëåð íå çíàþùèé.
+//
+// ×åì ýòî âûãëÿäåëî: âíóòðè àíîìàëüíîé çîíû ìèð äðîæàë. Ñöåíà ðèñóåòñÿ â 1478x830 ñî
+// ñóáïèêñåëüíûì ñäâèãîì, DLSS ÷åñòíî ñîáèðàåò å¸ â 1920x1080 - è çäåñü ýòîò ðåçóëüòàò
+// âûáðàñûâàëñÿ, à íà ýêðàí ðàñòÿãèâàëàñü ñûðàÿ ñöåíà âìåñòå ñî ñäâèãîì. Ñäâèã ìåíÿåòñÿ
+// êàæäûé êàäð, îòñþäà äðîæàíèå. Âûøåë èç çîíû - öâåòîêîððåêöèÿ âûêëþ÷èëàñü, êàäð âåðíóëñÿ â
+// ýëåìåíò 0, äðîæü ïðåêðàòèëàñü ìãíîâåííî.
+//
+// Çàîäíî òóò íå áûëî íè ðåçêîñòè, íè öâåòîêîððåêöèè ïîëçóíêàìè, íè ãàììà-ïîïðàâêè, íè
+// îòëàäî÷íûõ ïîêàçîâ - òî åñòü âíóòðè çîíû ìåíÿëàñü åù¸ è ÿðêîñòü, ïðîñòî ýòî íå áðîñàëîñü â
+// ãëàçà ðÿäîì ñ äðîæüþ.
+//
+// Íàøëîñü íàáëþäåíèåì, êîòîðîå ñòîèò çàïèñàòü: r__motion_vectors 2 âíóòðè çîíû ÍÅ ÐÀÁÎÒÀË, à
+// ñíàðóæè ðàáîòàë. Îòëàäî÷íûé ïîêàç æèâ¸ò â øåéäåðå - çíà÷èò âíóòðè èñïîëíÿåòñÿ äðóãîé
+// øåéäåð. Ýòî è óêàçàëî íà ïîäìåíó ýëåìåíòà, êîãäà ïÿòü ïðàâîê ïî äîãàäêàì ïîäðÿä íå äàëè
+// íè÷åãî.
+//
+// ÂÀÆÍÎ: øàïêà íèæå - òî÷íàÿ êîïèÿ postprocess.ps, âïëîòü äî ïîðÿäêà îáúÿâëåíèé. Ïðàâèøü
+// îäèí ôàéë - ïðàâü è âòîðîé. Îáùåãî çàãîëîâêà íàìåðåííî íåò: íîâûé .h, ëåæàùèé òîëüêî
+// ðîññûïüþ, äâèæîê ìîæåò íå íàéòè ïðè ñáîðêå, à íåñîáðàâøèéñÿ øåéäåð îí ìîë÷à çàìåíÿåò
+// çàãëóøêîé - òî åñòü öåíà îøèáêè òóò âûøå öåíû äóáëèðîâàíèÿ.
+// -----------------------------------------------------------------------------------------
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// Pixel
+float4 main( p_postpr I ) : SV_Target
+{
+	// [DA_PORT] Îòëàäî÷íûå ïîêàçû - äî âñåãî îñòàëüíîãî, ðîâíî êàê â postprocess.ps.
+	if (da_upscale.y > 4.5)
+		return float4(da_debug_depth(I.Tex0), 1.0h);
+	if (da_upscale.y > 3.5)
+		return float4(da_debug_reactive(I.Tex0), 1.0h);
+	if (da_upscale.y > 1.5)
+		return float4(da_debug_velocity(I.Tex0), 1.0h);
+
+#ifdef DA_VELOCITY
+	// [DA_PORT] Êàäð ñîáðàë àïñêåéëåð - áåð¸ì ÅÃÎ âûõîä, îí óæå â ïîëíîì ðàçðåøåíèè.
+	float3 image_o;
+	if (da_upscale.z > 0.5)
+	{
+		image_o = s_fsr2.Sample(smp_rtlinear, I.Tex0).rgb;
+	}
+	else
+	{
+		float3	t_0 = da_fetch_scene(s_base0, I.Tex0);
+		float3	t_1 = da_fetch_scene(s_base1, I.Tex1);
+		image_o = (t_0+t_1)*.5;
+	}
+#else
+	float3	t_0 	= da_fetch_scene(s_base0, I.Tex0);
+	float3	t_1 	= da_fetch_scene(s_base1, I.Tex1);
+	float3 	image_o	= (t_0+t_1)*.5;					// add_d2
+#endif
+
+	// [DA_PORT] Ðåçêîñòü - íà òîì æå ìåñòå è ïî òåì æå ïðèçíàêàì, ÷òî â postprocess.ps.
+	if (da_upscale.x > 0.001 && da_upscale.z < 0.5 && pos_decompression_params2.x < screen_res.x - 0.5)
+		image_o = da_sharpen_upscaled(s_base0, I.Tex0, image_o, da_upscale.x);
+
+	if (da_upscale.w > 0.5 && da_upscale.x > 0.001)
+		image_o = da_sharpen_output(s_fsr2, I.Tex0, image_o, da_upscale.x, screen_res.zw);
+
+	// Äàëüøå - àâòîðñêàÿ öâåòîêîððåêöèÿ ïî ãðàäèåíòíûì òàáëèöàì, áåç èçìåíåíèé.
+	float	grad_i 	= dot		(image_o,(0.3333h).xxx);
+
+	float3 	image0 	= s_grad0.Sample( smp_rtlinear, float2(grad_i,0.5));
+	float3 	image1 	= s_grad1.Sample( smp_rtlinear, float2(grad_i,0.5));
+	float3	image	= lerp		(image0, image1, c_colormap.y);
+			image	= lerp		(image_o, image, c_colormap.x);
+
+	float	gray 	= dot		(image,I.Gray);			// dp3
+			image 	= lerp 		(gray,image,I.Gray.w);		// mul/mad
+
+	float4	t_noise	= s_noise.Sample( smp_linear, I.Tex2);
+	float3 	noised 	= image*t_noise*2;                     		// mul_2x
+			image	= lerp( noised, image, I.Color.w); 	// lrp ?
+			image	= (image * I.Color + c_brightness)*2;		// mad
+
+	// [DA_PORT] Öâåòîêîððåêöèÿ ïîëçóíêàìè è ãàììà - ïîñëåäíèìè, êàê â postprocess.ps.
+	// [DA_PORT] ASC CDL, Ñ€Ð°Ð·Ð±Ð¾Ñ€ Ñƒ da_apply_cdl.
+	image = da_apply_cdl( image );
+
+	if (da_gamma.w > 0.5)
+		image = da_apply_gamma(image);
+
+	// out
+	return  float4( max(image, 0.0), 1.0h);				// +mov
+}

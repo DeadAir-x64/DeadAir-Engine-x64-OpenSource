@@ -370,6 +370,8 @@ target_sources(xrGame PRIVATE
     CycleConstStorage.h
     da_memory_probe.cpp
     da_memory_probe.h
+    da_script_cam.cpp
+    da_script_cam.h
     da_script_functor.cpp
     da_script_functor.h
     DamagableItem.cpp

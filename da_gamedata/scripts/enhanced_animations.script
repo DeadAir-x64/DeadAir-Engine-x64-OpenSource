@@ -1,0 +1,612 @@
+-- [DA_PORT] Помощники Anomaly (exec_console_cmd, get_console_cmd, IsMoveState) в Dead Air
+-- отсутствуют; их подставляет общий слой совместимости. Разбор — в da_mod_compat.script.
+da_mod_compat.install()
+
+--[[
+--------------------PLEASE DO NOT DELETE THIS SECTION---------------------------
+================================================================================
+Script(enhanced_animations) original:
+\\Author		:	thales100
+================================================================================
+
+Animations authors: LilGABE,denis2000,ValeroK,STRIFER,Feel_Fried
+
+================================================================================
+Script(enhanced_animations) reworked:
+Adaptation and crooked rework for Anomaly =): Feel_Fried
+
+Engine functions consultants: Amomawy devs - Lucy, tdef, Tronex
+
+Monkey patches and mask effect switcher implementation: RavenAscendant
+
+Main shitcode critic: Igigog
+================================================================================
+
+Addon main page:
+
+https://www.moddb.com/mods/stalker-anomaly/addons/food-drug-and-drinks-animations-reuploaded
+
+================================================================================
+
+All your base are belong to us! (⌐■_■)
+]]--
+local ini_eff = {}
+enable_animations = true
+-- [DA_PORT] Анимация разделки мутанта переделана под окно Dead Air.
+--
+-- У Anomaly мод подменяет ui_mutant_loot.start, а у нас окно устроено иначе: класс loot_ui, и
+-- функции start нет вовсе. Перехват перенесён в ТУ ЖЕ точку, где Dead Air открывает окно —
+-- ui_mutant_loot.loot_ui (см. ниже). Так наши проверки ножа, его прочности и разложения тела
+-- отрабатывают ПЕРВЫМИ, и анимация не запускается там, где свежевать всё равно нельзя.
+mutant_loot_mod = true
+local ea_debug = false
+ini_eff = ini_file("items\\items\\animations_settings.ltx")
+local anim_exist_tm,wpn,item_usage_snd,monster_usage_snd,item,anim_use_time,obj_m,used_monster = nil
+active_slot,used_item,ea_flag,fake_monster,det_active,anim_section = nil
+
+-- [DA_PORT] Есть ли у перенесённого набора своя анимация на этот раздел.
+--
+-- Нужен штатному набору (actor_effects), чтобы уступить нам ровно там, где мы его дублируем, и
+-- сохранить свои анимации там, где у нас записи нет. Признак тот же, по которому мы сами решаем
+-- перехватывать употребление: наличие звука в записи раздела.
+-- [DA_PORT] Раздел стопки сводится к базовому.
+--
+-- Питьё, еда и таблетки в Dead Air лежат стопками: [vodka_2]:vodka, [vodka_3]:vodka и так далее —
+-- отдельные разделы, унаследованные от базового, ради своей цены, веса и клетки в сетке. Записи
+-- анимаций заводились по базовому имени, поэтому на стопках анимация просто не находилась.
+--
+-- Наследование здесь не помогает: ini_file читает файл как есть, родителя за нас никто не
+-- подставит. Поэтому отрезаем числовой хвост и проверяем базовое имя. Разделы вроде cigar1 или
+-- cigar2 не задеваются: хвост отрезается только после подчёркивания.
+function da_anim_section(section)
+	if not section then return nil end
+	if ini_eff:r_string_ex(section, "snd") then return section end
+	local base = string.match(section, "^(.+)_%d+$")
+	if base and ini_eff:r_string_ex(base, "snd") then return base end
+	return section
+end
+
+function da_has_anim(section)
+	if not section then return false end
+	-- Разделка мутанта названием раздела не описывается: штатный набор зовёт use_item с
+	-- псевдоразделом от окна разделки, а не от вещи. Здесь мы её перекрываем ровно тогда,
+	-- когда наш перехват окна включён.
+	if section == "mutant_looting" or section == "mutant_looting_fast" then
+		return mutant_loot_mod == true
+	end
+	return ini_eff:r_string_ex(da_anim_section(section), "snd") ~= nil
+end
+
+function on_game_start()
+	-- [DA_PORT] Перехват намерения употребить вещь. Разбор — у da_before_item_use в _g.script.
+	da_register_before_item_use(da_on_before_item_use)
+	RegisterScriptCallback("on_game_load",on_game_load)
+	RegisterScriptCallback("on_option_change", loadsettings)
+	RegisterScriptCallback("on_key_press", check_for_game_ver)
+	if not ui_mcm then
+		RegisterScriptCallback("on_key_release", on_key_release)
+	end
+end
+
+function on_game_load()
+	activate()
+end
+
+--< Addon control
+function on_key_release(key)
+	local bind = dik_to_bind(key)
+	if (bind == key_bindings.kCAM_ZOOM_OUT) then
+		enable_animations = not enable_animations
+	end
+end
+
+function loadsettings()
+	if ui_mcm then -- here we test to make sure ui_mcm exists before trying to call it's get function.
+		enable_animations = ui_mcm.get("EA_settings/enable_animations")
+		mutant_loot_mod = ui_mcm.get("EA_settings/mutant_loot")
+		ea_debug = ui_mcm.get("EA_settings/ea_debug")
+		if enable_animations == false then
+			mutant_loot_mod = false
+			ui_mcm.set("EA_settings/mutant_loot", false)
+		end
+	else
+		mutant_loot_mod = ini_eff:r_bool_ex("anim_settings", "mutant_loot_mod")
+		enable_animations = ui_options.get("video/player/animations")
+	end
+
+	-- [DA_PORT] Последнее слово за пунктом «Игра -> Анимации предметов». Стоит ПОСЛЕ обеих веток
+	-- намеренно: выше значение берётся из настроек самого мода (MCM у Anomaly, ui_options у нас),
+	-- а переключатель разводит нас со штатным набором и потому обязан их перебивать.
+	-- [DA_PORT] Последнее слово за вкладкой «Игра -> Анимации». Стоит ПОСЛЕ обеих веток намеренно:
+	-- выше значение берётся из настроек самого мода (MCM у Anomaly, ui_options у нас), а наши
+	-- пункты разводят нас со штатным набором и потому обязаны их перебивать.
+	--
+	-- Пункта два, и они независимы: глоток воды и разделка туши — разные сцены, и выключать их
+	-- одной ручкой неправильно. enable_animations остался общим признаком «мод вообще работает»,
+	-- а путь употребления теперь смотрит на свой собственный флаг.
+	enable_item_anims = (da_item_anims.mode() == "new")
+	mutant_loot_mod   = (da_item_anims.skin_mode() == "new")
+	enable_animations = enable_item_anims or mutant_loot_mod
+	-- [DA_PORT] ВРЕМЕННЫЙ ЗОНД
+	printf("da_anims: настройки перечитаны, предметы=%s (%s) свежевание=%s (%s)",
+		tostring(da_item_anims.mode()), tostring(enable_item_anims),
+		tostring(da_item_anims.skin_mode()), tostring(mutant_loot_mod))
+end
+
+function activate()
+	ini_eff = ini_file("items\\items\\animations_settings.ltx")
+	-- [DA_PORT] Прямая подписка СНЯТА. В Dead Air это событие рассылает bind_monster, и на него же
+	-- подписан itms_manager со своими проверками — мы бы стартовали анимацию параллельно им, ещё до
+	-- того, как выяснится, что ножа нет или тело разложилось. Перехват стоит ниже, у loot_ui.
+	RegisterScriptCallback("actor_on_first_update",actor_on_first_update)
+end
+-- Addon control >--
+
+--< Animations engine
+function anim_prepare()
+	game.only_allow_movekeys(true)
+	hide_det()
+	active_slot = db.actor:active_slot()
+	anim_exist_tm = nil
+	-- [DA_PORT] Убираем оружие БЛОКИРОВКОЙ СЛОТОВ, а не переключением на пустой.
+	--
+	-- Проверено, прежде чем менять: верхний исходник мода в этом месте точно такой же, а
+	-- CInventory::Activate у нас и в Anomaly совпадает построчно. То есть подбирать нечего —
+	-- переключение на пустой слот идёт через сетевое событие и у нас завершается не всегда.
+	-- В логе это "оружие не убралось за отведённое время, слот=1", и сцена начинается с ножом.
+	--
+	-- hide_weapon у нас — SetWeaponHideState(INV_STATE_BLOCK_ALL, true). Она сразу зовёт
+	-- TryDeactivateActiveSlot и ДЕРЖИТ слоты закрытыми, пока их не откроют: убирает наверняка и не
+	-- даёт достать обратно посреди сцены.
+	--
+	-- Обратную половину делает ea_restore_actor: restore_weapon снимает блокировку, а
+	-- TryActivatePrevSlot внутри неё возвращает прежний слот. Пара симметрична.
+	db.actor:hide_weapon()
+	RegisterScriptCallback("actor_on_update", actor_on_update)
+end
+
+function use_item(obj)
+	item = obj:section()
+	obj_m = obj
+	-- [DA_PORT] Дальше всё читается по разделу АНИМАЦИИ, а не по разделу вещи: у стопки своего
+	-- набора записей нет. Сам объект остаётся в obj_m, употребляется именно он.
+	used_item = da_anim_section(item)
+	hide_hud_inventory()
+	anim_section = ini_eff:r_string_ex(used_item, "anm")
+	mask_hud_switcher()
+	anim_prepare()
+end
+
+function monster_on_actor_use(obj)
+	if (not mutant_loot_mod) or (not enable_animations) then
+		used_monster = nil
+		anim_exist_tm = nil
+		return
+	end
+	wpn = db.actor:active_item()
+	if wpn then
+		wpn = wpn:clsid() == clsid.wpn_knife_s and wpn:section() or "wpn_knife5"
+		wpn = string.gsub(wpn,"-","_")
+	end
+	-- [DA_PORT] Износ ножа здесь СНЯТ, а не переименован.
+	--
+	-- У Anomaly это item_knife.degradate(), скрипта с таким именем в Dead Air нет — отсюда падение
+	-- «attempt to index global 'item_knife'» при первой же разделке. Одноимённая функция у нас есть
+	-- (knife_manager.degradate), но подставлять её нельзя: Dead Air начисляет износ в самом окне
+	-- разделки (ui_mutant_loot, две точки), а мы перехватываем ровно путь К ЭТОМУ ОКНУ. Вызов здесь
+	-- дал бы второе списание за одну тушу.
+	used_monster = obj
+	level.disable_input()
+	anim_prepare()
+	recalc_actor_campos()
+end
+
+function start_anim(anim_section_hud)
+	UnregisterScriptCallback("actor_on_update", actor_on_update)
+	fov_anim_manager.change_fov(0.45)
+	local speed = ini_eff:r_float_ex(used_item or "nothing", "speed",1)
+	if ea_debug then printf("speed is = "..speed) end
+	-- [DA_PORT] Шестым доводом передаём длительность СЦЕНЫ, и движок растягивает под неё цикл.
+	--
+	-- Без этого анимация кончалась раньше сцены — у хлеба цикл 5970 мс против 7000 — и руки с
+	-- предметом замирали на последнем кадре почти на секунду. Выглядело как обрыв.
+	--
+	-- Для разделки мутанта своя величина, она читается ниже по ветке; здесь только предметы.
+	local scene_ms = used_item and ini_eff:r_float_ex(used_item, "tm") or 0
+	game.play_hud_motion(2, anim_section_hud, "anm_ea_show", false, speed, scene_ms and math.floor(scene_ms) or 0)
+	-- [DA_PORT] play_hud_anm у нас НЕТ, и вызывать его вслепую нельзя.
+	--
+	-- Это подсистема Monolith: анимации .anm, накладываемые поверх рук отдельным слоем, со своим
+	-- списком, обновлением и остановкой. У нас её нет вовсе, а ключ hud_anm появился у вещей вместе
+	-- с набором Mirrowel - и первый же ИРП валил игру в "attempt to call field 'play_hud_anm'".
+	--
+	-- Заслон, а не удаление: заведём подсистему - ветка заработает сама.
+	local hud_anm = used_item and ini_eff:r_string_ex(used_item, "hud_anm")
+	if hud_anm and game.play_hud_anm then
+		game.play_hud_anm(hud_anm, 0, 1, 1, false)
+	end
+	hud_anm = nil
+end
+
+function anim_manager_item(anim_section_hud)
+	item_usage_snd = sound_object(ini_eff:r_string_ex(used_item, "snd"))
+	item_usage_snd:play(db.actor, 0, sound_object.s2d)
+	level.add_cam_effector(ini_eff:r_string_ex(used_item, "cam"), 8555, false, "")
+	tmr = ini_eff:r_float_ex(used_item, "tm")
+	anim_exist_tm = tmr*0.001
+	anim_use_time = anim_exist_tm*0.367
+	CreateTimeEvent("ea_object_eater", "eat_my_obj", anim_use_time, eat_my_obj)
+	CreateTimeEvent("ea_slot_returner", "call_my_slot_back", (anim_exist_tm + 0.1), call_my_slot_back)
+	if ciga_effects then
+		if ini_eff:line_exist(used_item, "smoke") then ciga_effects.ciga_start(used_item) end
+	end
+	alife_create_item("items_anm_dummy",db.actor)
+	CreateTimeEvent("ea_anim_stoper", "stop_my_item_anim", anim_exist_tm, stop_my_item_anim)
+	ea_callbacks.EA_SendScriptCallback("ea_on_item_use",used_item,anim_exist_tm)
+end
+
+function anim_manager_monster()
+	monster_usage_snd = sound_object(ini_eff:r_string_ex("item_ea_harv_wpn_knife", "anim_sound"))
+	monster_usage_snd:play(db.actor, 0, sound_object.s2d)
+	level.add_cam_effector("itemuse_anm_effects\\harvest_skin_use.anm", 8558, false, "")
+	level.add_cam_effector("itemuse_anm_effects\\test.anm", 8559, false, "")
+	tmr = ini_eff:r_float_ex("item_ea_harv_wpn_knife", "anim_length")
+	anim_exist_tm = tmr*0.001
+	CreateTimeEvent("ea_slot_returner", "call_my_slot_back", (anim_exist_tm + 0.5), call_my_slot_back)
+	CreateTimeEvent("ea_blood_fx", "blood_fx", (1), blood_fx)
+	CreateTimeEvent("ea_blood_fx2", "blood_fx2", (1.6), blood_fx)
+	CreateTimeEvent("ea_blood_fx3", "blood_fx3", (2.1), blood_fx)
+	CreateTimeEvent("ea_blood_fx4", "blood_fx4", (2.2), blood_fx)
+	CreateTimeEvent("ea_anim_stoper", "stop_my_monster_anim", anim_exist_tm, stop_my_monster_anim)
+end
+
+local failure_timer = 0
+local fdda_error_snd = sound_object(ini_eff:r_string_ex("fdda_error_snd", "snd"))
+function actor_on_update()
+	failure_timer = failure_timer + (device().time_delta/17)
+	if ea_debug then printf("update = "..failure_timer) end
+	if (db.actor:active_slot() ~= 0 or db.actor:active_detector()) and (failure_timer < 100) then
+		-- [DA_PORT] ВРЕМЕННЫЙ замер: видно, ползёт ли слот к нулю или стоит намертво.
+		if (failure_timer % 30 < 1) then
+			printf("~[DA_FDDA] жду убирания: слот=%s, такт=%s",
+				tostring(db.actor:active_slot()), tostring(math.floor(failure_timer)))
+		end
+		return
+	elseif (failure_timer >= 100) then
+		-- [DA_PORT] Отчёт БЕЗ отладочного флага: это и есть случай "оружие не убралось за отведённое
+		-- время", и сцена начнётся с оружием в руках. Молчать о нём нельзя — снаружи он выглядит
+		-- дефектом анимации, а на деле упёрлись в инвентарь.
+		printf("![DA_FDDA] оружие не убралось за отведённое время, слот=%s, детектор=%s",
+			tostring(db.actor:active_slot()), tostring(db.actor:active_detector() ~= nil))
+	end
+	if false then
+		fdda_error_snd:play(db.actor, 0, sound_object.s2d)
+		printf("hide weapons for anim failed")
+		printf(used_item  or (used_monster and used_monster:section())  or "anim find ERROR")
+		printf(anim_section or "NO ANIM SECTION FOUND")
+		level.enable_input()
+		game.only_allow_movekeys(false)
+		SetHudMsg("PLEASE EXIT THE GAME AND SEND LOG FILE TO FEEL_FRIED", 5000) -- [DA_PORT] у нас SetHudMsg
+	end
+	local anim_section_hud = nil
+	if used_monster then
+		anim_section_hud = "item_ea_harv_" .. ( wpn or "wpn_knife5" ) .. "_hud"
+		-- [DA_PORT] Заслон на нож, которого мы не знаем.
+		--
+		-- Раздел собирается из имени секции оружия в руках, а разделы заведены только под наши пять
+		-- ножей. Любой нож из стороннего аддона дал бы имя без записи, и движок упал бы в
+		-- ModelPool: у отсутствующего раздела нет item_visual. Отступаем к базовому ножу.
+		if (not system_ini():section_exist(anim_section_hud)) then
+			anim_section_hud = "item_ea_harv_wpn_knife_hud"
+		end
+		start_anim(anim_section_hud)
+		anim_manager_monster()
+		failure_timer = 0
+		return
+	end
+	failure_timer = 0
+	anim_section_hud = anim_section .. "_hud"
+	anim_section = nil
+	start_anim(anim_section_hud)
+	anim_manager_item(anim_section_hud)
+end
+-- Animations engine >--
+
+--< Monkey patches
+--preventing default Anomaly anims
+local originalPIF = actor_effects.play_item_fx
+function actor_effects.play_item_fx(item)
+	if da_has_anim(item) and enable_item_anims or ini_eff:r_bool_ex("skip_items", item) then return end
+	if skip_functor(item) then return end
+	originalPIF(item)
+end
+
+local originalUW = actor_effects.use_weapon
+function actor_effects.use_weapon(f)
+	if f == 1 then
+		CreateTimeEvent("ea_def_use", "def_use_end", 0.5, def_use_end)
+ 	end
+	if f == 0 then
+		 hide_hud_inventory()
+		 game.only_allow_movekeys(true)
+	end
+	originalUW(f)
+end
+
+--delaying item use
+-- [DA_PORT] Подмена itms_manager.actor_on_item_before_use заменена на нашу точку перехвата.
+--
+-- В Dead Air такой функции нет вовсе: она из Anomaly. Наш эквивалент — da_before_item_use в
+-- _g.script, он вызывается ДО того, как вещь будет употреблена, и принимает флаг ТАБЛИЦЕЙ,
+-- то есть отказ действительно отменяет употребление.
+--
+-- Подписка ниже, в on_game_start.
+function da_on_before_item_use(npc,obj,flags)
+	if (not obj) then return end
+
+	-- [DA_PORT] Перехват стоит в CInventory::Eat, а это метод ЛЮБОГО владельца инвентаря, не только
+	-- актёра — свой бинт себе накладывает и NPC (xr_wounded.script, autoheal). use_item() ниже
+	-- безусловно работает с db.actor (прячет ЕГО оружие, играет сцену на ЕГО руках), поэтому без
+	-- этой проверки чужое употребление запускало анимацию перевязки на игроке, пока тот просто
+	-- стоял на месте — ровно то, что выглядело как "рандомная" анимация.
+	if npc == nil or npc:id() ~= db.actor:id() then return end
+
+	-- [DA_PORT] Не перехватываем СВОЁ ЖЕ употребление — иначе анимация идёт по кругу.
+	--
+	-- Наш перехват стоит в CInventory::Eat, то есть срабатывает на ЛЮБОЕ употребление. А мод в
+	-- середине анимации сам зовёт db.actor:eat(obj_m) (см. eat_my_obj) — и снова попадает сюда,
+	-- запуская вторую анимацию, та третью, и так далее. Именно так вода и проигрывалась трижды.
+	--
+	-- У Anomaly этого не было: там перехват висел на itms_manager, то есть на пути от ИНВЕНТАРЯ, а
+	-- не на самом употреблении.
+	if used_item then return end
+
+	local item = obj:section()
+	if IsMoveState("mcClimb") then
+		SetHudMsg(game.translate_string("st_EA_ladder_item_not_allowed"), 3000) -- [DA_PORT] у нас SetHudMsg
+		flags.ret_value = false
+		return
+	end
+	-- [DA_PORT] ВРЕМЕННЫЙ ЗОНД
+	printf("da_anims: перехват %s: своя анимация=%s включены=%s раздел=%s занято=%s",
+		tostring(item), tostring(da_has_anim(item)), tostring(enable_item_anims),
+		tostring(da_anim_section(item)), tostring(used_item))
+	if da_has_anim(item) and enable_item_anims and flags.ret_value then
+		use_item(obj)
+		flags.ret_value = false
+		return
+	end
+	return
+end
+
+--delaying mutant loot dialog
+-- [DA_PORT] Перехват в точке, где Dead Air открывает окно разделки.
+--
+-- itms_manager сначала проверяет нож, его прочность и не разложилось ли тело, и только потом зовёт
+-- ui_mutant_loot.loot_ui. Встраиваемся ровно сюда: если анимация включена и ещё не игралась —
+-- запускаем её вместо окна и запоминаем тело. Окно откроется само, когда анимация кончится
+-- (stop_my_monster_anim ниже выставит ea_flag и позовёт нас повторно).
+if ui_mutant_loot and ui_mutant_loot.loot_ui then
+	local original_loot_ui = ui_mutant_loot.loot_ui
+	ea_open_loot_ui = original_loot_ui
+	ui_mutant_loot.loot_ui = function(hud, obj)
+		if (not ea_flag) and enable_animations and mutant_loot_mod and obj then
+			monster_on_actor_use(obj)
+			return
+		end
+		return original_loot_ui(hud, obj)
+	end
+end
+-- Monkey patches >--
+
+--< Time Events
+function call_my_slot_back()
+	game.only_allow_movekeys(false)
+	if take_item_anim and fake_monster then
+		return true
+	end
+	-- [DA_PORT] Слот 0 НЕ ставим: это «убрать всё», а не «вернуть как было».
+	--
+	-- Когда вещь употребляют из инвентаря, оружие уже убрано, и мод запоминает слот 0. К концу
+	-- сцены движок сам возвращает прежний слот через TryActivatePrevSlot, а мы следом честно
+	-- выполняли запомненное — и оружие доставалось, чтобы тут же уйти обратно.
+	--
+	-- Замер: «запомнили слот=0 … возвращаю слот=0, сейчас=3».
+	if active_slot and active_slot ~= 0 then
+		db.actor:activate_slot(active_slot)
+	end
+	if det_active then det_active:switch_state(1) end
+	return true
+end
+
+local bone_list  = {
+	[1] = "bip01_spine1",
+	[2] = "bip01_spine2",
+	[3] = "bip01_spine",
+	[4] = "bip01_pelvis",
+	[5] = "bip01_head",
+}
+function blood_fx()
+	if not used_monster or used_monster:id() == 65535  then return true end
+	local fx_pos = used_monster:bone_position(bone_list[math.random(1,5)])
+	fx_pos.y = fx_pos.y + 0.1
+	local blood_trace = vector():set(0,-1,0)
+	-- [DA_PORT] Кровяные пятна ставим ТОЛЬКО если движок это умеет.
+	--
+	-- wallmarks_manager — привязка Anomaly, в нашем движке её нет вовсе (проверено грепом по всему
+	-- src): вызов ронял разделку насмерть. Сами пятна — украшение, брызги и звук ниже дают тот же
+	-- эффект, поэтому обходим, а не отменяем сцену. Если привязку когда-нибудь заведём, ветка
+	-- заработает сама, без правки здесь.
+	if (wallmarks_manager) then
+		local wm = wallmarks_manager()
+		if (wm) then
+			wm:place_skeleton(used_monster, "bloody_marks", fx_pos, blood_trace, 0.2,-1)
+			wm:place(blood_trace, fx_pos, 15, 0.3, "bloody_marks", used_monster,-1)
+		end
+	end
+	local hit_fx = particles_object("hit_fx\\hit_flesh_01")
+	hit_fx:play_at_pos(fx_pos)
+	local hit_fx2 = particles_object("hit_fx\\hit_flesh_02a")
+	hit_fx2:play_at_pos(fx_pos)
+	local hit_fx3 = particles_object("hit_fx\\hit_knife_flesh_00")
+	hit_fx3:play_at_pos(fx_pos)
+	return true
+end
+
+--eating fake item to stop default items sound and delayed item using
+function eat_my_obj()
+	if obj_m then
+		db.actor:eat(obj_m)
+	end
+	db.actor:eat(db.actor:object("items_anm_dummy"))
+	return true
+end
+
+function stop_my_item_anim()
+	-- [DA_PORT] Явно закрываем сцену. Мод этого не делал: у Anomaly движок закрывает её сам по
+	-- концу цикла. У нас такой заслон тоже есть, но полагаться на него одного нельзя — если
+	-- длина цикла окажется нулевой, предмет сцены остался бы в руках навсегда.
+	game.stop_hud_motion()
+	ea_callbacks.EA_SendScriptCallback("ea_on_item_anim_stop",used_item)
+	ea_restore_actor()
+	mask_hud_switcher()
+	used_item = nil
+	obj_m = nil
+	return true
+end
+
+function stop_my_monster_anim()
+	-- [DA_PORT] Явно закрываем сцену. Мод этого не делал: у Anomaly движок закрывает её сам по
+	-- концу цикла. У нас такой заслон тоже есть, но полагаться на него одного нельзя — если
+	-- длина цикла окажется нулевой, предмет сцены остался бы в руках навсегда.
+	game.stop_hud_motion()
+	ea_restore_actor()
+	if used_monster:id() == 65535 or ( not take_item_anim ) then
+		used_monster = nil
+		return true
+	end
+	fake_monster = used_monster
+	used_monster = nil
+
+	-- [DA_PORT] Открываем НАШЕ окно. ea_flag на время вызова снимает перехват выше, иначе он снова
+	-- запустил бы анимацию — и так по кругу.
+	ea_flag = true
+	local hud = get_hud()
+	if hud and ea_open_loot_ui then
+		ea_open_loot_ui(hud, fake_monster)
+	end
+	ea_flag = nil
+
+	-- У Anomaly здесь ещё GUI:Reset — переоткрытие уже созданного окна. У нас окно создаётся заново
+	-- каждый раз, поэтому сбрасывать нечего.
+	return true
+end
+
+function def_use_end()
+	game.only_allow_movekeys(false)
+	return true
+end
+-- Time Events >--
+
+--< Additional animations and effects
+function mask_hud_switcher()
+	if (not ini_eff:r_bool_ex(used_item, "helm")) and ui_options.get("video/player/mask_hud") then
+		actor_effects.switch_helm() --raven
+		actor_effects.Update_Mask(db.actor)
+	end
+end
+
+function ea_restore_actor()
+	-- [DA_PORT] Было db.actor:hide_weapon() — и это оставляло игрока без инвентаря.
+	--
+	-- В нашем движке hide_weapon это НЕ "убрать оружие с экрана", а SetWeaponHideState с маской
+	-- INV_STATE_BLOCK_ALL, то есть блокировка ВСЕХ слотов. Поставленная в конце сцены, она так и
+	-- оставалась: следующий activate_slot упирался в IsSlotBlocked и молча возвращался, предметы
+	-- перестали доставаться. Симптом — "после анимации инвентарь не работает".
+	--
+	-- Убирает оружие на время сцены не эта пара, а activate_slot(0) в anim_prepare, и ожидание
+	-- active_slot() == 0 в actor_on_update. Здесь же нужно ровно обратное — СНЯТЬ блокировку.
+	db.actor:unblock_all_slots()
+	fov_anim_manager.restore_fov()
+	level.enable_input()
+	game.only_allow_movekeys(false)
+end
+
+--holster item in device slot
+function hide_det()
+	det_active = db.actor:active_detector() or nil
+	if det_active then det_active:switch_state(2) end
+end
+
+function actor_on_first_update()
+	if db.actor:object("items_anm_dummy") then alife_release(db.actor:object("items_anm_dummy")) end
+
+	-- [DA_PORT] Возврат в исходное после загрузки ПОСРЕДИ сцены.
+	--
+	-- Сцена держит игрока в особом состоянии: ввод ограничен, слоты заблокированы, камера может быть
+	-- перехвачена, оружие убрано. Всё это живёт в ДВИЖКЕ и загрузку переживает, а вот отложенные
+	-- вызовы, которые должны были это снять, при загрузке пропадают. Игрок оставался без инвентаря
+	-- и без управления, и починить это в игре было нечем.
+	--
+	-- Поэтому на первом кадре снимаем всё безусловно: если сцены не было, ни один из вызовов ничего
+	-- не портит, а если была — игрок возвращается в норму.
+	used_item = nil
+	used_monster = nil
+	obj_m = nil
+	fake_monster = nil
+	ea_flag = nil
+	anim_exist_tm = nil
+	db.actor:unblock_all_slots()
+	level.enable_input()
+	game.only_allow_movekeys(false)
+	game.set_actor_allow_ladder(true)
+	game.stop_hud_motion()
+	level.remove_cam_custom_position_direction()
+	exec_console_cmd("hud_weapon 1")
+
+	loadsettings()
+end
+
+--addaptive camera for mutant skinning
+function recalc_actor_campos()
+	local pm = used_monster:bone_position('bip01_spine1')
+	pm.y = pm.y + 0.8
+	db.actor:actor_look_at_point(pm)
+end
+
+-- mutant loot options check
+function skip_functor(item)
+	return mutant_loot_mod and ini_eff:r_bool_ex("skip_mutant", item)
+end
+-- Additional animations and effects >--
+
+--Errors handler >--
+-- [DA_PORT] Окно с руганью на версию больше не создаётся: проверка снята (см. ниже).
+-- Строить его на уровне файла впустую значит грузить разметку и строки каждый сеанс.
+-- local Game_ver_window = ea_error.EA_window()
+function check_for_game_ver()
+	-- [DA_PORT] Проверка версии СНЯТА.
+	--
+	-- Она сравнивала GAME_VERSION с "1.5.2"/"1.5.3" — версиями Anomaly. Dead Air стоит на базе
+	-- Call of Chernobyl и сообщает "1.4.22", поэтому окно с руганью вылезало при каждом открытии
+	-- инвентаря. Совпасть оно не могло никогда: мы не Anomaly и не станем ей.
+	--
+	-- Смысл проверки — уберечь игрока от установки на неподходящую сборку. У нас мод уже приспособлен
+	-- вручную, и подходящность решается не номером версии.
+	stop_game_ver_check()
+end
+
+function stop_game_ver_check()
+	UnregisterScriptCallback("on_key_press", check_for_game_ver)
+end
+
+function ea_error_ONcancel()
+	ea_callbacks.EA_UnregisterScriptCallback("ea_error_ONcancel",ea_error_ONcancel)
+	ea_callbacks.EA_UnregisterScriptCallback("ea_error_ONOk",ea_error_ONOk)
+	stop_game_ver_check()
+end
+
+function ea_error_ONOk()
+	ea_dummy_var = ea_dummy_var + 5
+end
+--Errors handler <--

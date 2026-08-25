@@ -1,0 +1,78 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition = trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = {+bar_deactivate_radar_done} supplies_2, {+jup_a6_freedom_leader_quest_doc_given_1} supplies_2, supplies_1
+buy_item_condition_factor = 0.5
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_barman_9, {=actor_week_in_zone(8)} discount_barman_8, {=actor_week_in_zone(7)} discount_barman_7, {=actor_week_in_zone(6)} discount_barman_6, {=actor_week_in_zone(5)} discount_barman_5, {=actor_week_in_zone(4)} discount_barman_4, {=actor_week_in_zone(3)} discount_barman_3, {=actor_week_in_zone(2)} discount_barman_2, {=actor_week_in_zone(1)} discount_barman_1 
+
+[trade_generic_buy]:barman
+
+mutant_part_flesh_meat                      = 0.025, 0.025
+mutant_part_boar_chop                       = 0.025, 0.025
+mutant_part_dog_meat                        = 0.025, 0.025
+mutant_part_psevdodog_meat                  = 0.025, 0.025
+mutant_part_krovosos_meat                   = 0.025, 0.025
+mutant_part_snork_hand                      = 0.025, 0.025
+mutant_part_chimera_meat                    = 0.025, 0.025
+mutant_part_tushkano_meat                   = 0.025, 0.025
+mutant_part_rat_corpse                      = 0.025, 0.025
+
+[trade_generic_sell]:barman
+
+[supplies_1]
+
+meat_rat				= 2, 0.75
+meat_tushkano			= 2, 0.75
+meat_dog				= 2, 1
+meat_pseudodog			= 1, 0.5
+meat_flesh				= 1, 1
+meat_boar				= 1, 0.5
+meat_bloodsucker		= 1, 0.5
+meat_snork				= 2, 0.5
+meat_chimera			= 1, 0.5
+breadold				= 1, 0.5
+kolbasa					= 1, 0.5
+tea_3                   = 1, 1
+flask_3                 = 1, 0.15
+bottle_metal_3          = 3, 0.5
+cigar1_3                = 1, 0.5
+cigar2_3                = 1, 0.5
+cigar3_3                = 1, 0.5
+drink_crow              = 1, 1
+
+[supplies_2]:supplies_1
+
+bread                  = 1, 0.15
+conserva               = 1, 0.15
+tomato                 = 1, 0.15
+sausage                = 1, 0.15
+corn                   = 1, 0.15
+beans                  = 1, 0.15
+chili                  = 1, 0.15
+tushonka               = 1, 0.15
+salmon                 = 1, 0.15
+raisins                = 1, 0.15
+chocolate              = 1, 0.15
+nuts                   = 1, 0.15
+mint_3                 = 1, 0.5
+caffeine_5             = 1, 0.5
+mineral_water_3        = 1, 0.75
+beer                   = 1, 0.75
+vodka_3                = 1, 1
+energy_drink           = 1, 0.5
+water_drink_3          = 1, 0.5
+akvatab_3              = 1, 0.5
+flask_3                = 2, 0.75
+bottle_metal_3         = 3, 0.75
+vodka_quality_3        = 1, 0.5
+tobacco_3              = 1, 0.5
+explo_balon_gas_8        = 1, 0.75
+explo_jerrycan_fuel_8    = 1, 0.75
+kerosene_5               = 1, 0.75
+charcoal_3               = 3, 1
+

@@ -119,6 +119,9 @@ extern float g_separate_radius;
 #include "xrScriptEngine/script_engine.hpp"
 #include "ai_space.h"
 
+// [DA_PORT] Заслонка ввода на время скриптовой сцены, ставится из game.only_allow_movekeys.
+extern bool g_da_block_all_except_movement;
+
 void CLevel::IR_OnKeyboardPress(int key)
 {
     if (Device.dwPrecacheFrame)
@@ -133,6 +136,24 @@ void CLevel::IR_OnKeyboardPress(int key)
     bool b_ui_exist = !!CurrentGameUI();
 
     EGameActions _curr = GetBindedAction(key);
+
+    // [DA_PORT] Заслонка ввода для скриптовых сцен (паркур): пропускаем только движение.
+    //
+    // Ставится ДО скриптового колбэка и до разбора отдельных действий — иначе часть из них успела бы
+    // отработать. Список исключений намеренно короткий и не обсуждается по вкусу: всё, что ниже
+    // kCAM_1, — это движение и взгляд; остальное — то, чем игрок обязан располагать ВСЕГДА, даже
+    // посреди сцены: пауза, консоль, снимок экрана, выход и быстрые сохранение с загрузкой.
+    //
+    // ⚠️ Заслонка на НАЖАТИИ, но не на удержании — как и в первоисточнике. Удержание само по себе
+    // действие не запускает, а вот снять зажатую до сцены клавишу отпусканием надо обязательно,
+    // иначе она останется зажатой навсегда. Поэтому IR_OnKeyboardRelease не трогаем.
+    if (g_da_block_all_except_movement)
+    {
+        const bool allowed = _curr < kCAM_1 || _curr == kPAUSE || _curr == kCONSOLE ||
+            _curr == kSCREENSHOT || _curr == kQUIT || _curr == kQUICK_SAVE || _curr == kQUICK_LOAD;
+        if (!allowed)
+            return;
+    }
 
     /* avo: script callback */
     // [DA_PORT] Dead Air's eKeyPress script hook reacts to the raw ESCAPE scancode by force-opening

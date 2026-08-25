@@ -1,0 +1,150 @@
+-- Per-level render overrides (applied on level load, restored on leave)
+--
+-- [DA_PORT] Обход для Мёртвого города ОТКЛЮЧЁН (29.07). Блок ниже гасил на этой локации солнце,
+-- его лучи и объёмный свет, чтобы обойти вылет в 32-битной сборке. Отсюда и жалоба «там не работают
+-- тени»: без солнца теней нет по построению — это была цена обхода, а не поломка уровня.
+--
+-- Почему считаем обход устаревшим: вылет ловили на СТАРОМ движке (R2/DX9), а порт рендерит R4/DX11,
+-- и виновник, на которого думали, у нас обезврежен независимо — блендер `effects\shadow_world`
+-- вообще не создаётся, ResourceManager_Loader.cpp пропускает его по замыслу, потому что
+-- проецируемые тени R1-эпохи вытеснены теневыми картами.
+--
+-- ⚠️ Если Мёртвый город снова начнёт вылетать — НЕ возвращать обход вслепую: теперь движок наш,
+-- у вылета будет лог и стек, и чинить надо причину. Вернуть на время можно, сняв комментарий.
+local level_render_overrides = {
+--	["l09_deadcity"] = {
+--		{ "r2_sun_shafts",        "st_opt_off" },
+--		{ "r2_volumetric_lights", "off"        },
+--		{ "r2_sun",               "off"        },
+--	},
+}
+local render_saved = {}
+
+local function apply_level_render(lvl_name)
+	local overrides = level_render_overrides[lvl_name]
+	if not overrides then return end
+	local con = get_console()
+	render_saved = {}
+	for _, pair in ipairs(overrides) do
+		local cmd, val = pair[1], pair[2]
+		render_saved[cmd] = con:get_string(cmd)
+		con:execute(cmd .. " " .. val)
+	end
+end
+
+local function restore_level_render(lvl_name)
+	local overrides = level_render_overrides[lvl_name]
+	if not overrides then return end
+	local con = get_console()
+	for _, pair in ipairs(overrides) do
+		local cmd = pair[1]
+		if render_saved[cmd] then
+			con:execute(cmd .. " " .. render_saved[cmd])
+		end
+	end
+	render_saved = {}
+end
+
+function on_game_start()
+	RegisterScriptCallback("on_game_load",on_game_load)
+	RegisterScriptCallback("actor_on_update",actor_on_update)
+	RegisterScriptCallback("actor_on_first_update",teleport_companions)
+	RegisterScriptCallback("on_level_changing",on_level_changing)
+end
+
+switched = false
+
+function on_level_changing()
+	restore_level_render(level.name())
+end
+
+function on_game_load()
+	xr_actor.loadDefaultConsoleSettings()
+	alife():set_switch_distance(1500)
+	apply_level_render(level.name())
+	
+	get_console():execute("ai_aim_max_angle 25.0")
+	get_console():execute("ai_aim_min_angle 20.0")
+	get_console():execute("ai_aim_min_speed 2.50")
+	get_console():execute("ai_aim_predict_time 0.28")
+	
+	
+	--[[
+	local sim = alife()
+	for i=1, 65534 do
+		local se_obj = sim:object(i)
+		if (se_obj) then
+			if (IsInvbox(nil,se_obj:clsid())) then
+				if (level.map_has_object_spot(se_obj.id,"treasure") == 0) then
+					local pos = se_obj.position
+					local hint = string.format("%s\n              x%0.2f y%0.2f z%0.2f", se_obj:name(), pos.x, pos.y, pos.z)
+					level.map_add_object_spot_ser(se_obj.id, "treasure", hint or "")
+				end
+			end
+		end
+	end
+	--]]
+end
+
+function actor_on_update()
+
+	if (not switched) and (xr_actor.first_update_time) and (time_global() > xr_actor.first_update_time+5000) then
+		alife():set_switch_distance(250)
+		switched = true
+	end
+	
+end
+
+function teleport_companions()
+	local sim = alife()
+	for id,_ in pairs(axr_companions.companion_squads) do
+		-- [DA_PORT] Отряд берём заново по номеру: companion_squads может хранить висячую ссылку,
+		-- проверка squad.commander_id её не ловит. Разбор в axr_beh.script.
+		local squad = sim and sim:object(id)
+		if (squad) then
+			for k in squad:squad_members() do
+				local npc = db.storage[k.id] and db.storage[k.id].object
+				if npc == nil then
+				    return
+				end
+				local sec = squad:section_name()
+				local is_hostage = string.find(sec,"hostage_companion_task_")
+				if (npc and npc:alive() and not (npc:has_info("npcx_beh_patrol_mode") or npc:has_info("npcx_beh_wait") or is_hostage) or (is_hostage and db.actor:has_info( "hostage_companion_task_1_hostage_rescued" ) and not (npc:has_info("npcx_beh_patrol_mode") or npc:has_info("npcx_beh_wait"))))  then
+					local pos = db.actor:position()
+					npc:set_npc_position(pos)
+				end
+			end
+		end
+	end
+
+	if not has_alife_info("anomal_zone_fixed") then
+	    local sim = alife()
+	    for i=1,65534 do
+	        local se_obj = sim:object(i)
+		    if (se_obj) and (se_obj:name() == "yan_2c_01_cd_anomal_zone") then
+		        TeleportObject(se_obj.id,vector():set(111.868408203125, 1.18339002132416, 58.5646018981934),120338,2286)
+				TeleportObject(se_obj.id,vector():set(111.868408203125, 1.18339002132416, 58.5646018981934),120338,2286)
+			    give_info("anomal_zone_fixed")
+		    end
+		end
+	end
+	if not has_alife_info("treasures_fixed") then
+	    local sim = alife()
+	    for i=1,65534 do
+	        local se_obj = sim:object(i)
+		    if (se_obj) and (se_obj:name() == "yantar_treasure_11") then
+		        TeleportObject(se_obj.id,vector():set(-3.6932909488678, 5.25, 0.331966996192932),36187,2188)
+				TeleportObject(se_obj.id,vector():set(-3.6932909488678, 5.25, 0.331966996192932),36187,2188)
+			end
+			if (se_obj) and (se_obj:name() == "dark_valley_treasure_8") then
+		        TeleportObject(se_obj.id,vector():set(-48.21, -2, 1.66),282554,1412)
+				TeleportObject(se_obj.id,vector():set(-48.21, -2, 1.66),282554,1412)
+			end
+			if (se_obj) and (se_obj:name() == "trc_inventory_box_0005") then
+		        TeleportObject(se_obj.id,vector():set(-57, 15, 280.6),375672,5249)
+				TeleportObject(se_obj.id,vector():set(-57, 15, 280.6),375672,5249)
+		    end
+		end
+	give_info("treasures_fixed")
+	end
+end

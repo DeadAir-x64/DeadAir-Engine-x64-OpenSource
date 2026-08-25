@@ -1,0 +1,271 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition =  trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = {+zat_b7_bandit_boss_sultan_quest_doc_given_2} supplies_3, {+zat_b7_bandit_boss_sultan_quest_doc_given_1} supplies_2,  supplies_1
+buy_item_condition_factor = 0.75
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_supplier_9, {=actor_week_in_zone(8)} discount_supplier_8, {=actor_week_in_zone(7)} discount_supplier_7, {=actor_week_in_zone(6)} discount_supplier_6, {=actor_week_in_zone(5)} discount_supplier_5, {=actor_week_in_zone(4)} discount_supplier_4, {=actor_week_in_zone(3)} discount_supplier_3, {=actor_week_in_zone(2)} discount_supplier_2, {=actor_week_in_zone(1)} discount_supplier_1 
+
+[trade_generic_buy]:supplier
+
+dok_1                 = 0.1, 0.1 
+dok_2                 = 0.1, 0.1 
+dok_3                 = 0.1, 0.1 
+dok_4                 = 0.1, 0.1 
+dok_5                 = 0.1, 0.1 
+dok_6                 = 0.1, 0.1 
+dok_7                 = 0.1, 0.1 
+dok_8                 = 0.1, 0.1 
+lab_diary_1           = 0.1, 0.1
+lab_diary_2           = 0.1, 0.1
+lab_diary_3           = 0.1, 0.1
+box_lab_1             = 0.1, 0.1 
+
+af_thing_1               = ;NO TRADE
+af_thing_2               = ;NO TRADE
+af_thing_3               = ;NO TRADE
+af_thing_4               = ;NO TRADE
+af_thing_5               = ;NO TRADE
+af_medusa                = ;NO TRADE
+af_vyvert                = ;NO TRADE
+af_gravi                 = ;NO TRADE
+af_cristall_flower       = 0.13, 0.13 ;104% cost
+af_night_star            = 0.13, 0.13
+af_gold_fish             = 0.13, 0.13
+af_slime                 = ;NO TRADE
+af_slug                  = ;NO TRADE
+af_mica                  = ;NO TRADE
+af_blood                 = ;NO TRADE
+af_mincer_meat           = ;NO TRADE
+af_pellicle              = ;NO TRADE
+af_baloon                = ;NO TRADE
+af_soul                  = 0.13, 0.13
+af_thorn                 = ;NO TRADE
+af_crystal_thorn         = ;NO TRADE
+af_sea_urchin            = ;NO TRADE
+af_fuzz_kolobok          = ;NO TRADE
+af_electra_sparkler      = 0.13, 0.13
+af_electra_flash         = 0.13, 0.13
+af_electra_moonlight     = 0.13, 0.13
+af_dummy_dummy           = 0.12, 0.12
+af_dummy_battery         = 0.13, 0.13
+af_ice                   = 0.13, 0.13
+af_drop                  = ;NO TRADE
+af_cristall              = 0.13, 0.13
+af_fireball              = 0.13, 0.13
+af_eye                   = ;NO TRADE
+af_dummy_glassbeads      = 0.12, 0.12
+af_fire                  = 0.13, 0.13
+af_compass               = 0.13, 0.13
+af_oasis_heart           = 0.13, 0.13
+jup_b1_half_artifact     = ;NO TRADE
+af_quest_b14_twisted     = ;NO TRADE
+
+[trade_generic_sell]:supplier
+
+[supplies_1]
+
+ammo_7.62x25_p			= 5, 0.75
+ammo_9x18_fmj			= 3, 0.75
+ammo_9x19_fmj			= 3, 0.75
+ammo_12x70_buck			= 5, 0.75
+ammo_12x76_zhekan		= 2, 0.75
+ammo_5.45x39_fmj		= 5, 0.75
+ammo_7.62x39_fmj		= 5, 0.75
+ammo_7.62x54_ap			= 3, 0.75
+ammo_7.92x33_fmj		= 3, 0.75
+ammo_5.56x45_ss190		= 5, 0.75
+ammo_11.43x23_fmj		= 3, 0.75
+ammo_7.62x51_fmj		= 4, 0.75
+ammo_9x39_pab9			= 4, 0.75
+ammo_7.62x54_7h1		= 4, 0.75
+ammo_m209				= 2, 0.75
+ammo_vog-25				= 3, 0.75
+
+cleaning_kit_p_3		= 1, 0.2
+cleaning_kit_s_3		= 1, 0.2
+cleaning_kit_r_3		= 1, 0.2
+sharpening_stones_4		= 3, 0.75
+grease					= 1, 0.2
+steel_wool				= 1, 0.2
+glue_b_2				= 1, 0.2
+glue_a_2				= 1, 0.2
+glue_e_2				= 1, 0.2
+sewing_kit_b			= 1, 0.2
+sewing_kit_a			= 1, 0.2
+sewing_kit_h			= 1, 0.2
+sewing_kit_h_2			= 1, 0.2
+sewing_kit_h_3			= 1, 0.2
+sewing_kit_h_4			= 1, 0.2
+armor_repair_fa_2		= 2, 0.2
+textile_patch_b			= 1, 0.5
+textile_patch_m			= 1, 0.5
+textile_patch_e			= 1, 0.2
+
+batteries_dead			= 2, 0.5
+matches					= 4, 1
+device_kerosinka		= 1, 0.5
+
+bandage					= 3, 0.75
+medkit					= 2, 0.75
+stimpack				= 2, 0.75
+antirad					= 3, 0.75
+salicidic_acid			= 1, 0.75
+morphine				= 1, 0.75
+drug_coagulant_5		= 3, 0.75
+drug_charcoal_5     	= 3, 0.75
+
+breadold                = 1, 0.75
+conserva                = 1, 0.75
+vodka_3                 = 1, 1
+beer                    = 1, 1
+flask_3                 = 3, 0.75
+bottle_metal_3          = 2, 1
+vodka_quality_3         = 1, 0.75
+cocaine                 = 1, 0.75
+tetanus                 = 1, 0.75
+cigar1_3                = 1, 0.75
+cigar2_3                = 1, 0.75
+cigar3_3                = 1, 0.75
+
+af_kevlar				= 1, 0.75
+af_plates				= 2, 0.75
+
+charcoal_3                = 3, 0.75
+explo_jerrycan_fuel_8     = 2, 0.75
+
+[supplies_2]:supplies_1
+
+grenade_f1              = 2, 0.75
+grenade_rgd5            = 3, 0.75
+grenade_gd-05           = 2, 0.75
+wpn_knife5              = 1, 0.75
+wpn_knife4              = 1, 0.75
+wpn_knife3              = 1, 0.5
+mine                    = 3, 0.75
+ied_rpg                 = 4, 0.75
+ied                     = 4, 0.75
+
+banditmerc_outfit		= 1, 0.75
+helm_m40				= 1, 0.75
+helm_hardhat			= 1, 0.75
+
+ammo_7.62x25_ps			= 5, 0.75
+ammo_9x18_pmm			= 5, 0.75
+ammo_9x19_pbp			= 5, 0.75
+ammo_5.45x39_ap			= 5, 0.75
+ammo_7.62x39_ap			= 5, 0.75
+ammo_7.92x33_ap			= 5, 0.75
+ammo_5.56x45_ap			= 5, 0.75
+ammo_11.43x23_hydro		= 5, 0.75
+ammo_7.62x51_ap			= 5, 0.75
+ammo_9x39_ap			= 5, 0.75
+ammo_7.62x54_7h14		= 5, 0.75
+
+1p29			        = 1, 1
+kobra			        = 1, 1
+ps01			        = 1, 1
+pso1m21			        = 1, 1
+
+toolkit_p				= 1, 0.75
+toolkit_p_2				= 1, 0.75
+toolkit_p_3				= 1, 0.75
+toolkit_p_4				= 1, 0.75
+repairkit_p				= 1, 0.75
+toolkit_s				= 1, 0.75
+toolkit_s_2				= 1, 0.75
+toolkit_s_3				= 1, 0.75
+toolkit_s_4				= 1, 0.75
+repairkit_s				= 1, 0.75
+toolkit_r				= 1, 0.75
+toolkit_r_2				= 1, 0.75
+toolkit_r_3				= 1, 0.75
+toolkit_r_4				= 1, 0.75
+repairkit_r				= 1, 0.75
+helmet_repair_kit		= 1, 1
+helmet_repair_kit_2		= 1, 1
+helmet_repair_kit_3		= 1, 1
+armor_repair_pro		= 1, 1
+armor_repair_pro_2		= 1, 1
+armor_repair_pro_3		= 1, 1
+armor_repair_pro_4		= 1, 1
+sewing_kit_b_4			= 1, 0.75
+sewing_kit_a_4			= 1, 0.75
+cleaning_kit_p_3		= 1, 0.75
+cleaning_kit_s_3		= 1, 0.75
+cleaning_kit_r_3		= 1, 0.75
+sharpening_stones_4		= 4, 0.75
+grease					= 2, 0.75
+steel_wool				= 2, 0.75
+glue_b_2				= 1, 0.75
+glue_a_2				= 1, 0.75
+glue_e_2				= 1, 0.75
+sewing_kit_b			= 1, 0.75
+sewing_kit_a			= 1, 0.75
+sewing_kit_h			= 1, 0.75
+sewing_kit_h_2			= 1, 0.75
+sewing_kit_h_3			= 1, 0.75
+sewing_kit_h_4			= 1, 0.75
+armor_repair_fa_2		= 3, 0.75
+textile_patch_b			= 2, 0.75
+textile_patch_m			= 2, 0.75
+textile_patch_e			= 2, 0.75
+
+backpack_heavy			= 1, 1
+af_plates				= 2, 1
+
+wpn_knife4              = 1, 1
+
+[supplies_3]:supplies_2
+
+ammo_pkm_100			= 5, 0.75
+ammo_og-7b				= 4, 0.75
+wpn_knife5              = 1, 1
+
+toolkit_p				= 1, 0.85
+toolkit_p_2				= 1, 0.85
+toolkit_p_3				= 1, 0.85
+toolkit_p_4				= 1, 0.85
+repairkit_p				= 1, 0.85
+toolkit_s				= 1, 0.85
+toolkit_s_2				= 1, 0.85
+toolkit_s_3				= 1, 0.85
+toolkit_s_4				= 1, 0.85
+repairkit_s				= 1, 0.85
+toolkit_r				= 1, 0.85
+toolkit_r_2				= 1, 0.85
+toolkit_r_3				= 1, 0.85
+toolkit_r_4				= 1, 0.85
+repairkit_r				= 1, 0.85
+helmet_repair_kit		= 1, 1
+helmet_repair_kit_2		= 1, 1
+helmet_repair_kit_3		= 1, 1
+armor_repair_pro		= 1, 1
+armor_repair_pro_2		= 1, 1
+armor_repair_pro_3		= 1, 1
+armor_repair_pro_4		= 1, 1
+sewing_kit_b_4			= 1, 0.85
+sewing_kit_a_4			= 1, 0.85
+cleaning_kit_p_3		= 1, 0.85
+cleaning_kit_s_3		= 1, 0.85
+cleaning_kit_r_3		= 1, 0.85
+sharpening_stones_4		= 4, 0.85
+grease					= 2, 0.85
+steel_wool				= 2, 0.85
+glue_b_2				= 1, 0.85
+glue_a_2				= 1, 0.85
+glue_e_2				= 1, 0.85
+sewing_kit_b			= 1, 0.85
+sewing_kit_a			= 1, 0.85
+sewing_kit_h			= 1, 0.85
+sewing_kit_h_2			= 1, 0.85
+sewing_kit_h_3			= 1, 0.85
+sewing_kit_h_4			= 1, 0.85
+armor_repair_fa_2		= 3, 0.85
+textile_patch_b			= 2, 0.85
+textile_patch_m			= 2, 0.85
+textile_patch_e			= 2, 0.85

@@ -12,6 +12,8 @@
 #include "PHDestroyable.h"
 #include "Car.h"
 #include "UIGameSP.h"
+// [DA_PORT] нужен для перехвата обыска тела скриптом
+#include "xrScriptEngine/script_engine.hpp"
 #include "Inventory.h"
 #include "Level.h"
 #include "game_cl_base.h"
@@ -790,8 +792,33 @@ void CActor::ActorUse()
                         {
                             if (pEntityAliveWeLookingAt->AlreadyDie() &&
                                 pEntityAliveWeLookingAt->GetLevelDeathTime() + 3000 < Device.dwTimeGlobal)
+                            {
                                 // 99.9% dead
-                                pGameSP->StartCarBody(this, m_pPersonWeLookingAt);
+                                //
+                                // [DA_PORT] Перехват намерения обыскать тело.
+                                //
+                                // Кому это нужно: анимации обыска. Она обязана отыграть ДО того, как
+                                // откроется окно, иначе игрок видит сразу содержимое, а сцена
+                                // догоняет его поверх меню.
+                                //
+                                // Скрипт возвращает ложь — окно не открываем, дальше он открывает
+                                // его сам по концу сцены, вызовом obj:use(db.actor). Тот путь идёт
+                                // через CScriptGameObject::Use и сюда не возвращается, поэтому
+                                // повторного перехвата не будет.
+                                //
+                                // ⚠️ Обыск ЯЩИКОВ намеренно не трогаем: у тела и у ящика разные
+                                // точки входа, и анимация задумана про тело.
+                                bool allow = true;
+                                luabind::functor<bool> before;
+                                if (GEnv.ScriptEngine->functor("_G.da_before_body_search", before))
+                                {
+                                    if (CGameObject* go = smart_cast<CGameObject*>(pEntityAliveWeLookingAt))
+                                        allow = before(go->lua_game_object());
+                                }
+
+                                if (allow)
+                                    pGameSP->StartCarBody(this, m_pPersonWeLookingAt);
+                            }
                         }
                     }
                 }

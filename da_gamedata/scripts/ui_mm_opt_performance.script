@@ -1,0 +1,71 @@
+-- [DA_PORT] Performance tab.
+--
+-- Everything here trades picture for frame rate, gathered in one place instead of being scattered
+-- between "Video" and "Advanced". The controls live in the mm_opt_video group on purpose: that group is
+-- already saved, restored and backed up by ui_mm_opt_main, so nothing new had to be taught to persist.
+--
+-- The first row is the one that matters. Each shadow-casting light re-renders the whole scene into its
+-- own shadow map, so capping them is worth more than every other knob on this tab combined: measured in
+-- the Bar, 61 shadowed lights down to 12 took the frame from 9.0 ms to 5.4.
+
+class "opt_performance" (CUIWindow)
+
+function opt_performance:__init() super()
+end
+
+function opt_performance:__finalize()
+end
+
+function opt_performance:InitControls(x, y, xml, handler)
+
+	self:SetWndPos(vector2():set(x, y))
+	self:SetWndSize(vector2():set(738, 416))
+	self:SetAutoDelete(true)
+
+	xml:InitStatic("tab_performance:cap_perf_preset", self)
+	handler.combo_perf_preset = xml:InitComboBox("tab_performance:list_perf_preset", self)
+
+	xml:InitStatic("tab_performance:cap_grp_impact_high", self)
+	xml:InitStatic("tab_performance:cap_shadow_lights", self)
+	handler.combo_shadow_lights = xml:InitComboBox("tab_performance:list_shadow_lights", self)
+
+	xml:InitStatic("tab_performance:cap_sun_far", self)
+	self.sun_far_track = xml:InitTrackBar("tab_performance:track_sun_far", self)
+	self.sun_far_val = xml:InitStatic("tab_performance:cap_sun_far_val", self)
+
+	xml:InitStatic("tab_performance:cap_shadow_map", self)
+	handler.combo_shadow_map_perf = xml:InitComboBox("tab_performance:list_shadow_map", self)
+
+	-- [DA_PORT] Кэш теневых карт солнца. Строку мало объявить в ui_mm_opt_16.xml: вкладку собирает
+	-- ЭТОТ скрипт, поимённо, и всё неупомянутое просто не создаётся - молча, без сообщения в логе.
+	xml:InitStatic("tab_performance:cap_smap_cache", self)
+	handler.combo_smap_cache = xml:InitComboBox("tab_performance:list_smap_cache", self)
+
+	xml:InitStatic("tab_performance:cap_grp_impact_med", self)
+	xml:InitStatic("tab_performance:cap_opt_static", self)
+	handler.combo_opt_static = xml:InitComboBox("tab_performance:list_opt_static", self)
+
+	xml:InitStatic("tab_performance:cap_opt_dynamic", self)
+	handler.combo_opt_dynamic = xml:InitComboBox("tab_performance:list_opt_dynamic", self)
+
+	xml:InitStatic("tab_performance:cap_vis_dist", self)
+	self.vis_dist_track = xml:InitTrackBar("tab_performance:track_vis_dist", self)
+	self.vis_dist_val = xml:InitStatic("tab_performance:cap_vis_dist_val", self)
+
+	xml:InitStatic("tab_performance:cap_detail_radius", self)
+	self.detail_radius_track = xml:InitTrackBar("tab_performance:track_detail_radius", self)
+	self.detail_radius_val = xml:InitStatic("tab_performance:cap_detail_radius_val", self)
+
+	xml:InitStatic("tab_performance:cap_detail_density", self)
+	self.detail_density_track = xml:InitTrackBar("tab_performance:track_detail_density", self)
+	self.detail_density_val = xml:InitStatic("tab_performance:cap_detail_density_val", self)
+
+	xml:InitStatic("tab_performance:cap_grp_impact_low", self)
+	xml:InitStatic("tab_performance:cap_geometry_lod", self)
+	self.geometry_lod_track = xml:InitTrackBar("tab_performance:track_geometry_lod", self)
+	self.geometry_lod_val = xml:InitStatic("tab_performance:cap_geometry_lod_val", self)
+
+	xml:InitStatic("tab_performance:cap_detail_height", self)
+	self.detail_height_track = xml:InitTrackBar("tab_performance:track_detail_height", self)
+	self.detail_height_val = xml:InitStatic("tab_performance:cap_detail_height_val", self)
+end

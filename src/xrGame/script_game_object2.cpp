@@ -351,20 +351,46 @@ void CScriptGameObject::RestoreDefaultStartDialog()
     pDialogManager->RestoreDefaultStartDialog();
 }
 
-void CScriptGameObject::SetActorPosition(Fvector pos)
+// [DA_PORT] Второй довод: ПРОПУСТИТЬ разбор столкновений.
+//
+// Обычный путь тащит актёра через физику с разрешением проникновений — так и надо для телепорта
+// в новую точку. Но скриптовым сценам, которые ведут актёра ПОКАДРОВО вдоль своей траектории
+// (паркур), это мешает: каждый кадр он упирается в уступ, физика выталкивает его понемногу, и
+// движение выходит вязким. Автор описал это точнее всего: «приземление будто в воду».
+//
+// При пропуске ставим положение и самому физическому телу, иначе оно останется там, где было, и
+// потянет актёра обратно. Скорость по умолчанию гасим: за время сцены копится падение, и на
+// выходе актёр проваливался бы вниз. Третий довод оставляет её тем, кому она нужна.
+void CScriptGameObject::SetActorPosition(Fvector pos, bool skip_collision_correct, bool keep_speed)
 {
     CActor* actor = smart_cast<CActor*>(&object());
-    if (actor)
+    if (!actor)
     {
-        Fmatrix F = actor->XFORM();
-        F.c = pos;
-        actor->ForceTransform(F);
-        //		actor->XFORM().c = pos;
-    }
-    else
         GEnv.ScriptEngine->script_log(
             LuaMessageType::Error, "ScriptGameObject : attempt to call SetActorPosition method for non-actor object");
+        return;
+    }
+
+    Fmatrix F = actor->XFORM();
+    F.c = pos;
+
+    if (!skip_collision_correct)
+    {
+        actor->ForceTransform(F);
+        return;
+    }
+
+    actor->XFORM().set(F);
+    if (actor->character_physics_support()->movement()->CharacterExist())
+    {
+        actor->character_physics_support()->movement()->SetPosition(F.c);
+        if (!keep_speed)
+            actor->character_physics_support()->movement()->SetVelocity(Fvector().set(0.f, 0.f, 0.f));
+    }
 }
+
+void CScriptGameObject::SetActorPosition(Fvector pos) { SetActorPosition(pos, false, false); }
+void CScriptGameObject::SetActorPosition(Fvector pos, bool skip) { SetActorPosition(pos, skip, false); }
 
 void CScriptGameObject::SetNpcPosition(Fvector pos)
 {

@@ -1,0 +1,24 @@
+[smart_terrain]
+squad_id = 4
+max_population = 3
+respawn_params = respawn@x162_st_poltergeist
+respawn_idle = 172800
+respawn_radius = 100
+
+[respawn@x162_st_poltergeist]
+
+spawn_monster1
+spawn_monster2
+spawn_stalker
+
+[spawn_monster1]
+spawn_squads = simulation_burer, simulation_poltergeist_tele
+spawn_num = {+yan_labx16_switcher_primary_off =!smart_controlled(x162_st_poltergeist)} 2, 0
+
+[spawn_monster2]
+spawn_squads = simulation_rats
+spawn_num = {+yan_labx16_switcher_primary_off =!smart_controlled(x162_st_poltergeist)} 1, 0
+
+[spawn_stalker]
+spawn_squads = merc_sim_squad_veteran, stalker_sim_squad_veteran, army_sim_squad_elite, ecolog_sim_squad_veteran
+spawn_num = {+yan_labx16_switcher_primary_off} 1, 0

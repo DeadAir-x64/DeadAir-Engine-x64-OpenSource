@@ -1,0 +1,34 @@
+[logic@zat_b38_stalker_medic]
+suitable = true ;;;{=check_npc_name(zat_b22_stalker_medic)}
+;trade = misc\trade\trade_medic_zaton.ltx
+prior = 60
+active = animpoint@medic
+;level_spot = medic
+dont_keep_items = true
+
+[animpoint@medic]
+cover_name = zat_b40_merc_smart_cover_medic
+reach_movement = sprint
+use_camp = false
+meet = meet@medic
+reach_distance = 10
+gather_items_enabled = false
+help_wounded_enabled = false
+corpse_detection_enabled = false
+on_info = {=dist_to_story_obj_ge(zat_a2_stalker_mechanic:225) =is_alive(zat_a2_stalker_mechanic)} %=teleport_npc(zat_b40_smart_terrain_spown_point)%
+on_info2 = {=dist_to_story_obj_ge(zat_a2_stalker_barmen:225) =is_alive(zat_a2_stalker_barmen)} %=teleport_npc(zat_b40_smart_terrain_spown_point)%
+
+[meet@medic]
+close_anim 		= nil
+close_victim 	= nil
+far_anim 		= nil
+far_victim 		= nil
+close_distance  = 0
+far_distance 	= 0
+close_snd_distance = 3
+use = {=actor_enemy} false, true
+;camping
+[logic@cit_killers_camp_work_1]
+active = animpoint@cit_killers_camp_work_1
+suitable = true
+prior = 10

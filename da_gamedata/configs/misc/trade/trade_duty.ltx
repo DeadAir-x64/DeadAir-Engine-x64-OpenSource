@@ -1,0 +1,130 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition =  trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = {+bar_dolg_leader_quest_doc_given_2} supplies_3, {+bar_dolg_leader_quest_doc_given_1} supplies_2,  supplies_1
+buy_item_condition_factor = 0.75
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_supplier_9, {=actor_week_in_zone(8)} discount_supplier_8, {=actor_week_in_zone(7)} discount_supplier_7, {=actor_week_in_zone(6)} discount_supplier_6, {=actor_week_in_zone(5)} discount_supplier_5, {=actor_week_in_zone(4)} discount_supplier_4, {=actor_week_in_zone(3)} discount_supplier_3, {=actor_week_in_zone(2)} discount_supplier_2, {=actor_week_in_zone(1)} discount_supplier_1 
+
+[trade_generic_buy]:supplier
+
+[trade_generic_sell]:supplier
+
+
+[supplies_1]
+
+cleaning_kit_p			= 1, 0.75
+cleaning_kit_p_3		= 1, 0.75
+cleaning_kit_s			= 1, 0.75
+cleaning_kit_s_3		= 1, 0.75
+cleaning_kit_r			= 1, 0.75
+cleaning_kit_r_3		= 1, 0.75
+toolkit_p				= 1, 0.8
+toolkit_p_2				= 1, 0.8
+toolkit_p_3				= 1, 0.8
+toolkit_p_4				= 1, 0.8
+repairkit_p				= 1, 0.8
+toolkit_s				= 1, 0.8
+toolkit_s_2				= 1, 0.8
+toolkit_s_3				= 1, 0.8
+toolkit_s_4				= 1, 0.8
+repairkit_s				= 1, 0.8
+sharpening_stones_4		= 2, 1
+grease					= 1, 0.5
+steel_wool				= 1, 0.5
+glue_b_2				= 1, 0.75
+glue_a_2				= 1, 0.75
+glue_e_2				= 1, 0.75
+sewing_kit_b_4			= 1, 0.75
+sewing_kit_a_4			= 1, 0.75
+sewing_kit_h			= 1, 0.75
+sewing_kit_h_2			= 1, 0.75
+sewing_kit_h_3			= 1, 0.75
+sewing_kit_h_4			= 1, 0.75
+helmet_repair_kit		= 1, 1
+helmet_repair_kit_2		= 1, 1
+helmet_repair_kit_3		= 1, 1
+armor_repair_fa			= 1, 0.75
+armor_repair_fa_2		= 1, 0.75
+armor_repair_pro		= 1, 1
+armor_repair_pro_2		= 1, 1
+armor_repair_pro_3		= 1, 1
+armor_repair_pro_4		= 1, 1
+textile_patch_e			= 1, 0.75
+textile_patch_b			= 1, 0.75
+textile_patch_m			= 1, 0.75
+
+bandage					= 3, 0.5
+medkit					= 2, 0.5
+medkit_army				= 1, 0.25
+stimpack				= 1, 0.5
+stimpack_army			= 1, 0.25
+salicidic_acid			= 1, 0.25
+morphine				= 1, 0.25
+
+wpn_pm                  = 1, 1
+wpn_aps                 = 2, 1
+wpn_fort                = 2, 1
+wpn_toz34               = 1, 1
+wpn_bm16_full           = 1, 1
+
+wpn_knife2              = 1, 0.75
+wpn_knife3              = 1, 1
+wpn_hand_axe            = 1, 1
+
+helm_hardhat			= 1, 1
+dolg_outfit		        = 1, 1
+
+ammo_9x18_fmj			= 4, 0.85
+ammo_9x19_fmj			= 4, 0.85
+ammo_7.62x25_p			= 4, 0.85
+ammo_12x70_buck			= 4, 0.75
+ammo_12x76_zhekan		= 4, 0.75
+grenade_rgd5			= 1, 1
+grenade_f1				= 1, 0.75
+mine                    = 1, 0.75
+
+kit_hunt				= 1, 1
+
+[supplies_2]:supplies_1
+
+wpn_mp412               = 1, 0.75
+wpn_mp133               = 1, 0.75
+wpn_wincheaster1300     = 1, 0.75
+
+ammo_357_hp_mag_ap      = 3, 0.75
+ammo_357_hp_mag         = 3, 0.75
+
+toolkit_r               = 1, 1
+toolkit_r_2               = 1, 1
+toolkit_r_3               = 1, 1
+toolkit_r_4               = 1, 1
+repairkit_r             = 1, 1
+wpn_knife4              = 1, 1
+wpn_knife5              = 1, 1
+helm_tactic				= 1, 1
+ammo_7.62x25_ps			= 3, 1
+ammo_9x18_pmm			= 3, 1
+ammo_9x19_pbp			= 2, 1
+ammo_12x70_buck			= 3, 1
+ammo_12x76_zhekan		= 2, 1
+
+grenade_rgd5			= 3, 0.75
+grenade_gd-05			= 1, 0.75
+grenade_f1				= 2, 0.75
+ammo_vog-25				= 2, 1
+mine                    = 2, 0.75
+
+[supplies_3]:supplies_2
+
+wpn_rg-6		= 1, 1
+ammo_vog-25		= 6, 1
+
+wpn_mp153		= 1, 1
+
+dolg_heavy_outfit		= 1, 1
+exo_outfit			= 1, 1

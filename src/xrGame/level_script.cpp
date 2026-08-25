@@ -10,6 +10,11 @@
 #include "xrEngine/XR_IOConsole.h" // [DA_PORT] da_console_silent: команда без записи в лог
 #include "Level.h"
 #include "Actor.h"
+#include "da_script_cam.h" // [DA_PORT] перехват камеры из скрипта
+#include "player_hud.h" // [DA_PORT] анимация рук из скрипта (была ниже по файлу)
+#include "actor_defs.h" // [DA_PORT] EMoveCommand для таблицы move_state
+#include "xrUICore/ui_defs.h" // [DA_PORT] базовая сетка интерфейса для world2ui
+#include "xrPhysics/console_vars.h" // [DA_PORT] g_da_actor_allow_ladder
 #include "script_game_object.h"
 #include "script_game_object_impl.h"
 #include "xrAICore/Navigation/PatrolPath/patrol_path_storage.h"
@@ -690,6 +695,142 @@ void iterate_online_objects(luabind::functor<bool> functor)
     }
 }
 
+// [DA_PORT] Перехват камеры скриптом. Разбор устройства — в da_script_cam.h, здесь только мост.
+//
+// Углы приходят как HPB (курс, тангаж, крен) — тем же соглашением, каким их отдаёт device().cam_dir
+// через getH/getP, поэтому скрипт может взять текущее направление, изменить и вернуть обратно.
+//
+// smoothing: 1 — щёлкнуть в точку без сглаживания (скрипт сам считает траекторию покадрово),
+// больше — мягче, 0 — сглаживание по умолчанию.
+void da_set_cam_custom(Fvector& position, Fvector& hpb, u32 smoothing, bool hud_enabled, bool hud_affect)
+{
+    // Именно Actor(), а не Level().CurrentEntity(): управляемая сущность может быть и не актёром
+    // (машина, псевдоигрок), а камера перехватывается ИГРОКУ.
+    CActor* actor = Actor();
+    if (!actor)
+        return; // не в игре или актёра нет — молча, это законный вызов из скрипта
+
+    CDaScriptCamEffector* cam = actor->da_script_cam_init();
+    cam->m_hpb.set(hpb);
+    cam->m_position.set(position);
+    cam->m_smoothing = smoothing;
+    cam->m_hud_enabled = hud_enabled;
+    cam->SetHudAffect(hud_affect);
+}
+
+// Перегрузки с умолчаниями: luabind разбирает их по числу доводов.
+void da_set_cam_custom(Fvector& p, Fvector& d) { da_set_cam_custom(p, d, 0, false, false); }
+void da_set_cam_custom(Fvector& p, Fvector& d, u32 sm) { da_set_cam_custom(p, d, sm, false, false); }
+void da_set_cam_custom(Fvector& p, Fvector& d, u32 sm, bool hud) { da_set_cam_custom(p, d, sm, hud, false); }
+
+void da_remove_cam_custom()
+{
+    // Именно Actor(), а не Level().CurrentEntity(): управляемая сущность может быть и не актёром
+    // (машина, псевдоигрок), а камера перехватывается ИГРОКУ.
+    CActor* actor = Actor();
+    if (actor)
+        actor->da_script_cam_remove();
+}
+// [DA_PORT] Заслонки ввода и лестницы для скриптовых сцен (паркур).
+//
+// Обе величины — обычные глобальные флаги, а не поля актёра: читают их в РАЗНЫХ модулях (ввод в
+// xrGame, лестница в xrPhysics), и тянуть туда актёра значило бы связать модули ради двух бит.
+bool g_da_block_all_except_movement = false;
+
+void da_block_all_except_movement(bool b) { g_da_block_all_except_movement = b; }
+bool da_only_movekeys_allowed() { return g_da_block_all_except_movement; }
+void da_set_actor_allow_ladder(bool b) { g_da_actor_allow_ladder = b; }
+
+// Синтетическое нажатие: скрипт «нажимает» клавишу за игрока. Паркуру нужно, чтобы актёр присел в
+// нужный момент подтягивания — проще подать штатное действие, чем дублировать логику приседа.
+//
+// Довод — скан-код, тот же, что приходит от настоящей клавиатуры.
+void da_press_action(int key) { Level().IR_OnKeyboardPress(key); }
+void da_release_action(int key) { Level().IR_OnKeyboardRelease(key); }
+
+// Проекция точки мира в координаты интерфейса.
+//
+// ⚠️ Возвращает координаты в БАЗОВОЙ сетке интерфейса (1024x768), а не в пикселях экрана: разметка
+// X-Ray живёт именно в ней, и пиксели пришлось бы делить обратно в каждом месте использования.
+//
+// Точка за спиной или вне экрана даёт x = -9999 — признак «не показывать», по которому вызывающий
+// и отличает «слева за краем» от «сзади». Нулём этого не выразить: ноль — законная координата.
+Fvector2 da_world2ui(Fvector pos, bool hud, bool allow_offscreen)
+{
+    Fmatrix world, res;
+    world.identity();
+    world.c = pos;
+    // ⚠️ Отдельной матрицы для пространства рук у нашего устройства НЕТ (в первоисточнике была
+    // mFullTransformHud). Довод оставлен ради совместимости имён, но проецируем всегда мировой
+    // матрицей. Молча подменять нельзя: вызывающий получил бы правдоподобные, но неверные
+    // координаты и искал бы ошибку у себя.
+    if (hud)
+    {
+        static bool reported = false;
+        if (!reported)
+        {
+            reported = true;
+            Msg("! [DA_PORT] game.world2ui(hud=true): проекция в пространстве рук не поддержана, "
+                "считаем мировой матрицей");
+        }
+    }
+    res.mul(Device.mFullTransform, world);
+
+    const float w = res._44;
+    const float x = res._41 / w;
+    const float y = res._42 / w;
+    const float z = res._43 / w;
+
+    if (!allow_offscreen)
+    {
+        if (z < 0.f || w < 0.f)
+            return { -9999.f, 0.f };
+        if (_abs(x) > 1.f || _abs(y) > 1.f)
+            return { -9999.f, 0.f };
+    }
+
+    const float px = (1.f + x) * 0.5f * float(Device.dwWidth);
+    const float py = (1.f - y) * 0.5f * float(Device.dwHeight);
+
+    return { px / (float(Device.dwWidth) / UI_BASE_WIDTH),
+             py / (float(Device.dwHeight) / UI_BASE_HEIGHT) };
+}
+
+Fvector2 da_world2ui(Fvector pos) { return da_world2ui(pos, false, false); }
+Fvector2 da_world2ui(Fvector pos, bool hud) { return da_world2ui(pos, hud, false); }
+
+// [DA_PORT] Анимация рук по требованию скрипта. Устройство — в player_hud.cpp.
+//
+// hand: 0 — правая, 1 — левая, 2 — обе. Возвращает длительность в миллисекундах; ноль означает
+// «сыграть нечем», и вызывающий не станет ждать несуществующую анимацию.
+u32 da_play_hud_motion(u8 hand, pcstr item_name, pcstr anm_name, bool mix_in, float speed, u32 target_ms)
+{
+    if (!g_player_hud)
+        return 0;
+    return g_player_hud->da_script_anim_play(hand, item_name, anm_name, mix_in, speed, target_ms);
+}
+
+u32 da_play_hud_motion(u8 hand, pcstr item_name, pcstr anm_name, bool mix_in, float speed)
+{
+    return da_play_hud_motion(hand, item_name, anm_name, mix_in, speed, 0);
+}
+
+// [DA_PORT] Длина цикла рук в миллисекундах, БЕЗ его запуска.
+//
+// Имя и порядок доводов взяты как у Anomaly (game.get_motion_length), чтобы перенесённые моды
+// работали без правок. Ноль означает «такого цикла нет».
+u32 da_get_motion_length(pcstr section, pcstr anm_name, float speed)
+{
+    if (!g_player_hud)
+        return 0;
+    return g_player_hud->da_script_motion_length(section, anm_name, speed);
+}
+
+void da_stop_hud_motion()
+{
+    if (g_player_hud)
+        g_player_hud->da_script_anim_stop();
+}
 // KD: raypick
 bool ray_pick(const Fvector& start, const Fvector& dir, float range,
               collide::rq_target tgt, script_rq_result& script_R,
@@ -748,7 +889,6 @@ void jump_to_level(const Fvector& m_position, u32 m_level_vertex_id, GameGraph::
 //   12    — положение самого предмета
 //   20    — экран устройства (у нас НЕТ, отвергается)
 
-#include "player_hud.h"
 
 static attachable_hud_item* da_adjust_item()
 {
@@ -1131,7 +1271,17 @@ void CLevel::script_register(lua_State* luaState)
             return answer;
         }),
         def("game_id", &GameID),
-        def("ray_pick", &ray_pick)
+        def("ray_pick", &ray_pick),
+        // [DA_PORT] Перехват камеры из скрипта: паркур, сцены. Имена совпадают с принятыми в
+        // сообществе (Anomaly modded exes), чтобы чужие моды работали без правки.
+        def("set_cam_custom_position_direction", (void(*)(Fvector&, Fvector&))&da_set_cam_custom),
+        def("set_cam_custom_position_direction", (void(*)(Fvector&, Fvector&, u32))&da_set_cam_custom),
+        def("set_cam_custom_position_direction", (void(*)(Fvector&, Fvector&, u32, bool))&da_set_cam_custom),
+        def("set_cam_custom_position_direction", (void(*)(Fvector&, Fvector&, u32, bool, bool))&da_set_cam_custom),
+        def("remove_cam_custom_position_direction", &da_remove_cam_custom),
+        // [DA_PORT] Синтетический ввод для скриптовых сцен.
+        def("press_action", &da_press_action),
+        def("release_action", &da_release_action)
     ];
 
     module(luaState, "actor_stats")
@@ -1173,6 +1323,41 @@ void CLevel::script_register(lua_State* luaState)
         def("set_community_relation", &g_set_community_relation),
         def("get_general_goodwill_between", &g_get_general_goodwill_between)
     ];
+
+    // [DA_PORT] Состояния движения актёра — именами, а не числами.
+    //
+    // Отдаём КОНСТАНТЫ, а сам набор битов скрипт берёт через db.actor:get_actor_movement_state().
+    // Так добавление нового состояния в движке не ломает скрипты и не требует нового биндинга, а
+    // числа не приходится дублировать в Lua — источник истины остаётся один, actor_defs.h.
+    {
+        class EnumMoveState {};
+        module(luaState)
+        [
+            class_<EnumMoveState>("move_state")
+                .enum_("state")
+                [
+                    value("mcFwd", int(mcFwd)),
+                    value("mcBack", int(mcBack)),
+                    value("mcLStrafe", int(mcLStrafe)),
+                    value("mcRStrafe", int(mcRStrafe)),
+                    value("mcCrouch", int(mcCrouch)),
+                    value("mcAccel", int(mcAccel)),
+                    value("mcTurn", int(mcTurn)),
+                    value("mcJump", int(mcJump)),
+                    value("mcFall", int(mcFall)),
+                    value("mcLanding", int(mcLanding)),
+                    value("mcLanding2", int(mcLanding2)),
+                    value("mcClimb", int(mcClimb)),
+                    value("mcSprint", int(mcSprint)),
+                    value("mcLLookout", int(mcLLookout)),
+                    value("mcRLookout", int(mcRLookout)),
+                    value("mcAnyMove", int(mcAnyMove)),
+                    value("mcAnyAction", int(mcAnyAction)),
+                    value("mcAnyState", int(mcAnyState)),
+                    value("mcLookout", int(mcLookout))
+                ]
+        ];
+    }
 
     module(luaState, "game")
     [
@@ -1239,6 +1424,18 @@ void CLevel::script_register(lua_State* luaState)
         def("jump_to_level", +[](const Fvector& m_position, u32 m_level_vertex_id, GameGraph::_GRAPH_ID m_game_vertex_id)
         {
             jump_to_level(m_position, m_level_vertex_id, m_game_vertex_id, {});
-        })
+        }),
+        // [DA_PORT] Скриптовые сцены: паркур и всё, где движением актёра на время правит скрипт.
+        def("only_allow_movekeys", &da_block_all_except_movement),
+        def("only_movekeys_allowed", &da_only_movekeys_allowed),
+        def("set_actor_allow_ladder", &da_set_actor_allow_ladder),
+        def("world2ui", (Fvector2(*)(Fvector))&da_world2ui),
+        def("world2ui", (Fvector2(*)(Fvector, bool))&da_world2ui),
+        def("world2ui", (Fvector2(*)(Fvector, bool, bool))&da_world2ui),
+        def("play_hud_motion", (u32(*)(u8, pcstr, pcstr, bool, float))&da_play_hud_motion),
+        // [DA_PORT] Шестой довод — длительность сцены в мс: под неё растягивается цикл.
+        def("play_hud_motion", (u32(*)(u8, pcstr, pcstr, bool, float, u32))&da_play_hud_motion),
+        def("get_motion_length", &da_get_motion_length),
+        def("stop_hud_motion", &da_stop_hud_motion)
     ];
 }

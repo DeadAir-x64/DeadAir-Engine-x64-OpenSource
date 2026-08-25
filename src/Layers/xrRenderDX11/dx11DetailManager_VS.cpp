@@ -229,23 +229,31 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, 
                         SlotItem& Instance = *item;
                         u32 base = dwBatch * 4;
 
-                        // Build matrix ( 3x4 matrix, last row - color )
-                        float scale = Instance.scale_calculated;
-                        Fmatrix& M = Instance.mRotY;
-                        c_storage[base + 0].set(M._11 * scale, M._21 * scale, M._31 * scale, M._41);
-                        c_storage[base + 1].set(M._12 * scale, M._22 * scale, M._32 * scale, M._42);
-                        c_storage[base + 2].set(M._13 * scale, M._23 * scale, M._33 * scale, M._43);
-                        // RCache.set_ca(&*constArray, base+0, M._11*scale,	M._21*scale,	M._31*scale,	M._41	);
-                        // RCache.set_ca(&*constArray, base+1, M._12*scale,	M._22*scale,	M._32*scale,	M._42	);
-                        // RCache.set_ca(&*constArray, base+2, M._13*scale,	M._23*scale,	M._33*scale,	M._43	);
+                        // [DA_PORT] Куст не двигается: mRotY/c_hemi/c_sun выставляются РАЗ при
+                        // распаковке слота (DetailManager_Decompress.cpp) и не меняются никогда;
+                        // scale_calculated — раз в 15-30 кадров НА СЛОТ (амортизация в
+                        // UpdateVisibleM, см. cache_valid у SlotItem). Раньше здесь заново
+                        // считалось 12 умножений на КАЖДЫЙ из ~47 тысяч кустов КАЖДЫЙ кадр, хотя
+                        // результат почти всегда совпадал с прошлым — см. [[grass-submission-cost]].
+                        if (!Instance.cache_valid)
+                        {
+                            // Build matrix ( 3x4 matrix, last row - color )
+                            float scale = Instance.scale_calculated;
+                            Fmatrix& M = Instance.mRotY;
+                            Instance.cached_out[0].set(M._11 * scale, M._21 * scale, M._31 * scale, M._41);
+                            Instance.cached_out[1].set(M._12 * scale, M._22 * scale, M._32 * scale, M._42);
+                            Instance.cached_out[2].set(M._13 * scale, M._23 * scale, M._33 * scale, M._43);
 
-                        // Build color
-                        // R2 only needs hemisphere
-                        float h = Instance.c_hemi;
-                        float s = Instance.c_sun;
-                        c_storage[base + 3].set(s, s, s, h);
-                        // RCache.set_ca(&*constArray, base+3, s,				s,				s,				h
-                        // );
+                            // Build color (R2 only needs hemisphere)
+                            float h = Instance.c_hemi;
+                            float s = Instance.c_sun;
+                            Instance.cached_out[3].set(s, s, s, h);
+                            Instance.cache_valid = true;
+                        }
+                        c_storage[base + 0] = Instance.cached_out[0];
+                        c_storage[base + 1] = Instance.cached_out[1];
+                        c_storage[base + 2] = Instance.cached_out[2];
+                        c_storage[base + 3] = Instance.cached_out[3];
                         dwBatch++;
                         if (dwBatch == hw_BatchSize)
                         {

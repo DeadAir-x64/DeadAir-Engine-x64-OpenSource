@@ -413,6 +413,9 @@ void CDetailManager::UpdateVisibleM()
                         {
                             SlotItem& Item = *siIT;
                             float scale = Item.scale_calculated = Item.scale * alpha_i;
+                            // [DA_PORT] Единственное место, где меняется вход в hw_Render_dump's
+                            // c_storage (см. cache_valid у SlotItem) — сбрасываем кэш здесь, а не там.
+                            Item.cache_valid = false;
                             float ssa = scale * scale * Rq_drcp;
                             if (ssa < r_ssaDISCARD)
                             {

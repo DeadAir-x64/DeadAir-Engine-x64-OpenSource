@@ -42,8 +42,18 @@ void CLevel::ProcessCompressedUpdate(NET_Packet& P, const Flags8& compress_type)
 
     if (OnClient())
         UpdateDeltaUpd(timeServer());
-    // XXX: Is a COPY of IClientStatistic really intended here?!
-    IClientStatistic pStat = Level().GetStatistic();
+    // [DA_PORT] ⛔ Здесь была КОПИЯ статистики, а не ссылка.
+    //
+    // GetStatistic() возвращает IClientStatistic&, а копия поверхностная: её деструктор
+    // делает xr_delete(m_pimpl) и сносит внутренности ЖИВОГО объекта статистики. Дальше по
+    // нему ходит сеть, и падение приезжает позже и в другом месте - как порча кучи.
+    //
+    // Локальный сервер работает и в одиночной игре, поэтому путь живой, а не только для
+    // сетевой.
+    //
+    // Форма найдена своим прогоном CodeQL (da_port/codeql/CopyOfReference.ql); рядом с этой
+    // строкой годами висел чужой вопрос "Is a COPY really intended here?!" - да, не intended.
+    const IClientStatistic& pStat = Level().GetStatistic();
     u32 dTime = 0;
 
     if ((Level().timeServer() + pStat.getPing()) < P.timeReceive)

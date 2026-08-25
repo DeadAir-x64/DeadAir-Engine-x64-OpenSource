@@ -79,6 +79,7 @@
 
 //Alundaio
 #include "script_hit.h"
+#include "da_script_cam.h" // [DA_PORT] перехват камеры из скрипта
 //-Alundaio
 
 //const u32 patch_frames = 50;
@@ -1955,7 +1956,9 @@ void CActor::renderable_RenderLegs(u32 context_id, IRenderable* root)
 {
     IKinematics* source = smart_cast<IKinematics*>(Visual());
     if (!source || !m_legs_visual || !m_legs_kinematics)
+    {
         return;
+    }
 
     ApplyLegsBoneMask(); // ручку могли покрутить между кадрами
 
@@ -2943,3 +2946,37 @@ void CActor::On_SetEntity()
 }
 
 bool CActor::unlimited_ammo() { return !!psActorFlags.test(AF_UNLIMITEDAMMO); }
+
+// [DA_PORT] Перехват камеры скриптом: создание и снятие.
+//
+// Владения здесь нет: AddCamEffector кладёт эффектор в список менеджера, и удаляет его тоже
+// менеджер (CCameraManager::OnEffectorReleased зовёт xr_delete). Наше поле — лишь ссылка, чтобы
+// скрипт мог обновлять цель каждый кадр, не создавая эффектор заново.
+//
+// ⚠️ Отсюда и колбэк на удаление. Снять эффектор может не только скрипт: смена уровня, смерть,
+// любой сброс камер. Без колбэка после такого снятия в поле остался бы указатель на освобождённую
+// память, и следующий же вызов из скрипта писал бы в неё. Тот же класс дефекта, что мы разбирали
+// в реестрах ALife, только здесь он лечится штатным средством — менеджер сам предлагает крючок.
+CDaScriptCamEffector* CActor::da_script_cam_init()
+{
+    if (m_da_script_cam)
+        return m_da_script_cam;
+
+    m_da_script_cam = xr_new<CDaScriptCamEffector>();
+    m_da_script_cam->m_on_b_remove_callback.bind(this, &CActor::da_script_cam_forget);
+    Cameras().AddCamEffector(m_da_script_cam);
+    return m_da_script_cam;
+}
+
+void CActor::da_script_cam_remove()
+{
+    if (!m_da_script_cam)
+        return;
+
+    // Снимаем ПО ТИПУ: у нашего менеджера камер нет удаления по указателю, а эффектор такого типа
+    // в списке ровно один — AddCamEffector сносит прежний того же типа при добавлении нового.
+    // Поле обнулит колбэк, поэтому руками здесь его не трогаем.
+    Cameras().RemoveCamEffector(cefScriptOverride);
+}
+
+void CActor::da_script_cam_forget() { m_da_script_cam = nullptr; }

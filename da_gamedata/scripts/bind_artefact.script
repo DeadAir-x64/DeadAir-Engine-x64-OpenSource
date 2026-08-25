@@ -1,0 +1,110 @@
+--'******************************************************
+--'*  Биндер объекта артефакт .
+--'******************************************************
+function bind(obj)
+	obj:bind_object(artefact_binder(obj))
+end
+
+class "artefact_binder" (object_binder)
+function artefact_binder:__init(obj) super(obj)
+	db.storage[self.object:id()] = { }
+end
+function artefact_binder:net_spawn(server_object)
+	
+	if not object_binder.net_spawn(self, server_object) then
+		return false
+	end
+	db.add_obj(self.object)
+	local artefact = self.object:get_artefact()
+	local id = self.object:id()
+	if bind_anomaly_zone.artefact_ways_by_id[id] ~= nil then
+		local anomal_zone = bind_anomaly_zone.parent_zones_by_artefact_id[id]
+		local force_xz	= anomal_zone.applying_force_xz
+		local force_y	= anomal_zone.applying_force_y
+		artefact:FollowByPath(bind_anomaly_zone.artefact_ways_by_id[id],bind_anomaly_zone.artefact_points_by_id[id],vector():set(force_xz,force_y,force_xz))
+--		artefact:FollowByPath(bind_anomaly_zone.artefact_ways_by_id[id],0,vector():set(force_xz,force_y,force_xz))
+	end
+	
+	self.first_call = true
+		
+	return true
+end
+
+function artefact_binder:update(delta)
+	object_binder.update(self, delta)
+	
+	
+	-- [DA_PORT] Разбор конфига убран из ГОРЯЧЕГО пути.
+	--
+	-- Здесь стояли две строки ВНЕ ветки first_call: ini_file("plugins\itms_manager.ltx") — файл
+	-- 9675 байт, разбираемый заново на каждый вызов (биндинг ничего не кэширует) — и построение
+	-- таблицы из его секции. А нужен результат ровно в одном месте: в проверке NotArtefact[...]
+	-- внутри этой самой ветки, которая срабатывает ОДИН раз за жизнь артефакта.
+	--
+	-- Это обновление биндера: оно идёт каждый кадр на каждый артефакт в онлайне. Причём ниже по
+	-- ветке ini_file читался ВТОРОЙ раз в ту же переменную — то есть разборов было два: один
+	-- впустую всегда, второй по делу однажды.
+    if self.first_call == true then
+		local ini = ini_file("plugins\\itms_manager.ltx")
+		local NotArtefact = alun_utils.collect_section(ini,"not_artefact",true)
+		local se_obj = alife():object(self.object:id())
+		
+		if (se_obj) then
+			self.object:set_condition(se_obj.offline_condition or 0.9999999)
+			
+			if NotArtefact[self.object:section()] then
+				self.first_call = false
+				return
+			end
+			
+			local antirad = system_ini():r_string_ex(self.object:section(),"antirad") or 0
+				
+			local rad_res = (se_obj.radiation_restore_speed or 0)+antirad
+			rad_res = utils.clamp(rad_res,0,1)
+			self.object:set_artefact_radiation(rad_res)
+			
+			self.object:set_artefact_weight(se_obj.weight or 0)
+			self.object:set_artefact_health(se_obj.health_restore_speed or 0)
+			self.object:set_artefact_satiety(se_obj.satiety_restore_speed or 0)
+			self.object:set_artefact_power(se_obj.power_restore_speed or 0)
+			self.object:set_artefact_bleeding(se_obj.bleeding_restore_speed or 0)
+			self.object:set_artefact_additional_weight(se_obj.additional_inventory_weight or 0)
+			self.object:set_artefact_burn_immunity(se_obj.burn_immunity or 0)
+			self.object:set_artefact_strike_immunity(se_obj.strike_immunity or 0)
+			self.object:set_artefact_shock_immunity(se_obj.shock_immunity or 0)
+			self.object:set_artefact_wound_immunity(se_obj.wound_immunity or 0)
+			self.object:set_artefact_radiation_immunity(se_obj.radiation_immunity or 0)
+			self.object:set_artefact_telepatic_immunity(se_obj.telepatic_immunity or 0)
+			self.object:set_artefact_chemical_burn_immunity(se_obj.chemical_burn_immunity or 0)
+			self.object:set_artefact_explosion_immunity(se_obj.explosion_immunity or 0)
+			self.object:set_artefact_fire_wound_immunity(se_obj.fire_wound_immunity or 0)
+		end
+		
+		local ini = self.object:spawn_ini()
+		if not (ini and ini:section_exist("fixed_bone")) then
+			self.first_call = false
+			return
+		end
+		local bone_name = ini:r_string_ex("fixed_bone", "name")
+
+		local ph_shell = self.object:get_physics_shell()
+		if not ph_shell then
+			return
+		end
+		
+		local ph_element = ph_shell:get_element_by_bone_name(bone_name)
+
+		if ph_element:is_fixed() then
+		else
+			ph_element:fix()
+		end
+		
+		self.first_call = false
+    end	
+end
+
+
+function artefact_binder:net_destroy(server_object)
+	db.del_obj(self.object)
+	object_binder.net_destroy(self)
+end

@@ -1412,10 +1412,23 @@ void CRenderDevice::script_register(lua_State* luaState)
             .def_readonly("height", &CRenderDevice::dwHeight)
             .def_readonly("time_delta", &CRenderDevice::dwTimeDelta)
             .def_readonly("f_time_delta", &CRenderDevice::fTimeDelta)
-            .def_readonly("cam_pos", &CRenderDevice::vCameraPosition)
-            .def_readonly("cam_dir", &CRenderDevice::vCameraDirection)
-            .def_readonly("cam_top", &CRenderDevice::vCameraTop)
-            .def_readonly("cam_right", &CRenderDevice::vCameraRight)
+            // [DA_PORT] Векторы камеры отдаются КОПИЕЙ, а не полем.
+            //
+            // ⛔ Было def_readonly, и это открывало скриптам сам вектор движка: «только чтение»
+            // запрещает ЗАМЕНИТЬ поле, но не мешает менять то, что по нему лежит. Обычный для
+            // модов приём `local d = device().cam_dir; d.y = 0; d:normalize()` правил при этом
+            // НАПРАВЛЕНИЕ КАМЕРЫ ДВИЖКА.
+            //
+            // Хуже того, два таких обращения возвращали ОДИН И ТОТ ЖЕ объект: у паркура
+            // `actorDir = device().cam_dir` и `dir = getDownVector()` становились одним вектором,
+            // и все лучи поиска уступа уходили вертикально вниз вместо направления взгляда. Отсюда
+            // и было ноль попаданий из пятнадцати лучей при исправной геометрии.
+            //
+            // У Anomaly эти величины отдаются по значению, и моды написаны в расчёте на копию.
+            .property("cam_pos", +[](const CRenderDevice* d) { return d->vCameraPosition; })
+            .property("cam_dir", +[](const CRenderDevice* d) { return d->vCameraDirection; })
+            .property("cam_top", +[](const CRenderDevice* d) { return d->vCameraTop; })
+            .property("cam_right", +[](const CRenderDevice* d) { return d->vCameraRight; })
             //			.def_readonly("view",					&CRenderDevice::mView)
             //			.def_readonly("projection",				&CRenderDevice::mProject)
             //			.def_readonly("full_transform",			&CRenderDevice::mFullTransform)

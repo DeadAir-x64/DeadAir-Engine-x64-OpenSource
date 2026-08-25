@@ -1,0 +1,22 @@
+<!-- [DA_PORT] Generic hud_ui 3D screens. A detector's HUD section points here via
+     hud_ui_xml_tag_name=<tag>; the engine renders detected artefacts as blips inside
+     <tag>:wrk_area. Structure mirrors the proven "elite" tag in ui_detector_artefact.xml
+     (radar-glow backdrop + af_sign blip), so any device with a hud_ui_* config gets a
+     working screen. Screen placement is tuned per-device via hud_ui_pos/rot in the config. -->
+<w>
+  <test x="0" y="0" width="0.0576" height="0.029">
+    <wrk_area width="0.0576" height="0.029">
+      <auto_static width="0.0576" height="0.029" stretch="1">
+        <texture shader="hud\p3d">ui_temp_ad3_radar_glow</texture>
+      </auto_static>
+    </wrk_area>
+
+    <af_sign width="0.0045" height="0.005" stretch="1" alignment="c">
+      <texture shader="hud\p3d">ui_temp_ad3_artefact</texture>
+    </af_sign>
+
+    <palette id="af_sign" width="0.0045" height="0.005" stretch="1" alignment="c">
+      <texture shader="hud\p3d">ui_temp_ad3_artefact</texture>
+    </palette>
+  </test>
+</w>

@@ -74,7 +74,9 @@ u32 rtc9_csize(u32 in)
 
 u32 rtc9_compress(void* dst, u32 dst_len, const void* src, u32 src_len)
 {
-    u32 out_size = dst_len;
+    // [DA_PORT] ⛔ Тип out_size — lzo_uint, а НЕ u32. На x64 LZO пишет в него 8 байт, и объявленный
+    // u32 давал затирание 4 байт стека за переменной. Разбор — в lzo_compressor.cpp.
+    lzo_uint out_size = dst_len;
     [[maybe_unused]] int r;
 
     rtc9_initialize();
@@ -82,39 +84,42 @@ u32 rtc9_compress(void* dst, u32 dst_len, const void* src, u32 src_len)
     if (_LZO_Dictionary)
     {
         r = lzo1x_999_compress_dict((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst,
-                                    (lzo_uintp)&out_size, rtc9_wrkmem, _LZO_Dictionary, _LZO_DictionarySize);
+                                    &out_size, rtc9_wrkmem, _LZO_Dictionary, _LZO_DictionarySize);
     }
     else
     {
         r = lzo1x_999_compress((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst,
-                               (lzo_uintp)&out_size, rtc9_wrkmem);
+                               &out_size, rtc9_wrkmem);
     }
 
     VERIFY(r == LZO_E_OK);
 
-    return out_size;
+    R_ASSERT2(out_size <= u32(-1), "LZO вернул длину, не влезающую в u32");
+    return u32(out_size);
 }
 
 //------------------------------------------------------------------------------
 
 u32 rtc9_decompress(void* dst, u32 dst_len, const void* src, u32 src_len)
 {
-    u32 out_size = dst_len;
+    // [DA_PORT] см. rtc9_compress выше.
+    lzo_uint out_size = dst_len;
     [[maybe_unused]] int r;
 
     rtc9_initialize();
 
     if (_LZO_Dictionary)
     {
-        r = lzo1x_decompress_dict_safe((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, (lzo_uintp)&out_size,
+        r = lzo1x_decompress_dict_safe((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, &out_size,
             nullptr, _LZO_Dictionary, _LZO_DictionarySize);
     }
     else
     {
-        r = lzo1x_decompress((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, (lzo_uintp)&out_size, nullptr);
+        r = lzo1x_decompress((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, &out_size, nullptr);
     }
 
     VERIFY(r == LZO_E_OK);
 
-    return out_size;
+    R_ASSERT2(out_size <= u32(-1), "LZO вернул длину, не влезающую в u32");
+    return u32(out_size);
 }

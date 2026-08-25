@@ -1,0 +1,109 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition = trade_generic_buy 
+sell_condition = trade_generic_sell
+buy_supplies = supplies_1
+buy_item_condition_factor = 0.0
+resupply_timeout = 432000
+
+discounts = discount_red_forester
+
+[trade_generic_buy]:unused,trash,mutants,devices,misc,food,drugs,artefacts,weapon_misc,ammo
+;repair              = 0.1, 0.1
+toolkit_p_0          = 0.1, 0.1
+repairkit_p_0        = 0.1, 0.1
+toolkit_s_0          = 0.1, 0.1
+repairkit_s_0        = 0.1, 0.1
+toolkit_r_0          = 0.1, 0.1
+repairkit_r_0        = 0.1, 0.1
+armor_repair_pro_0   = 0.1, 0.1
+helmet_repair_kit_0  = 0.1, 0.1
+glue_b               = 0.1, 0.1
+glue_b_2             = 0.1, 0.1
+glue_a               = 0.1, 0.1
+glue_a_2             = 0.1, 0.1
+glue_e               = 0.1, 0.1
+glue_e_2             = 0.1, 0.1
+armor_repair_fa      = 0.1, 0.1
+armor_repair_fa_2    = 0.1, 0.1
+helmet_repair_kit    = 0.1, 0.1
+helmet_repair_kit_2    = 0.1, 0.1
+helmet_repair_kit_3    = 0.1, 0.1
+cleaning_kit_p       = 0.1, 0.1
+cleaning_kit_p_2     = 0.1, 0.1
+cleaning_kit_p_3     = 0.1, 0.1
+cleaning_kit_s       = 0.1, 0.1
+cleaning_kit_s_2     = 0.1, 0.1
+cleaning_kit_s_3     = 0.1, 0.1
+cleaning_kit_r       = 0.1, 0.1
+cleaning_kit_r_2     = 0.1, 0.1
+cleaning_kit_r_3     = 0.1, 0.1
+toolkit_p            = 0.1, 0.1
+toolkit_p_2            = 0.1, 0.1
+toolkit_p_3            = 0.1, 0.1
+toolkit_p_4            = 0.1, 0.1
+repairkit_p          = 0.1, 0.1
+toolkit_s            = 0.1, 0.1
+toolkit_s_2            = 0.1, 0.1
+toolkit_s_3            = 0.1, 0.1
+toolkit_s_4            = 0.1, 0.1
+repairkit_s          = 0.1, 0.1
+toolkit_r            = 0.1, 0.1
+toolkit_r_2            = 0.1, 0.1
+toolkit_r_3            = 0.1, 0.1
+toolkit_r_4            = 0.1, 0.1
+repairkit_r          = 0.1, 0.1
+sewing_kit_b         = 0.1, 0.1
+sewing_kit_b_2       = 0.1, 0.1
+sewing_kit_b_3       = 0.1, 0.1
+sewing_kit_b_4       = 0.1, 0.1
+sewing_kit_a         = 0.1, 0.1
+sewing_kit_a_2       = 0.1, 0.1
+sewing_kit_a_3       = 0.1, 0.1
+sewing_kit_a_4       = 0.1, 0.1
+sewing_kit_h         = 0.1, 0.1
+sewing_kit_h_2         = 0.1, 0.1
+sewing_kit_h_3         = 0.1, 0.1
+sewing_kit_h_4         = 0.1, 0.1
+armor_repair_pro     = 0.1, 0.1
+armor_repair_pro_2     = 0.1, 0.1
+armor_repair_pro_3     = 0.1, 0.1
+armor_repair_pro_4     = 0.1, 0.1
+sharpening_stones    = 0.1, 0.1
+sharpening_stones_2  = 0.1, 0.1
+sharpening_stones_3  = 0.1, 0.1
+sharpening_stones_4  = 0.1, 0.1
+itm_repairkit_tier_1 = 0.1, 0.1
+itm_repairkit_tier_2 = 0.1, 0.1
+itm_repairkit_tier_3 = 0.1, 0.1
+itm_drugkit          = 0.1, 0.1
+
+
+
+[trade_generic_sell]:merchant,equipment
+
+[supplies_1]
+cleaning_kit_p			= 4, 1
+cleaning_kit_p_3		= 4, 1
+cleaning_kit_s			= 4, 1
+cleaning_kit_s_3		= 4, 1
+cleaning_kit_r			= 4, 1
+cleaning_kit_r_3		= 4, 1
+toolkit_p				= 3, 1
+toolkit_p_2				= 3, 1
+toolkit_p_3				= 3, 1
+toolkit_p_4				= 3, 1
+toolkit_s				= 3, 1
+toolkit_s_2				= 3, 1
+toolkit_s_3				= 3, 1
+toolkit_s_4				= 3, 1
+toolkit_r				= 3, 1
+toolkit_r_2				= 3, 1
+toolkit_r_3				= 3, 1
+toolkit_r_4				= 3, 1
+repairkit_p				= 2, 1
+repairkit_s				= 2, 1
+repairkit_r				= 2, 1
+sharpening_stones_4		= 2, 1

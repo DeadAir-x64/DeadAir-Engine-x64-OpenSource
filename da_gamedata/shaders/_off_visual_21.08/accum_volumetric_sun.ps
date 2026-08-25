@@ -1,0 +1,237 @@
+#include "common.h"
+
+#undef ULTRA_SHADOWS_ON
+#undef USE_ULTRA_SHADOWS
+
+#define RAY_PATH	2.0h
+#define JITTER_TEXTURE_SIZE	64.0f
+
+
+#ifdef	SUN_SHAFTS_QUALITY
+	#if SUN_SHAFTS_QUALITY==1
+		#define RAY_SAMPLES	20
+		#define	JITTER_SUN_SHAFTS
+	#elif SUN_SHAFTS_QUALITY==2
+		#define	FILTER_LOW
+		#define RAY_SAMPLES	40
+	#elif SUN_SHAFTS_QUALITY==3
+		#define	FILTER_LOW	
+		#define RAY_SAMPLES	80
+		#define	JITTER_SUN_SHAFTS
+	#endif
+#endif
+
+#ifndef	FILTER_LOW
+#ifdef USE_MINMAX_SM
+#define SM_MINMAX
+#endif
+#endif
+
+#include "shadow.h"
+
+float4	volume_range;	//	x - near plane, y - far plane
+float4	sun_shafts_intensity;
+uniform	float4	screen_res;
+
+#ifdef MSAA_OPTIMIZATION
+//#ifdef GBUFFER_OPTIMIZATION
+//float4 	main (float2 tc : TEXCOORD0, float2 tcJ : TEXCOORD1, float4 pos2d : SV_Position, uint iSample : SV_SAMPLEINDEX ) : SV_Target
+//#else
+float4 	main (v2p_volume  I, uint iSample : SV_SAMPLEINDEX  ) : SV_Target
+//#endif
+#else
+//#ifdef GBUFFER_OPTIMIZATION
+//float4 	main (float2 tc : TEXCOORD0, float2 tcJ : TEXCOORD1, float4 pos2d : SV_Position ) : SV_Target
+//#else
+float4 	main (v2p_volume  I) : SV_Target
+//#endif
+#endif
+{
+	float2	tc  = I.tc.xy/I.tc.w;
+	float4	pos2d = I.hpos;
+	
+	gbuffer_data gbd = gbuffer_load_data( GLD_P(tc, pos2d, ISAMPLE) );
+
+#ifndef	SUN_SHAFTS_QUALITY
+	return float4(0,0,0,0);
+#else	//	SUN_SHAFTS_QUALITY
+
+	//float3	P = tex2D(s_position, tc).xyz;
+	float3	P = gbd.P;
+
+#ifndef	JITTER_SUN_SHAFTS
+//	Fixed ray length, fixed step dencity
+//	float3	direction = (RAY_PATH/RAY_SAMPLES)*normalize(P);	
+//	Variable ray length, variable step dencity
+	float3	direction = P/RAY_SAMPLES;
+#else	//	JITTER_SUN_SHAFTS
+//	float2	tcJ = I.tcJ;
+//	Variable ray length, variable step dencity, use jittering
+	//float4	J0 	= tex2D		(jitter0,tcJ);
+	float4	J0 	= jitter0.Sample( smp_jitter, tc*screen_res.x*1.f/JITTER_TEXTURE_SIZE );
+	float	coeff = (RAY_SAMPLES - 1*J0.x)/(RAY_SAMPLES*RAY_SAMPLES);		
+	float3	direction = P*coeff;
+//	float3	direction = P/(RAY_SAMPLES+(J0.x*4-2));
+#endif	//	JITTER_SUN_SHAFTS
+
+	float	depth = P.z;
+	float	deltaDepth = direction.z;
+	
+	float4	current	= mul (m_shadow,float4(P,1));
+	float4	delta 	= mul (m_shadow, float4(direction,0));
+
+	float	res = 0;
+	float	max_density = sun_shafts_intensity.x;
+	float	density = max_density/RAY_SAMPLES;
+
+	// [DA_PORT] Ручки лучей в помещениях из свободных компонент константы (r2.cpp,
+	// cl_sun_shafts_intensity): .y — усиление тонких столбов, .z — нормировка по длине пути,
+	// .w — дальность действия в метрах (0 = без ограничения).
+	float	shaft_gain = sun_shafts_intensity.y;
+	float	shaft_norm = sun_shafts_intensity.z;
+	float	shaft_range = sun_shafts_intensity.w;
+
+	// [DA_PORT] Попутно со стоковой суммой считаем долю освещённых шагов: она не зависит от
+	// длины пути. Стоковая сумма пропорциональна ей помноженной на число шагов, поэтому на
+	// коротких лучах в зданиях (5-10 м до стены, столб через окно — малая доля пути) итог
+	// мизерный и лучей не видно вовсе.
+	float	lit = 0;
+	float	marched = 0;
+	// [DA_PORT] Освещённость ПОВЕРХНОСТИ в конце луча (первый отсчёт марша — он у поверхности).
+	// Нужна для маски «луч читается только на тёмном фоне» ниже.
+	float	s_end = 1.0;
+
+	if (depth<0.0001)
+		res = max_density;
+
+	[unroll]
+	for ( int i=0; i<RAY_SAMPLES; ++i )
+	{
+		if (depth>0.3)
+		{
+#ifndef	FILTER_LOW
+#ifndef SM_MINMAX
+				float s = shadow( current );
+#else
+				float s = shadow_dx10_1_sunshafts(current, pos2d.xy );
+#endif
+#else	//	FILTER_LOW
+				// [DA_PORT] В loose shadow.h у sample_hw_pcf третий параметр — масштаб ядра PCF.
+				// kscale 1.5: чуть размываем теневой отклик вдоль пути — резкая маска окклюдеров
+				// иначе «печатается» на геометрии, а мягкая даёт столбы с живыми краями.
+				float s = sample_hw_pcf(current, float4(0,0,0,0), 1.5f);
+#endif	//	FILTER_LOW
+			// [DA_PORT] Взвешенный отсчёт: margin-фейд У ПОВЕРХНОСТИ (Cyanilux: лучи не должны
+			// залипать на геометрию — гасим по мере приближения к ней). depth убывает от P.z
+			// (поверхность) к 0 (камера), значит P.z - depth — расстояние ОТ поверхности.
+			// Отсчёты в первом метре от стены/балки почти не светятся: светится воздух,
+			// а не плёнка на самой поверхности.
+			float margin_w = saturate((P.z - depth) / 1.0);
+			res += density*s*margin_w;
+			lit += s*margin_w;
+			marched += margin_w;
+			// [DA_PORT] Марш идёт ОТ поверхности К камере (current -= delta), поэтому тень
+			// поверхности — это ПЕРВЫЙ отсчёт, а не последний. (Вчерашняя версия брала
+			// последний = воздух у камеры, и маска «тёмный фон» не работала.)
+			if (marched == margin_w && margin_w > 0)
+				s_end = s;
+		}
+
+		depth -= deltaDepth;
+		current -= delta;
+	}
+
+	// [DA_PORT] Нормированный режим (r__sun_shafts_norm 1): КОНТРАСТНЫЙ отклик, а не сумма.
+	//
+	// Физика эффекта: лучи видны как РАЗНИЦА между освещённым и затенённым воздухом. На открытом
+	// месте весь путь освещён (f ~= 1) — контраста нет и лучей быть не должно; равномерная
+	// подсветка — это просто вуаль на всю карту. В глухой тени (f ~= 0) лучей тоже нет.
+	// Максимум отклика — на полутени: столбы через окна, просветы в кронах.
+	// Отклик 4*f*(1-f) имеет пик ровно на f = 0.5 и нули по краям — готовая кривая «окклюдеров».
+	//
+	// Небо (marched == 0): воздух освещён равномерно, в контрастном режиме свечения нет —
+	// обнуляем, иначе стоковая строка выше заливает небо постоянной вуалью.
+	if (shaft_norm > 0.5)
+	{
+		if (marched > 0)
+		{
+			float f = lit / marched;
+			res = saturate(4.0 * f * (1.0 - f) * shaft_gain) * max_density;
+
+			// [DA_PORT] Фазовая функция Хеньи-Гринштейна — анизотропия рассеивания ВПЕРЁД.
+			// Пыль — Mie-частицы: столб заметно ярче, когда смотришь В СТОРОНУ солнца. Без этого
+			// эффект изотропен и читается как дымка «отовсюду»; с ним глаз сразу видит, что свет
+			// ИДЁТ С НЕБА (тот же приём в UE5/HDRP volumetric fog, anisotropy ~0.5-0.7).
+			// Ldynamic_dir — view-space направление ПО ХОДУ света, к солнцу — инверсия.
+			// Нормировка: при g=0 множитель равен 1 (изотропно). Пик вперёд ~7.7, вбок ~0.47,
+			// назад ~0.19; кап ×2: по опыту HDRP сильная анизотропия как раз и даёт «протекание»
+			// свечения на геометрию сверху — форвард-пик не должен перевешивать остальные гейты.
+			float3 to_sun_v = -normalize(Ldynamic_dir.xyz);
+			float cos_theta = dot(normalize(P), to_sun_v);
+			const float phase_g = 0.55;
+			float phase_denom = 1.0 + phase_g * phase_g - 2.0 * phase_g * cos_theta;
+			float phase = (1.0 - phase_g * phase_g) / pow(max(phase_denom, 1e-3), 1.5);
+			res *= min(phase, 2.0);
+
+			// [DA_PORT] Луч читается только на ТЁМНОМ фоне. Там, где сама поверхность уже
+			// освещена солнцем (пятно света на полу, дыра в крыше), добавлять свечение
+			// воздуха сверху нельзя — получается выжженная белая заплата (классика,
+			// GPU Gems 3 §13.8: пересвет лечится затуханием, а не яркостью).
+			res *= (1.0 - s_end);
+
+			// [DA_PORT] Мягкий потолок вместо жёсткого saturate: на коротких путях у потолка
+			// контрастный отклик упирается в максимум по всей площади и выжигает поверхность.
+			// tanh асимптотически подходит к max_density, не пережаривая: слабый сигнал не
+			// трогает, сильный плавно прижимает (везде аргумент <= 1, пик — 0.76*max_density).
+			res = max_density * tanh(res / max(max_density, 1e-4));
+
+			// [DA_PORT] Лучи «падают вниз»: гасим эффект на поверхностях ВЫШЕ уровня глаз.
+			// Иначе при взгляде на крышу из балок свечение воздуха между ними ложится на сами
+			// балки — а свет должен читаться пятнами на полу и нижних стенах. P — view-space
+			// (камера в нуле), мировая вертикаль во view-space — второй столбец m_V; dot даёт
+			// высоту пикселя над камерой в метрах. Полный эффект до +1.0 м над глазами,
+			// плавный ноль к +3.0 м: столбы под крышей (2-3 м) читаются за счёт фазового
+			// усиления вперёд, а балки наверху остаются пригашенными.
+			float3 view_up = float3(m_V[0][1], m_V[1][1], m_V[2][1]);
+			float h_above = dot(P, view_up);
+			float hfade_t = saturate((3.0 - h_above) / 2.0);
+			res *= hfade_t * hfade_t * (3.0 - 2.0 * hfade_t);
+		}
+		else
+			res = 0;
+	}
+
+	// [DA_PORT] Фейд по дистанции (r__sun_shafts_range, .w константы). Лучи — эффект БЛИЖНЕГО
+	// поля: столб через окно живёт в 5-15 м от камеры. Без затухания суммарный отклик копится
+	// на всей глубине сцены и дальний план тонет в молочной вуали — та же болезнь у всех
+	// реализаций без decay по длине луча (GPU Gems 3, ch.13: decay-фактор обязателен).
+	// Побочный плюс: изнутри здания улица за окном (дома в 30+ м) вуалью не заливается.
+	//
+	// Обрыв — SMOOTHSTEP, а не линейный: в продакшн-реализациях (Cyanilux god rays breakdown,
+	// Volumetric Light Beam) любой срез эффекта гладят Hermite-кривой — линейный спад глаз
+	// цепляет как видимую «границу» на половине дистанции, гладкая кривая читается как
+	// естественное рассеивание. Полный эффект — до четверти дистанции, дальше к нулю.
+	// 0 = фейд выключен.
+	if (shaft_range > 0.001)
+	{
+		float fade_t = saturate((shaft_range - length(P)) / (0.75 * shaft_range));
+		res *= fade_t * fade_t * (3.0 - 2.0 * fade_t);
+	}
+
+//*
+	float fSturation = -Ldynamic_dir.z;
+
+	//	Normalize dot product to
+	fSturation	= 0.5*fSturation+0.5;
+	//	Map saturation to 0.2..1
+	fSturation	= 0.80*fSturation+0.20;
+
+	res		*= fSturation;
+/**/
+
+	float4 sunColor = float4(1,1,1,1);
+	sunColor.xyz = normalize(Vibrance(L_hemi_color.rgb,1));
+	
+	return res*sunColor;
+#endif	//	SUN_SHAFTS_QUALITY
+}

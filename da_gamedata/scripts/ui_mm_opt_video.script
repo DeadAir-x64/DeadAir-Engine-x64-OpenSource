@@ -81,4 +81,13 @@ function opt_video:InitControls(x, y, xml, handler)
 	-- ради которой их и крут€т. ќбработчик Ч options_dialog:OnBtnDaTune.
 	btn		= xml:Init3tButton		("tab_video:btn_da_tune",	self)
 	handler:Register				(btn, "btn_da_tune")
+	-- [DA_PORT] √руппа раскладки интерфейса (pillarbox / safe zone / широка€ разметка).
+	-- ÷елочисленные крутилки движка: галки читаютс€ через GetBool (умеет только int), ползунок
+	-- объ€влен is_integer и читаетс€ GetIValue в ui_mm_opt_main.script Ч там он в списке int_track.
+	xml:InitStatic("tab_video:cap_grp_ui_layout", self)
+	xml:InitStatic("tab_video:cap_ui_pillarbox", self)
+	xml:InitCheck("tab_video:check_ui_pillarbox", self)
+	xml:InitStatic("tab_video:cap_ui_safe_zone", self)
+	self.ui_safe_zone_track = xml:InitTrackBar("tab_video:track_ui_safe_zone", self)
+	self.ui_safe_zone_val = xml:InitStatic("tab_video:cap_ui_safe_zone_val", self)
 end

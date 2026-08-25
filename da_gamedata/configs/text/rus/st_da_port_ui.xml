@@ -264,6 +264,18 @@
 	<string id="da_sun_quality">
 		<text>Качество солнца</text>
 	</string>
+	<string id="da_sun_shafts_mod">
+		<text>Улучшенные солнечные лучи</text>
+	</string>
+	<string id="ui_mm_grp_ui_layout">
+		<text>Широкий экран</text>
+	</string>
+	<string id="ui_mm_ui_pillarbox">
+		<text>Интерфейс по центру</text>
+	</string>
+	<string id="ui_mm_ui_safe_zone">
+		<text>Отступ от краёв, %</text>
+	</string>
 	<string id="da_sun_shafts">
 		<text>Солнечные лучи</text>
 	</string>
@@ -568,5 +580,75 @@
 	</string>
 	<string id="ui_mm_ground_items">
 		<text>Вещи на земле</text>
+	</string>
+	<string id="da_parallax_force">
+		<text>Рельеф везде, где есть карта высот</text>
+	</string>
+	<string id="da_hex_tiling">
+		<text>Разрыв повторов текстур</text>
+	</string>
+	<string id="ui_da_tune_tonemap_aces">
+		<text>Плёночная кривая ACES</text>
+	</string>
+	<string id="ui_da_tune_tonemap_white">
+		<text>Точка белого</text>
+	</string>
+	<string id="ui_da_tune_add_r">
+		<text>Сдвиг: красный</text>
+	</string>
+	<string id="ui_da_tune_add_g">
+		<text>Сдвиг: зелёный</text>
+	</string>
+	<string id="ui_da_tune_add_b">
+		<text>Сдвиг: синий</text>
+	</string>
+	<string id="ui_da_tune_pow_r">
+		<text>Полутона: красный</text>
+	</string>
+	<string id="ui_da_tune_pow_g">
+		<text>Полутона: зелёный</text>
+	</string>
+	<string id="ui_da_tune_pow_b">
+		<text>Полутона: синий</text>
+	</string>
+	<string id="ui_da_tune_linear">
+		<text>Свет в линейном пространстве</text>
+	</string>
+	<string id="ui_da_tune_preset">
+		<text>Профиль (0 сток, 1 наш)</text>
+	</string>
+
+	<!-- [DA_PORT] Наборы анимаций употребления вещей: перенесённый / штатный / никакого -->
+	<string id="ui_mm_da_item_anims">
+		<text>Анимации предметов</text>
+	</string>
+	<string id="ui_mm_da_item_anims_new">
+		<text>Новые</text>
+	</string>
+	<string id="ui_mm_da_item_anims_old">
+		<text>Старые</text>
+	</string>
+	<string id="ui_mm_da_item_anims_off">
+		<text>Отключены</text>
+	</string>
+
+	<!-- [DA_PORT] раздел «Анимации» во вкладке Игра -->
+	<string id="ui_mm_grp_animations">
+		<text>Анимации</text>
+	</string>
+	<string id="ui_mm_da_parkour">
+		<text>Анимации паркура</text>
+	</string>
+
+	<string id="ui_mm_da_skin_anims">
+		<text>Анимации свежевания</text>
+	</string>
+
+	<string id="ui_mm_da_body_search_anim">
+		<text>Анимация обыска тел</text>
+	</string>
+
+	<string id="ui_mm_da_wear_anims">
+		<text>Анимации надевания</text>
 	</string>
 </string_table>

@@ -597,3 +597,57 @@ xr_kamp
 xr_position
 zombied
 zone_sound
+
+-- [DA_PORT] Паркур (demonized_ledge_grabbing) и его окружение.
+--
+-- Первая часть — то, что ДЕЙСТВИТЕЛЬНО есть в движке, просто прибор об этом не знал.
+-- Вторая — надстройки Anomaly, которых у нас нет: все обращения к ним в моде защищены проверкой
+-- на nil либо лежат под debugMode, выключенным по умолчанию. Проверено пофайлово, а не на слово.
+bind_to_dik          -- движок: key_binding_registrator_script.cpp
+key_state            -- движок: key_binding_registrator_script.cpp [DA_PORT]
+matrix               -- движок: script_fmatrix_script.cpp (Fmatrix)
+fcolor               -- движок: script_fcolor_script.cpp (Fcolor)
+ray_pick             -- движок: level_script.cpp (CRayPick)
+move_state           -- движок: level_script.cpp, константы EMoveCommand [DA_PORT]
+geometry_ray         -- класс мода паркура, demonized_geometry_ray.script
+debug_render         -- отладочная отрисовка Anomaly; путь под debugMode = false
+DBG_ScriptObject     -- то же, отладочная отрисовка
+VisualizeRay         -- то же, отладочная отрисовка
+ui_mcm               -- меню настроек Anomaly; обращения защищены проверкой
+ea_callbacks         -- надстройка Anomaly; обращения защищены проверкой
+enhanced_animations  -- надстройка Anomaly; обращения защищены проверкой
+zzz_player_injuries  -- надстройка Anomaly; обращения защищены проверкой
+zzz_skin             -- надстройка Anomaly; обращения защищены проверкой
+
+-- [DA_PORT] Помощники Anomaly, которых в Dead Air нет: их подставляет da_ledge_compat.install().
+--
+-- 🪤 Прибор их не видит по построению. Присваивание идёт в цикле через _G[name], потому что
+-- обычное `X = f` внутри скрипта создаёт поле СВОЕЙ таблицы, а не глобальное имя (setfenv в
+-- script_engine.cpp). Статически имена в такой записи не разобрать — отсюда и список.
+AddScriptCallback
+GetEvent
+SetEvent
+IsMoveState
+SYS_GetParam
+dup_table
+exec_console_cmd
+get_console_cmd
+nextTick
+print_tip
+random_float
+normalize
+clamp
+
+-- [DA_PORT] FDDA (анимации еды, лекарств и напитков), автор Feel_Fried.
+--
+-- Первые четыре подставляет da_mod_compat.install() через _G — статически прибор их не видит
+-- (см. разбор у паркура выше). Остальные лежат в ветках, до которых у нас не доходит.
+alife_create_item    -- подставляет da_mod_compat
+alife_release        -- подставляет da_mod_compat
+hide_hud_inventory   -- подставляет da_mod_compat
+ui_options           -- подставляет da_mod_compat, отвечает значениями по умолчанию
+EA_window            -- класс самого мода, ea_error.script
+Unregister_UI        -- окно разделки Anomaly; путь отключён (mutant_loot_mod = false)
+item_knife           -- то же, ветка разделки мутанта
+wallmarks_manager    -- то же, следы крови при разделке
+script_light         -- движковый класс Anomaly; вызов защищён проверкой в ea_light.script

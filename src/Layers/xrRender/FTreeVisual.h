@@ -47,6 +47,19 @@ protected:
     _5color c_bias;
     Fmatrix xform;
 
+#ifdef USE_DX11
+    // [DA_PORT] Кэш для FillInstanceData — тот же приём, что вывел траву на dt_rend 0.58→0.43 мс
+    // (см. [[grass-submission-cost]]). xform выставляется РАЗ в Load() и не меняется никогда;
+    // vectors[0..2] от него — чистое копирование полей, без счёта, кэшируем без инвалидации вовсе.
+    // vectors[6..8] зависят от ps_r__Tree_SBC (крутится игроком редко) — инвалидация сравнением с
+    // прошлым значением множителя. vectors[3..5] (mul_43 с матрицей вида) кэшу не подлежат — камера
+    // движется каждый кадр, это и есть единственная настоящая работа, что здесь осталась.
+    mutable Fvector4 m_da_cached_world[3];
+    mutable bool m_da_cached_world_valid{false};
+    mutable Fvector4 m_da_cached_light[3];
+    mutable float m_da_cached_sbc{-1.f};
+#endif
+
 public:
     virtual void Render(CBackend& cmd_list, float LOD, bool use_fast_geo) override; // LOD - Level Of Detail  [0.0f - min, 1.0f - max], Ignored
 #ifdef USE_DX11

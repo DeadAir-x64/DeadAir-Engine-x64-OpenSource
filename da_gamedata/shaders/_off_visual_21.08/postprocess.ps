@@ -1,0 +1,367 @@
+#include "common.h"
+/*
+struct 	v2p
+{
+//D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX3
+	float4 	color:		COLOR0;		// multiplier, color.w = noise_amount
+	float4	gray:		COLOR1;		// (.3,.3,.3.,amount)
+ 	float2 	tc0: 		TEXCOORD0;	// base1 (duality)
+ 	float2 	tc1: 		TEXCOORD1;	// base2 (duality)
+ 	float2 	tc2: 		TEXCOORD2;	// base  (noise)
+};
+*/
+
+Texture2D 	s_base0;
+Texture2D 	s_base1;
+Texture2D 	s_noise;
+uniform float4 		c_brightness;
+
+// [DA_PORT] Colour grading from the options sliders: rgb = per-channel gain (r__color_base_r/g/b),
+// w = vibrance (r2_vibrance_val). The mod has had these sliders all along, but nothing in the renderer
+// read the values, so moving them did nothing. At gain 1/1/1 and vibrance 0 this is a no-op.
+uniform float4		da_color_grade;
+
+// [DA_PORT] Хэш для выходного дизеринга. Статический (без кадровой составляющей): амплитуда
+// ниже порога видимости, а движущееся зерно на тёмных сценах читалось бы как мерцание.
+float da_dither_hash(float2 p)
+{
+	return frac(sin(dot(p, float2(12.9898h, 78.233h))) * 43758.5453h);
+}
+
+// [DA_PORT] ASC CDL: сдвиг и степень по каналам. Наклон и насыщенность уже лежат в
+// da_color_grade выше. Ручки: r__color_add_* и r__color_power_*.
+//
+// ⚠️ r__color_add_* СУЩЕСТВОВАЛИ и были зарегистрированы в консоли, но их никто не читал —
+// ползунок двигался, а картинка не менялась. Тот же дефект, что когда-то был у усиления.
+uniform float4		da_color_offset;
+uniform float4		da_color_power;
+
+// Vibrance, not plain saturation: it lifts the muted colours and leaves the already-vivid ones alone,
+// so foliage and rust gain depth without the picture turning into a poster.
+float3 da_apply_vibrance(float3 c, float amount)
+{
+	float mx = max(c.r, max(c.g, c.b));
+	float mn = min(c.r, min(c.g, c.b));
+	float sat = mx - mn;              // how colourful this pixel already is
+	float luma = dot(c, float3(0.2126, 0.7152, 0.0722));
+	// [DA_PORT] Маска теней: в глубокой темноте «насыщенность» пикселя — это не цвет поверхности,
+	// а шумовая крошка почти-чёрных текселей (DXT), и поднимать её значит красить тьму в
+	// рэндомные цвета. Колористы для того же кладут shadow mask при любых Sat-операциях.
+	// Полный эффект выше luma ~0.12 (гамма), к чистому чёрному затухает в ноль.
+	amount *= saturate(luma * 8.0h);
+	// The less saturated the pixel, the more it gets pushed.
+	return lerp(luma.xxx, c, 1.0 + amount * (1.0 - sat));
+}
+
+// [DA_PORT] Цветокоррекция по ASC CDL — отраслевой стандарт и самое простое из точного:
+// десять чисел, чистая арифметика, преобразование обратимо (в отличие от трёхмерной таблицы).
+//
+// Порядок из спецификации СТРОГИЙ: наклон, сдвиг, степень, и лишь затем насыщенность.
+// Переставить нельзя — арифметика некоммутативна, результат выйдет другим.
+float3 da_apply_cdl( float3 c )
+{
+	c = c * da_color_grade.rgb + da_color_offset.rgb;
+
+	// ⚠️ Обрезка по нулю обязана стоять МЕЖДУ сдвигом и степенью. pow от отрицательного
+	// числа даёт NaN, а сдвиг легко уводит канал ниже нуля. На сами величины спецификация
+	// ограничений не накладывает — ограничивается только промежуточный результат.
+	c = max( c, 0.0 );
+
+	c = pow( c, da_color_power.rgb );
+
+	// ⚠️ Гейт по МОДУЛЮ: отрицательный вибранс — это десатурация (da_apply_vibrance её
+	// корректно обрабатывает: множитель 1 + amount·(1-sat) уходит ниже единицы). Раньше стояло
+	// w > 0.001, и все профили на десатурации («По умолчанию», «Нуар», «Отбелка»…) молча
+	// теряли вибранс — «По умолчанию» слился с «Оригиналом».
+	if ( abs(da_color_grade.w) > 0.001 )
+		c = da_apply_vibrance( c, da_color_grade.w );
+
+	return c;
+}
+
+// [DA_PORT] ---- Upscale for r__render_scale (groundwork for FSR 1.0) --------------------------------
+// This pass is where the finished frame reaches the screen, so when the scene is rendered smaller than
+// the window this Sample() IS the upscale — and a plain bilinear stretch is exactly what looks soft.
+// Replaced with a Catmull-Rom bicubic fetch, which reconstructs edges far better at the same bandwidth.
+//
+// The scene's own size comes from pos_decompression_params2 (the engine binds it to the render-target
+// resolution, .xy = size, .zw = 1/size), so no new engine-side constant is needed. screen_res stays the
+// window size, so comparing the two tells us whether any upscaling is happening at all.
+// NB: pos_decompression_params2 is already declared further up the common.h include chain — declaring
+// it again here is a compile error ("redefinition"), which silently swaps this shader for stub_default.
+uniform float4		screen_res;
+
+float3 da_sample_bicubic(Texture2D tex, float2 uv)
+{
+	const float2 src_size = pos_decompression_params2.xy;
+	const float2 inv_src  = pos_decompression_params2.zw;
+
+	float2 sample_pos = uv * src_size;
+	float2 tex_pos1   = floor(sample_pos - 0.5) + 0.5;
+	float2 f          = sample_pos - tex_pos1;
+
+	// Catmull-Rom weights
+	float2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+	float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+	float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+	float2 w3 = f * f * (-0.5 + 0.5 * f);
+
+	// Fold the two inner taps into one bilinear fetch: 9 taps become 5.
+	float2 w12      = w1 + w2;
+	float2 offset12 = w2 / max(w12, 0.0001);
+
+	float2 tc0  = (tex_pos1 - 1.0)      * inv_src;
+	float2 tc3  = (tex_pos1 + 2.0)      * inv_src;
+	float2 tc12 = (tex_pos1 + offset12) * inv_src;
+
+	float3 result = 0.0;
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc0.y ), 0).rgb * (w12.x * w0.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc0.x,  tc12.y), 0).rgb * (w0.x  * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc12.y), 0).rgb * (w12.x * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc3.x,  tc12.y), 0).rgb * (w3.x  * w12.y);
+	result += tex.SampleLevel(smp_rtlinear, float2(tc12.x, tc3.y ), 0).rgb * (w12.x * w3.y);
+	return result;
+}
+
+// Only pay for it when the scene really is smaller than the window; at 100% scale this returns the
+// plain bilinear sample, i.e. byte-identical to stock.
+float3 da_fetch_scene(Texture2D tex, float2 uv)
+{
+	if (pos_decompression_params2.x < screen_res.x - 0.5)
+		return da_sample_bicubic(tex, uv);
+
+	return tex.Sample(smp_rtlinear, uv).rgb;
+}
+
+uniform float4 da_upscale;   // x = sharpening strength (r__upscale_sharpness / 100)
+
+// [DA_PORT] Adaptive sharpening for the upscale - the RCAS half of FSR 1.0.
+//
+// Upscaling always softens: the bicubic fetch above reconstructs edges well, but detail that existed
+// below the render resolution cannot come back on its own. A plain unsharp mask would bring it back
+// along with ringing halos and amplified noise. This does it adaptively instead: the strength is
+// limited per pixel by how much headroom the local neighbourhood has before clipping, so flat areas
+// and near-white/near-black regions are left alone and only genuine edges are pushed.
+//
+// Four taps in a cross, sampled in SCENE texels (pos_decompression_params2.zw), not screen ones -
+// sharpening must act on the pixels that actually exist, otherwise it just re-sharpens interpolation.
+float3 da_sharpen_texel(Texture2D tex, float2 uv, float3 centre, float strength, float2 texel)
+{
+
+	float3 up    = da_fetch_scene(tex, uv + float2(0.0, -texel.y));
+	float3 left  = da_fetch_scene(tex, uv + float2(-texel.x, 0.0));
+	float3 right = da_fetch_scene(tex, uv + float2( texel.x, 0.0));
+	float3 down  = da_fetch_scene(tex, uv + float2(0.0,  texel.y));
+
+	float3 mn = min(min(up, down), min(left, right));
+	float3 mx = max(max(up, down), max(left, right));
+
+	// How much room is left before the result would clip, per channel. Near 0 or 1 there is none, so
+	// the sharpening fades out by itself instead of producing halos.
+	float3 headroom = min(mn, 1.0 - mx) / max(mx, 0.0001);
+	float amount = sqrt(saturate(min(headroom.r, min(headroom.g, headroom.b))));
+
+	// Negative weight on the neighbours, normalised so overall brightness is preserved.
+	float w = -amount * strength * 0.25;
+	float3 sharpened = (up + down + left + right) * w + centre;
+	return max(sharpened / (1.0 + 4.0 * w), 0.0);
+}
+
+// [DA_PORT] Обёртка со старым поведением - тексел сцены. Бикубический путь не тронут.
+float3 da_sharpen_upscaled(Texture2D tex, float2 uv, float3 centre, float strength)
+{
+	return da_sharpen_texel(tex, uv, centre, strength, pos_decompression_params2.zw);
+}
+
+// [DA_PORT] То же самое, но для ВЫХОДА временного апскейлера, а не для низкоразрешённой сцены.
+//
+// Отличие одно и оно принципиальное: отсчёты берутся ПРОСТОЙ билинейной выборкой, без da_fetch_scene.
+// Та под капотом делает бикубическую реконструкцию, когда сцена меньше окна, и написана она под
+// низкое разрешение. Прогнать её по кадру, который апскейлер уже собрал в полном разрешении, значит
+// восстанавливать уже восстановленное: соседние отсчёты берутся не оттуда, нерезкая маска вычитает
+// неверное среднее, и вместо резкости получается развал краёв - на глаз читается как «всё пиксельное».
+// Ровно на это я и наступил, когда переиспользовал помощник целиком.
+float3 da_sharpen_output(Texture2D tex, float2 uv, float3 centre, float strength, float2 texel)
+{
+	float3 up    = tex.Sample(smp_rtlinear, uv + float2(0.0, -texel.y)).rgb;
+	float3 left  = tex.Sample(smp_rtlinear, uv + float2(-texel.x, 0.0)).rgb;
+	float3 right = tex.Sample(smp_rtlinear, uv + float2( texel.x, 0.0)).rgb;
+	float3 down  = tex.Sample(smp_rtlinear, uv + float2(0.0,  texel.y)).rgb;
+
+	float3 mn = min(min(up, down), min(left, right));
+	float3 mx = max(max(up, down), max(left, right));
+
+	float3 headroom = min(mn, 1.0 - mx) / max(mx, 0.0001);
+	float amount = sqrt(saturate(min(headroom.r, min(headroom.g, headroom.b))));
+
+	float w = -amount * strength * 0.25;
+	float3 sharpened = (up + down + left + right) * w + centre;
+	return max(sharpened / (1.0 + 4.0 * w), 0.0);
+}
+// -------------------------------------------------------------------------------------------------
+
+// [DA_PORT] Gamma / brightness / contrast, x = 1/gamma, y = brightness/2, z = contrast/2,
+// w = 1 when the hardware gamma ramp is NOT doing the job and this has to.
+uniform float4 da_gamma;
+
+// Deliberately the same curve the engine builds for the hardware ramp (CGammaControl::GenLUT), so the
+// result matches what the sliders produced on the original DX9 build rather than being a new look.
+// At gamma 1 / brightness 1 / contrast 1 it reduces exactly to the identity.
+float3 da_apply_gamma(float3 c)
+{
+	const float B = da_gamma.y;
+	const float C = da_gamma.z;
+	float3 v = pow(max(c, 0.0), da_gamma.x);
+	return (C + 0.5) * v + (B - 0.5) * 0.5 - C * 0.5 + 0.25;
+}
+
+// [DA_PORT] Motion-vector debug view, switched on with "r__motion_vectors 2" (da_gamma.w carries the
+// mode). Vectors are in NDC and tiny — a fast pan moves a pixel a few hundredths of the screen — so
+// they are scaled up hard and split by sign: red/green for the two directions of horizontal movement,
+// blue for vertical. Still geometry reads black, and that is the point of looking at it.
+Texture2D s_velocity;
+
+// [DA_PORT] FSR 2 output. When the upscaler ran, the frame is already at output resolution and
+// reconstructed - it must be sampled 1:1, with no bicubic stretch of our own on top.
+Texture2D s_fsr2;
+
+float3 da_debug_velocity(float2 uv)
+{
+	float2 v = s_velocity.Sample(smp_rtlinear, uv).xy;
+
+	// [DA_PORT] МАЛИНОВЫЙ - в буфере РОВНО ноль, то есть сюда никто не писал.
+	//
+	// Раньше этот случай был неотличим от «объект стоял на месте»: оба давали чёрный. А для апскейлера
+	// это принципиально разные вещи - ноль он читает как «пиксель не двигался» и уверенно переносит
+	// историю, тогда как на самом деле данных нет вовсе. Ровно на этой двусмысленности мы потеряли
+	// день: пустой буфер выглядел как исправный, потому что чёрное поле никого не смущало.
+	if (v.x == 0.0 && v.y == 0.0)
+		return float3(0.7, 0.0, 0.7);
+
+	// Векторы в NDC и очень малы - быстрый разворот сдвигает пиксель на сотые доли экрана, поэтому
+	// масштаб большой. Красный и зелёный - две стороны горизонтали, синий - вертикаль.
+	float2 s = v * 200.0;
+	return float3(saturate(s.x), saturate(-s.x), saturate(abs(s.y)));
+}
+
+// [DA_PORT] The reactive mask itself, switched on with "r__motion_vectors 4". White is where the
+// upscalers have been told not to trust their history. Worth looking at directly rather than inferring
+// from the picture: a mask that misses a moving figure and a mask that covers it but is ignored look
+// exactly the same on screen, and every attempt to tell them apart by tuning numbers is wasted.
+Texture2D s_reactive;
+
+// [DA_PORT] Eye-space depth, switched on with "r__motion_vectors 5".
+//
+// For the one question that keeps deciding things: what is in the position buffer where the sky is?
+// Our temporal work all reads a zero there as "nothing was drawn here", and nothing ever writes the
+// sky's position - so if that buffer is not cleared, it holds whatever the last frame that DID have
+// geometry there left, and the sky gets reprojected as though it sat at that distance.
+//
+// Green means the pixel reads as sky. Red is the depth itself. A sky that comes up red is the bug.
+float3 da_debug_depth(float2 uv)
+{
+// [DA_PORT] s_position is Texture2DMS under USE_MSAA (common_samplers.h), and a multisampled
+// texture object has no Sample method at all - the shader then fails to COMPILE and the engine
+// quietly swaps in stub_default.ps. Same shape as the stock reads in common_functions.h.
+#ifndef USE_MSAA
+	const float z = s_position.Sample(smp_nofilter, uv).z;
+#else
+	const float z = s_position.Load(int2(uv * pos_decompression_params2.xy), 0).z;
+#endif
+	return float3(saturate(abs(z) * 0.02), abs(z) < 0.001 ? 1.0 : 0.0, 0.0);
+}
+
+float3 da_debug_reactive(float2 uv)
+{
+	const float r = s_reactive.Sample(smp_rtlinear, uv).x;
+	// Red is the honest value; green is the same thing amplified twentyfold. A mask holding a few
+	// hundredths and a mask holding nothing at all are the same black in plain grey, and those two
+	// call for opposite fixes - so the view has to separate them by itself.
+	return float3(saturate(r), saturate(r * 20.0), 0.0);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// Pixel
+float4 main( p_postpr I ) : SV_Target
+{
+//	float3	t_0 	= tex2D		(s_base0,I.tc0);
+//	float3	t_1 	= tex2D		(s_base1,I.tc1);
+	// [DA_PORT] Debug views, before anything else touches the frame. 4 is the reactive mask; 2 and 3
+	// both read the velocity buffer, 3 only fills it with shader ids instead of vectors.
+	if (da_upscale.y > 4.5)
+		return float4(da_debug_depth(I.Tex0), 1.0h);
+	if (da_upscale.y > 3.5)
+		return float4(da_debug_reactive(I.Tex0), 1.0h);
+	if (da_upscale.y > 1.5)
+		return float4(da_debug_velocity(I.Tex0), 1.0h);
+
+#ifdef DA_VELOCITY
+	// [DA_PORT] With FSR 2 active the picture comes from its output, at full resolution already.
+	float3 image;
+	if (da_upscale.z > 0.5)
+	{
+		image = s_fsr2.Sample(smp_rtlinear, I.Tex0).rgb;
+	}
+	else
+	{
+		float3	t_0 = da_fetch_scene(s_base0, I.Tex0);
+		float3	t_1 = da_fetch_scene(s_base1, I.Tex1);
+		image = (t_0+t_1)*.5;
+	}
+#else
+	float3	t_0 	= da_fetch_scene(s_base0, I.Tex0);	// [DA_PORT] was a plain bilinear Sample
+	float3	t_1 	= da_fetch_scene(s_base1, I.Tex1);	// [DA_PORT] both read $user$albedo
+	float3 	image	= (t_0+t_1)*.5;					// add_d2
+#endif
+
+	// [DA_PORT] Sharpen only when the scene was actually upscaled - at native resolution there is
+	// nothing to recover and this would just add crunch.
+	// [DA_PORT] Not when FSR 2 produced the frame (da_upscale.z): it runs RCAS itself, off the same
+	// slider, and this pass would apply the identical sharpening a second time. It also samples s_base0,
+	// the low-resolution scene, while the picture on screen came from the upscaler's full-resolution
+	// output - so the second pass sharpens against the wrong image as well as too much. The ground
+	// grows a crunchy speckle that reads as "too sharp" when the setting itself is fine.
+	if (da_upscale.x > 0.001 && da_upscale.z < 0.5 && pos_decompression_params2.x < screen_res.x - 0.5)
+		image = da_sharpen_upscaled(s_base0, I.Tex0, image, da_upscale.x);
+
+	// [DA_PORT] DLSS и XeSS не точат кадр вовсе, в отличие от FSR 2 и FSR 3, которые делают это
+	// внутри себя тем же ползунком. Отсюда и ощущение, что DLSS «хуже»: он отдаёт честный, но
+	// неподточенный кадр, а рядом лежит подточенный.
+	//
+	// Точим по s_fsr2 - это и есть то, что видно на экране - и в текселях ЭКРАНА (screen_res.zw),
+	// а не сцены: выход апскейлера уже в полном разрешении, шаг сцены был бы шире нужного и дал бы
+	// ореолы. Признак .w ставит C++ только для тех бэкендов, что не точат сами, иначе вышло бы
+	// дважды - ровно та ошибка, из-за которой этот проход когда-то отключили для FSR 2.
+	if (da_upscale.w > 0.5 && da_upscale.x > 0.001)
+		image = da_sharpen_output(s_fsr2, I.Tex0, image, da_upscale.x, screen_res.zw);
+	float	gray 	= dot		(image,I.Gray);			// dp3
+			image 	= lerp 		(gray,image,I.Gray.w);		// mul/mad
+
+//	float4	t_noise	= tex2D		(s_noise,I.tc2);	
+	float4	t_noise	= s_noise.Sample( smp_linear, I.Tex2);	
+	float3 	noised 	= image*t_noise*2;                     		// mul_2x
+			image	= lerp( noised, image, I.Color.w); 	// lrp ?
+			image	= (image * I.Color + c_brightness)*2;		// mad
+//		image	= (image + c_brightness) * I.Color;		// mad ?
+
+	// [DA_PORT] Colour grading last, on the finished frame � same place the sliders expect to act.
+	// [DA_PORT] ASC CDL, разбор у da_apply_cdl.
+	image = da_apply_cdl( image );
+
+	// Last of all, exactly where the hardware ramp used to sit: after everything else has been drawn
+	// into the frame. NB this covers the scene only, not the menu and inventory - the ramp affected
+	// those too, but they are drawn in a separate pass that never reaches this shader.
+	if (da_gamma.w > 0.5)
+		image = da_apply_gamma(image);
+
+	// [DA_PORT] Выходной дизеринг — последней строкой, вплотную к записи в кадр (после грейдинга
+	// и гаммы): треугольный шум ±½ кванта 8-битного выхода. Стандартный финал линейного
+	// конвейера (Unity/three.js делают то же синим шумом) — убирает бендинг в тёмных
+	// градиентах неба и дымки. Треугольное распределение (разность двух хэшей) держит нулевое
+	// среднее, яркость не смещается. Меню и инвентарь этот проход не трогают — зерна на UI нет.
+	float2 da_px = floor(I.Tex0 * screen_res.xy);
+	image += (da_dither_hash(da_px) - da_dither_hash(da_px + 0.5h)) * (0.5h / 255.0h);
+
+	// out
+	return  float4( max(image, 0.0), 1.0h);				// +mov
+}

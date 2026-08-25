@@ -82,6 +82,22 @@ luabind::class_<CScriptGameObject>& script_register_game_object1(luabind::class_
         .property("morale", &CScriptGameObject::GetMorale, &CScriptGameObject::SetMorale)
         .property("bleeding", &CScriptGameObject::GetBleeding, &CScriptGameObject::SetBleeding)
 
+        // [DA_PORT] Изменение состояния ПРИРАЩЕНИЕМ — под именами, принятыми в сообществе.
+        //
+        // Свойства выше (power, satiety и прочие) читаются как значения, а вот пишутся они
+        // ПРИРАЩЕНИЕМ: под ними лежит CEntityCondition::Change*, которая копит дельту до
+        // следующего обновления. Моды же ждут раздельных имён: `power` для чтения и
+        // `change_power(-0.01)` для траты. Без них любой чужой мод падает на nil.
+        //
+        // Тем же вызовом, что и запись свойства: разной реализации быть не должно, иначе два имени
+        // одной величины однажды разъедутся.
+        .def("unblock_all_slots", &CScriptGameObject::UnblockAllSlots) // [DA_PORT]
+        .def("change_power", &CScriptGameObject::SetPower)
+        .def("change_satiety", &CScriptGameObject::ChangeSatiety)
+        .def("change_health", &CScriptGameObject::SetHealth)
+        .def("change_radiation", &CScriptGameObject::SetRadiation)
+        .def("change_psy_health", &CScriptGameObject::SetPsyHealth)
+
         .def("get_bleeding", &CScriptGameObject::GetBleeding)
         .def("center", &CScriptGameObject::Center)
         .def("position", &CScriptGameObject::Position)
@@ -322,7 +338,10 @@ luabind::class_<CScriptGameObject>& script_register_game_object1(luabind::class_
 
         .def("head_orientation", &CScriptGameObject::head_orientation)
 
-        .def("set_actor_position", &CScriptGameObject::SetActorPosition)
+        .def("set_actor_position", (void(CScriptGameObject::*)(Fvector))&CScriptGameObject::SetActorPosition)
+        // [DA_PORT] С пропуском разбора столкновений — для скриптовых сцен вроде паркура.
+        .def("set_actor_position", (void(CScriptGameObject::*)(Fvector, bool))&CScriptGameObject::SetActorPosition)
+        .def("set_actor_position", (void(CScriptGameObject::*)(Fvector, bool, bool))&CScriptGameObject::SetActorPosition)
         .def("set_actor_direction", &CScriptGameObject::SetActorDirection)
         .def("disable_hit_marks", (void (CScriptGameObject::*)(bool)) & CScriptGameObject::DisableHitMarks)
         .def("disable_hit_marks", (bool (CScriptGameObject::*)() const) & CScriptGameObject::DisableHitMarks)

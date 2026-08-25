@@ -21,7 +21,7 @@ size_t rtc_compress(void* dst, size_t dst_len, const void* src, size_t src_len)
     // того, что out_size осмыслен: при отказе LZO оставляет его частично записанным, а вызывающий
     // считает эту длину настоящей и берёт ровно столько байт. То есть в релизе битые данные шли бы
     // дальше молча — в сохранение или в сетевой пакет, — и обнаружились бы много позже и не здесь.
-    const int r = lzo1x_1_compress((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, (lzo_uintp)&out_size, rtc_wrkmem);
+    const int r = lzo1x_1_compress((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, &out_size, rtc_wrkmem);
     if (r != LZO_E_OK)
     {
         string32 code;
@@ -33,7 +33,7 @@ size_t rtc_decompress(void* dst, size_t dst_len, const void* src, size_t src_len
 {
     lzo_uint out_size = dst_len;
     // См. rtc_compress выше: та же причина, обратное направление.
-    const int r = lzo1x_decompress((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, (lzo_uintp)&out_size, rtc_wrkmem);
+    const int r = lzo1x_decompress((const lzo_byte*)src, (lzo_uint)src_len, (lzo_byte*)dst, &out_size, rtc_wrkmem);
     if (r != LZO_E_OK)
     {
         string32 code;

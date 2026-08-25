@@ -776,23 +776,49 @@ void player_hud::render_hud(u32 context_id, IRenderable* root)
     attachable_hud_item* item0 = m_attached_items[0];
     attachable_hud_item* item1 = m_attached_items[1];
 
-    if (!item0 && !item1)
+    // [DA_PORT] Скриптовая анимация рисует руки САМА ПО СЕБЕ, без предмета в руках.
+    //
+    // Обычно руки — лишь подложка под оружие, и без предмета рисовать нечего: оба выхода ниже
+    // именно об этом. Но скриптовая сцена (паркур) сначала убирает оружие в рюкзак, а потом просит
+    // анимацию — и по прежнему условию руки не рисовались вовсе. Симптом ровно такой и был:
+    // анимация игралась, ошибок в логе не было, а рук на экране нет.
+    const bool script_anim = da_script_anim_active();
+
+    if (!item0 && !item1 && !script_anim)
         return;
 
     const bool b_r0 = item0 && item0->need_renderable();
     const bool b_r1 = item1 && item1->need_renderable();
 
-    if (!b_r0 && !b_r1)
+    if (!b_r0 && !b_r1 && !script_anim)
         return;
 
     if (m_model)
         GEnv.Render->add_Visual(context_id, root, m_model->dcast_RenderVisual(), m_transform);
 
-    if (item0)
-        item0->render(context_id, root);
+    // ⛔ Во время скриптовой сцены чужие предметы в руках НЕ рисуем.
+    //
+    // Сцена владеет руками целиком: она играет на них свой цикл и вешает свой предмет. Оружие к
+    // этому моменту уже убрано логически (слот 0), но его attachable_hud_item остаётся
+    // прикреплённым — и без этой проверки нож продолжал рисоваться поверх сцены, ломая и вид, и позу.
+    //
+    // 🪤 Проверять need_renderable бесполезно: она про ПРИЦЕЛ (CWeapon::need_renderable возвращает
+    // ложь только при зуме со снайперской текстурой), а к убранному в кобуру отношения не имеет.
+    // Первая попытка чинить именно ею ничего не изменила.
+    // [DA_PORT] У ОДНОРУКОЙ сцены оружие остаётся в руках, значит и рисовать его надо.
+    if (!script_anim || m_da_script_one_hand)
+    {
+        if (item0)
+            item0->render(context_id, root);
 
-    if (item1)
-        item1->render(context_id, root);
+        if (item1)
+            item1->render(context_id, root);
+    }
+
+    // [DA_PORT] Предмет скриптовой сцены. Преобразование посчитано в update — см. разбор там.
+    if (m_da_script_item_model && script_anim)
+        GEnv.Render->add_Visual(context_id, root, m_da_script_item_model->dcast_RenderVisual(),
+            m_da_script_item_transform);
 }
 
 #include "xrCore/Animation/Motion.hpp"
@@ -848,19 +874,51 @@ void player_hud::update(const Fmatrix& cam_trans)
     else
     {
         Fvector ypr{};
-        if (item0)
+        // [DA_PORT] ⚠️ Во время скриптовой сцены посадку рук задаёт СЦЕНА, а не предмет в руках.
+        //
+        // Здесь проверка шла только на наличие предмета, и при живом оружии посадка бралась из его
+        // конфига — выверенная под держание ствола. Сцена же нарисована от своей посадки, поэтому
+        // руки стартовали не оттуда: на экране это читалось как рывок снизу вверх.
+        //
+        // Ровно этим объясняется, почему с пустыми руками всё выглядело правильно: там предмета
+        // нет, и до нашей ветки исполнение доходило.
+        //
+        // ⛔ Убрать оружие заранее не помогает: hide_weapon прячет HUD, но attachable_hud_item
+        // остаётся прикреплённым, и item0 продолжает быть не пустым. Проверено замером: слот и
+        // active_item не менялись все 60 тактов ожидания.
+        // ⚠️ Для ОДНОРУКОЙ сцены посадку не перебиваем: вторая рука держит оружие, и она обязана
+        // остаться там, где её ставит конфиг ствола.
+        const bool da_scene = da_script_anim_active() && !m_da_script_one_hand;
+
+        if (da_scene)
+            ypr = m_da_script_hands_rot;
+        else if (item0)
             ypr = item0->hands_attach_rot();
         else if (item1)
             ypr = item1->hands_attach_rot();
+        else
+            // [DA_PORT] Предмета нет — поворот рук тоже берём из секции скриптовой анимации.
+            //
+            // Раньше здесь оставался ноль, и читалось только положение. Секция задаёт посадку
+            // ПАРОЙ, как и у обычного ствола (hands_position + hands_orientation), поэтому у сцен
+            // с заданным поворотом руки вставали развёрнутыми не туда — а предмет в них считается
+            // ОТ ЭТОЙ ЖЕ матрицы и уезжал вместе с ними.
+            ypr = m_da_script_hands_rot;
 
         ypr.mul(PI / 180.f);
         m_attach_offset.setHPB(ypr.x, ypr.y, ypr.z);
 
         Fvector tmp{};
-        if (item0)
+        if (da_scene)
+            tmp = m_da_script_hands_pos;
+        else if (item0)
             tmp = item0->hands_attach_pos();
         else if (item1)
             tmp = item1->hands_attach_pos();
+        else
+            // [DA_PORT] Предмета нет — берём посадку рук из секции скриптовой анимации.
+            // Без этого руки встают в начало координат HUD, то есть заметно не там, где задумано.
+            tmp = m_da_script_hands_pos;
 
         // [DA_PORT] Поправка игрока к положению оружия в руках, МЕТРЫ.
         //
@@ -920,6 +978,41 @@ void player_hud::update(const Fmatrix& cam_trans)
         m_model->dcast_PKinematics()->CalculateBones(TRUE);
     }
 
+    // [DA_PORT] Кости предмета скриптовой сцены двигаем ТУТ ЖЕ, раз в кадр.
+    //
+    // Прежде я звал только CalculateBones_Invalidate при отрисовке — это лишь помечает кости
+    // грязными, но не проигрывает анимацию. Модель стояла в первом кадре, и движение выглядело
+    // сломанным. Порядок обязателен и тот же, что у рук выше: сдвинуть дорожки, пометить, посчитать.
+    //
+    // Здесь, а не в render_hud: отрисовка зовётся по разу на каждый контекст, и анимация тогда
+    // убегала бы вперёд кратно их числу.
+    if (m_da_script_item_model)
+    {
+        // Положение считаем ЗДЕСЬ, а не при отрисовке: кости рук только что посчитаны, и точка
+        // хвата уже верная. При отрисовке она была бы от прошлого кадра, а сама отрисовка идёт по
+        // разу на каждый контекст — считать в ней одно и то же несколько раз незачем.
+        if (m_da_script_item_attached)
+        {
+            IKinematics* k = m_model ? smart_cast<IKinematics*>(m_model) : nullptr;
+            const u16 idx = m_da_script_item_lead_gun ? u16(0) : m_da_script_item_attach;
+            if (k && idx < m_ancors.size())
+            {
+                const Fmatrix ancor = k->LL_GetTransform(m_ancors[idx]);
+                m_da_script_item_transform.mul(m_transform, ancor);
+                m_da_script_item_transform.mulB_43(m_da_script_item_offset);
+            }
+            else
+                m_da_script_item_transform.mul(m_transform, m_da_script_item_offset);
+        }
+        else
+            m_da_script_item_transform.mul(m_transform, m_da_script_item_offset);
+
+        m_da_script_item_model->UpdateTracks();
+        m_da_script_item_model->dcast_PKinematics()->CalculateBones_Invalidate();
+        m_da_script_item_model->dcast_PKinematics()->CalculateBones(TRUE);
+
+    }
+
     if (item0)
         item0->update(true);
 
@@ -933,6 +1026,13 @@ u32 player_hud::anim_play(u16 part, const MotionID& M, BOOL bMixIn, const CMotio
     {
         u16 part_id = u16(-1);
         if (attached_item(0) && attached_item(1))
+            part_id = m_model->partitions().part_id((part == 0) ? "right_hand" : "left_hand");
+        // [DA_PORT] Однорукая скриптовая сцена: цикл ложится ТОЛЬКО на свою руку.
+        //
+        // Стоковое условие выше требует занятых обеих рук - для двурукого хвата. Сцене этого мало:
+        // она хочет двигать левой, пока правая держит ствол. Части модели те же самые, поэтому
+        // достаточно разрешить их выбор ещё и здесь.
+        else if (m_da_script_one_hand)
             part_id = m_model->partitions().part_id((part == 0) ? "right_hand" : "left_hand");
 
         const u16 pc = m_model->partitions().count();
@@ -951,6 +1051,276 @@ u32 player_hud::anim_play(u16 part, const MotionID& M, BOOL bMixIn, const CMotio
     return motion_length(M, md, speed, itemModel);
 }
 
+u32 player_hud::da_script_motion_length(pcstr section, pcstr anim, float speed)
+{
+    // [DA_PORT] Длина цикла рук, миллисекунды. Ноль означает "не нашли".
+    //
+    // Зачем понадобилось: скриптам нужно знать, сколько идёт чужая анимация, чтобы подгадать под
+    // неё своё расписание. Без этого длительности подбираются на глаз и разъезжаются, стоит
+    // мододелу поменять .omf. У Anomaly для этого есть game.get_motion_length, у нас не было.
+    //
+    // Набор движений берём из того же кэша, что и сама сцена, поэтому лишней загрузки нет.
+    if (!m_model || !section || !anim)
+        return 0;
+
+    const shared_str sect(section);
+    if (!pSettings->section_exist(sect))
+        return 0;
+
+    auto it = m_da_script_motions.find(sect);
+    if (it == m_da_script_motions.end())
+    {
+        player_hud_motion_container container;
+        container.load(m_model, sect);
+        it = m_da_script_motions.emplace(sect, std::move(container)).first;
+    }
+
+    const player_hud_motion* motion = it->second.find_motion(anim);
+    if (!motion || motion->m_animations.empty())
+        return 0;
+
+    const CMotionDef* md = nullptr;
+    return motion_length(motion->m_animations[0].mid, md, speed > 0.f ? speed : 1.f, nullptr);
+}
+
+// [DA_PORT] Анимация рук по требованию скрипта. Разбор — у объявления в player_hud.h.
+u32 player_hud::da_script_anim_play(u8 hand, pcstr section, pcstr anim, bool mix_in, float speed, u32 target_ms)
+{
+    if (!m_model || !section || !anim)
+        return 0;
+
+    const shared_str sect = section;
+    if (!pSettings->section_exist(sect))
+    {
+        Msg("! [DA_PORT] анимация рук: секции [%s] нет", section);
+        return 0;
+    }
+
+    // Набор движений грузим ОДИН раз на секцию: загрузка перебирает строки конфига и ищет циклы в
+    // модели рук, а зовут её на каждое подтягивание.
+    auto it = m_da_script_motions.find(sect);
+    if (it == m_da_script_motions.end())
+    {
+        player_hud_motion_container container;
+        container.load(m_model, sect);
+        it = m_da_script_motions.emplace(sect, std::move(container)).first;
+    }
+
+    const player_hud_motion* motion = it->second.find_motion(anim);
+    if (!motion || motion->m_animations.empty())
+    {
+        // ⚠️ Частый случай при переносе чужого мода: цикла нет в НАШЕЙ модели рук. Анимация лежит
+        // в своём .omf под скелет другой сборки, и наш скелет о ней не знает. Пишем прямо, иначе
+        // руки просто не двинутся и это будет выглядеть дефектом сцены.
+        Msg("! [DA_PORT] анимация рук: цикл [%s] не найден в секции [%s] — нет в модели рук",
+            anim, section);
+        return 0;
+    }
+
+    // Посадка рук для этой сцены. Широкоэкранный вариант, если он задан: у секции те же имена
+    // ключей, что и у обычного предмета в руках.
+    {
+        const Fvector zero{ 0.f, 0.f, 0.f };
+        pcstr key = UI().is_widescreen() ? "hands_position_16x9" : "hands_position";
+        m_da_script_hands_pos = pSettings->read_if_exists<Fvector>(sect, key, zero);
+        pcstr rkey = UI().is_widescreen() ? "hands_orientation_16x9" : "hands_orientation";
+        m_da_script_hands_rot = pSettings->read_if_exists<Fvector>(sect, rkey, zero);
+    }
+
+    const motion_descr& M = motion->m_animations[Random.randI(motion->m_animations.size())];
+
+    // [DA_PORT] Растягиваем цикл под длительность СЦЕНЫ, если она задана.
+    //
+    // Зачем. Длину сцены задаёт скрипт своей величиной tm в конфиге (у хлеба 7000 мс), а длина
+    // анимации записана в самом цикле (у того же хлеба 5970 мс) — совпадать они не обязаны. Цикл
+    // помечен "остановиться в конце", поэтому он доигрывает и ЗАМИРАЕТ, а сцена идёт ещё секунду:
+    // руки с предметом стоят неподвижно, и выглядит это оборванной анимацией.
+    //
+    // Подгонять скоростью честнее, чем растворять руки в конце: движение остаётся цельным, просто
+    // идёт ровно столько, сколько отведено. Ноль означает "не трогать", и тогда всё как прежде.
+    float eff_speed = speed;
+    if (target_ms > 0)
+    {
+        const CMotionDef* base_md = nullptr;
+        const u32 base = motion_length(M.mid, base_md, 1.f, nullptr);
+        if (base > 0)
+            eff_speed = float(base) / float(target_ms);
+    }
+
+    // [DA_PORT] Предмет в руках: бутылка, аптечка, пачка сигарет.
+    //
+    // Без него сцена выглядит так, будто игрок пьёт из воздуха — руки двигаются правильно, а
+    // держат пустоту. Модель своя, отдельная от предметов инвентаря: она нужна только на время
+    // сцены и живёт ровно столько же.
+    da_script_item_release();
+    if (pSettings->line_exist(sect, "item_visual"))
+    {
+        // Отметки hud_loading, как в первоисточнике, у нашего рендера нет — модель создаётся так
+        // же, как модель рук и оружия строчками выше.
+        pcstr visual = pSettings->r_string(sect, "item_visual");
+        IRenderVisual* vis = GEnv.Render->model_Create(visual);
+        m_da_script_item_model = smart_cast<IKinematicsAnimated*>(vis);
+
+    }
+
+    if (m_da_script_item_model)
+    {
+        const Fvector zero{ 0.f, 0.f, 0.f };
+        const Fvector pos = pSettings->read_if_exists<Fvector>(sect, "item_position", zero);
+        Fvector ypr = pSettings->read_if_exists<Fvector>(sect, "item_orientation", zero);
+        ypr.mul(PI / 180.f);
+        m_da_script_item_offset.setHPB(ypr.x, ypr.y, ypr.z);
+        m_da_script_item_offset.translate_over(pos);
+        m_da_script_item_attach = pSettings->read_if_exists<u16>(sect, "attach_place_idx", 0);
+
+        // [DA_PORT] Две развилки крепления, перенесённые из первоисточника целиком.
+        //
+        // item_attached (по умолчанию ДА) — цеплять предмет к кости руки. Если нет, он ставится
+        // собственной матрицей: так делают вещи, которые по замыслу не follow руку, а висят перед
+        // камерой сами по себе.
+        //
+        // lh_lead_gun — брать точку хвата ОРУЖИЯ (ancor_0) независимо от того, какая рука занята.
+        // Нужно предметам, которые держат правой, а анимация играет левой.
+        m_da_script_item_attached = pSettings->read_if_exists<bool>(sect, "item_attached", true);
+
+        // [DA_PORT] Подавлять ли корневую кость предмета — теперь решает секция.
+        //
+        // По умолчанию ДА, как было: у бутылок и еды в корне записан проезд по мировым
+        // координатам, и без подавления предмет улетает за сотню метров.
+        //
+        // Но бывает наоборот. У мешка после разделки в корне записана вся расстановка сцены: он
+        // поднимается и разворачивается сам, в пространстве рук. Обнуляя корень, мы стирали именно
+        // её — мешок оставался где придётся. Замерено по костям: meat_* и mshk_* уходят от корня на
+        // полметра и меняются за кадр целиком.
+        m_da_script_item_root_lock = pSettings->read_if_exists<bool>(sect, "item_root_lock", true);
+        m_da_script_item_lead_gun = pSettings->read_if_exists<bool>(sect, "lh_lead_gun", false);
+
+        // ⚠️ У предмета СВОЁ имя цикла, второе в строке `anm_xxx = руки, предмет`. Если второго
+        // нет, строка описывает только руки, и у предмета берём то же имя. Промах здесь означал бы
+        // неподвижную бутылку в двигающейся руке.
+        const shared_str item_anim =
+            (motion->m_base_name != motion->m_additional_name) ? motion->m_additional_name : M.name;
+
+        MotionID mid = m_da_script_item_model->ID_Cycle_Safe(item_anim);
+        if (!mid.valid())
+            mid = m_da_script_item_model->ID_Cycle_Safe("idle");
+
+        if (mid.valid())
+        {
+            // ⛔ Корневую кость ЗАБИВАЕМ единичной матрицей, иначе предмет улетает.
+            //
+            // Анимация предмета записана вместе с движением корня: в исходной сцене он ехал по
+            // мировым координатам. Если корень не подавить, бутылка уезжает за сотню метров от
+            // рук — формально она рисуется, а на экране её нет. Ровно это и было: отчёт показывал
+            // и созданную модель, и вызов отрисовки, и координаты рядом с камерой, но видно ничего
+            // не было.
+            //
+            // Тот же приём стоит в attachable_hud_item для обычного оружия — я его просто не
+            // перенёс в скриптовый путь.
+            IKinematics* k_item = m_da_script_item_model->dcast_PKinematics();
+            if (k_item && m_da_script_item_root_lock)
+            {
+                const u16 root_id = k_item->LL_GetBoneRoot();
+                CBoneInstance& root = k_item->LL_GetBoneInstance(root_id);
+                root.set_callback_overwrite(TRUE);
+                root.mTransform.identity();
+            }
+
+            const u16 pc = m_da_script_item_model->partitions().count();
+            for (u16 pid = 0; pid < pc; ++pid)
+                // Скорость у PlayCycle доводом не передаётся — правим её у полученной подмешки,
+                // ровно как это делает anim_play для рук.
+                if (CBlend* B = m_da_script_item_model->PlayCycle(pid, mid, mix_in ? TRUE : FALSE))
+                    B->speed *= eff_speed;
+            m_da_script_item_model->dcast_PKinematics()->CalculateBones_Invalidate();
+
+        }
+        else
+            Msg("! [DA_PORT] анимация рук: у предмета [%s] нет цикла [%s] и нет idle",
+                pSettings->r_string(sect, "item_visual"), item_anim.c_str());
+    }
+
+    // hand: 0 — правая, 1 — левая, 2 — обе. Наш anim_play различает руки ТОЛЬКО когда заняты обе
+    // руки предметами; в скриптовой сцене их нет, и цикл ложится на все части сразу — что для
+    // подтягивания и нужно.
+    // hand: 0 — правая, 1 — левая, 2 — обе.
+    //
+    // [DA_PORT] Однорукая сцена: цикл ложится только на свою руку, вторая продолжает держать
+    // оружие и рисоваться. Признак нужен трём местам сразу — выбору части в anim_play, посадке рук
+    // и отрисовке прикреплённого, поэтому он поле, а не довод.
+    m_da_script_one_hand = (hand != 2);
+    const u16 part = (hand == 1) ? 1 : 0;
+
+    const CMotionDef* md = nullptr;
+    const u32 length = anim_play(part, M.mid, mix_in ? TRUE : FALSE, md, eff_speed, nullptr);
+
+    m_da_script_anim_end = length ? (Device.dwTimeGlobal + length) : 0;
+    m_da_script_anim_on = true;
+
+    return length;
+}
+
+// Снятие модели предмета. Отдельной функцией: зовётся и при остановке, и перед новой сценой —
+// иначе прежняя модель осталась бы висеть в руках поверх новой.
+void player_hud::da_script_item_release()
+{
+    if (!m_da_script_item_model)
+        return;
+
+    IRenderVisual* v = m_da_script_item_model->dcast_RenderVisual();
+    m_da_script_item_model = nullptr;
+    GEnv.Render->model_Delete(v);
+}
+
+void player_hud::da_script_anim_stop()
+{
+    if (m_da_script_anim_on)
+
+    da_script_item_release();
+
+    // [DA_PORT] После ОДНОРУКОЙ сцены просим оружие переиграть покой.
+    //
+    // Мы клали свой цикл на часть модели, где живёт вторая рука. Сам он не снимается, и рука
+    // оставалась в последней позе сцены — на экране она просто пропадала со ствола. Оружейный
+    // цикл покоя ставит её обратно.
+    //
+    // Для двурукой сцены этого не нужно: там оружие всё равно убрано, и его анимация встанет сама
+    // при ближайшем обновлении.
+    if (m_da_script_one_hand)
+    {
+        if (attachable_hud_item* hi = m_attached_items[0])
+            if (hi->m_parent_hud_item)
+                hi->m_parent_hud_item->PlayAnimIdle();
+    }
+    m_da_script_one_hand = false;
+
+    m_da_script_anim_on = false;
+    // Гасим только СВОЮ отметку. Насильно обрывать цикл незачем: если в руках есть предмет, его
+    // собственная анимация встанет на место при ближайшем обновлении, а если рук ничем не занято —
+    // обрывать нечего.
+    m_da_script_anim_end = 0;
+}
+
+bool player_hud::da_script_anim_active() const
+{
+    if (!m_da_script_anim_on)
+        return false;
+
+    // ⛔ Сцена ОБЯЗАНА кончаться сама по времени, а не только по команде скрипта.
+    //
+    // Мод не зовёт game.stop_hud_motion при обычном завершении — он полагается, что движок закроет
+    // сцену сам, когда доиграет цикл. Я же сделал признак чисто флаговым, и он не снимался НИКОГДА:
+    // предмет сцены оставался в руках навсегда, а настоящее оружие не рисовалось (его отрисовку
+    // сцена подавляет). Со стороны выглядело так, будто игрок дерётся батоном.
+    //
+    // Теперь время — заслон: даже если остановку не позвали, сцена закроется по концу цикла. А
+    // растяжение под длительность сцены (см. da_script_anim_play) сводит этот момент с настоящим
+    // концом сцены, так что ничего не обрывается раньше времени.
+    if (m_da_script_anim_end && Device.dwTimeGlobal >= m_da_script_anim_end)
+        return false;
+
+    return true;
+}
 void player_hud::update_additional(Fmatrix& trans) const
 {
     if (m_attached_items[0])

@@ -1,5 +1,6 @@
 #include "stdafx.h"
 
+#include "xrCommon/xr_set.h" // [DA_PORT] da_static_dedup_exact
 #include "xrEngine/IRenderable.h"
 #include "xrEngine/CustomHUD.h"
 
@@ -7,6 +8,7 @@
 
 #include "FBasicVisual.h"
 #include "FTreeVisual.h" // [DA_PORT] пакетная отрисовка деревьев
+#include "FVisual.h" // [DA_PORT] тег-based приведение к IRender_Mesh, см. da_as_mesh
 #include "SkeletonCustom.h"
 #include "FLOD.h"
 
@@ -53,6 +55,10 @@ ICF float calcLOD(float ssa /*fDistSq*/, float /*R*/)
 // [DA_PORT] Вне безымянного пространства имён: ручку регистрирует консоль (xrRender_console.cpp).
 int ps_da_tree_batch = 1;
 
+// [DA_PORT] Объявлен здесь (определение и регистрация — ниже, у instance-probe), чтобы
+// da_render_tree_batches мог свериться с ним: не заводить второй флаг под то же самое.
+extern int ps_da_instance_probe;
+
 namespace
 {
 constexpr u32 da_tree_batch_capacity = 64; // столько же в tree_instance.h — расходиться нельзя
@@ -83,6 +89,22 @@ FTreeVisual* da_as_tree(dxRender_Visual* visual)
 {
     switch (visual->Type)
     {
+    case MT_TREE_ST:
+    case MT_TREE_PM: return static_cast<FTreeVisual*>(visual);
+    default: return nullptr;
+    }
+}
+
+// [DA_PORT] Тот же приём, что у da_as_tree, только на весь IRender_Mesh — только Fvisual и
+// FTreeVisual реализуют его (проверено грепом `public IRender_Mesh` по xrRender). Замена
+// dynamic_cast<IRender_Mesh*>: A/B на r__static_sort_geom показал сортировку ХУЖЕ на ~0.2 мс
+// именно из-за него — RTTI в компараторе, вызываемом O(n log n) раз за кадр, съедает саму
+// экономию. Тег читается за одно сравнение, без похода в таблицы типов.
+IRender_Mesh* da_as_mesh(dxRender_Visual* visual)
+{
+    switch (visual->Type)
+    {
+    case MT_NORMAL: return static_cast<Fvisual*>(visual);
     case MT_TREE_ST:
     case MT_TREE_PM: return static_cast<FTreeVisual*>(visual);
     default: return nullptr;
@@ -190,6 +212,24 @@ bool da_render_tree_batches(CBackend& cmd_list, mapNormalItems& items)
     R_constant* instance_control{};
     if (!da_tree_instance_constants(cmd_list, instance_data, instance_control))
     {
+        // [DA_PORT] instance-probe (r__instance_probe 1): сколько ИМЕННО деревьев застряло в этом
+        // проходе без tree_instance_* — иначе неясно, попутный это шейдер (без единого дерева) или
+        // тот самый, что даёт TREE_ST/TREE_PM максимумом в 176 повторов геометрии.
+        if (ps_da_instance_probe)
+        {
+            u32 tree_count = 0;
+            for (const _NormalItem& item : items)
+                if (da_as_tree(item.pVisual))
+                    ++tree_count;
+            if (tree_count)
+            {
+                static std::atomic<bool> reported{false};
+                if (!reported.exchange(true))
+                    Msg("* [DA_PORT] instance-probe: непакетированных деревьев в проходе без "
+                        "tree_instance_*: %u из %u объектов",
+                        tree_count, u32(items.size()));
+            }
+        }
         da_tree_batch_note("в шейдере нет констант tree_instance_* — рисуем по-старому");
         return false;
     }
@@ -361,6 +401,347 @@ bool da_render_tree_batches(CBackend& cmd_list, mapNormalItems& items)
 } // namespace
 #endif
 
+// [DA_PORT] --- Зонд: сколько объектов в кадре делят ОДИН вершинный/индексный буфер (rm_geom) ------
+//
+// Вопрос не «работает ли инстансинг у деревьев» (работает, см. выше), а есть ли смысл делать его для
+// остальной статики. У обычных объектов уровня (секция NORMAL ниже) вершины уже запечены в мировых
+// координатах SDK-компилятором — `set_xform_world(Fidentity)` ставится ОДИН раз на весь проход, а не
+// на объект, — так что даже повтор геометрии там инстансингом не собрать без переработки экспорта
+// уровня.
+//
+// ⚠️ Первая версия зонда считала по указателю на `dxRender_Visual` и стабильно показывала 0 дублей
+// на тысячах объектов — это была ложная цифра: каждый заспавненный объект получает СВОЮ обёртку
+// (`Copy()`), даже когда её `rm_geom` смотрит в один и тот же общий буфер на видеокарте (ровно так
+// уже сделано для деревьев — см. `da_same_tree_geometry` выше, она сравнивает не `FTreeVisual*`, а
+// `vb`/`ib`/`dcl`). Здесь то же самое: ключ — сырой указатель на разделяемый `rm_geom`, а не на
+// обёртку.
+//
+// Временный инструмент, не влияет на отрисовку. Включается `r__instance_probe 1`, печатает в лог не
+// чаще раза в секунду.
+int ps_da_instance_probe = 0;
+
+// [DA_PORT] Регистрируется консолью (xrRender_console.cpp) как r__static_sort_geom. Определение
+// функции — ниже, у instance-probe: ей нужен da_instance_probe_key.
+int ps_da_static_sort_geom = 0;
+
+// [DA_PORT] Регистрируется консолью как r__static_dedup. Определение da_static_dedup_exact — ниже.
+// ⭐ Включён по умолчанию (25.08) — подтверждено дважды в игре: ~16 точных дублей на каждый проход
+// отрисовки, стабильно, DIP 2131→1921 (-10%). Картинка не меняется — снимаются буквально повторные
+// вставки того же диапазона геометрии в список, а не что-то видимое.
+int ps_da_static_dedup = 1;
+
+// [DA_PORT] Регистрируется консолью как r__matrix_dedup. Определение da_matrix_dedup_exact — ниже.
+int ps_da_matrix_dedup = 0;
+
+namespace
+{
+// [DA_PORT] Ключ идентичности геометрии: (rm_geom, vBase, iBase) у объектов с IRender_Mesh, иначе —
+// указатель на саму обёртку. Указателя на rm_geom одного НЕ ХВАТАЕТ: SDK мог упаковать НЕСКОЛЬКО
+// уже готовых (разных) кусков в один общий VB/IB и развести их смещением — тогда общий rm_geom это
+// общий КОНТЕЙНЕР, а не общая отрисовка, ровно как обёртка была общим враньём в первой версии зонда.
+// vBase/iBase — тот же individual-offset смысл, что различал деревья в пачке (draw.base_vertex).
+struct da_instance_probe_key_t
+{
+    void* geom{};
+    u32 vBase{};
+    u32 iBase{};
+    bool operator<(const da_instance_probe_key_t& other) const
+    {
+        if (geom != other.geom)
+            return geom < other.geom;
+        if (vBase != other.vBase)
+            return vBase < other.vBase;
+        return iBase < other.iBase;
+    }
+};
+
+da_instance_probe_key_t da_instance_probe_key(dxRender_Visual* visual, u32& out_vertex_count)
+{
+    out_vertex_count = 0;
+    if (auto* mesh = da_as_mesh(visual))
+    {
+        out_vertex_count = mesh->vCount;
+        if (mesh->rm_geom)
+            return {&*mesh->rm_geom, mesh->vBase, mesh->iBase};
+    }
+    return {visual, 0, 0};
+}
+
+struct da_instance_probe_sample
+{
+    u32 count{};
+    u32 type{u32(-1)};
+    u32 vertex_count{};
+};
+
+struct da_instance_probe_state
+{
+    xr_map<da_instance_probe_key_t, da_instance_probe_sample> normal_counts;
+    xr_map<da_instance_probe_key_t, da_instance_probe_sample> matrix_counts;
+    u32 normal_items{};
+    u32 matrix_items{};
+    u32 frame{u32(-1)};
+    float last_report{-1000.f};
+};
+
+da_instance_probe_state& da_instance_probe_get()
+{
+    static da_instance_probe_state state;
+    return state;
+}
+
+// [DA_PORT] Человеческое имя по MT_* (xrCore/FMesh.hpp) — иначе в логе голое число.
+pcstr da_instance_probe_type_name(u32 type)
+{
+    switch (type)
+    {
+    case 0: return "NORMAL(Fvisual)";
+    case 1: return "HIERRARHY";
+    case 2: return "PROGRESSIVE";
+    case 3: return "SKELETON_ANIM";
+    case 4: return "SKELETON_GEOMDEF_PM";
+    case 5: return "SKELETON_GEOMDEF_ST";
+    case 6: return "LOD";
+    case 7: return "TREE_ST";
+    case 8: return "PARTICLE_EFFECT";
+    case 9: return "PARTICLE_GROUP";
+    case 10: return "SKELETON_RIGID";
+    case 11: return "TREE_PM";
+    default: return "?";
+    }
+}
+
+void da_instance_probe_tally(const xr_map<da_instance_probe_key_t, da_instance_probe_sample>& counts, u32& groups,
+    u32& removable, const da_instance_probe_sample*& biggest)
+{
+    groups = 0;
+    removable = 0;
+    biggest = nullptr;
+    for (const auto& kv : counts)
+    {
+        if (kv.second.count > 1)
+        {
+            ++groups;
+            removable += kv.second.count - 1;
+            if (!biggest || kv.second.count > biggest->count)
+                biggest = &kv.second;
+        }
+    }
+}
+
+void da_instance_probe_report(const da_instance_probe_state& state)
+{
+    u32 n_groups, n_removable;
+    const da_instance_probe_sample* n_biggest;
+    da_instance_probe_tally(state.normal_counts, n_groups, n_removable, n_biggest);
+    u32 m_groups, m_removable;
+    const da_instance_probe_sample* m_biggest;
+    da_instance_probe_tally(state.matrix_counts, m_groups, m_removable, m_biggest);
+
+    Msg("* [DA_PORT] instance-probe СТАТИКА (NORMAL, координаты уже мировые - справочно): "
+        "%u объектов, %u геометрий, %u повторяются (макс %u раз, тип %s, вершин %u), слияние убрало бы %u вызовов",
+        state.normal_items, u32(state.normal_counts.size()), n_groups,
+        n_biggest ? n_biggest->count : 0,
+        n_biggest ? da_instance_probe_type_name(n_biggest->type) : "-",
+        n_biggest ? n_biggest->vertex_count : 0, n_removable);
+    Msg("* [DA_PORT] instance-probe ДИНАМИКА (MATRIX, кандидат на инстансинг): "
+        "%u объектов, %u геометрий, %u повторяются (макс %u раз, тип %s, вершин %u), слияние убрало бы %u вызовов",
+        state.matrix_items, u32(state.matrix_counts.size()), m_groups,
+        m_biggest ? m_biggest->count : 0,
+        m_biggest ? da_instance_probe_type_name(m_biggest->type) : "-",
+        m_biggest ? m_biggest->vertex_count : 0, m_removable);
+}
+
+// [DA_PORT] instance-probe: слитность vBase внутри страницы (r__instance_probe 1).
+//
+// Вопрос перед тем, как писать слияние статики в один DrawIndexed: у объектов одного материала на
+// одной общей странице геометрии (getVB(ID) — пул на весь уровень, см. CRender::getVB) диапазоны
+// vBase идут ПОДРЯД или вразброс? Если подряд — один общий вызов может накрыть всю страницу без
+// перекраивания индексного буфера. Если вразброс — сшивать нечего без отдельной подсистемы
+// (собственный объединённый IB), тема закрывается прямо здесь, без месяца работы вслепую.
+//
+// Деревья пропускаем: у них своя семантика (общая форма, разная матрица), не общий диапазон.
+void da_instance_probe_contiguity(mapNormalItems& items)
+{
+    static std::atomic<bool> reported{false};
+    if (reported.load(std::memory_order_relaxed))
+        return;
+
+    struct Entry
+    {
+        void* geom;
+        u32 vBase;
+        u32 vCount;
+    };
+    static thread_local xr_vector<Entry> entries;
+    entries.clear();
+
+    for (const _NormalItem& item : items)
+    {
+        if (da_as_tree(item.pVisual))
+            continue;
+        if (auto* mesh = da_as_mesh(item.pVisual))
+            if (mesh->rm_geom)
+                entries.push_back({&*mesh->rm_geom, mesh->vBase, mesh->vCount});
+    }
+    if (entries.size() < 10)
+        return; // мал прок с горстки объектов — подождём прохода пожирнее
+
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+        if (a.geom != b.geom)
+            return a.geom < b.geom;
+        return a.vBase < b.vBase;
+    });
+
+    size_t best_begin = 0, best_count = 0, group_begin = 0;
+    for (size_t i = 1; i <= entries.size(); ++i)
+    {
+        if (i == entries.size() || entries[i].geom != entries[group_begin].geom)
+        {
+            if (i - group_begin > best_count)
+            {
+                best_count = i - group_begin;
+                best_begin = group_begin;
+            }
+            group_begin = i;
+        }
+    }
+    if (best_count < 10)
+        return;
+
+    u32 vsum = 0;
+    u32 gaps = 0;
+    u32 expected = entries[best_begin].vBase;
+    for (size_t i = best_begin; i < best_begin + best_count; ++i)
+    {
+        vsum += entries[i].vCount;
+        if (entries[i].vBase != expected)
+            ++gaps;
+        expected = entries[i].vBase + entries[i].vCount;
+    }
+    const Entry& last = entries[best_begin + best_count - 1];
+    const u32 span = (last.vBase + last.vCount) - entries[best_begin].vBase;
+
+    reported.store(true, std::memory_order_relaxed);
+    Msg("* [DA_PORT] instance-probe: слитность страницы — %u объектов одного материала, %u из них с "
+        "разрывом (не встык с предыдущим), сумма вершин %u, охват диапазона %u (заполнение %.0f%%)",
+        u32(best_count), gaps, vsum, span, span ? 100.0 * vsum / span : 0.0);
+}
+
+// [DA_PORT] r__static_dedup 1 — не инстансинг, а устранение ТОЧНЫХ дублей в статике (NORMAL).
+//
+// У статики трансформ запечён в вершины (`set_xform_world(Fidentity)` ставится один раз на весь
+// проход, см. render_graph) — то есть разных позиций для инстансинга здесь нет физически. Но если
+// два элемента списка ссылаются на ОДИН И ТОТ ЖЕ диапазон геометрии (страница + vBase + iBase —
+// da_instance_probe_key_t), это не «два похожих объекта», это буквально одни и те же треугольники в
+// одном и том же месте, вставленные в список отрисовки дважды (например, объект у границы портала
+// попал в видимость сразу с двух путей обхода секторов). Рисовать такое второй раз — чистая трата,
+// без всякого риска для картинки: то, что осталось, покрывает ту же геометрию, что и удалённое.
+//
+// Дважды измерено сегодня (r__instance_probe), что настоящих повторов немного и в основном это
+// остатки пакетирования деревьев — здесь фильтруются ТОЛЬКО точные совпадения диапазона, ничего не
+// сливается «примерно». Пустая находка тоже честный результат, а не повод молчать — считаем и
+// печатаем, сколько реально снято.
+void da_static_dedup_exact(mapNormalItems& items)
+{
+    static thread_local xr_set<da_instance_probe_key_t> seen;
+    seen.clear();
+
+    size_t write = 0;
+    u32 removed = 0;
+    for (size_t read = 0; read < items.size(); ++read)
+    {
+        u32 vcount{};
+        da_instance_probe_key_t key = da_instance_probe_key(items[read].pVisual, vcount);
+        if (seen.insert(key).second)
+            items[write++] = items[read];
+        else
+            ++removed;
+    }
+    items.resize(write);
+
+    if (removed)
+    {
+        static std::atomic<u32> total_removed{0};
+        u32 running = total_removed.fetch_add(removed, std::memory_order_relaxed) + removed;
+        static std::atomic<float> last_report{-1000.f};
+        float prev = last_report.load(std::memory_order_relaxed);
+        if (Device.fTimeGlobal - prev > 1.f &&
+            last_report.compare_exchange_strong(prev, Device.fTimeGlobal, std::memory_order_relaxed))
+        {
+            Msg("* [DA_PORT] static-dedup: снято %u точных дублей за проход (всего с включения: %u)",
+                removed, running);
+        }
+    }
+}
+
+// [DA_PORT] r__matrix_dedup 1 — тот же дедуп, что у статики, только для MATRIX (динамика). Ключ —
+// пара (объект, визуал), а не геометрия: у динамики матрица честно СВОЯ на каждый экземпляр (не
+// запечена в вершины), поэтому совпадение геометрии между РАЗНЫМИ предметами — это норма, не дубль.
+// А вот если один и тот же (IRenderable*, dxRender_Visual*) встретился в списке дважды — это
+// однозначно повторная вставка ОДНОГО И ТОГО ЖЕ объекта (маркер `vis.marker[context_id]` защищает
+// только внутри одного обхода секторов — see insert_static/insert_dynamic — а не через весь кадр).
+void da_matrix_dedup_exact(mapMatrixItems& items)
+{
+    struct Key
+    {
+        IRenderable* object;
+        dxRender_Visual* visual;
+        bool operator<(const Key& o) const
+        {
+            if (object != o.object)
+                return object < o.object;
+            return visual < o.visual;
+        }
+    };
+    static thread_local xr_set<Key> seen;
+    seen.clear();
+
+    size_t write = 0;
+    u32 removed = 0;
+    for (size_t read = 0; read < items.size(); ++read)
+    {
+        if (seen.insert({items[read].pObject, items[read].pVisual}).second)
+            items[write++] = items[read];
+        else
+            ++removed;
+    }
+    items.resize(write);
+
+    if (removed)
+    {
+        static std::atomic<u32> total_removed{0};
+        u32 running = total_removed.fetch_add(removed, std::memory_order_relaxed) + removed;
+        static std::atomic<float> last_report{-1000.f};
+        float prev = last_report.load(std::memory_order_relaxed);
+        if (Device.fTimeGlobal - prev > 1.f &&
+            last_report.compare_exchange_strong(prev, Device.fTimeGlobal, std::memory_order_relaxed))
+        {
+            Msg("* [DA_PORT] matrix-dedup: снято %u точных дублей за проход (всего с включения: %u)",
+                removed, running);
+        }
+    }
+}
+
+// [DA_PORT] Досортировка статики внутри шейдер-группы по странице геометрии (r__static_sort_geom).
+//
+// Материал/текстура внутри группы УЖЕ одинаковы (это и есть ключ mapNormalPasses), а вот из какой
+// страницы общего пула вершин (getVB(ID)) взят объект — нет: список идёт по SSA, соседние вызовы
+// дёргают то одну страницу, то другую. На DX11 смена привязки буфера — часть валидации состояния на
+// каждый вызов (источник: gamedev.net/D3D11 state validation), а не сама отрисовка. Слияние в один
+// буфер (как у деревьев) здесь не выйдет — сегодняшний замер показал 15% заполнения диапазона,
+// чужая геометрия вперемешку. Но кластеризовать ВЫЗОВЫ по странице — можно и дёшево, без нового
+// буфера: stable_sort сохраняет исходный порядок по SSA внутри каждой страницы, то есть съедает
+// только сортировку МЕЖДУ разными страницами, а не сам front-to-back порядок.
+void da_static_sort_by_geometry_page(mapNormalItems& items)
+{
+    std::stable_sort(items.begin(), items.end(), [](const _NormalItem& a, const _NormalItem& b) {
+        u32 va{}, vb{};
+        return da_instance_probe_key(a.pVisual, va).geom < da_instance_probe_key(b.pVisual, vb).geom;
+    });
+}
+} // namespace
+
 template <class T>
 bool cmp_ssa(const T &lhs, const T &rhs)
 {
@@ -389,6 +770,26 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
 {
     PIX_EVENT_CTX(cmd_list, dsgraph_render_graph);
     RImplementation.BasicStats.Primitives.Begin(); // XXX: Refactor a bit later
+
+    // [DA_PORT] instance-probe: печатаем прошлый кадр и обнуляем счётчики на новый. Только для
+    // основного цветового прохода — теневые каскады и лампы считать не даём, иначе цифры смешают
+    // разные проходы одного кадра. Throttled: last_report переживает сброс состояния.
+    if (ps_da_instance_probe && o.phase == CRender::PHASE_NORMAL)
+    {
+        da_instance_probe_state& probe = da_instance_probe_get();
+        if (probe.frame != Device.dwFrame)
+        {
+            if (probe.frame != u32(-1) && Device.fTimeGlobal - probe.last_report > 1.f)
+            {
+                da_instance_probe_report(probe);
+                probe.last_report = Device.fTimeGlobal;
+            }
+            const float keep_last_report = probe.last_report;
+            probe = da_instance_probe_state{};
+            probe.frame = Device.dwFrame;
+            probe.last_report = keep_last_report;
+        }
+    }
 
     cmd_list.set_xform_world(Fidentity);
 
@@ -430,6 +831,28 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                 if (da_render_tree_batches(cmd_list, items) && items.empty())
                     continue;
 #endif
+                // [DA_PORT] instance-probe (r__instance_probe 1): замер ДО решения писать слияние
+                // статики. Вопрос простой: у объектов одного материала на одной странице (общий
+                // rm_geom из пула getVB) диапазоны vBase идут ПОДРЯД или вразброс? Если подряд —
+                // один общий DrawIndexed возможен. Если вразброс — тема закрыта без месяца работы.
+                if (ps_da_instance_probe && o.phase == CRender::PHASE_NORMAL)
+                    da_instance_probe_contiguity(items);
+
+                // [DA_PORT] r__static_sort_geom 1: досортировка по странице геометрии внутри
+                // шейдер-группы (материал уже одинаков). Кластеризует смену привязки буфера вместо
+                // хаотичного чередования — сам DIP не убирает, экономит проверку состояния на DX11.
+                // stable_sort — порядок по SSA внутри страницы не трогаем, только порядок МЕЖДУ
+                // страницами. Выключатель для чистого A/B в da_frame, без пересборки.
+                if (ps_da_static_sort_geom)
+                    da_static_sort_by_geometry_page(items);
+
+                // [DA_PORT] r__static_dedup 1: снять точные дубли диапазона геометрии (см. пояснение
+                // у da_static_dedup_exact). После сортировки по странице — так дубли уже соседние,
+                // seen.insert находит их быстрее (не обязательно, xr_set сам ищет за log n, но раз
+                // сортировка уже сделана, порядок вставки становится последовательным по странице).
+                if (ps_da_static_dedup)
+                    da_static_dedup_exact(items);
+
                 for (const auto& item : items)
                 {
                     const float LOD = calcLOD(item.ssa, item.pVisual->vis.sphere.R);
@@ -438,6 +861,18 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
 #endif
                     // --#SM+#-- Обновляем шейдерные данные модели [update shader values for this model]
                     // RCache.hemi.c_update(item.pVisual);
+
+                    if (ps_da_instance_probe && o.phase == CRender::PHASE_NORMAL)
+                    {
+                        da_instance_probe_state& probe = da_instance_probe_get();
+                        u32 vcount{};
+                        da_instance_probe_key_t key = da_instance_probe_key(item.pVisual, vcount);
+                        da_instance_probe_sample& sample = probe.normal_counts[key];
+                        ++sample.count;
+                        sample.type = item.pVisual->Type;
+                        sample.vertex_count = vcount;
+                        ++probe.normal_items;
+                    }
 
                     item.pVisual->Render(cmd_list, LOD, da_use_fast_geo(cmd_list, o.phase));
                 }
@@ -485,6 +920,13 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
                 items.ssa = 0;
 
                 std::sort(items.begin(), items.end(), cmp_ssa<_MatrixItem>);
+
+                // [DA_PORT] r__matrix_dedup 1: снять точные дубли (объект, визуал) — см.
+                // da_matrix_dedup_exact. Отдельный выключатель от статики: механизм тот же, но
+                // затронутые объекты другие, и подтверждать нужно отдельным замером.
+                if (ps_da_matrix_dedup)
+                    da_matrix_dedup_exact(items);
+
                 for (auto& item : items)
                 {
                     cmd_list.set_xform_world(item.Matrix);
@@ -497,6 +939,18 @@ void R_dsgraph_structure::render_graph(u32 _priority, da_graph_part da_part, boo
 #endif
                     // --#SM+#-- Обновляем шейдерные данные модели [update shader values for this model]
                     // RCache.hemi.c_update(item.pVisual);
+
+                    if (ps_da_instance_probe && o.phase == CRender::PHASE_NORMAL)
+                    {
+                        da_instance_probe_state& probe = da_instance_probe_get();
+                        u32 vcount{};
+                        da_instance_probe_key_t key = da_instance_probe_key(item.pVisual, vcount);
+                        da_instance_probe_sample& sample = probe.matrix_counts[key];
+                        ++sample.count;
+                        sample.type = item.pVisual->Type;
+                        sample.vertex_count = vcount;
+                        ++probe.matrix_items;
+                    }
 
                     item.pVisual->Render(cmd_list, LOD, da_use_fast_geo(cmd_list, o.phase));
                 }

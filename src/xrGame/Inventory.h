@@ -120,6 +120,7 @@ public:
     void SetSlotsBlocked(u16 mask, bool bBlock);
 
     void BlockSlot(u16 slot_id);
+    void DaUnblockAllSlots(); // [DA_PORT] сброс счётчика блокировок в ноль
     void UnblockSlot(u16 slot_id);
     bool IsSlotBlocked(PIItem const iitem) const;
 

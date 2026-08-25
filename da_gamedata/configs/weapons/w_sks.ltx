@@ -1,0 +1,268 @@
+[wpn_sks]:identity_immunities,weapon_probability,default_weapon_params,wpn_sks_sounds
+GroupControlSection                      = spawn_group
+discovery_dependency                     = ;"weapons\sig550"  
+$npc                                     = on ; option for Level Editor
+$prefetch                                = 8
+scheduled                                = off ; option for ALife Simulator
+cform                                    = skeleton
+class                                    = WP_ASHTG
+min_radius                               = 0 ;              = 0 
+max_radius                               = 500 ; = 250 ;              = 200
+description                              = st_wpn_sks_descr
+
+ef_main_weapon_type                      = 3
+ef_weapon_type                           = 11
+
+default_to_ruck			= true
+sprint_allowed                           = true ;false             
+;control_inertion_factor = 1
+
+misfire_start_condition		= 0.75
+misfire_end_condition		= 0.25
+misfire_start_prob              = 0.012 
+misfire_end_prob                = 0.1 
+condition_shot_dec      	= 0.0008
+condition_queue_shot_dec	= 0.0008
+
+repair_type                              = rifle
+condition_avail = 2030043123
+;---DOF-------------------------------------------------------------------------
+;zoom_dof				= 0.5, 1.0, 350
+reload_dof                               = 0.0, 0.5, 5, 1.7
+;-------------------------------------------------------------------------------
+
+upgrades                                 = up_gr_firstab_sks, up_gr_seconab_sks, up_gr_thirdab_sks
+installed_upgrades                       =
+upgrade_scheme                           = upgrade_scheme_toz34
+
+;--- scope weapons -----------------------------------------------------------------
+holder_range_modifier                    = 1.0 ; во сколько раз увеличивается eye_range
+holder_fov_modifier                      = 1.0 ; во сколько раз увеличивается eye_fov
+;-------------------------------------------------------------------------------
+
+cost					= 16000
+weapon_class                             = sniper_rifle
+
+ammo_limit                               = 60
+ammo_current                             = 10
+ammo_elapsed                             = 10
+
+ammo_mag_size                            = 10
+ammo_class           		= ammo_7.62x39_ap, ammo_7.62x39_fmj
+grenade_class                            = ammo_vog-25 ; name of the ltx-section of used grenades
+fire_modes                               = 1
+launch_speed                             = 0
+hand_dependence                          = 1
+single_handed                            = 0
+
+slot                                     = 2 ; // secondary     
+animation_slot                           = 2 ; type of the animation that will be used
+
+inv_name                                 = st_wpn_sks
+inv_name_short                           = st_wpn_sks
+inv_weight                               = 3.75
+
+inv_grid_width                           = 5
+inv_grid_height                          = 1
+inv_grid_x                               = 45
+inv_grid_y                               = 76
+
+
+upgr_icon_x                              = 1724 ; 599              
+upgr_icon_y                              = 802 ; 559              
+upgr_icon_width                          = 167 ; 272              
+upgr_icon_height                         = 159 ; 54               
+
+kill_msg_x                               = 259
+kill_msg_y                               = 293
+kill_msg_width                           = 114
+kill_msg_height                          = 22
+
+;-------------------------------------------------------------------------------
+;базовая дисперсия
+fire_dispersion_base                     = 0.23 ;угол (в градусах) базовой дисперсии оружия (оружия зажатого в тисках)
+control_inertion_factor                  = 1.73f
+crosshair_inertion                       = 8.3
+
+;отдача
+cam_return                               = 0 ;				= 0           
+cam_relax_speed                          = 5 ; скорость возврата в исходное положение
+cam_relax_speed_ai                       = 360 ; скорость возврата в исходное положение для AI
+cam_dispersion                           = 2
+cam_dispersion_inc                       = 1
+cam_dispersion_frac                      = 1.0 ; frac * angle + rand(-1,1)*(1-frac) * angle
+cam_max_angle                            = 50.0 ; максимальный угол отдачи
+cam_max_angle_horz                       = 50.0 ; (degree) maximum shot horizontal degree
+cam_step_angle_horz                      = 1.15 ; (degree) size of step camera moved in horizontal position while shooting
+
+PDM_disp_base                            = 1.45
+PDM_disp_vel_factor                      = 2.75
+PDM_disp_accel_factor                    = 2.75
+PDM_disp_crouch                          = 1.0 ;  			= 1.225      
+PDM_disp_crouch_no_acc                   = 1.0 ; 		= 1.425        
+
+zoom_cam_relax_speed                     = 5 ; scope & ironsight
+zoom_cam_relax_speed_ai                  = 360
+zoom_cam_dispersion                      = 4
+zoom_cam_dispersion_inc                  = 1
+zoom_cam_dispersion_frac                 = 1
+zoom_cam_max_angle                       = 50.0
+zoom_cam_max_angle_horz                  = 50.0
+zoom_cam_step_angle_horz                 = 0.95
+
+fire_dispersion_condition_factor = 10 ; = 0.01 ; 7        ;увеличение дисперсии в процентах при максимальном износе
+;-------------------------------------------------------------------------------
+
+position                                 = -0.026, -0.107, 0.00
+orientation                              = 0, 0, 0
+
+fire_point                               = 0.0, 0.129, 0.942
+fire_point2                              = 0.0, 0.129, 0.942
+
+flame_particles		= weapons\generic_weapon06
+smoke_particles                          = weapons\generic_shoot_00
+grenade_flame_particles                  = weapons\generic_weapon01
+rpm_empty_click                          = 200
+
+shell_point                              = 0, 0.129, 0.192
+shell_dir                                = 0, 0, 0.4
+shell_particles                          = weapons\762x39
+
+; ttc
+hit_power                                = 0.60, 0.60, 0.60, 0.60
+hit_impulse                              = 34
+hit_type                                 = fire_wound
+fire_distance                            = 1000
+bullet_speed                             = 735
+rpm                                      = 250
+rpm_empty_click                          = 250
+
+hit_probability_gd_novice                = 1.00 ;	= 0.8            
+hit_probability_gd_stalker               = 1.00 ;	= 0.8            
+hit_probability_gd_veteran               = 1.00 ;	= 0.8            
+hit_probability_gd_master                = 1.00 ;	= 0.8            
+
+use_aim_bullet                           = false ;Поддерживается ли первая суппер пуля
+time_to_aim                              = 1.0
+
+hud                                      = wpn_sks_hud
+
+;--STRAP PARAMETERS-----------------------------------------------------------------
+;под мишкой
+strap_position                           = -0.15,-0.15,0.45 ; position (offset) and orientation of the weapon when it is strapped
+strap_orientation                        = -25,-189,65 ; (3rd person view in degrees)
+strap_bone0                              = bip01_spine2
+strap_bone1                              = bip01_spine1
+
+startup_ammo                             = 10
+visual                                   = dynamics\weapons\wpn_sks\wpn_sks.ogf
+
+light_disabled                           = false
+light_color                              = 0.6,0.5,0.3
+light_range                              = 4.0
+light_var_color                          = 0.05
+light_var_range                          = 0.5
+light_time                               = 0.2
+
+ph_mass                                  = 3
+
+;addons
+scope_status                             = 2
+silencer_status                          = 0
+grenade_launcher_status                  = 0
+
+scopes_sect                              = scope_sks
+;silencer_name           	= wpn_addon_silencer_762x39    ; section name for the attachable silencer
+;silencer_x                  	= 232		; offset in inventory icon
+;silencer_y                  	= -12
+
+silencer_light_color                     = 0.6,0.5,0.3
+silencer_light_range                     = 0.01
+silencer_light_var_color                 = 0.05
+silencer_light_var_range                 = 0.5
+silencer_light_time                      = 0.2
+
+silencer_smoke_particles                 = weapons\generic_shoot_00
+
+zoom_enabled                             = true
+zoom_rotate_time                         = 0.25
+scope_zoom_factor = 1.1
+
+[wpn_sks_hud]:hud_base
+zoom_hide_crosshair                      = true
+attach_place_idx                         = 0
+item_visual                              = dynamics\weapons\wpn_sks\wpn_sks_hud.ogf
+
+hands_position                           = 0.05,-0.14,0.1
+hands_orientation                        = 2,2,0
+
+hands_position_16x9                      = 0.05,-0.14,0.1
+hands_orientation_16x9                   = 2,2,0
+
+item_position                            = 0,0,0
+item_orientation                         = 0,0,0
+
+aim_hud_offset_pos                       = -0.13225,0.0845,-0.1
+aim_hud_offset_rot                       = 0.0375,0.036,0
+aim_hud_offset_pos_16x9                  = -0.13225,0.0845,-0.1
+aim_hud_offset_rot_16x9                  = 0.0375,0.036,0
+
+shell_point                              = 0,0,0
+shell_dir                                = 0,0,0
+shell_bone                               = gilza
+fire_point                               = 0,0,0
+fire_bone                                = muzzle
+fire_point2                              = 0,0,0
+fire_bone2                               = wpn_body
+
+anm_show                                 = sks_draw
+anm_hide                                 = sks_holster
+anm_idle                                 = sks_idle
+anm_idle_sprint                          = sks_sprint
+anm_idle_moving                          = sks_move
+anm_shots                                = sks_shoot, shoot
+anm_reload                               = sks_reload, reload
+anm_idle_aim                             = sks_aim
+anm_bore                                 = sks_bore
+
+gl_hud_offset_pos                        = 0,0,0
+gl_hud_offset_rot                        = 0,0,0
+lean_hud_offset_pos                      = 0,0,0
+lean_hud_offset_rot                      = 0,0,0
+
+grenade_bone                             = grenade
+
+[wpn_sks_short]:wpn_sks
+inv_name                                 = st_wpn_sks_short
+inv_name_short                           = st_wpn_sks_short
+inv_weight                               = 2.80
+visual                                   = dynamics\weapons\wpn_sks\wpn_sks_short.ogf
+inv_grid_width                           = 4
+inv_grid_height                          = 1
+inv_grid_x                               = 45
+inv_grid_y                               = 75
+hud                                      = wpn_sks_short_hud
+scopes_sect                              = scope_sks_short
+
+hit_power                                = 0.56, 0.56, 0.56, 0.56
+hit_impulse                              = 28
+fire_distance                            = 200
+
+fire_dispersion_base                     = 0.6
+cost				= 10000
+
+[wpn_sks_short_hud]:wpn_sks_hud
+item_visual                              = dynamics\weapons\wpn_sks\wpn_sks_short_hud.ogf
+
+
+
+[scope_sks]
+scope_name                               = wpn_addon_scope_pu
+scope_x                                  = 75
+scope_y                                  = -21
+
+
+[scope_sks_short]
+scope_name                               = wpn_addon_scope_pu
+scope_x                                  = 30
+scope_y                                  = -21

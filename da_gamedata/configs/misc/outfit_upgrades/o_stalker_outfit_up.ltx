@@ -1,0 +1,394 @@
+[up_sect_firsta_stalker_outfit]
+cost 		= 1000
+inv_weight	= +0.2
+value		= +3
+
+hit_fraction_actor				= -0.03
+fire_wound_protection  			= 0.03
+
+bones_koeff_protection_add		= actor_armor_medium_add_1
+
+[up_sect_firstc_stalker_outfit]
+cost 		= 1500
+inv_weight	= +0.31
+value		= +7
+
+hit_fraction_actor				= -0.035
+wound_protection				= 0.07
+
+[up_sect_firstd_stalker_outfit]
+cost 		= 8000
+inv_weight	= +0.33
+value		= +25
+
+hit_fraction_actor				= -0.035
+
+immunities_sect_add 			= sect_stalker_outfit_immunities_physical_add_small
+
+[up_sect_firste_stalker_outfit]
+cost 		= 6100
+inv_weight	= +1.2
+value		= +7
+
+hit_fraction_actor				= -0.035
+fire_wound_protection  			= 0.07
+
+bones_koeff_protection_add		= actor_armor_medium_add_3
+
+[up_sect_secona_stalker_outfit]
+cost 		= 3100
+value		= -2.1
+
+inv_weight 						 = -2.1
+
+[up_sect_seconc_stalker_outfit]
+cost 		= 9000
+inv_weight	= +0.8
+value		= +5
+
+burn_protection    				 = 0.05
+
+immunities_sect_add				= sect_stalker_outfit_immunities_burn_add
+
+[up_sect_second_stalker_outfit]
+cost 		= 1500
+inv_weight	= +0.1
+value       = +3
+
+chemical_burn_protection  		 = 0.03
+shock_protection          		 = 0.03
+
+immunities_sect_add				= sect_stalker_outfit_immunities_chemical_burn_and_shock_add
+
+[up_sect_secone_stalker_outfit]
+cost 		= 2000
+value		= +5
+
+chemical_burn_protection  		 = 0.05
+
+immunities_sect_add				= sect_stalker_outfit_immunities_chemical_burn_add
+
+[up_sect_seconf_stalker_outfit]
+cost 		= 1200
+value		= +5
+
+radiation_protection 			= 0.005
+
+[up_sect_thirda_stalker_outfit]
+cost 		= 840
+inv_weight	= +0.09
+value		= +5
+
+radiation_protection 			= 0.005
+chemical_burn_protection  		 = 0.05
+
+immunities_sect_add				= sect_stalker_outfit_immunities_chemical_burn_add
+
+[up_sect_thirdc_stalker_outfit]
+cost 		= 12000
+inv_weight	= +0.2
+value       = +0.20
+
+health_restore_speed 	= 0.00003		;восстановление здоровья		1 единица = 0.00015
+
+[up_sect_thirdd_stalker_outfit]
+cost 		= 2000
+inv_weight	= +0.1
+value       = +6.5
+
+additional_inventory_weight 	= 6.5
+additional_inventory_weight2 	= 6.5
+
+[up_sect_thirde_stalker_outfit]
+cost 		= 2000
+inv_weight	= +0.15
+value       = +1
+
+artefact_count					= 1
+     
+[up_firsta_stalker_outfit]
+scheme_index            = 0, 0
+known                   = 1
+effects                 = up_gr_firstcd_stalker_outfit
+section                 = up_sect_firsta_stalker_outfit
+property                = prop_armor
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_arm_a7_name
+description             = st_up_arm_a7_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_1
+
+[up_firstc_stalker_outfit]
+scheme_index            = 1, 0
+known                   = 1
+effects                 = up_gr_firstef_stalker_outfit
+section                 = up_sect_firstc_stalker_outfit
+property                = prop_damage
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_arm_b9_name
+description             = st_up_arm_b9_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_2
+
+[up_firstd_stalker_outfit]
+scheme_index            = 1, 1
+known                   = 1
+effects                 = up_gr_firstef_stalker_outfit
+section                 = up_sect_firstd_stalker_outfit
+property                = prop_durability
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_arm_b2_name
+description             = st_up_arm_b2_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_4
+
+[up_firste_stalker_outfit]
+scheme_index            = 2, 0
+known                   = 1
+effects                 =
+section                 = up_sect_firste_stalker_outfit
+property                = prop_armor
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_arm_c2_name
+description             = st_up_arm_c2_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_3
+
+[up_secona_stalker_outfit]
+scheme_index            = 0, 1
+known                   = 1
+effects                 = up_gr_seconcd_stalker_outfit
+section                 = up_sect_secona_stalker_outfit
+property                = prop_weightoutfit
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_kom_a3_name
+description             = st_up_kom_a3_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_5
+
+[up_seconc_stalker_outfit]
+scheme_index            = 1, 2
+known                   = 1
+effects                 = up_gr_seconef_stalker_outfit
+section                 = up_sect_seconc_stalker_outfit
+property                = prop_thermo
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_kom_b3_name
+description             = st_up_kom_b3_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_6
+
+[up_second_stalker_outfit]
+scheme_index            = 1, 3
+known                   = 1
+effects                 = up_gr_seconef_stalker_outfit
+section                 = up_sect_second_stalker_outfit
+property                = prop_electro, prop_chem
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_kom_b4_name
+description             = st_up_kom_b4_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_8
+
+[up_secone_stalker_outfit]
+scheme_index            = 2, 1
+known                   = 1
+effects                 =
+section                 = up_sect_secone_stalker_outfit
+property                = prop_chem
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_kom_c1_name
+description             = st_up_kom_c1_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_7
+
+[up_seconf_stalker_outfit]
+scheme_index            = 2, 2
+known                   = 1
+effects                 =
+section                 = up_sect_seconf_stalker_outfit
+property                = prop_radio
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_kom_c2_name
+description             = st_up_kom_c2_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_9
+
+[up_thirda_stalker_outfit]
+scheme_index            = 0, 2
+known                   = 1
+effects                 = up_gr_thirdcd_stalker_outfit
+section                 = up_sect_thirda_stalker_outfit
+property                = prop_radio, prop_chem
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_uti_a5_name
+description             = st_up_uti_a5_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_10
+
+[up_thirdc_stalker_outfit]
+scheme_index            = 1, 4
+known                   = 1
+effects                 = up_gr_thirdef_stalker_outfit
+section                 = up_sect_thirdc_stalker_outfit
+property                = prop_restore_health
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_uti_b4_name
+description             = st_up_uti_b4_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_11
+
+[up_thirdd_stalker_outfit]
+scheme_index            = 1, 5
+known                   = 1
+effects                 = up_gr_thirdef_stalker_outfit
+section                 = up_sect_thirdd_stalker_outfit
+property                = prop_tonnage
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_uti_b2_name
+description             = st_up_uti_b2_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_13
+
+[up_thirde_stalker_outfit]
+scheme_index            = 2, 3
+known                   = 1
+effects                 =
+section                 = up_sect_thirde_stalker_outfit
+property                = prop_artefact
+
+precondition_functor    = inventory_upgrades.precondition_functor_a
+precondition_parameter  = a & b
+
+effect_functor          = inventory_upgrades.effect_functor_a
+effect_parameter        = something_here
+
+prereq_functor          = inventory_upgrades.prereq_functor_a
+prereq_tooltip_functor  = inventory_upgrades.prereq_tooltip_functor_a
+prereq_params           =
+name                    = st_up_uti_c1_name
+description             = st_up_uti_c1_descr
+icon                    = ui_inGame2_upgrade_stalker_outfit_12
+
+[up_gr_firstab_stalker_outfit]
+elements                = up_firsta_stalker_outfit
+
+[up_gr_firstcd_stalker_outfit]
+elements                = up_firstc_stalker_outfit, up_firstd_stalker_outfit
+
+[up_gr_firstef_stalker_outfit]
+elements                = up_firste_stalker_outfit
+
+[up_gr_seconab_stalker_outfit]
+elements                = up_secona_stalker_outfit
+
+[up_gr_seconcd_stalker_outfit]
+elements                = up_seconc_stalker_outfit, up_second_stalker_outfit
+
+[up_gr_seconef_stalker_outfit]
+elements                = up_secone_stalker_outfit, up_seconf_stalker_outfit
+
+[up_gr_thirdab_stalker_outfit]
+elements                = up_thirda_stalker_outfit
+
+[up_gr_thirdcd_stalker_outfit]
+elements                = up_thirdc_stalker_outfit, up_thirdd_stalker_outfit
+
+[up_gr_thirdef_stalker_outfit]
+elements                = up_thirde_stalker_outfit

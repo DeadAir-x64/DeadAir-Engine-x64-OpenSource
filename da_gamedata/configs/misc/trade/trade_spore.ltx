@@ -1,0 +1,144 @@
+#include "trade_discounts.ltx"
+#include "trade_presets.ltx"
+
+[trader]
+buy_condition =  trade_generic_buy
+sell_condition = trade_generic_sell
+buy_supplies = {+mar_smart_terrain_base_stalker_leader_marsh_quest_doc_given_2} supplies_3, {+mar_smart_terrain_base_stalker_leader_marsh_quest_doc_given_1} supplies_2,  supplies_1
+buy_item_condition_factor = 0.75
+resupply_timeout = 432000
+
+discounts = {=actor_week_in_zone(9)} discount_supplier_9, {=actor_week_in_zone(8)} discount_supplier_8, {=actor_week_in_zone(7)} discount_supplier_7, {=actor_week_in_zone(6)} discount_supplier_6, {=actor_week_in_zone(5)} discount_supplier_5, {=actor_week_in_zone(4)} discount_supplier_4, {=actor_week_in_zone(3)} discount_supplier_3, {=actor_week_in_zone(2)} discount_supplier_2, {=actor_week_in_zone(1)} discount_supplier_1 
+
+[trade_generic_buy]:supplier
+
+[trade_generic_sell]:unused,mutants,food,artefacts
+
+[supplies_1]
+
+;[repair]
+sharpening_stones_2		= 2, 0.75
+sharpening_stones_4		= 1, 1
+grease					= 1, 0.5
+steel_wool				= 1, 0.5
+glue_b_2				= 1, 0.75
+glue_a_2				= 1, 0.75
+glue_e_2				= 1, 0.75
+sewing_kit_b			= 1, 0.75
+sewing_kit_b_4			= 1, 1
+sewing_kit_a			= 1, 0.75
+sewing_kit_a_4			= 1, 1
+armor_repair_fa_2		= 1, 0.75
+textile_patch_e			= 1, 0.5
+textile_patch_b			= 1, 0.5
+textile_patch_m			= 1, 0.25
+
+;[weapons]
+
+wpn_knife2              = 1, 0.5
+wpn_knife3              = 1, 1
+wpn_binoc	           = 1, 1
+
+wpn_pp2000					= 1, 1
+wpn_tt33				= 1, 1
+wpn_pb					= 1, 1
+
+wpn_sil_9mm				= 1, 1
+
+;[armor]
+cs_light_outfit	        = 1, 1
+helm_cloth_mask			= 1, 1
+helm_respirator 		= 1, 1
+helm_m40				= 1, 0.5
+af_iam					= 2, 0.75
+af_frames				= 1, 0.5
+af_camelbak				= 1, 0.75
+lead_box				= 2, 1
+
+;[ammo]
+ammo_7.62x25_p			= 3, 1
+ammo_7.62x25_ps			= 2, 0.8
+ammo_9x18_fmj			= 3, 0.8
+ammo_9x19_fmj			= 3, 1
+ammo_12x70_buck			= 2, 1
+ammo_12x76_zhekan		= 2, 0.8
+ammo_7.62x54_ap			= 2, 0.8
+ammo_7.92x33_fmj		= 2, 0.8
+
+grenade_rgd5			= 1, 0.5
+grenade_f1				= 1, 0.5
+
+;[items]
+batteries				= 1, 0.75
+batteries_dead			= 1, 0.75
+batteries_ccell			= 2, 0.75
+itm_sleepbag			= 1, 1
+itm_qr		            = 1, 0.75
+itm_backpack			= 1, 1
+device_flashlight		= 1, 0.5
+device_torch_dummy		= 1, 0.5
+device_lighter		    = 1, 0.5
+device_kerosinka		= 1, 0.5
+device_glowstick		= 1, 0.5
+matches					= 4, 1
+geiger					= 1, 0.75
+detector_simple			= 1, 1
+kit_hunt				= 1, 0.75
+backpack_light          = 1, 0.75
+
+jar                     = 2, 0.5
+spareparts              = 2, 0.9
+swiss                   = 1, 0.5
+tarpaulin               = 1, 0.5
+rope                    = 2, 0.75
+synthrope               = 3, 0.75
+grease                  = 1, 0.5
+steel_wool              = 1, 0.5
+textile_patch_b         = 1, 0.5
+textile_patch_m         = 1, 0.5
+textile_patch_e         = 1, 0.5
+copper_coil             = 1, 0.5
+textolite               = 1, 0.5
+transistors             = 1, 0.5
+capacitors              = 1, 0.5
+colophony               = 1, 0.5
+explo_balon_gas_0       = 1, 0.5
+explo_jerrycan_fuel_0   = 1, 0.5
+
+toolkit_p               = 1, 1
+toolkit_p_2               = 1, 1
+toolkit_p_3               = 1, 1
+toolkit_p_4               = 1, 1
+repairkit_p             = 1, 1
+toolkit_s               = 1, 1
+toolkit_s_2               = 1, 1
+toolkit_s_3               = 1, 1
+toolkit_s_4               = 1, 1
+repairkit_s             = 1, 1
+
+[supplies_2]:supplies_1
+af_aac					= 1, 1
+helm_m40				= 1, 1
+cs_outfit			    = 1, 1
+cs_heavy3a_outfit		= 1, 0.25
+
+mine                    = 1, 0.75
+af_surge				= 1, 0.5
+af_frames				= 1, 0.5
+af_grid					= 1, 0.75
+af_freon				= 1, 1
+af_cooler				= 1, 1
+af_kevlar				= 1, 0.25
+af_plates				= 1, 0.25
+af_camelbak				= 1, 1
+
+wpn_knife4              = 1, 0.75
+wpn_knife5              = 1, 0.25
+backpack_heavy        	= 1, 1
+detector_advanced		= 1, 1
+
+[supplies_3]:supplies_2
+helm_cloth_mask			= 0, 1
+cs_heavy3a_outfit		= 1, 1
+cs_heavy3b_outfit	    = 1, 1
+helm_battle				= 1, 1

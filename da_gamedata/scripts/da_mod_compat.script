@@ -1,0 +1,255 @@
+-- [DA_PORT] Слой совместимости для паркура (demonized_ledge_grabbing).
+--
+-- Мод написан под Anomaly и опирается на несколько мелких помощников из тамошнего _g.script,
+-- которых в Dead Air нет. Переписывать под них сам мод — плохая мысль: он живой, автор его
+-- обновляет, и каждая наша правка внутри превратится в конфликт при следующей версии. Поэтому
+-- недостающее лежит ОТДЕЛЬНО, а в самом моде правок ровно столько, сколько нельзя избежать.
+--
+-- ⚠️ install() обязана вызываться ДО первой строки мода. Причина в самом моде: у него в шапке стоят
+-- `local normalize = normalize` и `local clamp = clamp`, то есть глобальные имена захватываются в
+-- момент ЗАГРУЗКИ файла. Если наши определения появятся после, в локальных переменных навсегда
+-- останется nil, и падение случится далеко от причины — в арифметике, а не в загрузке.
+
+local installed = false
+
+-- Приведение величины к доле: сколько мы прошли от lo до hi. Обратное к линейной интерполяции.
+-- Вырожденный отрезок даёт ноль, а не деление на ноль.
+local function da_normalize(value, lo, hi)
+    if (not value) or (not lo) or (not hi) then return 0 end
+    if (hi == lo) then return 0 end
+    return (value - lo) / (hi - lo)
+end
+
+local function da_clamp(value, lo, hi)
+    if (not value) then return lo end
+    if (value < lo) then return lo end
+    if (value > hi) then return hi end
+    return value
+end
+
+-- Флаги состояния между скриптами. У Anomaly это общая доска объявлений; здесь она нужна ровно для
+-- одного флага "actor_climbing", по которому мод глушит урон от удара во время подтягивания.
+local events = {}
+
+local function da_get_event(name)
+    return events[name]
+end
+
+local function da_set_event(name, value)
+    events[name] = value
+end
+
+-- Отложить вызов на следующий кадр.
+--
+-- Зачем это моду: камеру он перехватывает в текущем кадре, а анимацию рук просит запустить в
+-- следующем — иначе руки успевают моргнуть в старом положении. Возврат true означает «больше не
+-- вызывать»; false оставляет вызов на следующий кадр.
+local pending = {}
+
+local function da_next_tick(func)
+    if (type(func) ~= "function") then return end
+    pending[#pending + 1] = func
+end
+
+local function on_update()
+    if (#pending == 0) then return end
+
+    -- Список забираем ЦЕЛИКОМ и очищаем до вызовов: сам вызов может добавить новый отложенный, и
+    -- тогда обход по живому списку либо пропустил бы его, либо крутился бы в этом же кадре вечно.
+    local batch = pending
+    pending = {}
+
+    for i = 1, #batch do
+        local ok, keep = pcall(batch[i])
+        if (not ok) then
+            -- Ошибка в отложенном вызове не должна ронять обновление актёра целиком.
+            printf("![DA_LEDGE] ошибка в отложенном вызове: %s", tostring(keep))
+        elseif (keep ~= true) then
+            pending[#pending + 1] = batch[i]
+        end
+    end
+end
+
+-- Отладочная печать мода. Оставляем видимой в логе, но без всплывающих подсказок на экране.
+local function da_print_tip(fmt, ...)
+    if (not fmt) then return end
+    printf("~[DA_LEDGE] " .. tostring(fmt), ...)
+end
+
+-- Случайное вещественное в отрезке. У нас в движке этого нет, а мод им пользуется в живом коде:
+-- разброс наклона камеры и скорости анимации, чтобы два подтягивания подряд не выглядели одинаково.
+local function da_random_float(lo, hi)
+    if (not lo) then return 0 end
+    if (not hi) then lo, hi = 0, lo end
+    return lo + math.random() * (hi - lo)
+end
+
+-- Объявление НОВОГО имени события.
+--
+-- У Anomaly мод так заводит свои «actor_on_climb_start/end», чтобы другие моды могли на них
+-- подписаться. В Dead Air список имён (axr_main.intercepts) объявлен ЛОКАЛЬНО и закрыт: добавить
+-- туда имя снаружи нельзя, а callback_set по неизвестному имени молча ничего не делает.
+--
+-- ⛔ Поэтому здесь честная пустышка: имя запоминаем, но подписаться на него всё равно не выйдет.
+-- Ничего в Dead Air эти события и не слушает. Главное, ради чего функция вообще нужна: вызов стоит
+-- в моде на УРОВНЕ ФАЙЛА, и без неё загрузка мода падала бы целиком, ещё до первого подтягивания.
+local declared = {}
+
+local function da_add_script_callback(name)
+    if (name) then declared[name] = true end
+end
+
+-- Чтение значения консольной команды.
+--
+-- ПЕРВЫЙ ДОВОД — ЭТО ТИП, и его нельзя пропускать: 1 — целое, 2 — вещественное, 3 — логическое,
+-- иначе строка. Соглашение принято у Anomaly, и моды на него опираются.
+--
+-- ⛔ Прежде я возвращал целое ВСЕГДА. На hud_fov = 0.365 это давало ноль, мод сохранял его как
+-- "прежнее поле зрения", а на восстановление подавал `hud_fov 0` — консоль такое отвергает, и в
+-- игре оставалось 0.45, выставленное самой анимацией. Снаружи выглядело так, будто настройка
+-- сбрасывается сама.
+local function da_get_console_cmd(kind, cmd)
+    if (not cmd) then return end
+    local c = get_console()
+    if (not c) then return end
+    if (kind == 1) then return c:get_integer(cmd) end
+    if (kind == 2) then return c:get_float(cmd) end
+    if (kind == 3) then return c:get_bool(cmd) end
+    return c:get_string(cmd)
+end
+
+-- Копия таблицы на один уровень. Моду хватает поверхностной: он копирует набор чисел анимации,
+-- чтобы не портить исходный при подстройке под конкретное подтягивание.
+local function da_dup_table(t)
+    if (type(t) ~= "table") then return t end
+    local r = {}
+    for k, v in pairs(t) do
+        r[k] = (type(v) == "table") and da_dup_table(v) or v
+    end
+    return r
+end
+
+-- Состояние движения актёра по имени флага (mcClimb, mcCrouch и прочие).
+--
+-- ⚠️ У Anomaly это движковый помощник. У нас соответствующие константы движок отдаёт в таблице
+-- move_state, а сами флаги лежат в db.actor:get_actor_movement_state(). Если чего-то из этого нет,
+-- отвечаем «нет такого состояния» — для паркура это безопасная сторона: он лишь не станет
+-- отказываться от подтягивания, а не полезет туда, куда не должен.
+local function da_is_move_state(name)
+    if (not name) or (not db.actor) then return false end
+    if (not move_state) or (not move_state[name]) then return false end
+    local ms = db.actor:get_actor_movement_state()
+    if (not ms) then return false end
+    return bit_and(ms, move_state[name]) ~= 0
+end
+
+-- Чтение параметра из системного ini. В Dead Air есть кэширующая обёртка ini_file поверх
+-- system_ini(), ею и пользуемся.
+local function da_sys_get_param(kind, section, param, default)
+    if (not section) or (not param) then return default end
+    local ini = system_ini()
+    if (not ini) or (not ini:section_exist(section)) then return default end
+    if (kind == 0) then return ini:r_string_ex(section, param) or default end
+    if (kind == 1) then return ini:r_bool_ex(section, param, default) end
+    if (kind == 2) then return ini:r_float_ex(section, param) or default end
+    return ini:r_string_ex(section, param) or default
+end
+
+local function da_exec_console_cmd(cmd)
+    if (cmd) then
+        get_console():execute(cmd)
+    end
+end
+
+-- ⛔ Присваивание внутри скрипта НЕ создаёт глобальное имя, и это главная грабля этого файла.
+--
+-- Движок исполняет каждый скрипт в СВОЁМ пространстве имён: перед телом файла он делает
+-- `local this = {}` и `setfenv(1, this)` (script_engine.cpp, file_header). Поэтому обычное
+-- `AddScriptCallback = f` кладёт поле в таблицу da_mod_compat, а не в глобальные имена — чтение
+-- из ЧУЖОГО скрипта его не увидит. Первый заход именно так и провалился: мод дошёл до вызова
+-- AddScriptCallback на уровне файла и упал на nil, хотя install() отработала без единой ошибки.
+--
+-- Пишем через явный _G. Он доступен в обоих вариантах заголовка: в старом — по __index, в новом —
+-- полем таблицы. Чтение (`not AddScriptCallback`) и так идёт по цепочке и видит настоящее имя.
+-- Создание предмета в инвентаре. У Anomaly это глобальный помощник, у нас его нет.
+local function da_alife_create_item(section, obj, data)
+    if (not section) or (not obj) or (not alife()) then return end
+    local se = alife():create(section, obj:position(), obj:level_vertex_id(), obj:game_vertex_id(), obj:id())
+    return se
+end
+
+-- Снятие ИГРОВОГО объекта: у Anomaly помощник принимает объект мира, а release ждёт серверный.
+local function da_alife_release(obj)
+    if (not obj) or (not alife()) then return end
+    local se = alife():object(obj:id())
+    if (se) then alife():release(se, true) end
+end
+
+-- Закрыть окно инвентаря. Нужно модам с анимациями: сцена начинается из инвентаря, и окно должно
+-- уйти до того, как руки начнут двигаться.
+local function da_hide_hud_inventory()
+    local hud = get_hud()
+    if (hud and hud.HideActorMenu) then hud:HideActorMenu() end
+end
+
+-- Настройки Anomaly, которых у нас нет.
+--
+-- ВНИМАНИЕ: отвечаем ЗНАЧЕНИЯМИ ПО УМОЛЧАНИЮ, а не ошибкой. Мод спрашивает две величины:
+-- "video/player/animations" (включены ли анимации вообще) и "video/player/mask_hud" (рисовать ли
+-- маску шлема поверх). Первую держим включённой — иначе весь набор был бы мёртв; вторую
+-- выключенной — маски поверх анимации у нас нет.
+local da_options_defaults = {
+    ["video/player/animations"] = true,
+    ["video/player/mask_hud"] = false,
+}
+
+local da_ui_options = {}
+function da_ui_options.get(path)
+    local v = da_options_defaults[path]
+    if (v ~= nil) then return v end
+    return false
+end
+
+function install()
+    if (installed) then return end
+    installed = true
+
+    -- Ставим только то, чего НЕТ. Если Dead Air когда-нибудь обзаведётся своими одноимёнными
+    -- помощниками, наши не должны их перебивать: чужая реализация почти наверняка окажется
+    -- полнее, а разъехавшиеся дубликаты одного имени — источник ошибок, которые ищут часами.
+    local add = {
+        alife_create_item = da_alife_create_item,
+        alife_release = da_alife_release,
+        hide_hud_inventory = da_hide_hud_inventory,
+        ui_options = da_ui_options,
+        normalize = da_normalize,
+        clamp = da_clamp,
+        GetEvent = da_get_event,
+        SetEvent = da_set_event,
+        nextTick = da_next_tick,
+        print_tip = da_print_tip,
+        exec_console_cmd = da_exec_console_cmd,
+        random_float = da_random_float,
+        AddScriptCallback = da_add_script_callback,
+        get_console_cmd = da_get_console_cmd,
+        dup_table = da_dup_table,
+        IsMoveState = da_is_move_state,
+        SYS_GetParam = da_sys_get_param,
+    }
+
+    for name, func in pairs(add) do
+        if (_G[name] == nil) then
+            _G[name] = func
+        end
+    end
+end
+
+-- ⚠️ Подписка на обновление — ОТДЕЛЬНО от install(), и это не косметика.
+--
+-- install() зовётся из шапки мода, то есть в момент ЗАГРУЗКИ файла: раньше, чем игра дошла до
+-- запуска. Определять глобальные имена там можно и нужно, а вот подписываться на события — нет:
+-- порядок загрузки скриптов движком не оговорён, и в неудачном случае мы обратились бы к ещё не
+-- готовому axr_main. Штатное место для подписки — on_game_start, его игра зовёт сама.
+function on_game_start()
+    RegisterScriptCallback("actor_on_update", on_update)
+end

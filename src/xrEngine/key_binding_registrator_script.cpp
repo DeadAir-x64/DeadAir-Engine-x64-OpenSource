@@ -3,6 +3,7 @@
 #include "xr_level_controller.h"
 
 #include "xrScriptEngine/script_space.hpp"
+#include "xr_input.h" // [DA_PORT] key_state
 
 void key_binding_registrator::script_register(lua_State* luaState)
 {
@@ -17,6 +18,19 @@ void key_binding_registrator::script_register(lua_State* luaState)
         def("dik_to_bind", +[](int dik, int ctx) -> int { return GetBindedAction(dik, (EKeyContext)ctx); }),
         def("bind_to_dik", +[](int action) { return GetActionDik((EGameActions)action);}),
         def("bind_to_dik", +[](int action, int idx) { return GetActionDik((EGameActions)action, idx);}),
+
+        // [DA_PORT] Текущее состояние клавиши по скан-коду: нажата (true) или нет.
+        //
+        // Отличие от событий нажатия принципиальное и ради него всё и заводится: события говорят
+        // «клавишу ТОЛЬКО ЧТО тронули», а здесь спрашивают «держат ли ПРЯМО СЕЙЧАС». Паркуру нужно
+        // именно второе: подтягиваться, пока держат прыжок, а не однократно по нажатию.
+        // ⚠️ Возвращаем ЧИСЛО, а не bool, и это не придирка к стилю.
+        //
+        // Сложившиеся скрипты сравнивают результат так: `if key_state(k) == 1 then`. В Lua
+        // `true == 1` — ЛОЖЬ, поэтому логическое значение молча убивает всю ветку: ошибки нет,
+        // просто условие никогда не выполняется. Именно так и не работало удержание прыжка в
+        // паркуре. У первоисточника тип BOOL, то есть целое, — держим то же соглашение.
+        def("key_state", +[](int key) -> int { return (pInput && pInput->iGetAsyncKeyState(key)) ? 1 : 0; }),
 
         class_<EnumGameActionsContexts>("key_bindings_context")
             .enum_("context")

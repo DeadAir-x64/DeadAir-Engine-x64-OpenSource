@@ -1,0 +1,341 @@
+;camping
+[logic@gar_smart_terrain_3_5_camp_work_1]
+active = animpoint@gar_smart_terrain_3_5_camp_work_1
+suitable = true
+prior = 60
+
+[logic@gar_smart_terrain_3_5_camp_work_2]
+active = animpoint@gar_smart_terrain_3_5_camp_work_2
+suitable = true
+prior = 60
+
+[logic@gar_smart_terrain_3_5_camp_work_3]
+active = animpoint@gar_smart_terrain_3_5_camp_work_3
+suitable = true
+prior = 60
+
+[logic@gar_smart_terrain_3_5_camp_work_4]
+active = animpoint@gar_smart_terrain_3_5_camp_work_4
+suitable = true
+prior = 60
+
+[logic@gar_smart_terrain_3_5_camp_work_5]
+active = animpoint@gar_smart_terrain_3_5_camp_work_5
+suitable = true
+prior = 60
+
+[animpoint@gar_smart_terrain_3_5_camp_work_1]
+cover_name = gar_smart_terrain_3_5_animpoint_kamp1
+use_camp = true
+turn_on_campfire = true
+
+[animpoint@gar_smart_terrain_3_5_camp_work_2]
+cover_name = gar_smart_terrain_3_5_animpoint_kamp2
+use_camp = true
+turn_on_campfire = true
+
+[animpoint@gar_smart_terrain_3_5_camp_work_3]
+cover_name = gar_smart_terrain_3_5_animpoint_kamp3
+use_camp = true
+turn_on_campfire = true
+
+[animpoint@gar_smart_terrain_3_5_camp_work_4]
+cover_name = gar_smart_terrain_3_5_animpoint_kamp4
+use_camp = true
+turn_on_campfire = true
+
+[animpoint@gar_smart_terrain_3_5_camp_work_5]
+cover_name = gar_smart_terrain_3_5_animpoint_kamp5
+use_camp = true
+turn_on_campfire = true
+
+
+
+;------------------новое
+;название смарта для path_ строк отрезается
+
+[meet@sleep]
+close_snd_hello = nil 
+close_snd_bye = nil 
+close_anim = nil 
+close_victim = nil 
+far_anim = nil 
+far_victim = nil 
+close_distance = 0 
+far_distance = 0 
+snd_on_use = sleep_talk 
+abuse = false 
+use = false 
+meet_on_talking = false 
+
+[meet@trader]
+close_snd_hello = meet_hello
+close_snd_bye = meet_stop
+close_anim 		= nil
+close_victim 	= nil
+far_anim 		= nil
+far_victim 		= nil
+close_distance  = 0
+far_distance 	= 0
+close_snd_distance = 3
+use = {=actor_enemy} false, true
+allow_break = false
+meet_on_talking = false
+
+[logic_trader]
+combat_ignore_cond = {=fighting_dist_ge(7) !health_le(0.98) !check_enemy_name(actor)} true, false
+gather_items_enabled = false
+help_wounded_enabled = false
+corpse_detection_enabled = false
+
+;-----------------лидер
+[logic@gar_smart_terrain_3_5_leader]
+active = camper@leader
+suitable = {=check_npc_name(gar_3_5_leader)} true
+prior = 200
+
+[camper@leader]
+gather_items_enabled = false
+path_walk = bandit_leader_walk
+path_look = bandit_leader_look
+on_info = {=is_alive +gar_safe_open} %=set_npc_squad_enemy_to_actor%
+
+;-------------------торговец
+[logic@gar_smart_terrain_3_5_trader]:logic_trader
+active = walker@trade
+suitable = {=check_npc_name(gar_3_5_trader)} true
+prior = 200
+level_spot = trader
+dont_keep_items = true
+trade = misc\trade\trade_bandit_garbage.ltx
+use_wpn		    = false
+
+[walker@stand]
+path_walk = bandit_fixer_walk
+path_look = bandit_fixer_look
+meet = meet@trader
+use_camp = false
+def_state_standing = ward_noweap
+on_info = {=dist_to_actor_le(9)} walker@trade
+
+[walker@trade]
+path_walk = bandit_fixer_2_walk
+path_look = bandit_fixer_2_look
+meet = meet@trader
+use_camp = false
+def_state_standing = wait
+;on_info = {!dist_to_actor_le(9)} walker@stand
+
+;-------------------бармен
+[logic@gar_smart_terrain_3_5_barman]:logic_trader
+active = camper@barman
+suitable = {=check_npc_name(base_trader_bandit)} true
+prior = 200
+level_spot = trader
+dont_keep_items = true
+trade = misc\trade\trade_garbage_bandit_barman.ltx
+use_wpn		    = false
+
+[camper@barman]
+gather_items_enabled = false
+path_walk = bandit_barman_walk
+path_look = bandit_barman_look
+meet = meet@trader
+use_camp = false
+
+;-------------------медик
+[logic@gar_smart_terrain_3_5_medic]:logic_trader
+active = camper@medic
+suitable = {=check_npc_name(gar_3_5_medic)} true
+prior = 200
+level_spot = medic
+dont_keep_items = true
+trade = misc\trade\trade_medic_garbage.ltx
+use_wpn		    = false
+
+[camper@medic]
+gather_items_enabled = false
+path_walk = bandit_trader_walk
+path_look = bandit_trader_look
+meet = meet@trader
+use_camp = false
+
+;-------------------
+[logic@gar_smart_terrain_3_5_sleep_1]
+active = walker@gar_smart_terrain_3_5_sleep_1
+suitable = true
+prior = 90
+
+[walker@gar_smart_terrain_3_5_sleep_1]
+path_walk = sleep_1_walk
+path_look = sleep_1_look
+meet = meet@sleep
+
+[logic@gar_smart_terrain_3_5_sleep_2]
+active = walker@gar_smart_terrain_3_5_sleep_2
+suitable = true
+prior = 60
+
+[walker@gar_smart_terrain_3_5_sleep_2]
+path_walk = sleep_2_walk
+path_look = sleep_2_look
+meet = meet@sleep
+
+
+[logic@gar_smart_terrain_3_5_sit]
+active = walker@gar_smart_terrain_3_5_sit
+suitable = true
+prior = 60
+
+[walker@gar_smart_terrain_3_5_sit]
+path_walk = bandit_senya_walk
+path_look = bandit_senya_look
+
+[logic@gar_smart_terrain_3_5_bar_sit]
+active = walker@bar_sit
+suitable = true
+prior = 90
+
+[walker@bar_sit]
+path_walk = bar_sit_walk
+path_look = bar_sit_look
+
+[logic@gar_smart_terrain_3_5_bar_sit2]
+active = walker@bar_sit2
+suitable = true
+prior = 60
+
+[walker@bar_sit2]
+path_walk = bar_sit2_walk
+path_look = bar_sit2_look
+
+[logic@gar_smart_terrain_3_5_depo_nards]
+active = walker@depo_nards
+suitable = true
+prior = 90
+
+[walker@depo_nards]
+path_walk = depo_nards_walk
+path_look = depo_nards_look
+
+
+camper
+;---------------------------на козырьке
+[logic@guard_1]
+active = camper@guard_1
+suitable = {!surge_started !is_dark_night} true
+prior = 100
+
+[camper@guard_1]
+path_walk = guard_5_walk
+path_look = guard_5_look
+
+;---------------------------у ворот
+[logic@guard_2]
+active = walker@guard_2
+suitable = {!surge_started !is_dark_night} true
+prior = 100
+
+[walker@guard_2]
+path_walk = walker_8_walk
+path_look = walker_8_look
+
+;---------------------------в окнах
+[logic@guard_3]
+active = camper@guard_3
+suitable = {!is_dark_night} true
+prior = 100
+
+[camper@guard_3]
+path_walk = camper_3_walk
+path_look = camper_3_look
+
+;---------------------------ящики, вход у поезда
+[logic@guard_4]
+active = camper@guard_4
+suitable = {!surge_started !is_dark_night} true
+prior = 100
+
+[camper@guard_4]
+path_walk = guard_2_walk
+path_look = guard_2_look
+
+;---------------------------ящики, вход у поезда
+[logic@guard_5]
+active = camper@guard_5
+suitable = {!surge_started !is_dark_night} true
+prior = 100
+
+[camper@guard_5]
+path_walk = guard_3_walk
+path_look = guard_3_look
+
+;---------------------------окна, 3 этаж
+[logic@guard_6]
+active = camper@guard_6
+suitable = {!is_dark_night} true
+prior = 100
+
+[camper@guard_6]
+path_walk = sniper_1_walk
+path_look = sniper_1_look
+
+;---------------------------балкон, 2 этаж
+[logic@guard_7]
+active = camper@guard_7
+suitable = {!surge_started !is_dark_night} true
+prior = 100
+
+[camper@guard_7]
+path_walk = camper_2_walk
+path_look = camper_2_look
+
+;---------------------------в ангаре
+[logic@guard_8]
+active = walker@guard_8
+suitable = true
+prior = 100
+
+[walker@guard_8]
+path_walk = walker_5_walk
+path_look = walker_5_look
+
+;---------------------------между баром и ангаром
+[logic@guard_9]
+active = walker@guard_9
+suitable = {!surge_started !is_dark_night} true
+prior = 100
+
+[walker@guard_9]
+path_walk = walker_3_walk
+path_look = walker_3_look
+
+;---------------------------ящик, жд путь, вход
+[logic@guard_10]
+active = walker@guard_10
+suitable = {=is_dark_night !surge_started } true
+prior = 100
+
+[walker@guard_10]
+path_walk = guard_1_walk
+path_look = guard_1_look
+
+;---------------------------в ангаре
+[logic@guard_11]
+active = walker@guard_11
+suitable = true
+prior = 100
+
+[walker@guard_11]
+path_walk = walker_4_walk
+path_look = walker_4_look
+
+;---------------------------вход, ворота, колеса
+[logic@guard_12]
+active = walker@guard_12
+suitable = {=is_dark_night !surge_started } true
+prior = 100
+
+[walker@guard_12]
+path_walk = guard_4_walk
+path_look = guard_4_look

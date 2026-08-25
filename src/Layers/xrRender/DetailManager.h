@@ -64,6 +64,16 @@ public:
 #if RENDER == R_R1
         Fvector c_rgb;
 #endif
+        // [DA_PORT] Готовые 4 вектора для константного буфера (hw_Render_dump), см. grass-submission-cost.
+        //
+        // mRotY не меняется никогда после распаковки слота (DetailManager_Decompress.cpp), c_hemi/c_sun —
+        // тоже (там же, один раз на слот). Единственное, что вообще меняется — scale_calculated, и то не
+        // каждый кадр: UpdateVisibleM трогает его раз в 15-30 кадров НА СЛОТ (амортизация, S.frame).
+        // Раньше hw_Render_dump пересчитывал M*scale заново для всех ~47 тысяч экземпляров КАЖДЫЙ кадр —
+        // 12 умножений на кустик, почти всегда с тем же результатом. Кэш даёт invalid только там, где
+        // значение действительно меняется (UpdateVisibleM), а не там, где кустик просто рисуется.
+        Fvector4 cached_out[4];
+        bool cache_valid = false;
     };
 
     using SlotItemVec = xr_vector<SlotItem*>;

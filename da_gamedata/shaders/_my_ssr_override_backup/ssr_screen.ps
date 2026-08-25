@@ -1,0 +1,65 @@
+// Dead Air x64 — full-screen Screen-Space Reflections (НАШ шейдер, R4).
+// Реализация общеизвестной техники SSR (eye-space ray-march по G-буферу). Не копия чужих модов.
+// Входы (биндит CBlender_SSR): s_position (eye-space xyz), s_normal (eye-space xyz), s_image (освещённый кадр).
+// Матрица проекции m_P — из common.h. Выход: rgb = отражение, a = сила (для альфа-композита поверх кадра).
+#include "common.h"
+
+struct vf
+{
+    float4 hpos : POSITION;
+    float2 tc   : TEXCOORD0;
+};
+
+// параметры (потом вынесем в тюнинг)
+#define SSR_STEPS      24
+#define SSR_STEP_LEN   0.18   // длина шага марша, метры (eye-space)
+#define SSR_THICKNESS  0.55   // толщина «попадания» за поверхность
+#define SSR_MAXDIST    120.0  // дальше не отражаем
+
+float4 main(vf I) : COLOR
+{
+    float3 P = tex2D(s_position, I.tc).xyz;         // eye-space позиция пикселя
+    // небо / нет геометрии (позиция в нуле или слишком далеко) — не отражаем
+    float pz = abs(P.z);
+    if (pz < 0.02 || pz > SSR_MAXDIST)
+        return float4(0,0,0,0);
+
+    float3 N = normalize(tex2D(s_normal, I.tc).xyz); // eye-space нормаль
+    float3 viewDir = normalize(P);                   // от глаза(0) к пикселю
+    float3 R = reflect(viewDir, N);                  // отражённый луч (eye-space)
+
+    float3 marchP = P;
+    float2 hitTC  = float2(0,0);
+    float  hit    = 0.0;
+
+    [loop]
+    for (int i = 0; i < SSR_STEPS; i++)
+    {
+        marchP += R * SSR_STEP_LEN;
+
+        float4 clip = mul(m_P, float4(marchP, 1.0));
+        if (clip.w <= 0.0) break;
+        float2 tc = clip.xy / clip.w;
+        tc = tc * float2(0.5, -0.5) + 0.5;           // clip -> screen TC
+        if (tc.x < 0.0 || tc.x > 1.0 || tc.y < 0.0 || tc.y > 1.0) break;
+
+        float sceneZ = tex2D(s_position, tc).z;      // eye-space Z в точке экрана
+        if (abs(sceneZ) < 0.02) continue;            // небо — пропускаем
+
+        float diff = marchP.z - sceneZ;              // луч зашёл ЗА поверхность = попадание
+        if (diff > 0.0 && diff < SSR_THICKNESS)
+        {
+            hitTC = tc; hit = 1.0; break;
+        }
+    }
+
+    if (hit < 0.5)
+        return float4(0,0,0,0);
+
+    float3 refl = tex2D(s_image, hitTC).rgb;         // цвет освещённого кадра в точке попадания
+    // затухание к краям экрана (у границ SSR-данных нет)
+    float2 e = abs(hitTC - 0.5) * 2.0;
+    float fade = saturate(1.0 - pow(max(e.x, e.y), 4.0));
+
+    return float4(refl, fade);
+}

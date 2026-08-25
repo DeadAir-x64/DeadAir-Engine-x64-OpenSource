@@ -25,3 +25,40 @@
 ; медленнее, отряды дольше идут по карте, события за кадром разворачиваются реже.
 	objects_per_update			= 5
 	start_game_callback			= _G.start_game_callback					; on starting new game or loading saved one
+
+; [DA_PORT] Подключение списка дополнительных наборов движений рук.
+;
+; Своего файла в цепочке #include у system.ltx нет, а сам system.ltx лежит в архиве и переопределять
+; его целиком ради одной строки неразумно: он большой и заморозил бы всё остальное на текущей версии.
+; Поэтому подключаемся отсюда — alife.ltx уже перекрыт loose-файлом и включён в system.ltx.
+#include "da_hud_animations.ltx"
+
+; [DA_PORT] Псевдопредмет с анимацией рук для паркура.
+;
+; Файл лежит по пути Anomaly (configs\items\items\), а наша цепочка включений ведёт в
+; configs\misc\items\. Переносить файл не стали намеренно: он останется байт в байт таким же,
+; как у автора, и следующее обновление мода ляжет без разбора наших правок.
+#include "items\items\items_anm_ledge_grabbing.ltx"
+
+; [DA_PORT] Sektsii ruk dlya animatsiy edy, lekarstv i napitkov (FDDA).
+;
+; Bez etih vklyucheniy game.play_hud_motion ne naydet sektsiyu i animatsiya ne sygraet - tot zhe
+; sluchay, chto byl s parkurom. Fayly lezhat po puti Anomaly, poetomu podklyuchaem otsyuda.
+#include "items\items\items_anm_antirad.ltx"
+#include "items\items\items_anm_backpack.ltx"
+#include "items\items\items_anm_bints.ltx"
+#include "items\items\items_anm_drinks.ltx"
+#include "items\items\items_anm_dummy.ltx"
+#include "items\items\items_anm_food.ltx"
+#include "items\items\items_anm_harvest.ltx"
+#include "items\items\items_anm_medkit.ltx"
+#include "items\items\items_anm_napitki_banki.ltx"
+#include "items\items\items_anm_napitki_butilki_steklo.ltx"
+#include "items\items\items_anm_tabletki.ltx"
+#include "items\items\items_anm_take.ltx"
+#include "items\items\items_anm_da_body_search.ltx"
+#include "items\items\items_anm_mirrowel.ltx"
+#include "items\items\items_anm_da_wear.ltx"
+#include "items\items\items_anm_da_headgear.ltx"
+#include "items\items\items_anm_mfs.ltx"
+#include "items\items\items_anm_vodka.ltx"

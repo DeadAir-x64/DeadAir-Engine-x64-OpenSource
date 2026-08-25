@@ -351,20 +351,37 @@ void FTreeVisual::SetupInstancedGlobals(CBackend& cmd_list)
 // прочитает не те числа. Порядок компонент такой же, каким матрицы уходят в константы обычным путём.
 void FTreeVisual::FillInstanceData(CBackend& cmd_list, FTreeVisualInstanceData& data) const
 {
+    // [DA_PORT] xform не меняется никогда после Load — считаем один раз за жизнь дерева, не за кадр.
+    if (!m_da_cached_world_valid)
+    {
+        m_da_cached_world[0].set(xform._11, xform._21, xform._31, xform._41);
+        m_da_cached_world[1].set(xform._12, xform._22, xform._32, xform._42);
+        m_da_cached_world[2].set(xform._13, xform._23, xform._33, xform._43);
+        m_da_cached_world_valid = true;
+    }
+    data.vectors[0] = m_da_cached_world[0];
+    data.vectors[1] = m_da_cached_world[1];
+    data.vectors[2] = m_da_cached_world[2];
+
+    // Единственное, что реально меняется каждый кадр, — матрица вида (камера движется).
     Fmatrix xform_v;
     xform_v.mul_43(cmd_list.get_xform_view(), xform);
-
-    data.vectors[0].set(xform._11, xform._21, xform._31, xform._41);
-    data.vectors[1].set(xform._12, xform._22, xform._32, xform._42);
-    data.vectors[2].set(xform._13, xform._23, xform._33, xform._43);
     data.vectors[3].set(xform_v._11, xform_v._21, xform_v._31, xform_v._41);
     data.vectors[4].set(xform_v._12, xform_v._22, xform_v._32, xform_v._42);
     data.vectors[5].set(xform_v._13, xform_v._23, xform_v._33, xform_v._43);
 
+    // [DA_PORT] Зависит только от ползунка ps_r__Tree_SBC — пересчёт только если он сдвинулся.
     const float s = ps_r__Tree_SBC * 1.3333f;
-    data.vectors[6].set(s * c_scale.rgb.x, s * c_scale.rgb.y, s * c_scale.rgb.z, s * c_scale.hemi);
-    data.vectors[7].set(s * c_bias.rgb.x, s * c_bias.rgb.y, s * c_bias.rgb.z, s * c_bias.hemi);
-    data.vectors[8].set(s * c_scale.sun, s * c_bias.sun, 0, 0);
+    if (m_da_cached_sbc != s)
+    {
+        m_da_cached_light[0].set(s * c_scale.rgb.x, s * c_scale.rgb.y, s * c_scale.rgb.z, s * c_scale.hemi);
+        m_da_cached_light[1].set(s * c_bias.rgb.x, s * c_bias.rgb.y, s * c_bias.rgb.z, s * c_bias.hemi);
+        m_da_cached_light[2].set(s * c_scale.sun, s * c_bias.sun, 0, 0);
+        m_da_cached_sbc = s;
+    }
+    data.vectors[6] = m_da_cached_light[0];
+    data.vectors[7] = m_da_cached_light[1];
+    data.vectors[8] = m_da_cached_light[2];
 }
 #endif
 

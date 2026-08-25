@@ -1,0 +1,304 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;; DRUGS ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+[caffeine]:booster ;x5
+$spawn 				= "food and drugs\drug_psy_blockade"
+visual				= dynamics\devices\dev_caffeine\dev_caffeine.ogf
+inv_name			= st_caffeine
+inv_name_short		= st_caffeine
+description			= st_caffeine_descr
+inv_weight			= 0.003
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x		= 0
+inv_grid_y		= 62
+cost			= 100
+use_condition   = false
+max_uses        = 1
+eat_alcohol 			= -0.1
+eat_sleepiness				= -0.3
+use_sound			= interface\inv_eat_pills_effect
+
+[caffeine_2]:caffeine
+cost				= 200
+inv_weight			= 0.005
+inv_grid_y			= 61
+
+[caffeine_3]:caffeine
+cost				= 300
+inv_weight			= 0.007
+inv_grid_y			= 60
+
+[caffeine_4]:caffeine
+cost				= 400
+inv_weight			= 0.009
+inv_grid_y			= 59
+
+[caffeine_5]:caffeine
+cost				= 500
+inv_weight			= 0.011
+inv_grid_y			= 58
+
+
+[drug_charcoal]:booster ;уголь
+$spawn 				= "food and drugs\drug_psy_blockade"
+visual				= dynamics\equipments\medical\drug_sleeping_pills.ogf
+inv_name			= st_drug_charcoal
+inv_name_short		= st_drug_charcoal
+description			= st_drug_charcoal_descr
+inv_weight			= 0.003
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 1
+inv_grid_y			= 62
+cost				= 200
+use_condition       = false
+max_uses            = 1
+eat_alcohol			= -0.75
+use_sound			= interface\inv_eat_pills_2
+
+[drug_charcoal_2]:drug_charcoal
+cost				= 400
+inv_weight			= 0.005
+inv_grid_y			= 61
+
+[drug_charcoal_3]:drug_charcoal
+cost				= 600
+inv_weight			= 0.007
+inv_grid_y			= 60
+
+[drug_charcoal_4]:drug_charcoal
+cost				= 800
+inv_weight			= 0.009
+inv_grid_y			= 59
+
+[drug_charcoal_5]:drug_charcoal
+cost				= 1000
+inv_weight			= 0.011
+inv_grid_y			= 58
+
+
+
+
+[antirad]:booster
+$spawn 				= "food and drugs\antirad"
+visual				= dynamics\devices\dev_antirad\dev_antirad.ogf
+inv_name			= st_antirad
+inv_name_short		= st_antirad
+description			= st_antirad_descr
+inv_weight			= 0.02
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 5
+inv_grid_y			= 26
+cost				= 1200
+eat_satiety 		= -0.125
+eat_sleepiness		= 0.0
+eat_alcohol				= 0.3
+boost_time			= 60.0
+boost_radiation_restore	= 0.000122
+use_sound			= interface\inv_syringe
+eat_health			= 0.0
+
+[drug_booster]:booster
+$spawn 				= "food and drugs\drug_booster"
+visual				= dynamics\equipments\medical\drug_booster.ogf
+inv_name			= st_drug_booster
+inv_name_short		= st_drug_booster
+description			= st_drug_booster_descr
+inv_weight			= 0.18
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 6
+inv_grid_y			= 26
+cost				= 1000
+boost_time			= 6000
+boost_max_weight	= 11.320
+eat_sleepiness		= -0.1
+use_sound			= interface\inv_drink_flask_effect
+
+[drug_coagulant]:booster ;поливитамины
+$spawn 				= "food and drugs\drug_coagulant"
+visual				= dynamics\equipments\medical\drug_coagulant.ogf
+inv_name			= st_drug_coagulant
+inv_name_short		= st_drug_coagulant
+description			= st_drug_coagulant_descr
+inv_weight			= 0.003
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 2
+inv_grid_y			= 62
+cost				= 400
+use_condition       = false
+max_uses            = 1
+boost_time				= 180
+boost_health_restore	= 0.00005 ;9% хп за полное время
+eat_alcohol				= -0.1
+use_sound			= interface\inv_eat_pills
+
+[drug_coagulant_2]:drug_coagulant
+cost				= 800
+inv_weight			= 0.005
+inv_grid_y			= 61
+
+[drug_coagulant_3]:drug_coagulant
+cost				= 1200
+inv_weight			= 0.007
+inv_grid_y			= 60
+
+[drug_coagulant_4]:drug_coagulant
+cost				= 1600
+inv_weight			= 0.009
+inv_grid_y			= 59
+
+[drug_coagulant_5]:drug_coagulant
+cost				= 2000
+inv_weight			= 0.011
+inv_grid_y			= 58
+
+
+[drug_psy_blockade]:booster
+$spawn 				= "food and drugs\drug_psy_blockade"
+visual				= dynamics\equipments\medical\drug_psy_blockade.ogf
+inv_name			= st_drug_psy_blockade
+inv_name_short		= st_drug_psy_blockade
+description			= st_drug_psy_blockade_descr
+inv_weight			= 0.003
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 3
+inv_grid_y			= 62
+cost				= 800
+use_condition       = false
+max_uses            = 1
+boost_time			= 350
+boost_telepat_protection 	= 0.10
+eat_satiety 			= -0.051
+eat_alcohol				= 0.1
+eat_sleepiness				= 0.1
+use_sound			= interface\inv_eat_pills_effect
+
+[drug_psy_blockade_2]:drug_psy_blockade
+cost				= 1600
+inv_weight			= 0.005
+inv_grid_y			= 61
+
+[drug_psy_blockade_3]:drug_psy_blockade
+cost				= 2400
+inv_weight			= 0.007
+inv_grid_y			= 60
+
+[drug_psy_blockade_4]:drug_psy_blockade
+cost				= 3200
+inv_weight			= 0.009
+inv_grid_y			= 59
+
+[drug_psy_blockade_5]:drug_psy_blockade
+cost				= 4000
+inv_weight			= 0.011
+inv_grid_y			= 58
+
+
+[drug_antidot]:booster ;x3
+$spawn 				= "food and drugs\drug_antidot"
+visual				= dynamics\equipments\medical\drug_antidot.ogf
+inv_name			= st_drug_antidot
+inv_name_short		= st_drug_antidot
+description			= st_drug_antidot_descr
+inv_weight			= 0.004
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 5
+inv_grid_y			= 62
+cost				= 1000
+use_condition       = false
+max_uses            = 1
+boost_time			= 1800
+boost_chemburn_protection 	= 0.10
+eat_satiety 		= -0.055
+eat_alcohol				= -1.0
+eat_health			= -0.03
+use_sound			= interface\inv_eat_pills_2
+
+[drug_antidot_2]:drug_antidot
+cost				= 2000
+inv_weight			= 0.007
+inv_grid_y			= 61
+
+
+[drug_radioprotector]:booster ;x2
+$spawn 				= "food and drugs\drug_radioprotector"
+visual				= dynamics\equipments\medical\drug_radioprotector.ogf
+inv_name			= st_drug_radioprotector
+inv_name_short			= st_drug_radioprotector
+description			= st_drug_radioprotector_descr
+inv_weight			= 0.005
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 4
+inv_grid_y			= 62
+cost				= 1000
+use_condition       = false
+max_uses            = 1
+boost_time					= 2820
+boost_radiation_protection	= 0.01
+eat_satiety 			= -0.07
+eat_sleepiness				= 0.0
+eat_health			= -0.01
+eat_alcohol				= 0.1
+
+use_sound			= interface\inv_eat_pills_2
+
+[drug_radioprotector_2]:drug_radioprotector
+cost				= 2000
+inv_weight			= 0.01
+inv_grid_y			= 61
+
+
+[drug_anabiotic]:booster
+$spawn 				= "food and drugs\drug_anabiotic"
+visual				= dynamics\equipments\medical\drug_anabiotic.ogf
+inv_name			= st_drug_anabiotic
+inv_name_short		= st_drug_anabiotic
+description			= st_drug_anabiotic_descr
+inv_weight			= 0.012
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 11
+inv_grid_y			= 26
+cost				= 9000
+use_sound			= interface\inv_eat_pills_2
+
+eat_alcohol				= 0.5
+eat_sleepiness				= 0.2
+
+[akvatab]:booster ;x3
+$spawn 				= "food and drugs\antirad"
+visual				= dynamics\equipments\medical\drug_cat_eye.ogf
+inv_name			= st_akvatab
+inv_name_short		= st_akvatab
+description			= st_akvatab_descr
+inv_weight			= 0.002
+inv_grid_width		= 1
+inv_grid_height		= 1
+inv_grid_x			= 7
+inv_grid_y			= 60
+cost				= 600
+use_condition       = false
+max_uses            = 1
+boost_time			= 60
+boost_radiation_restore		= 0.00006
+eat_alcohol			= -0.15
+use_sound			= interface\inv_eat_pills
+
+[akvatab_2]:akvatab
+cost				= 1200
+inv_weight			= 0.004
+inv_grid_y			= 59
+
+[akvatab_3]:akvatab
+cost				= 1800
+inv_weight			= 0.006
+inv_grid_y			= 58
+
+

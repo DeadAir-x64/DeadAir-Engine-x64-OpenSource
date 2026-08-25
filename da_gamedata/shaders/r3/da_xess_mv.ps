@@ -1,0 +1,23 @@
+#include "common.h"
+
+// [DA_PORT] Знаковая копия буфера скоростей для XeSS. Разбор — в da_xess_mv.s.
+//
+// da_xess_sign.xy — множители по осям, приходят из движка (r__xess_mv_sign). Держим их ручкой, а не
+// зашитой константой, ровно по той же причине, по которой знаки FSR и DLSS выставлялись наблюдением:
+// чтением СВОЕГО буфера вопрос не решается в принципе, он о том, чего ждёт чужая библиотека.
+// Значение подбирается один раз глазами и после этого фиксируется.
+
+Texture2D s_velocity;
+uniform float4 da_xess_sign;
+
+struct v2p
+{
+    float2 tc0 : TEXCOORD0;
+    float4 hpos : SV_Position;
+};
+
+float4 main(v2p I) : SV_Target
+{
+    const float2 mv = s_velocity.Load(int3(I.hpos.xy, 0)).xy;
+    return float4(mv * da_xess_sign.xy, 0.f, 0.f);
+}

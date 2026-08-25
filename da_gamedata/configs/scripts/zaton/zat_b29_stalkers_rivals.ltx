@@ -1,0 +1,39 @@
+[meet@rival]
+meet_dialog = {!is_wounded =zat_b29_rivals_dialog_precond} zat_b29_rivals_start_dialog
+
+[logic@zat_b29_stalker_rival_leader]
+suitable = true
+prior = 60
+active = walker@stalker_rival_leader
+
+[walker@stalker_rival_leader]
+path_walk = leader_walk
+path_look = leader_look
+def_state_moving = walk
+def_state_standing = probe_stand
+meet = meet@rival
+
+
+[logic@zat_b29_stalker_rival_2]
+suitable = true
+prior = 60
+active = walker@stalker_rival_2
+
+[walker@stalker_rival_2]
+path_walk = 2_walk
+path_look = 2_look
+def_state_moving = walk
+def_state_standing = probe_crouch
+meet = meet@rival
+
+[logic@zat_b29_stalker_rival_3]
+suitable = true
+prior = 60
+active = walker@stalker_rival_3
+
+[walker@stalker_rival_3]
+path_walk = 3_walk
+path_look = 3_look
+def_state_moving = walk
+def_state_standing = probe_crouch
+meet = meet@rival

@@ -310,6 +310,102 @@ void CScriptGameObject::IterateInventory(luabind::functor<bool> functor, luabind
             return;
 }
 
+// [DA_PORT] Состояние движения актёра ОДНИМ ЧИСЛОМ-НАБОРОМ БИТОВ.
+//
+// Скриптам нужно знать, приседает ли игрок, лезет ли по лестнице, бежит ли. По отдельности эти
+// признаки не выведены нигде, а в движке они лежат готовым набором битов (EMoveCommand в
+// actor_defs.h). Отдаём его как есть, а разбор — на стороне скрипта: так добавление нового
+// состояния в движке не требует нового биндинга.
+u32 CScriptGameObject::GetActorMovementState()
+{
+    CActor* actor = smart_cast<CActor*>(&object());
+    if (!actor)
+    {
+        GEnv.ScriptEngine->script_log(
+            LuaMessageType::Error, "CScriptGameObject::get_actor_movement_state non-CActor object !!!");
+        return 0;
+    }
+    return actor->MovingState();
+}
+// [DA_PORT] Перекладывание вещи в рюкзак и в слот из скрипта.
+//
+// Нужно скриптовым сценам: паркур убирает оружие в рюкзак перед подтягиванием и возвращает его
+// обратно после. Свои события у инвентаря уже есть, наружу они просто не были выведены.
+//
+// ⚠️ Пакет собираем ПО НАШЕМУ формату. У первоисточника в GEG_PLAYER_ITEM2SLOT пишется ещё байт
+// «не активировать», а наш обработчик (Actor_Events.cpp) читает ТОЛЬКО номер слота. Лишний байт
+// не вызвал бы ошибки — он просто остался бы в пакете непрочитанным, и разошлись бы отправитель с
+// получателем.
+void CScriptGameObject::MoveItemToRuck(CScriptGameObject* pItem)
+{
+    CInventoryOwner* owner = smart_cast<CInventoryOwner*>(&object());
+    if (!owner || !pItem)
+    {
+        GEnv.ScriptEngine->script_log(
+            LuaMessageType::Error, "CScriptGameObject::move_to_ruck non-CInventoryOwner object !!!");
+        return;
+    }
+
+    CInventoryItem* item = smart_cast<CInventoryItem*>(&pItem->object());
+    if (!item || !owner->inventory().CanPutInRuck(item))
+        return;
+
+    NET_Packet P;
+    CGameObject::u_EventGen(P, GEG_PLAYER_ITEM2RUCK, owner->object_id());
+    P.w_u16(item->object().ID());
+    CGameObject::u_EventSend(P);
+}
+
+void CScriptGameObject::MoveItemToSlot(CScriptGameObject* pItem, u16 slot_id)
+{
+    CInventoryOwner* owner = smart_cast<CInventoryOwner*>(&object());
+    if (!owner || !pItem)
+    {
+        GEnv.ScriptEngine->script_log(
+            LuaMessageType::Error, "CScriptGameObject::move_to_slot non-CInventoryOwner object !!!");
+        return;
+    }
+
+    CInventoryItem* item = smart_cast<CInventoryItem*>(&pItem->object());
+    if (!item)
+        return;
+
+    // Слот занят — сначала освобождаем, иначе вещь просто не встанет и вызов пройдёт впустую.
+    NET_Packet P;
+    if (CInventoryItem* in_slot = owner->inventory().ItemFromSlot(slot_id))
+    {
+        CGameObject::u_EventGen(P, GEG_PLAYER_ITEM2RUCK, owner->object_id());
+        P.w_u16(in_slot->object().ID());
+        CGameObject::u_EventSend(P);
+    }
+
+    CGameObject::u_EventGen(P, GEG_PLAYER_ITEM2SLOT, owner->object_id());
+    P.w_u16(item->object().ID());
+    P.w_u16(slot_id);
+    CGameObject::u_EventSend(P);
+}
+// [DA_PORT] Обход ПОЯСА, отдельно от общего обхода инвентаря.
+//
+// Зачем нужен свой: m_all содержит вообще всё, включая надетое и в рюкзаке, и отличить пояс по
+// свойствам предмета нельзя — принадлежность к поясу это место хранения, а не признак вещи.
+// Скриптам она нужна (паркур снимает с пояса то, что мешает лезть, и возвращает обратно).
+void CScriptGameObject::IterateBelt(luabind::functor<bool> functor, luabind::object object)
+{
+    CInventoryOwner* inventory_owner = smart_cast<CInventoryOwner*>(&this->object());
+    if (!inventory_owner)
+    {
+        GEnv.ScriptEngine->script_log(
+            LuaMessageType::Error, "CScriptGameObject::IterateBelt non-CInventoryOwner object !!!");
+        return;
+    }
+
+    TIItemContainer::iterator I = inventory_owner->inventory().m_belt.begin();
+    TIItemContainer::iterator E = inventory_owner->inventory().m_belt.end();
+    for (; I != E; ++I)
+        if (functor(object, (*I)->object().lua_game_object()) == true)
+            return;
+}
+
 #include "InventoryBox.h"
 void CScriptGameObject::IterateInventoryBox(luabind::functor<bool> functor, luabind::object object)
 {
@@ -1229,6 +1325,26 @@ void CScriptGameObject::HideWeapon()
     Actor()->SetWeaponHideState(INV_STATE_BLOCK_ALL, true);
 }
 
+// [DA_PORT] Жёсткое снятие ВСЕХ блокировок слотов.
+//
+// Блокировка слота — это СЧЁТЧИК (CInventory::m_blocked_slots, BlockSlot/UnblockSlot делают ++/--),
+// а не флаг. Пара hide_weapon/restore_weapon обязана быть симметричной, и стоит одному концу не
+// выполниться — а он не выполняется при обрыве сцены, загрузке посреди неё, вылете — счётчик
+// остаётся ненулевым НАВСЕГДА. Игрок при этом не может достать ни одну вещь, и починить это
+// изнутри игры нечем: снять надо ровно столько же раз, сколько поставили, а сколько это, никто уже
+// не знает.
+//
+// Отсюда и сброс: ставит счётчики в ноль независимо от их значения. Нужен восстановлению после
+// сцены и после загрузки — там, где важно вернуть игрока в рабочее состояние наверняка.
+void CScriptGameObject::UnblockAllSlots()
+{
+    CInventoryOwner* owner = smart_cast<CInventoryOwner*>(&object());
+    if (!owner)
+        return;
+
+    owner->inventory().DaUnblockAllSlots();
+}
+
 int CScriptGameObject::Weapon_GrenadeLauncher_Status()
 {
     CWeapon* weapon = smart_cast<CWeapon*>(&object());
@@ -2002,7 +2118,10 @@ CScriptGameObject* CScriptGameObject::ItemOnBelt(u32 item_id) const
     }
 
     TIItemContainer* belt = &inventory_owner->inventory().m_belt;
-    if (belt->size() < item_id)
+    // [DA_PORT] Было `<`, а надо `<=`: при item_id == size проверка пропускала, и at(size) бросал
+    // исключение. Обход пояса «пока не nil» — обычный приём в скриптах, то есть попадание в эту
+    // границу не случайность, а НОРМАЛЬНОЕ завершение цикла.
+    if (belt->size() <= item_id)
     {
         GEnv.ScriptEngine->script_log(LuaMessageType::Error, "item_on_belt: item id outside belt!");
         return nullptr;

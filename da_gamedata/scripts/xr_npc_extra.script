@@ -1,0 +1,287 @@
+function on_game_start()
+	RegisterScriptCallback("npc_on_hear_callback",npc_on_hear_callback)
+	RegisterScriptCallback("npc_on_update",npc_on_update)
+	RegisterScriptCallback("npc_on_hit_callback",npc_on_hit_callback)
+	RegisterScriptCallback("npc_on_fighting_actor",npc_on_fighting_actor)
+	RegisterScriptCallback("npc_on_death_callback",npc_on_death_callback)
+	RegisterScriptCallback("monster_on_death_callback",monster_on_death_callback)
+end 
+
+function npc_on_hear_callback(npc,who_id,s_type,dist,sound_power,sound_position)
+	
+	local who = who_id and (db.storage[who_id] and db.storage[who_id].object)	
+	if not (who) then
+		return
+	end
+	
+	if (who:clsid() == clsid.burer_s) and (IsStalker(npc)) then
+		if (s_type == "MST_attack") and (dist < 200) then
+			local active_item = npc:active_item()
+			if active_item then
+				local wp_type = system_ini():r_string_ex(active_item:section(),"repair_type")
+				if (wp_type == "shotgun") or (wp_type == "rifle") then
+					
+					if (active_item:condition() > 0.5) then
+						active_item:set_condition(math.random(5,50)/100)
+					end
+					npc:drop_item(active_item)
+					--printf("--DROP!")
+				end
+			end
+		end
+	end
+	
+	
+	if (who:clsid() == clsid.gigant_s) then
+		if (s_type == "NIL") and (dist < 100) then
+			local pos = who:position()
+			local h = hit()
+			h.power = 1
+			h.direction = npc:position():sub(vector():set(pos.x,pos.y,pos.z))
+			h.bone = "bip01_spine"
+			h.draftsman = who
+			h.impulse = 700
+			h.type = hit.explosion
+			npc:hit(h)
+		end
+	end
+	
+	if (who:clsid() == clsid.controller_s) and (IsStalker(npc)) then
+		if (s_type == "MST_attack") and (dist < 1000) then
+			local pos = who:position()
+			local community = npc:character_community()
+			if (community == "monolith") or (community == "zombied") then return end
+			
+			local brainwashed = utils.load_var(npc,"brainwashed",nil)
+			if (brainwashed) then return end
+			
+			local rank = ranks.get_obj_rank_name(npc)
+			if (rank == "veteran") or (rank == "expert") or (rank == "master") or (rank == "legend") then return end
+			
+			brainwash(npc,who,0.1)
+		end
+	end
+end
+
+local tg = 0
+local trade_ini = ini_file("misc\\trade\\gulag_job_trade_buy_sell.ltx")
+
+function brainwash(npc,who,power)
+		local h = hit()
+		h.power = power
+		h.direction = vector()
+		h.bone = "bip01_spine"
+		h.draftsman = npc
+		h.impulse = 1
+		h.type = hit.telepatic
+	
+	if (npc.health > 0.5) then
+		npc:set_health_ex(npc.health-0.1)
+		--printf(npc.health)
+	else --if not brainwashed then
+		npc:set_health_ex(0.02)
+		utils.save_var(npc,"brainwashed",true)
+			
+		local communities = alun_utils.get_communities_list()
+		npc:set_character_community("actor_zombied", 0, 0 )
+		for i, community in pairs( communities ) do
+			npc:set_community_goodwill(community, -1000)
+		end
+		
+		npc:set_relation(game_object.enemy, db.actor)
+		
+		if (math.random() > 0.7) then
+			npc:set_health_ex(1)
+			npc.psy_health = 1
+		end
+	end
+end
+
+function npc_on_update(npc)
+
+	if (tg > time_global()) then return end
+	tg = time_global()+60000
+	
+	if not (npc:alive()) then
+		return
+	end
+	
+	local id = npc:id()
+	local st = db.storage[id]
+	if not (st) then
+		return
+	end
+	
+	local com = npc:character_community()
+	if (com == "zombied" or com == "army" or com == "monolith") then
+		return false
+	end
+	
+	local function itr(npc,item)
+		
+		local sec = item:section()
+
+		--printf(sec)
+		
+		local bw = npc:best_weapon() or npc:active_item()
+		if (bw and bw:id() == item:id()) then
+			--printf("bw")
+			return
+		end
+
+		local slot
+		for i=1,12 do
+			slot = npc:item_in_slot(i)
+			if (slot and slot:id() == item:id()) then
+				--printf("slot")
+				return
+			end
+		end
+
+		if (trade_ini == nil or not trade_ini:line_exist("buy_sell",sec)) then
+			--printf("ini")
+			return
+		end
+
+		local buy_sell = trade_ini:r_string_ex("buy_sell",sec)
+		if (buy_sell == nil or buy_sell == "") then
+			--printf("by_sell")
+			return
+		end
+
+		if not (st.trade_items) then
+			st.trade_items = {}
+		end
+		st.trade_items[sec] = st.trade_items[sec] and st.trade_items[sec] + 1 or 1
+
+		buy_sell = alun_utils.str_explode(buy_sell,",")
+
+		--printf("buy_sell[2]=%s",buy_sell[2])
+		if (st.trade_items[sec] >= tonumber(buy_sell[2])) then
+			--printf("!can trade")
+			st.has_items_to_sell = true
+		end
+	
+	end
+	
+	npc:iterate_inventory(itr,npc)
+	
+end
+
+function npc_on_hit_callback(victim,amount,local_direction,who,bone_index)
+	
+	if not (who and victim) then return end
+	
+	local id = who and who:id()
+	local comm1 = victim:character_community()
+	
+	if (id == 0) and (victim:alive()) then
+		
+		victim:make_object_visible_somewhen(db.actor)
+		victim:force_set_goodwill( -1000, db.actor)
+		
+		for i=1, #db.OnlineStalkers do
+			local st = db.storage[db.OnlineStalkers[i]]
+			local npc = st and st.object or level.object_by_id(db.OnlineStalkers[i])
+			local comm2 = npc and npc:character_community()
+			if (npc and IsStalker(npc) and npc:alive()) and (relation_registry.community_relation(comm1,comm2) >= 0) then
+				if (npc:see(db.actor)) then
+					--printf("npc_on_hit: force enemy")
+					npc:force_set_goodwill( -1000, db.actor)
+				end
+			end		
+		end
+	end
+end
+
+function npc_on_death_callback(victim,who)
+
+	if not (who and victim) then return end
+
+	local id = who and who:id()
+	local comm1 = victim:character_community()
+	
+	if (id == 0) then
+		for i=1, #db.OnlineStalkers do
+			local st = db.storage[db.OnlineStalkers[i]]
+			local npc = st and st.object or level.object_by_id(db.OnlineStalkers[i])
+			local comm2 = npc and npc:character_community()
+			local dist = npc and victim:position():distance_to_sqr(npc:position())
+				
+			if (npc and IsStalker(npc) and npc:alive()) and (relation_registry.community_relation(comm1,comm2) >= 0) and (dist < 625) then
+				local h = hit()
+				h.power = 0.01
+				h.direction = vector():set(0,0,1)
+				h.draftsman = victim
+				h.impulse = 0
+				h.type = hit.radiation
+				npc:hit(h)
+				npc:make_object_visible_somewhen(victim)
+			end		
+		end
+	end
+end
+
+function npc_on_fighting_actor(victim)
+	if not (IsStalker(victim)) then
+		return 
+	end
+	
+	local comm1 = victim:character_community()
+	
+	for i=1, #db.OnlineStalkers do
+		local st = db.storage[db.OnlineStalkers[i]]
+		local npc = st and st.object or level.object_by_id(db.OnlineStalkers[i])
+		if (npc and IsStalker(npc) and npc:alive()
+			and (db.actor:position():distance_to_sqr(npc:position()) < 10000)) then
+			local comm2 = npc:character_community()
+			if (relation_registry.community_relation(comm1,comm2) >= 0) then
+				--printf("-npc_on_fighting_actor: force enemy "..npc:name())
+				npc:force_set_goodwill( -1000, db.actor)
+				npc:make_object_visible_somewhen(db.actor)
+			end
+		end
+	end
+end
+
+local polter_complex = {
+	["m_poltergeist_normal_tele"] = true,
+	["m_poltergeist_strong_tele"] = true,
+}
+
+function monster_on_death_callback(obj,who)
+
+	if not (obj) then 
+		return 
+	end
+	
+	--[[
+	local bone = "bip01_head"
+	obj:set_bone_visible("bip01",false,false)
+	obj:set_bone_visible(bone,false,false)
+	local pos = alun_utils.safe_bone_pos(obj,bone)
+	pos.y = pos.y + 1.5
+	--particles_object("anomaly2\\body_tear_0"..math.random(1,2)):play_at_pos(pos)
+	sound_object("anomaly\\anomaly_body_tear_1"):play_at_pos(db.actor, obj:position())
+	--]]
+	
+	if (obj:clsid() == clsid.poltergeist_s) then
+	
+		local sec = obj:section()
+
+		if (polter_complex[sec]) then
+			alife():create("m_poltergeist_normal_visible",obj:position(),obj:level_vertex_id(),obj:game_vertex_id())
+		end
+		--[[
+		if  (se_obj) and not (sec == "m_poltergeist_normal_visible") then
+			safe_release_manager.release(se_obj)
+		end
+		--]]
+		local se_obj = alife_object(obj:id())
+		if (se_obj) then
+		    safe_release_manager.release(se_obj)
+			obj:poltergeist_set_actor_ignore(true)
+		end
+	end
+	
+end

@@ -1,4 +1,5 @@
 #include "StdAfx.h"
+#include "console_vars.h" // [DA_PORT] g_da_actor_allow_ladder
 #include "ElevatorState.h"
 #include "IClimableObject.h"
 #include "PHCharacter.h"
@@ -36,11 +37,29 @@ float CElevatorState::ClimbDirection()
     return dir;
 }
 
+// [DA_PORT] Запрет лестниц на время скриптовой сцены, ставится из game.set_actor_allow_ladder.
+//
+// Зачем: паркур сам поднимает актёра на уступ, задавая положение покадрово. Если рядом окажется
+// лестница, её автомат перехватит управление на середине подтягивания и утащит актёра к себе.
 void CElevatorState::PhTune(float step)
 {
     VERIFY(m_character && m_character->b_exist && m_character->is_active());
     if (!m_ladder)
         return;
+
+    // Не просто «не цепляться»: если актёр УЖЕ на лестнице, его надо с неё снять, иначе он повиснет
+    // в её состоянии до конца сцены.
+    if (!g_da_actor_allow_ladder && m_character->RestrictionType() == rtActor)
+    {
+        if (m_state != clbNoLadder)
+            UpdateDepart();
+        else
+        {
+            m_state = clbNoLadder;
+            m_ladder = nullptr;
+        }
+        return;
+    }
     switch (m_state)
     {
     case clbNone: UpdateStNone(); break;
