@@ -17,6 +17,8 @@ local anim_ms = ANIM_FALLBACK_MS
 -- Пауза после убирания оружия, считается по длине самого убирания - см. hide_ticks.
 local settle_target = 0
 local busy, wait_ticks = false, 0
+-- Звук сцены. Модульная переменная, а не локальная - разбор у места запуска.
+scene_snd = nil
 
 function on_game_start()
 	RegisterScriptCallback("actor_on_first_update", reset)
@@ -96,6 +98,15 @@ function start_anim()
 	-- Длительность спрашиваем у движка: поменяется цикл - расписание сойдётся само.
 	anim_ms = game.get_motion_length(sect, "anm_ea_show", 1.0)
 	if not anim_ms or anim_ms <= 0 then anim_ms = ANIM_FALLBACK_MS end
+
+	-- Звук молнии. Ссылку держим в переменной МОДУЛЯ, а не в локальной: sound_object живёт ровно
+	-- столько, сколько на него ссылаются, и локальная умерла бы вместе с этой функцией - звук
+	-- оборвался бы на первом же кадре. Тот же приём стоит в enhanced_animations.
+	local snd_name = system_ini():r_string_ex(sect, "snd")
+	if snd_name then
+		scene_snd = sound_object(snd_name)
+		scene_snd:play(db.actor, 0, sound_object.s2d)
+	end
 
 	game.play_hud_motion(2, sect, "anm_ea_show", false, 1.0, 0)
 	CreateTimeEvent("da_backpack_anim", "open", anim_ms / 1000, open_window)

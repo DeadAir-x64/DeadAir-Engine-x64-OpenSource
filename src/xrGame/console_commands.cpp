@@ -101,6 +101,41 @@ public:
 };
 
 // [DA_PORT] Намеренная авария: проверка отчёта о вылете на той же сборке, что у игроков.
+// [DA_PORT] Печать подобранной посадки предмета сцены готовой строкой для конфига.
+//
+// Без этого подбор бесполезен: числа живут в консоли до перезапуска, а переписывать их с экрана
+// глазами - лишний способ ошибиться.
+class CCC_DaSceneItemDump : public IConsole_Command
+{
+public:
+    CCC_DaSceneItemDump(pcstr N) : IConsole_Command(N) { bEmptyArgsHandled = true; }
+
+    void Execute(pcstr /*args*/) override
+    {
+        extern Fvector g_da_scene_item_pos_adj, g_da_scene_item_rot_adj;
+        extern float g_da_scene_item_scale_adj;
+
+        if (!g_player_hud)
+        {
+            Msg("! [DA_PORT] рук ещё нет");
+            return;
+        }
+
+        Fvector pos, rot;
+        float scale = 1.f;
+        g_player_hud->da_script_item_tune(pos, rot, scale);
+
+        pos.add(g_da_scene_item_pos_adj);
+        rot.add(g_da_scene_item_rot_adj);
+        scale *= g_da_scene_item_scale_adj;
+
+        Msg("~ [DA_PORT] посадка предмета сцены, вписать в секцию:");
+        Msg("item_position                            = %.4f, %.4f, %.4f", pos.x, pos.y, pos.z);
+        Msg("item_orientation                         = %.2f, %.2f, %.2f", rot.x, rot.y, rot.z);
+        Msg("item_scale                               = %.4f", scale);
+    }
+};
+
 class CCC_DaCrashTest : public IConsole_Command
 {
 public:

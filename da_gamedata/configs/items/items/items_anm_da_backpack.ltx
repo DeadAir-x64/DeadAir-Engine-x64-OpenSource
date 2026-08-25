@@ -35,6 +35,10 @@ item_orientation                         = 0, 0, 0
 ; не известно; ставим как у всех, а false пробуем первым, если сумка стоит не там.
 item_root_lock                           = true
 
+; «вук молнии. “от же файл, что у набора в ea_addon_backpack.ltx - он и рисовалс€ под эти движени€.
+; ” каждого раздела может быть свой: достаточно дописать snd в секцию рюкзака.
+snd                                      = interface\item_usage\backpack_open
+
 anm_ea_show                              = open_b_backpack, open_b_backpack_itm
 anm_ea_idle                              = idle_b_backpack, idle_b_backpack_itm
 anm_ea_hide                              = close_b_backpack, close_b_backpack_itm
@@ -63,12 +67,27 @@ anm_ea_hide                              = close_b_backpack, close_b_backpack_it
 ; ” экзоброни оставлена сумка из набора - так попросили.
 [da_backpack_backpack_light_hud]:da_backpack_hud
 item_visual                              = dynamics\equipments\sumka2.ogf
+; ѕосадка вычислена из габаритов: масштаб = радиус эталонной сумки / радиус этой
+; модели, сдвиг ставит еЄ центр туда же, где центр эталона. Ёто Ќј„јЋ№Ќјя точка -
+; доводить в игре через da_scene_item_pos / _rot / _scale, печатать da_scene_item_dump.
+item_position                            = 0.0264, -0.0632, 0.0111
+item_scale                               = 0.7953
 
 [da_backpack_backpack_heavy_hud]:da_backpack_hud
 item_visual                              = dynamics\equipments\sumka4.ogf
+; ѕосадка вычислена из габаритов: масштаб = радиус эталонной сумки / радиус этой
+; модели, сдвиг ставит еЄ центр туда же, где центр эталона. Ёто Ќј„јЋ№Ќјя точка -
+; доводить в игре через da_scene_item_pos / _rot / _scale, печатать da_scene_item_dump.
+item_position                            = 0.0021, -0.0471, 0.0016
+item_scale                               = 0.5586
 
 [da_backpack_kit_hunt_hud]:da_backpack_hud
 item_visual                              = dynamics\equipments\trade\kit_hunt.ogf
+; ѕосадка вычислена из габаритов: масштаб = радиус эталонной сумки / радиус этой
+; модели, сдвиг ставит еЄ центр туда же, где центр эталона. Ёто Ќј„јЋ№Ќјя точка -
+; доводить в игре через da_scene_item_pos / _rot / _scale, печатать da_scene_item_dump.
+item_position                            = 0.0013, -0.0568, 0.0096
+item_scale                               = 1.0579
 
 [da_backpack_exobackpack_hud]:da_backpack_hud
 item_visual                              = dynamics\weapons\wpn_eat\backpack\wpn_backpack_act_hud_monolith.ogf

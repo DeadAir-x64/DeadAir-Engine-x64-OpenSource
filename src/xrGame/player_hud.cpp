@@ -554,6 +554,19 @@ int ps_da_anim_trace = 0;
 // У первоисточника это 2.5 и 5. Вход медленный намеренно — рука не должна «клевать» на старте. А на
 // ВЫХОДЕ ждать нечего: цикл доигран, руке остаётся только вернуться на ствол, и полсекунды здесь
 // читаются как задержка. Поэтому выход быстрее.
+// [DA_PORT] Подбор посадки предмета сцены прямо в игре: da_scene_item_pos / _rot / _scale.
+//
+// Зачем. Модель сцены садится на кость хвата, и у каждой она стоит по-своему: наши рюкзаки рисовались
+// висеть на спине, поэтому в руках упираются в самую камеру. Числа для конфига подбираются глазом, и
+// делать это пересборкой - десятки заходов по двадцать секунд каждый. Поправки складываются с тем,
+// что записано в секции, и печатаются командой da_scene_item_dump - готовой строкой для конфига.
+//
+// ⚠️ Это ОСНАСТКА, а не настройка игры: подобранное надо перенести в секцию, иначе оно живёт до
+// перезапуска и только у тебя.
+Fvector g_da_scene_item_pos_adj{};
+Fvector g_da_scene_item_rot_adj{};
+float g_da_scene_item_scale_adj = 1.f;
+
 float ps_da_scene_seat_in = 2.5f;
 float ps_da_scene_seat_out = 9.f;
 
@@ -923,8 +936,8 @@ void player_hud::render_hud(u32 context_id, IRenderable* root)
     }
 
     // [DA_PORT] Предмет скриптовой сцены. Преобразование посчитано в update — см. разбор там.
-    if (m_da_script_item_model && script_anim)
-        GEnv.Render->add_Visual(context_id, root, m_da_script_item_model->dcast_RenderVisual(),
+    if (m_da_script_item_visual && script_anim)
+        GEnv.Render->add_Visual(context_id, root, m_da_script_item_visual,
             m_da_script_item_transform);
 }
 
@@ -1128,8 +1141,30 @@ void player_hud::update(const Fmatrix& cam_trans)
     //
     // Здесь, а не в render_hud: отрисовка зовётся по разу на каждый контекст, и анимация тогда
     // убегала бы вперёд кратно их числу.
-    if (m_da_script_item_model)
+    if (m_da_script_item_visual)
     {
+        // [DA_PORT] Матрицу посадки собираем ЗДЕСЬ, каждый кадр: так поверх записанного в секции
+        // ложатся консольные поправки подбора (da_scene_item_pos и родня). Разбор - у их объявления.
+        {
+            Fvector ypr = m_da_script_item_rot;
+            ypr.add(g_da_scene_item_rot_adj);
+            ypr.mul(PI / 180.f);
+            m_da_script_item_offset.setHPB(ypr.x, ypr.y, ypr.z);
+
+            Fvector pos = m_da_script_item_pos;
+            pos.add(g_da_scene_item_pos_adj);
+            m_da_script_item_offset.translate_over(pos);
+
+            const float sc = m_da_script_item_scale * g_da_scene_item_scale_adj;
+            if (!fsimilar(sc, 1.f))
+            {
+                Fmatrix S;
+                S.scale(sc, sc, sc);
+                // Порядок важен: сперва уменьшаем модель в её собственных осях, потом ставим на место.
+                m_da_script_item_offset.mulB_43(S);
+            }
+        }
+
         // Положение считаем ЗДЕСЬ, а не при отрисовке: кости рук только что посчитаны, и точка
         // хвата уже верная. При отрисовке она была бы от прошлого кадра, а сама отрисовка идёт по
         // разу на каждый контекст — считать в ней одно и то же несколько раз незачем.
@@ -1157,9 +1192,14 @@ void player_hud::update(const Fmatrix& cam_trans)
         else
             m_da_script_item_transform.mul(m_transform, m_da_script_item_offset);
 
-        m_da_script_item_model->UpdateTracks();
-        m_da_script_item_model->dcast_PKinematics()->CalculateBones_Invalidate();
-        m_da_script_item_model->dcast_PKinematics()->CalculateBones(TRUE);
+        // Кости двигаем только у анимированной модели: у неподвижной их либо нет вовсе, либо
+        // считать нечего — положение ей задаёт одна матрица выше.
+        if (m_da_script_item_model)
+        {
+            m_da_script_item_model->UpdateTracks();
+            m_da_script_item_model->dcast_PKinematics()->CalculateBones_Invalidate();
+            m_da_script_item_model->dcast_PKinematics()->CalculateBones(TRUE);
+        }
 
     }
 
@@ -1374,19 +1414,26 @@ u32 player_hud::da_script_anim_play(u8 hand, pcstr section, pcstr anim, bool mix
         // Отметки hud_loading, как в первоисточнике, у нашего рендера нет — модель создаётся так
         // же, как модель рук и оружия строчками выше.
         pcstr visual = pSettings->r_string(sect, "item_visual");
-        IRenderVisual* vis = GEnv.Render->model_Create(visual);
-        m_da_script_item_model = smart_cast<IKinematicsAnimated*>(vis);
+        m_da_script_item_visual = GEnv.Render->model_Create(visual);
+        m_da_script_item_model = smart_cast<IKinematicsAnimated*>(m_da_script_item_visual);
 
+        // ⚠️ Неанимированная модель — это НОРМА, а не ошибка: так устроены наши рюкзаки и вообще
+        // любая вещь, нарисованная не под сцену. Она просто держится в руках неподвижно. Говорим
+        // об этом вслух, потому что снаружи «сумка не раскрывается» и «сумки нет вовсе» выглядят
+        // одинаково, а причины разные.
+        if (m_da_script_item_visual && !m_da_script_item_model)
+            Msg("~ [DA_PORT] анимация рук: у модели [%s] нет анимации — держим в руках неподвижно",
+                visual);
     }
 
-    if (m_da_script_item_model)
+    if (m_da_script_item_visual)
     {
         const Fvector zero{ 0.f, 0.f, 0.f };
-        const Fvector pos = pSettings->read_if_exists<Fvector>(sect, "item_position", zero);
-        Fvector ypr = pSettings->read_if_exists<Fvector>(sect, "item_orientation", zero);
-        ypr.mul(PI / 180.f);
-        m_da_script_item_offset.setHPB(ypr.x, ypr.y, ypr.z);
-        m_da_script_item_offset.translate_over(pos);
+        m_da_script_item_pos = pSettings->read_if_exists<Fvector>(sect, "item_position", zero);
+        m_da_script_item_rot = pSettings->read_if_exists<Fvector>(sect, "item_orientation", zero);
+        // [DA_PORT] Размер предмета сцены. Нужен потому, что модель может быть нарисована не под
+        // руки: наш тяжёлый рюкзак крупнее сумки из набора в 1.8 раза по описанному объёму.
+        m_da_script_item_scale = pSettings->read_if_exists<float>(sect, "item_scale", 1.f);
         m_da_script_item_attach = pSettings->read_if_exists<u16>(sect, "attach_place_idx", 0);
 
         // [DA_PORT] Две развилки крепления, перенесённые из первоисточника целиком.
@@ -1417,8 +1464,10 @@ u32 player_hud::da_script_anim_play(u8 hand, pcstr section, pcstr anim, bool mix
         const shared_str item_anim =
             (motion->m_base_name != motion->m_additional_name) ? motion->m_additional_name : M.name;
 
-        MotionID mid = m_da_script_item_model->ID_Cycle_Safe(item_anim);
-        if (!mid.valid())
+        MotionID mid;
+        if (m_da_script_item_model)
+            mid = m_da_script_item_model->ID_Cycle_Safe(item_anim);
+        if (m_da_script_item_model && !mid.valid())
             mid = m_da_script_item_model->ID_Cycle_Safe("idle");
 
         if (mid.valid())
@@ -1451,7 +1500,7 @@ u32 player_hud::da_script_anim_play(u8 hand, pcstr section, pcstr anim, bool mix
             m_da_script_item_model->dcast_PKinematics()->CalculateBones_Invalidate();
 
         }
-        else
+        else if (m_da_script_item_model)
             Msg("! [DA_PORT] анимация рук: у предмета [%s] нет цикла [%s] и нет idle",
                 pSettings->r_string(sect, "item_visual"), item_anim.c_str());
     }
@@ -1491,10 +1540,11 @@ u32 player_hud::da_script_anim_play(u8 hand, pcstr section, pcstr anim, bool mix
 // иначе прежняя модель осталась бы висеть в руках поверх новой.
 void player_hud::da_script_item_release()
 {
-    if (!m_da_script_item_model)
+    if (!m_da_script_item_visual)
         return;
 
-    IRenderVisual* v = m_da_script_item_model->dcast_RenderVisual();
+    IRenderVisual* v = m_da_script_item_visual;
+    m_da_script_item_visual = nullptr;
     m_da_script_item_model = nullptr;
     GEnv.Render->model_Delete(v);
 }

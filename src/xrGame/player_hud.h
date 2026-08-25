@@ -180,6 +180,13 @@ public:
     void da_script_anim_stop();
     void da_script_item_release();
     bool da_script_anim_active() const;
+    // Текущая посадка предмета сцены — для печати подобранных чисел (da_scene_item_dump).
+    void da_script_item_tune(Fvector& pos, Fvector& rot, float& scale) const
+    {
+        pos = m_da_script_item_pos;
+        rot = m_da_script_item_rot;
+        scale = m_da_script_item_scale;
+    }
 
 private:
     // Наборы движений для скриптовых анимаций, по одному на секцию. Держим их, а не создаём заново:
@@ -193,8 +200,20 @@ private:
     bool m_da_script_one_hand{false}; // сцена играет ОДНОЙ рукой, вторая держит оружие
     // Модель предмета в руках на время скриптовой анимации: бутылка, аптечка и прочее.
     // Владеем ею сами — создаём при запуске, удаляем при остановке.
+    // [DA_PORT] Сама модель предмета сцены — ею мы владеем и её рисуем.
+    //
+    // Отдельно от m_da_script_item_model, потому что НЕ У ВСЯКОЙ модели есть анимация: у наших
+    // рюкзаков её нет, они рисовались висеть на спине. Раньше здесь стоял только приведённый к
+    // анимированному указатель, и на неанимированной модели приведение давало ноль — предмет
+    // молча не рисовался вовсе, а созданный визуал ещё и утекал.
+    IRenderVisual* m_da_script_item_visual{};
     IKinematicsAnimated* m_da_script_item_model{};
     Fmatrix m_da_script_item_offset{};
+    // [DA_PORT] Посадка предмета сцены хранится ЧИСЛАМИ, а не одной готовой матрицей: матрица
+    // собирается каждый кадр, чтобы поверх неё ложились консольные поправки подбора.
+    Fvector m_da_script_item_pos{};
+    Fvector m_da_script_item_rot{};   // градусы
+    float m_da_script_item_scale{ 1.f };
     u16 m_da_script_item_attach{};
     // Крепить к кости руки (обычный случай) или ставить собственной матрицей.
     bool m_da_script_item_attached{ true };
