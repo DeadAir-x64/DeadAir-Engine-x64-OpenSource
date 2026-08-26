@@ -108,7 +108,8 @@ public:
     }
 
     void o_crow(IGameObject* O);
-    void o_remove(Objects& v, IGameObject* O);
+    // [DA_PORT] true — объект был в списке и убран; false — его там не было. Разбор в .cpp.
+    bool o_remove(Objects& v, IGameObject* O);
     void o_activate(IGameObject* O);
     void o_sleep(IGameObject* O);
 

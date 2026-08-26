@@ -731,6 +731,20 @@
             </text_color>
         </list_season>
 
+		<!-- [DA_PORT] Модуль анимаций: отдельный архив da_animations.xdb0. Применяется при
+		     следующем запуске - архивы монтируются на старте движка. -->
+		<cap_animations x="25" y="2" width="90" height="21" complex_mode="1" >
+            <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_anim</text>
+        </cap_animations>
+        <list_animations x="124" y="0" width="115" height="21" list_length="2">
+            <options_item entry="da_animations" group="mm_opt_video_adv"/>
+            <list_font r="170" g="170" b="170" font="letterica16"/>
+            <text_color>
+                <e r="170" g="170" b="170"/>
+                <d r="70" g="70" b="70"/>
+            </text_color>
+        </list_animations>
+
 		<cap_lenswater x="25" y="2" width="90" height="21" complex_mode="1" >
             <text align="l" font="letterica16" r="95" g="92" b="79">ui_mm_lenswater</text>
         </cap_lenswater>

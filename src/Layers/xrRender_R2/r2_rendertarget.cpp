@@ -381,6 +381,17 @@ CRenderTarget::CRenderTarget()
             rt_TAA_history.create(r2_RT_taa_history, w, h, taa_fmt, 1);
         }
 
+        // [DA_PORT] Прибор «что дрожит между кадрами»: две цели в РАЗМЕР ВЫВОДА, а не сцены.
+        //
+        // Размер важен: смотрим мы кадр УЖЕ ПОСЛЕ апскейлера, иначе увидим не дефект, а джиттер.
+        // При рендере ниже ста процентов каждый пиксель сцены и так меняется каждый кадр - в этом
+        // смысл субпиксельного дрожания, - и разница до апскейлера была бы сплошным шумом. После
+        // него временной фильтр дрожание уже свёл, и остаётся только то, что мигает по-настоящему.
+        {
+            rt_Diff_prev.create(r2_RT_diff_prev, Device.dwWidth, Device.dwHeight, D3DFMT_A16B16G16R16F, 1);
+            rt_Diff_out.create(r2_RT_diff_out, Device.dwWidth, Device.dwHeight, D3DFMT_A16B16G16R16F, 1);
+        }
+
         // [DA_PORT] Motion vectors: where each pixel was on the previous frame, in screen space.
         // RG16F is the format FSR 2 and every other temporal upscaler expects — two signed channels
         // with enough precision for sub-pixel movement, at half the bandwidth of a full fp16 target.
@@ -851,6 +862,11 @@ CRenderTarget::CRenderTarget()
             // [DA_PORT] Вода рисуется после G-буфера и векторов не пишет — свой проход, см.
             // r4_rendertarget_phase_water_velocity.cpp.
             s_water_velocity.create("da_water_velocity");
+            // [DA_PORT] И глубина воды — для НАШЕЙ темпоралки. Она векторов не читает вовсе, ей
+            // нужна позиция; разбор — в r4_rendertarget_phase_water_depth.cpp.
+            s_water_depth.create("da_water_depth");
+            // [DA_PORT] Прибор разницы кадров, см. phase_frame_diff.
+            s_frame_diff.create("da_frame_diff");
 #endif
         }
 #endif

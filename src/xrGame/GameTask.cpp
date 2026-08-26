@@ -289,10 +289,45 @@ TASK_OBJECTIVE_ID CGameTask::ActiveObjectiveIdx() const
     return m_active_objective;
 }
 
+// [DA_PORT] Отказ называется в логе, но не чаще восьми раз: обращение идёт из обновления
+// интерфейса, то есть каждый кадр, и без ограничения лог перестал бы быть читаемым.
+void CGameTask::da_report_bad_objective(TASK_OBJECTIVE_ID idx) const
+{
+    static u32 reported = 0;
+    if (reported >= 8)
+        return;
+    ++reported;
+    Msg("! [DA_PORT] задача [%s]: подзадача №%u за границей списка (всего %u) — беру корень задачи",
+        m_ID.c_str(), u32(idx), u32(m_Objectives.size()));
+}
+
+// [DA_PORT] Обращение по номеру подзадачи ПРОВЕРЯЕТ границу. Раньше не проверяло.
+//
+// Краш у тестера (сборка 10056, 239a7856ac52): чтение по адресу 0xffffffffffffffff в
+// UITaskListWndItem::update_view, стек — обновление списка задач в КПК. Разбор: индекс уходил за
+// конец `m_Objectives`, `m_Objectives[idx - 1]` читал чужую память, `LinkedMapLocation()` возвращал
+// из неё мусор, а проверка `if (ml && ml->SpotEnabled())` такой указатель ПРОПУСКАЛА — единицы это
+// не ноль, — и вызов метода читал таблицу виртуальных функций по адресу −1.
+//
+// ⚠️ Здесь нельзя ограничиться проверкой на ноль у вызывающего: мусорный указатель проходит любую
+// проверку на пустоту. Чинить надо источник, то есть выход за границу.
+//
+// Номер портится не в сейве — там его нет вовсе, — а по кругу: SetActiveTask отдаёт задаче её же
+// текущий номер обратно, поэтому раз испортившись он таким и остаётся до конца сеанса. Достаточно
+// один раз перестроить список подзадач из скрипта, пока номер указывает за его новый конец.
+//
+// Корень задачи всегда существует, поэтому отказ отвечает им: список задач в КПК покажет строку
+// без подзадачи вместо падения.
 SGameTaskObjective& CGameTask::Objective(TASK_OBJECTIVE_ID idx)
 {
     if (idx == ROOT_TASK_OBJECTIVE)
         return *this;
+
+    if (u32(idx - 1) >= m_Objectives.size())
+    {
+        da_report_bad_objective(idx);
+        return *this;
+    }
     return m_Objectives[idx - 1];
 }
 
@@ -300,6 +335,12 @@ const SGameTaskObjective& CGameTask::Objective(TASK_OBJECTIVE_ID idx) const
 {
     if (idx == ROOT_TASK_OBJECTIVE)
         return *this;
+
+    if (u32(idx - 1) >= m_Objectives.size())
+    {
+        da_report_bad_objective(idx);
+        return *this;
+    }
     return m_Objectives[idx - 1];
 }
 
@@ -312,6 +353,18 @@ void CGameTask::SetActiveObjective(TASK_OBJECTIVE_ID idx)
 {
     if (idx == ROOT_TASK_OBJECTIVE && !m_Objectives.empty())
         idx = 1;
+
+    // [DA_PORT] Номер за границей сюда не записываем — иначе он останется в задаче навсегда.
+    //
+    // Проверка в Objective() уже не даёт упасть, но она лечит следствие: испорченный номер живёт
+    // дальше и продолжает возвращаться сюда через SetActiveTask, отчего КПК до конца сеанса
+    // показывает корень вместо подзадачи. Отсекаем и здесь, у входа.
+    if (idx != ROOT_TASK_OBJECTIVE && u32(idx - 1) >= m_Objectives.size())
+    {
+        da_report_bad_objective(idx);
+        idx = m_Objectives.empty() ? ROOT_TASK_OBJECTIVE : TASK_OBJECTIVE_ID(m_Objectives.size());
+    }
+
     m_active_objective = idx;
 }
 

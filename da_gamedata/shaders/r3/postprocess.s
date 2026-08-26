@@ -19,10 +19,14 @@ function normal		(shader, t_base, t_second, t_detail)
 	shader:dx10texture	("s_reactive", "$user$reactive")
 	-- [DA_PORT] eye-space depth, for the "r__motion_vectors 5" view
 	shader:dx10texture	("s_position", "$user$position")
+	-- [DA_PORT] normal G-buffer, for the "r__motion_vectors 6" view
+	shader:dx10texture	("s_normal", "$user$normal")
 	-- [DA_PORT] FSR 2 result, already at output resolution
 	shader:dx10texture	("s_fsr2", "$user$fsr2_out")
 
 	shader:dx10sampler	("smp_rtlinear")
+	-- [DA_PORT] без него s_position и s_normal читаются нулём: режимы 5 и 6
+	shader:dx10sampler	("smp_nofilter")
 	shader:dx10sampler	("smp_linear")
 end
 

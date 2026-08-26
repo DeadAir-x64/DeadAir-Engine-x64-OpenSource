@@ -9,6 +9,7 @@ float g_fSCREEN;
 
 extern float r_dtex_range;
 extern float r_ssaDISCARD;
+extern float r_ssaVEG_DISCARD; // [DA_PORT] щиты растительности
 extern float r_ssaDONTSORT;
 extern float r_ssaLOD_A;
 extern float r_ssaLOD_B;
@@ -87,7 +88,25 @@ void CRender::Calculate()
     ZoneScopedN("r2_calculate");
 
     // Transfer to global space to avoid deep pointer access
-    float fov_factor = _sqr(90.f / Device.fFOV);
+    // [DA_PORT] Множитель по обзору ОГРАНИЧЕН эталонной точкой настройки — 75 градусов.
+    //
+    // Зачем он вообще: широкий обзор делает всё на экране мельче, доля экрана падает, и объекты
+    // переходят в щиты и пропадают ближе. Множитель это компенсирует, чтобы «доля экрана» значила
+    // одно и то же при любом угле.
+    //
+    // Почему с ограничением: формула настроена на обзор 75 — это значение по умолчанию у эталона, а
+    // ползунок там останавливался на 90. Выше этой точки та же формула начинает удалять кусты и
+    // мелкие деревья, которые игрок ещё прекрасно видит. При обзоре 90 множитель равен единице
+    // вместо 1.44, то есть все пороги завышены в 1.44 раза и объекты пропадают примерно на 20%
+    // ближе задуманного. Теперь до 75 поведение бит в бит прежнее, а выше пороги перестают
+    // сжиматься дальше.
+    //
+    // ⚠️ Прицеливание не затрагивается: там обзор уходит ВНИЗ, в необрезаемую часть, и множитель
+    // работает как раньше — дальние объекты в прицеле по-прежнему живут дольше.
+    //
+    // Перенесено из Dead-Air-Refined (MMadmer, MIT), где всю цепочку уровней детализации сверили с
+    // эталонными исходниками построчно и нашли, что расходится только эта рабочая точка.
+    float fov_factor = _sqr(90.f / _min(Device.fFOV, 75.f));
     // [DA_PORT] The OUTPUT size, not the render target's. Every level-of-detail threshold below is
     // divided by this area, so taking it from the scene target made them scale with r__render_scale:
     // at 67% the area is less than half, thresholds are more than twice as strict, and r_ssaDISCARD -
@@ -100,6 +119,8 @@ void CRender::Calculate()
     // an upscaler must not quietly lower the level of detail everywhere.
     g_fSCREEN = float(Device.dwWidth * Device.dwHeight) * fov_factor * (EPS_S + ps_r__LOD);
     r_ssaDISCARD = _sqr(ps_r__ssaDISCARD) / g_fSCREEN;
+    // [DA_PORT] Свой порог для щитов растительности — разбор у ps_r__vegDISCARD.
+    r_ssaVEG_DISCARD = _sqr(ps_r__vegDISCARD) / g_fSCREEN;
     r_ssaDONTSORT = _sqr(ps_r__ssaDONTSORT / 3) / g_fSCREEN;
     r_ssaLOD_A = _sqr(ps_r2_ssaLOD_A / 3) / g_fSCREEN;
     r_ssaLOD_B = _sqr(ps_r2_ssaLOD_B / 3) / g_fSCREEN;

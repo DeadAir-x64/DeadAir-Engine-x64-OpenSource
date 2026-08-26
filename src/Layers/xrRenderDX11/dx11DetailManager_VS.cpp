@@ -33,7 +33,7 @@ void CDetailManager::hw_Load_Shaders()
     hwc_s_array = T1.get("array");
 }
 
-void CDetailManager::hw_Render(CBackend& cmd_list)
+void CDetailManager::hw_Render(CBackend& cmd_list, bool shadow_pass)
 {
     ZoneScoped;
     using namespace detail_manager;
@@ -134,7 +134,7 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
     // hw_Render_dump			(&*hwc_array,	1, 0, c_hdr );
     Fvector4 wave_old;
     wave_old.set(1.f / 5.f, 1.f / 7.f, 1.f / 3.f, m_time_pos_old);
-    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir1, wave_old.div(PI_MUL_2), dir1_old, 1, 0);
+    hw_Render_dump(cmd_list, shadow_pass, consts, wave.div(PI_MUL_2), dir1, wave_old.div(PI_MUL_2), dir1_old, 1, 0);
 
     // Wave1
     // wave.set				(1.f/3.f,		1.f/7.f,	1.f/5.f,	Device.fTimeGlobal*swing_current.speed);
@@ -144,7 +144,7 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
     // wind-dir
     // hw_Render_dump			(&*hwc_array,	2, 0, c_hdr );
     wave_old.set(1.f / 3.f, 1.f / 7.f, 1.f / 5.f, m_time_pos_old);
-    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir2, wave_old.div(PI_MUL_2), dir2_old, 2, 0);
+    hw_Render_dump(cmd_list, shadow_pass, consts, wave.div(PI_MUL_2), dir2, wave_old.div(PI_MUL_2), dir2_old, 2, 0);
 
     // Still
     consts.set(scale, scale, scale, 1.f);
@@ -152,10 +152,10 @@ void CDetailManager::hw_Render(CBackend& cmd_list)
     // RCache.set_c			(&*hwc_s_xform,	Device.mFullTransform);
     // hw_Render_dump			(&*hwc_s_array,	0, 1, c_hdr );
     // The "still" batch does not sway at all, so its previous sway is its current one.
-    hw_Render_dump(cmd_list, consts, wave.div(PI_MUL_2), dir2, wave.div(1.f), dir2, 0, 1);
+    hw_Render_dump(cmd_list, shadow_pass, consts, wave.div(PI_MUL_2), dir2, wave.div(1.f), dir2, 0, 1);
 }
 
-void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, const Fvector4& wave,
+void CDetailManager::hw_Render_dump(CBackend& cmd_list, bool shadow_pass, const Fvector4& consts, const Fvector4& wave,
     const Fvector4& wind, const Fvector4& wave_old, const Fvector4& wind_old, u32 var_id, u32 lod_id)
 {
     ZoneScoped;
@@ -167,6 +167,8 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, 
     static shared_str strDir2DOld("dir2D_old"); // [DA_PORT] motion vectors
     static shared_str strArray("array");
     static shared_str strXForm("xform");
+    static shared_str strSFade("grass_sfade"); // [DA_PORT] затухание тени травы
+    static shared_str strSFadeEye("grass_sfade_eye"); // [DA_PORT] мировая позиция КАМЕРЫ
 
     RImplementation.BasicStats.DetailCount = 0;
 
@@ -174,7 +176,9 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, 
     u32 vOffset = 0;
     u32 iOffset = 0;
 
-    vis_list& list = m_visibles[var_id];
+    // [DA_PORT] В теневом проходе берём сокращённый набор — только ближние слоты. Разбор у
+    // m_visibles_shadow в DetailManager.h.
+    vis_list& list = shadow_pass ? m_visibles_shadow[var_id] : m_visibles[var_id];
 
     const auto& desc = g_pGamePersistent->Environment().CurrentEnv;
     Fvector c_sun, c_ambient, c_hemi;
@@ -205,6 +209,36 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, 
                 cmd_list.set_c(strWaveOld, wave_old); // [DA_PORT]
                 cmd_list.set_c(strDir2DOld, wind_old); // [DA_PORT]
                 cmd_list.set_c(strXForm, Device.mFullTransform);
+
+                // [DA_PORT] Полоса затухания тени: (начало, конец) в метрах от камеры. В ОБЫЧНОМ
+                // проходе строго нули — шейдер по нулю понимает, что гасить нечего, и ведёт себя
+                // в точности как раньше. Признака прохода в шейдере больше нет нигде, и заводить
+                // отдельный дефайн ради него значило бы удвоить число вариантов травы в кэше.
+                {
+                    extern int ps_r__grass_shadow_dist;
+                    extern int ps_r__grass_shadow_fade;
+                    Fvector4 sfade;
+                    if (shadow_pass && ps_r__grass_shadow_fade > 0)
+                    {
+                        const float e = float(ps_r__grass_shadow_dist);
+                        sfade.set(_max(e - float(ps_r__grass_shadow_fade), 0.f), e, 0.f, 0.f);
+                    }
+                    else
+                        sfade.set(0.f, 0.f, 0.f, 0.f);
+                    cmd_list.set_c(strSFade, sfade);
+
+                    // ⚠️ Позицию камеры приходится отдавать ОТДЕЛЬНО. Первая версия брала
+                    // расстояние через m_WV прямо в шейдере — и это была ошибка: в теневом
+                    // проходе m_WV принадлежит СОЛНЦУ, а не камере. До солнца далеко, множитель
+                    // схлопывался в ноль, вся трава ложилась плашмя, и тень пропадала целиком.
+                    // Здесь же величина одна и та же в любом проходе, и она ровно та, по которой
+                    // режет процессор в UpdateVisibleM — иначе полоса затухания не совпала бы с
+                    // самой отсечкой.
+                    const Fvector& ep = Device.vCameraPosition;
+                    Fvector4 eye;
+                    eye.set(ep.x, ep.y, ep.z, 0.f);
+                    cmd_list.set_c(strSFadeEye, eye);
+                }
 
                 // ref_constant constArray = RCache.get_c(strArray);
                 // VERIFY(constArray);
@@ -239,10 +273,15 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, 
                         {
                             // Build matrix ( 3x4 matrix, last row - color )
                             float scale = Instance.scale_calculated;
+                            // [DA_PORT] Высота масштабируется ОТДЕЛЬНО. Матрица сложена по столбцам,
+                            // и вклад локальной высоты — это ВТОРОЙ элемент каждой строки (M._21,
+                            // M._22, M._32). Умножая только их, мы прижимаем травинку к земле, не
+                            // трогая её пятно. Разбор — у ps_r__grass_fade_flat.
+                            const float hs = scale * Instance.height_calculated;
                             Fmatrix& M = Instance.mRotY;
-                            Instance.cached_out[0].set(M._11 * scale, M._21 * scale, M._31 * scale, M._41);
-                            Instance.cached_out[1].set(M._12 * scale, M._22 * scale, M._32 * scale, M._42);
-                            Instance.cached_out[2].set(M._13 * scale, M._23 * scale, M._33 * scale, M._43);
+                            Instance.cached_out[0].set(M._11 * scale, M._21 * hs, M._31 * scale, M._41);
+                            Instance.cached_out[1].set(M._12 * scale, M._22 * hs, M._32 * scale, M._42);
+                            Instance.cached_out[2].set(M._13 * scale, M._23 * hs, M._33 * scale, M._43);
 
                             // Build color (R2 only needs hemisphere)
                             float h = Instance.c_hemi;

@@ -1,0 +1,33 @@
+#include "common.h"
+
+// [DA_PORT] Разница между текущим кадром и прошлым. Разбор - в r4_rendertarget_phase_frame_diff.cpp.
+//
+// Считаем по ЯРКОСТИ, а не покомпонентно: мерцание это изменение светимости, и цветовой сдвиг без
+// изменения яркости нас не интересует.
+uniform float4 da_diff_params;   // x = усиление, y = режим (1 серый, 2 цветной)
+
+// s_image объявлена в common.h - повторное объявление здесь роняло сборку шейдера.
+Texture2D s_history;
+
+struct vf { float4 tc0 : TEXCOORD0; float2 tcJ : TEXCOORD1; float4 hpos : SV_Position; };
+
+float4 main(vf I) : SV_Target
+{
+	const float2 tc = I.tc0.xy;
+	const float3 a = s_image.Sample(smp_nofilter, tc).rgb;
+	const float3 b = s_history.Sample(smp_nofilter, tc).rgb;
+
+	const float la = dot(a, float3(0.2126, 0.7152, 0.0722));
+	const float lb = dot(b, float3(0.2126, 0.7152, 0.0722));
+	const float d = saturate(abs(la - lb) * da_diff_params.x);
+
+	if (da_diff_params.y > 1.5)
+	{
+		// Цветом: зелёное - слабо, жёлтое - средне, красное - сильно. Так на одном кадре видно и
+		// фоновый шум, и настоящие очаги, а не всё подряд белым.
+		const float3 heat = float3(saturate(d * 2.0), saturate(2.0 - d * 2.0), 0.0) * saturate(d * 4.0);
+		return float4(heat, 1.0);
+	}
+
+	return float4(d, d, d, 1.0);
+}

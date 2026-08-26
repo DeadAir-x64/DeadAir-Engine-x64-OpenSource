@@ -1,6 +1,12 @@
 #include "common.h"
 
 uniform float4 		consts; // {1/quant,1/quant,diffusescale,ambient}
+// [DA_PORT] Fade band for the grass shadow: x = where it starts, y = where it ends, metres
+// from the camera. STRICTLY ZERO outside the sun shadow pass, and zero means "do nothing".
+uniform float4 		grass_sfade;
+// World position of the CAMERA. Handed over separately on purpose: in the sun shadow pass
+// m_WV belongs to the SUN, so a view-space distance there measures the wrong thing.
+uniform float4 		grass_sfade_eye;
 //uniform float4 		array	[200] : register(c12);
 //tbuffer DetailsData
 //{
@@ -21,6 +27,25 @@ v2p_flat 	main (v_detail v, uint instance_id : SV_InstanceID)
 	float4  m1 	= array[i+1];
 	float4  m2 	= array[i+2];
 	float4  c0 	= array[i+3];
+
+	// [DA_PORT] Grass shadow fade band. Zero = untouched, exactly as before.
+	//
+	// The shadow of the grass is cut at a radius around the camera, and the cut edge reads as a
+	// cone travelling with the player. Industry answer is to fade before the cull, not at it
+	// (PerInstanceFadeAmount in Unreal). We fade by HEIGHT, not opacity: the blade lies down, its
+	// shadow shortens and vanishes. Opacity would need dithered alpha test - per pixel work.
+	//
+	// The height contribution is the y element of each row (m0.y, m1.y, m2.y) - the same three
+	// numbers r__grass_fade_flat scales on the CPU side. Distance is taken from the instance
+	// ORIGIN (m0.w, m1.w, m2.w), so a blade never shrinks unevenly along its own height.
+	[branch] if ( grass_sfade.y > 0.001f )
+	{
+		const float3 wp = float3( m0.w, m1.w, m2.w );
+		const float  d  = distance( wp, grass_sfade_eye.xyz );
+		const float  k  = saturate( ( grass_sfade.y - d ) /
+		                            max( grass_sfade.y - grass_sfade.x, 0.001f ) );
+		m0.y *= k; m1.y *= k; m2.y *= k;
+	}
 
 	// Transform pos to world coords
 	float4 	pos;

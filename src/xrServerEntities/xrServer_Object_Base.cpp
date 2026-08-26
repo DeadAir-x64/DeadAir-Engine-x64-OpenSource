@@ -13,6 +13,9 @@
 #include "script_value_container_impl.h"
 #include "clsid_game.h"
 #include "xrCore/xr_token.h"
+#include "xrCore/Threading/Lock.hpp"      // [DA_PORT] реестр живых объектов ниже
+#include "xrCore/Threading/ScopeLock.hpp" // [DA_PORT] он же
+#include "xrCommon/xr_unordered_set.h"    // [DA_PORT] он же
 
 #ifndef AI_COMPILER
 #include "object_factory.h"
@@ -52,8 +55,35 @@ void CPureServerObject::save(NET_Packet& tNetPacket) {}
 ////////////////////////////////////////////////////////////////////////////
 // CSE_Abstract
 ////////////////////////////////////////////////////////////////////////////
+namespace
+{
+// [DA_PORT] Реестр ЖИВЫХ серверных сущностей — строгая проверка для скриптовой границы.
+//
+// Разбор, зачем он рядом с меткой m_da_alive, — в заголовке у is_live_object. Коротко: метка лежит
+// внутри объекта и требует разыменовать, возможно, освобождённый указатель, а реестр отвечает по
+// самому значению указателя и мёртвую память не трогает.
+//
+// Замок нужен: серверные сущности создаются и уничтожаются не только из главного потока (ALife
+// работает на рабочих задачах — см. заметку про Lua из рабочего потока).
+Lock g_da_live_objects_lock;
+xr_unordered_set<const CSE_Abstract*> g_da_live_objects;
+} // namespace
+
+bool CSE_Abstract::is_live_object(const CSE_Abstract* object)
+{
+    if (!object)
+        return false;
+    ScopeLock lock{ &g_da_live_objects_lock };
+    return g_da_live_objects.find(object) != g_da_live_objects.end();
+}
+
 CSE_Abstract::CSE_Abstract(LPCSTR caSection)
 {
+    {
+        ScopeLock lock{ &g_da_live_objects_lock };
+        g_da_live_objects.insert(this);
+    }
+
     m_da_alive = u32(da_alive_magic); // [DA_PORT] метка жизни, см. заголовок
 
     m_editor_flags.zero();
@@ -138,6 +168,12 @@ CSE_Abstract::~CSE_Abstract()
     // [DA_PORT] Гасим метку ПЕРВЫМ делом: с этого мгновения любая ссылка на нас в реестрах
     // ALife — висячая, и обходчик обязан её пропустить, а не звать методы по мёртвой памяти.
     m_da_alive = 0;
+
+    // И вычёркиваемся из строгого реестра — тем же первым делом и по той же причине.
+    {
+        ScopeLock lock{ &g_da_live_objects_lock };
+        g_da_live_objects.erase(this);
+    }
 
     xr_free(s_name_replace);
     xr_delete(m_ini_file);

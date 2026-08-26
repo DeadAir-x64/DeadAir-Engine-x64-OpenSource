@@ -97,6 +97,45 @@ float4 tbase( float2 tc )
 
 // [DA_PORT] Крутой параллакс: настройки снаружи вместо зашитых чисел. См. xr_ioc_cmd.cpp.
 // x = начало затухания (м), y = конец (м), z = глубина продавливания, w = сила собственной тени
+// [DA_PORT] Собственный сдвиг мипов детальной текстуры (.x), в мипах. Разбор - у ручки
+// r__detail_mipbias в движке. Ноль = как было.
+
+// [DA_PORT] ХЕШИРОВАННЫЙ АЛЬФА-ТЕСТ (Wyman & McGuire, 2017). Ручка r__alpha_hash, ноль - как было.
+//
+// Зачем. Листва и трава рисуются жёстким clip() по одному порогу: пиксель либо целиком есть, либо
+// целиком нет, полутонов не бывает. Ветка тоньше пикселя проходит или не проходит проверку в
+// зависимости от того, куда субпиксельное дрожание поставило выборку, - и решение перещёлкивается
+// каждый кадр. Временному фильтру усреднять нечего: ему приходит не "полупрозрачно", а "да/нет".
+//
+// Приём: порог берётся не постоянный, а СЛУЧАЙНЫЙ на каждый пиксель и каждый кадр. Тогда доля
+// прошедших проверку кадров равна альфе - то есть покрытие в среднем ВЕРНОЕ, - а временное
+// накопление превращает эту случайность в правильную полупрозрачность. Осмысленно только в паре с
+// накоплением, поэтому по умолчанию выключено и включается вместе с апскейлером или нашей TAA.
+//
+// da_alpha_hash: x = сила (0 - прежний постоянный порог, 1 - полностью случайный), y = поворот
+// последовательности от кадра к кадру.
+uniform float4 da_alpha_hash;
+
+float da_hashed_aref( float2 pix, float aref )
+{
+	[branch] if ( da_alpha_hash.x <= 0.001f )
+		return aref;
+
+	float h = frac( sin( dot( pix + da_alpha_hash.y, float2( 12.9898f, 78.233f ) ) ) * 43758.5453f );
+	return lerp( aref, h, da_alpha_hash.x );
+}
+
+// [DA_PORT] Крупный слой вариации дальнего плана: x = сила, y = 1/шаг повторения,
+// z = метры начала, w = метры полной силы. Разбор — у ручки r__macro_var в движке.
+uniform float4 da_macro_var;
+// [DA_PORT] x = сила подмены оттенка дали («фальшивая трава»). Разбор — у r__macro_tint.
+uniform float4 da_macro_var2;
+// [DA_PORT] Щиты дальней растительности: x = доля рассеянного света, y = насыщенность,
+// z = яркость. Разбор — у ручки r__lod_hemi. Единицы = прежнее поведение.
+uniform float4 da_lod_tune;
+
+uniform float4 da_detail_bias;
+
 uniform float4 da_parallax;
 // x = шагов поиска max, y = шагов поиска min, z = шагов луча к солнцу, w = режим отладки
 uniform float4 da_parallax2;
@@ -377,8 +416,8 @@ surface_bumped sload_i( p_bumped I)
 
 #ifdef        USE_TDETAIL
 #ifdef        USE_TDETAIL_BUMP
-	float4 NDetail		= s_detailBump.Sample( smp_base, I.tcdbump);
-	float4 NDetailX		= s_detailBumpX.Sample( smp_base, I.tcdbump);
+	float4 NDetail		= s_detailBump.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
+	float4 NDetailX		= s_detailBumpX.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
 	// [DA_PORT] Damped where the detail bump has gone finer than a pixel - see the top of this file.
 	float3 da_dN		= NDetail.wzy + NDetailX.xyz - 1.0h; //	(Nu.wzyx - .5h) + (E-.5)
 	// [DA_PORT] Weighted by the material's OWN gloss, and that is the whole point of the measure.
@@ -401,7 +440,7 @@ surface_bumped sload_i( p_bumped I)
 	// and flattened the metal instead of merely steadying it.
 	S.gloss				= S.gloss * lerp( 1.0h, NDetail.x * GLOSS_MUL, da_wg );
 	S.normal			+= da_dN * da_wn;
-	float4 detail		= s_detail.Sample( smp_base, I.tcdbump);
+	float4 detail		= s_detail.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
 	// [DA_PORT] Цвет подавляется СВОЕЙ мерой, не привязанной к блеску.
 	//
 	// Выше мера домножена на saturate(S.gloss), и для нормали с блеском это верно: там рассыпается
@@ -439,7 +478,7 @@ surface_bumped sload_i( p_bumped I)
 
 //	S.base.rgb			= float3(1,0,0);
 #else        //	USE_TDETAIL_BUMP
-	float4 detail		= s_detail.Sample( smp_base, I.tcdbump);
+	float4 detail		= s_detail.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
 	// [DA_PORT] This is the branch metal props actually take (verified in game with the debug modes
 	// below). Note what it does: a COLOURED detail texture goes straight into the albedo with a factor of
 	// two. Once that texture is finer than a pixel the tint differs from frame to frame as the jitter
@@ -493,8 +532,8 @@ surface_bumped sload_i( p_bumped I, float2 pixeloffset )
 #endif
 #endif
 
-	float4 NDetail		= s_detailBump.Sample( smp_base, I.tcdbump);
-	float4 NDetailX		= s_detailBumpX.Sample( smp_base, I.tcdbump);
+	float4 NDetail		= s_detailBump.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
+	float4 NDetailX		= s_detailBumpX.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
 	// [DA_PORT] Damped where the detail bump has gone finer than a pixel - see the top of this file.
 	float3 da_dN		= NDetail.wzy + NDetailX.xyz - 1.0h; //	(Nu.wzyx - .5h) + (E-.5)
 	// [DA_PORT] Weighted by the material's OWN gloss, and that is the whole point of the measure.
@@ -517,7 +556,7 @@ surface_bumped sload_i( p_bumped I, float2 pixeloffset )
 	// and flattened the metal instead of merely steadying it.
 	S.gloss				= S.gloss * lerp( 1.0h, NDetail.x * GLOSS_MUL, da_wg );
 	S.normal			+= da_dN * da_wn;
-	float4 detail		= s_detail.Sample( smp_base, I.tcdbump);
+	float4 detail		= s_detail.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
 	// [DA_PORT] Цвет подавляется СВОЕЙ мерой, не привязанной к блеску.
 	//
 	// Выше мера домножена на saturate(S.gloss), и для нормали с блеском это верно: там рассыпается
@@ -558,7 +597,7 @@ surface_bumped sload_i( p_bumped I, float2 pixeloffset )
 #ifdef MSAA_ALPHATEST_DX10_1
    I.tcdbump.xy += pixeloffset.x * ddx(I.tcdbump.xy) + pixeloffset.y * ddy(I.tcdbump.xy);
 #endif
-	float4 detail		= s_detail.Sample( smp_base, I.tcdbump);
+	float4 detail		= s_detail.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
 	S.base.rgb			= S.base.rgb * detail.rgb * 2;
 	S.gloss				= S.gloss * detail.w * GLOSS_MUL;
 #endif        //	USE_TDETAIL_BUMP

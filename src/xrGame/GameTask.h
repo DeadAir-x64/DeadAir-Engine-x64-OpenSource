@@ -187,6 +187,8 @@ public:
     auto ActiveObjective() { return Objective(m_active_objective); }
     SGameTaskObjective& Objective(TASK_OBJECTIVE_ID idx);
     const SGameTaskObjective& Objective(TASK_OBJECTIVE_ID idx) const;
+    // [DA_PORT] Печатает отказ при выходе номера подзадачи за границу. Разбор — в .cpp.
+    void da_report_bad_objective(TASK_OBJECTIVE_ID idx) const;
     ETaskState ObjectiveState(TASK_OBJECTIVE_ID idx) const;
     void SetActiveObjective(TASK_OBJECTIVE_ID idx);
     TASK_OBJECTIVE_ID GetObjectivesCount(bool without_root = false) const;

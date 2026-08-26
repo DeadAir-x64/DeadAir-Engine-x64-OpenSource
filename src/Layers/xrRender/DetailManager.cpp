@@ -216,7 +216,10 @@ void CDetailManager::Load()
 
     // Initialize 'vis' and 'cache'
     for (u32 i = 0; i < 3; ++i)
+    {
         m_visibles[i].resize(objects.size());
+        m_visibles_shadow[i].resize(objects.size()); // [DA_PORT] теневой набор той же формы
+    }
     cache_Initialize();
 
     // Make dither matrix
@@ -309,6 +312,10 @@ void CDetailManager::Unload()
     m_visibles[0].clear();
     m_visibles[1].clear();
     m_visibles[2].clear();
+    // [DA_PORT] Теневой набор чистится вместе с основным: он тот же список, только короче.
+    m_visibles_shadow[0].clear();
+    m_visibles_shadow[1].clear();
+    m_visibles_shadow[2].clear();
     FS.r_close(dtFS);
 }
 
@@ -319,18 +326,34 @@ void CDetailManager::UpdateVisibleM()
     ZoneScoped;
 
     for (int i = 0; i != 3; ++i)
+    {
         for (auto& vis : m_visibles[i])
             vis.clear();
+        for (auto& vis : m_visibles_shadow[i]) // [DA_PORT]
+            vis.clear();
+    }
 
     CFrustum View;
     View.CreateFromMatrix(Device.mFullTransform, FRUSTUM_P_LRTB + FRUSTUM_P_FAR);
 
     float fade_limit = dm_fade;
     fade_limit = fade_limit * fade_limit;
-    float fade_start = 1.f;
+
+    // [DA_PORT] Начало сжатия — не жёсткий метр, а доля дальности. Разбор у ps_r__grass_fade_start.
+    extern ECORE_API float ps_r__grass_fade_start;
+    float fade_start = 1.f + (dm_fade - 1.f) * ps_r__grass_fade_start;
     fade_start = fade_start * fade_start;
     float fade_range = fade_limit - fade_start;
     float r_ssaCHEAP = 16 * r_ssaDISCARD;
+
+    // [DA_PORT] Дальность травы в тенях, в квадрате — сравнение идёт с квадратом расстояния.
+    //
+    // ЗАМЕР (Кордон, открытый склон, 201 кадр): трава во всех трёх каскадах давала sun_smap 5.05 мс,
+    // только в ближнем — 2.42 мс, без травы вовсе — 0.59 мс. Остаток в 1.83 мс объясняется тем, что в
+    // двадцатиметровый каскад уходила ВСЯ трава, видимая игроку (при r__detail_radius 299 - на
+    // трёхстах метрах), и отсекалась уже видеокартой, после обработки вершин.
+    extern int ps_r__grass_shadow_dist;
+    const float grass_shadow_dist_sq = float(ps_r__grass_shadow_dist) * float(ps_r__grass_shadow_dist);
 
     // Initialize 'vis' and 'cache'
     // Collect objects for rendering
@@ -412,7 +435,14 @@ void CDetailManager::UpdateVisibleM()
                         for(auto& siIT : sp.items)
                         {
                             SlotItem& Item = *siIT;
-                            float scale = Item.scale_calculated = Item.scale * alpha_i;
+                            // [DA_PORT] Затухание делится между равномерным сжатием и высотой.
+                            // Разбор — у ps_r__grass_fade_flat. При нуле всё как было: alpha_i уходит
+                            // в общий масштаб, высота отдельного множителя не получает.
+                            extern ECORE_API float ps_r__grass_fade_flat;
+                            const float flat_k = ps_r__grass_fade_flat;
+                            const float uni = 1.f - (1.f - alpha_i) * (1.f - flat_k);
+                            Item.height_calculated = (uni > 1e-4f) ? (alpha_i / uni) : 1.f;
+                            float scale = Item.scale_calculated = Item.scale * uni;
                             // [DA_PORT] Единственное место, где меняется вход в hw_Render_dump's
                             // c_storage (см. cache_valid у SlotItem) — сбрасываем кэш здесь, а не там.
                             Item.cache_valid = false;
@@ -431,22 +461,27 @@ void CDetailManager::UpdateVisibleM()
                         }
                     }
                 }
+                // [DA_PORT] Расстояние считается ЗДЕСЬ заново, а не берётся из блока выше.
+                //
+                // Тот блок (`if (Device.dwFrame > S.frame)`) отрабатывает раз в 15-30 кадров - он
+                // пересобирает содержимое слота, - а вот этот цикл идёт КАЖДЫЙ кадр. Взять dist_sq
+                // оттуда нельзя: он и вне области видимости, и устарел бы на десятки кадров, то есть
+                // граница теней ездила бы рывками вслед за обновлением слотов.
+                const bool near_for_shadow =
+                    EYE.distance_to_sqr(S.vis.sphere.P) <= grass_shadow_dist_sq;
+
                 for (int sp_id = 0; sp_id < dm_obj_in_slot; sp_id++)
                 {
                     SlotPart& sp = S.G[sp_id];
                     if (sp.id == DetailSlot::ID_Empty)
                         continue;
-                    if (!sp.r_items[0].empty())
+                    for (int vid = 0; vid < 3; ++vid)
                     {
-                        m_visibles[0][sp.id].push_back(&sp.r_items[0]);
-                    }
-                    if (!sp.r_items[1].empty())
-                    {
-                        m_visibles[1][sp.id].push_back(&sp.r_items[1]);
-                    }
-                    if (!sp.r_items[2].empty())
-                    {
-                        m_visibles[2][sp.id].push_back(&sp.r_items[2]);
+                        if (sp.r_items[vid].empty())
+                            continue;
+                        m_visibles[vid][sp.id].push_back(&sp.r_items[vid]);
+                        if (near_for_shadow)
+                            m_visibles_shadow[vid][sp.id].push_back(&sp.r_items[vid]);
                     }
                 }
             }
@@ -460,7 +495,7 @@ bool CDetailManager::UseVS() const
     return HW.Caps.geometry_major >= 1 && !RImplementation.o.ffp;
 }
 
-void CDetailManager::Render(CBackend& cmd_list)
+void CDetailManager::Render(CBackend& cmd_list, bool shadow_pass)
 {
 #ifndef _EDITOR
     if (nullptr == dtFS)
@@ -554,7 +589,7 @@ void CDetailManager::Render(CBackend& cmd_list)
     cmd_list.set_CullMode(CULL_NONE);
     cmd_list.set_xform_world(Fidentity);
     if (UseVS())
-        hw_Render(cmd_list);
+        hw_Render(cmd_list, shadow_pass);
     else
         soft_Render();
     cmd_list.set_CullMode(CULL_CCW);

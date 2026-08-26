@@ -59,10 +59,18 @@ extern ECORE_API float ps_r__LOD;
 extern ECORE_API u32 ps_r__light_shadow_budget;
 //.extern ECORE_API	float		ps_r__LOD_Power		;
 extern ECORE_API float ps_r__ssaDISCARD;
+// [DA_PORT] Свой порог отбрасывания для щитов растительности. Разбор — в xrRender_console.cpp.
+extern ECORE_API float ps_r__vegDISCARD;
+// [DA_PORT] Начало уменьшения травы, долей от дальности. Разбор — в xrRender_console.cpp.
+extern ECORE_API float ps_r__grass_fade_start;
+extern ECORE_API float ps_r__grass_fade_flat; // [DA_PORT] доля затухания, уходящая в высоту
 extern ECORE_API float ps_r__ssaDONTSORT;
 extern ECORE_API float ps_r__ssaHZBvsTEX;
 extern ECORE_API int ps_r__tf_Anisotropic;
 extern ECORE_API float ps_r__tf_Mipbias;
+// [DA_PORT] Доля поправки мипов на масштаб рендера, в процентах. Разбор — у da_effective_mipbias.
+extern ECORE_API int ps_r__upscale_mipbias;
+ECORE_API float da_effective_mipbias();
 
 extern ECORE_API int ps_r__clear_models_on_unload;
 
@@ -317,6 +325,12 @@ extern ECORE_API float ps_r_linear_light;
 // [DA_PORT] Числовое зеркало выбора профиля — для встроенного настройщика.
 extern ECORE_API float ps_r_grading_preset_num;
 extern ECORE_API float ps_r_tonemap_white;
+extern ECORE_API float ps_r__foliage_gloss; // [DA_PORT] глянец листвы
+extern ECORE_API float ps_r__foliage_bend;  // [DA_PORT] просвет листвы
+extern ECORE_API float ps_r__foliage_vibrance; // [DA_PORT] насыщенность листвы
+extern ECORE_API float ps_r__foliage_debleach; // [DA_PORT] гашение белёсых веток
+extern ECORE_API float ps_r_tonemap_hue;   // [DA_PORT] тонировка по светимости
+extern ECORE_API float ps_r_tonemap_desat; // [DA_PORT] порог обесцвечивания белого
 
 // [DA_PORT] ---- Geometry cut-off by size and distance (author's optimisation) --------------------
 // Dead Air drops geometry that is too small to matter at its distance, instead of rendering every

@@ -17,8 +17,10 @@
 // does catch highlights, and def_gloss for it was effectively zero.
 #define DA_SOFT_EDGES
 #define DA_TRANSLUCENCY
-#define DA_TRANSLUCENCY_BEND  0.35
-#define DA_FOLIAGE_GLOSS      0.35
+// [DA_PORT] Значения переехали в консоль: r__foliage_bend и r__foliage_gloss (xrRender_console.cpp).
+// Прежние вшитые числа — 0.35 и 0.35 — остались умолчаниями ручек, картинка без вмешательства та же.
+#define DA_TRANSLUCENCY_BEND  ( da_foliage.y )
+#define DA_FOLIAGE_GLOSS      ( 0.35 * ((da_foliage.x > 0.001f) ? (da_foliage.x - 1.0f) : 1.0f) )
 
 // Ordered Bayer 4x4 matrix: an even pattern fixed in screen space. Unlike random noise it does not boil
 // between frames, which is what lets temporal AA average it away instead of amplifying it.

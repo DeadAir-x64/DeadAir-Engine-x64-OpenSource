@@ -92,35 +92,69 @@ IGameObject* CObjectList::FindObjectByCLS_ID(CLASS_ID cls)
     return NULL;
 }
 
-void CObjectList::o_remove(Objects& v, IGameObject* O)
+// [DA_PORT] Возвращает, БЫЛ ЛИ объект в списке. Раньше возвращал void, и промах молчал.
+//
+// Сам по себе промах уже не падал: проверка на end() стоит здесь давно, потому что erase(end()) —
+// это memmove с отрицательной длиной, идущий по куче до первой незанятой страницы. Но вызывающим
+// промах не сообщался, и они продолжали работу так, будто перенос состоялся, — разбор ниже.
+bool CObjectList::o_remove(Objects& v, IGameObject* O)
 {
-    //. if(O->ID()==1026)
-    //. {
-    //. Log("ahtung");
-    //. }
     Objects::iterator _i = std::find(v.begin(), v.end(), O);
 
-    // [DA_PORT] Проверка вместо VERIFY: erase(end()) — неопределённое поведение, а объект
-    // мог быть снят с учёта раньше по другому пути. Ломается при этом не здесь, а потом и
+    // Объект мог быть снят с учёта раньше по другому пути. Ломается при этом не здесь, а потом и
     // в стороне: список объектов уровня обходят все подряд.
     if (_i == v.end())
-        return;
+        return false;
 
     v.erase(_i);
-    //. Msg("---o_remove[%s][%d]", O->cName().c_str(), O->ID() );
+    return true;
 }
 
+// [DA_PORT] При промахе состояние остаётся КАК БЫЛО, а не достраивается наполовину.
+//
+// Прежде `push_back` шёл безусловно, и «не нашли, откуда убрать» превращалось в «всё равно добавим
+// куда переносим». Два исхода, оба плохие: если объект уже активен (двойное переключение), он
+// оказывается в списке ДВАЖДЫ и получает по два обновления за кадр; если он не зарегистрирован
+// вовсе — скрипт дёргает уже разобранный объект, — в цикл обновления попадает мёртвый указатель.
+//
+// Найдено у соседнего порта (Dead-Air-Refined, MMadmer, MIT): у них тот же промах приводил к падению
+// в `CHangingLamp::TurnOn` из скрипта. Наша половина правки — проверка в `o_remove` — падение уже
+// снимала, но состояние всё равно расходилось молча.
+//
+// Замок вокруг списков у них есть, у нас нет; переношу только смысл, отдельное решение про
+// многопоточность сюда не тащу.
+//
+// Сообщение ограничено восемью строками: причина всегда одна и та же, а промах может повторяться
+// каждый кадр — лог заливать незачем.
 void CObjectList::o_activate(IGameObject* O)
 {
     VERIFY(O && O->processing_enabled());
-    o_remove(objects_sleeping, O);
+    if (!o_remove(objects_sleeping, O))
+    {
+        static u32 reported = 0;
+        if (reported < 8)
+        {
+            ++reported;
+            Msg("! o_activate: [%s] не в списке спящих, состояние оставлено как есть", O->cName().c_str());
+        }
+        return;
+    }
     objects_active.push_back(O);
     O->MakeMeCrow();
 }
 void CObjectList::o_sleep(IGameObject* O)
 {
     VERIFY(O && !O->processing_enabled());
-    o_remove(objects_active, O);
+    if (!o_remove(objects_active, O))
+    {
+        static u32 reported = 0;
+        if (reported < 8)
+        {
+            ++reported;
+            Msg("! o_sleep: [%s] не в списке активных, состояние оставлено как есть", O->cName().c_str());
+        }
+        return;
+    }
     objects_sleeping.push_back(O);
     O->MakeMeCrow();
 }

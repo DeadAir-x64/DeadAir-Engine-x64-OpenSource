@@ -3,6 +3,12 @@
 #include "sload.h"
 #include "da_puddles.h"	// [DA_PORT] лужи в дождь
 
+// [DA_PORT] Все ДЕВЯТЬ детальных выборок ландшафта идут через собственный сдвиг мипов
+// (r__detail_mipbias, uniform da_detail_bias из sload.h). У ландшафта СВОЙ путь детали -
+// четыре альбедо s_dt_*, четыре карты нормалей s_dn_* и общий s_detail - и правка одного
+// sload.h его не покрывала: ручка работала на стенах и не работала на земле. Детальные
+// нормали дёргают нормаль ландшафта на частоте пикселя; на склоне солнце падает вскользь,
+// и при рендере ниже 100% эта рябь мерцает под джиттером. Ноль = как было.
 #define	USE_4_DETAIL
 
 #if defined(USE_TDETAIL) && defined(USE_4_DETAIL)
@@ -27,7 +33,22 @@ f_deffer 	main	( p_flat I 		)
 # ifdef	USE_TDETAIL
  # ifdef USE_4_DETAIL
 //	float4	mask= tex2D		(s_mask, I.tcdh);
-	float4	mask= s_mask.Sample ( smp_base, I.tcdh);
+	// [DA_PORT] ДРОЖАНИЕ КООРДИНАТЫ МАСКИ (r__mask_jitter). Ноль — прежняя выборка.
+	//
+	// Разбор — у ручки в движке. Коротко: вдали видна не граница слоёв, а сама маска — текстура
+	// низкого разрешения, чей плавный градиент растянут на десятки метров и читается полосой.
+	// Сдвигая точку выборки шумом, мы превращаем гладкую дугу в языки.
+	//
+	// Шум берём из детальной текстуры на КРУПНОМ шаге (da_macro_var.y — та же величина, что у
+	// макро-вариации). Крупный масштаб принципиален: мелкий мип бы усреднил, и вдали дрожание
+	// исчезло бы ровно там, где оно и нужно.
+	float2	mask_uv = I.tcdh;
+	[branch] if (da_macro_var2.w > 0.0001f)
+	{
+		const float2 n2 = s_dt_r.Sample( smp_base, I.tcdbump * da_macro_var.y).rg - 0.5f;
+		mask_uv += n2 * da_macro_var2.w;
+	}
+	float4	mask= s_mask.Sample ( smp_base, mask_uv);
 	float 	mag	= dot 		(mask,1);
 			mask= mask/mag	;
 
@@ -35,11 +56,61 @@ f_deffer 	main	( p_flat I 		)
 //	float3	d_G	= tex2D		(s_dt_g, I.tcdbump)*mask.g;
 //	float3	d_B	= tex2D		(s_dt_b, I.tcdbump)*mask.b;
 //	float3	d_A	= tex2D		(s_dt_a, I.tcdbump)*mask.a;
-	float3	d_R	= s_dt_r.Sample ( smp_base, I.tcdbump)*mask.r;
-	float3	d_G	= s_dt_g.Sample ( smp_base, I.tcdbump)*mask.g;
-	float3	d_B	= s_dt_b.Sample ( smp_base, I.tcdbump)*mask.b;
-	float3	d_A	= s_dt_a.Sample ( smp_base, I.tcdbump)*mask.a;
+	// [DA_PORT] Сначала ЧИСТЫЕ цвета слоёв — вес применяется ниже, после выбора способа смешивания.
+	float3	c_R	= s_dt_r.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
+	float3	c_G	= s_dt_g.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
+	float3	c_B	= s_dt_b.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
+	float3	c_A	= s_dt_a.SampleBias( smp_base, I.tcdbump, da_detail_bias.x);
+
+	// [DA_PORT] СМЕШИВАНИЕ ПО ВЫСОТЕ (r__terrain_blend). Ноль — в точности прежнее, линейное.
+	//
+	// Разбор — у ручки в движке. Коротко: линейное смешивание даёт на стыке слоёв мыльную полосу или
+	// ровную линию. Здесь побеждает слой, у которого в этой точке ВЫШЕ рельеф, и край выходит
+	// зубчатым — трава проступает сквозь грунт, а не сходит на нет полосой.
+	//
+	// За высоту берётся яркость текстуры: карт высоты у слоёв нет, а это стандартная замена.
+	// Вес умножается, а не складывается, чтобы отсутствующий слой (вес 0) не мог победить яркостью.
+	// Порог 0.2 задаёт ширину перехода: меньше — резче, больше — ближе к линейному.
+	float4	w	= mask;
+	[branch] if (da_macro_var2.z > 0.001f)
+	{
+		const float3 LUM = float3(0.299f, 0.587f, 0.114f);
+		float4 wh = mask * (1.0f + float4(dot(c_R,LUM), dot(c_G,LUM), dot(c_B,LUM), dot(c_A,LUM)));
+		float  ma = max(max(wh.x, wh.y), max(wh.z, wh.w)) - 0.2f;
+		float4 b  = max(wh - ma, 0.0f);
+		b /= max(dot(b, 1.0f), 1e-5f);
+		w = lerp(mask, b, saturate(da_macro_var2.z));
+	}
+
+	float3	d_R	= c_R*w.r;
+	float3	d_G	= c_G*w.g;
+	float3	d_B	= c_B*w.b;
+	float3	d_A	= c_A*w.a;
 	float3	dt	= d_R+d_G+d_B+d_A;
+
+	// [DA_PORT] КРУПНАЯ ДЕТАЛЬ ДАЛИ (r__macro_detail). Ноль — прежнее поведение.
+	//
+	// Разбор — у ручки в движке. Коротко: вдали пиксель накрывает сотни текселей детали, и она
+	// усредняется в один тон. Читая ТУ ЖЕ текстуру с шагом повторения в шестнадцать раз крупнее, мы
+	// заставляем пиксель накрывать во столько же раз меньше текселей — и узор доживает до горизонта.
+	//
+	// Смешиваем ТЕМИ ЖЕ весами w, что и вблизи: иначе у дали было бы другое покрытие, чем под ногами,
+	// и переход читался бы сменой материала, а не сменой масштаба.
+	[branch] if (da_detail_bias.w > 0.001f)
+	{
+		const float d_cd = length(I.position.xyz);
+		const float f_cd = saturate((d_cd - da_macro_var.z) / max(da_macro_var.w - da_macro_var.z, 1.0f));
+		[branch] if (f_cd > 0.001f)
+		{
+			const float2 uv_cd = I.tcdbump * da_macro_var.y;
+			const float3 k_R = s_dt_r.Sample( smp_base, uv_cd);
+			const float3 k_G = s_dt_g.Sample( smp_base, uv_cd);
+			const float3 k_B = s_dt_b.Sample( smp_base, uv_cd);
+			const float3 k_A = s_dt_a.Sample( smp_base, uv_cd);
+			const float3 dt_coarse = k_R*w.r + k_G*w.g + k_B*w.b + k_A*w.a;
+			dt = lerp(dt, dt_coarse, saturate(da_detail_bias.w * f_cd));
+		}
+	}
 		D.rgb	= 2*D.rgb*dt	 ;
 
   # ifdef USE_4_BUMP
@@ -48,18 +119,60 @@ f_deffer 	main	( p_flat I 		)
 //	 float4	n_Gt = tex2D	(s_dn_g, I.tcdbump).wzyx;
 //	 float4	n_Bt = tex2D	(s_dn_b, I.tcdbump).wzyx;
 //	 float4	n_At = tex2D	(s_dn_a, I.tcdbump).wzyx;
- 	 float4	n_Rt = s_dn_r.Sample ( smp_linear, I.tcdbump).wzyx;
-	 float4	n_Gt = s_dn_g.Sample ( smp_linear, I.tcdbump).wzyx;
-	 float4	n_Bt = s_dn_b.Sample ( smp_linear, I.tcdbump).wzyx;
-	 float4	n_At = s_dn_a.Sample ( smp_linear, I.tcdbump).wzyx;
+ 	 float4	n_Rt = s_dn_r.SampleBias( smp_linear, I.tcdbump, da_detail_bias.x).wzyx;
+	 float4	n_Gt = s_dn_g.SampleBias( smp_linear, I.tcdbump, da_detail_bias.x).wzyx;
+	 float4	n_Bt = s_dn_b.SampleBias( smp_linear, I.tcdbump, da_detail_bias.x).wzyx;
+	 float4	n_At = s_dn_a.SampleBias( smp_linear, I.tcdbump, da_detail_bias.x).wzyx;
 	 
- 	 float3	n_R = (n_Rt-0.5)*mask.r; float g_R=n_Rt.w*mask.r;
-	 float3	n_G = (n_Gt-0.5)*mask.g; float g_G=n_Gt.w*mask.g;
-	 float3	n_B = (n_Bt-0.5)*mask.b; float g_B=n_Bt.w*mask.b;
-	 float3	n_A = (n_At-0.5)*mask.a; float g_A=n_At.w*mask.a;
+ 	 // [DA_PORT] ТЕ ЖЕ веса, что у альбедо (w вместо mask). Иначе цвет переходил бы по одной границе,
+	 // а рельеф по другой, и стык стал бы виден вдвойне.
+	 float3	n_R = (n_Rt-0.5)*w.r; float g_R=n_Rt.w*w.r;
+	 float3	n_G = (n_Gt-0.5)*w.g; float g_G=n_Gt.w*w.g;
+	 float3	n_B = (n_Bt-0.5)*w.b; float g_B=n_Bt.w*w.b;
+	 float3	n_A = (n_At-0.5)*w.a; float g_A=n_At.w*w.a;
 
 	 float3	mix		= 	n_R+n_G+n_B+n_A;
 			mix.z	*=	0.5;		//. make bump twice as contrast (fake, remove me if possible)
+	// [DA_PORT] ЗАТУХАНИЕ ДЕТАЛЬНОЙ НОРМАЛИ С РАССТОЯНИЕМ (r__detail_normal_fade, метры).
+	//
+	// Разбор - у ручки в движке. Коротко: детальное альбедо рядом гаснет с дальностью, а нормаль
+	// не гасла никогда, и за Найквистом её рисунок превращался в рябь на частоте пикселя.
+	//
+	// Гасятся ТОЛЬКО xy - составляющие в плоскости поверхности. z трогать нельзя: именно он несёт
+	// Â«нормаль смотрит наружуÂ», и обнулив его целиком мы получили бы нулевой вектор, а normalize
+	// от нуля - это NaN и чёрные пятна. Обнуление одних xy оставляет ровно вершинную нормаль, то
+	// есть ту самую гладкую поверхность, к которой деталь и обязана сходиться вдали.
+	[branch] if (da_detail_bias.z > 0.5f)
+	{
+		const float d_n  = length(I.position.xyz);
+		const float half_n = da_detail_bias.z * 0.5f;
+		mix.xy *= 1.0f - saturate((d_n - half_n) / max(half_n, 0.001f));
+	}
+
+
+	// [DA_PORT] КРУПНЫЙ РЕЛЬЕФ ДАЛИ (r__macro_relief). Ноль — прежнее поведение.
+	//
+	// Разбор — у ручки в движке. Коротко: цветом даль уже покрашена в оттенок травы, но одного цвета
+	// мало — выходит крашеная плоскость. Поверхность вдали опознаётся светотенью на неровностях,
+	// поэтому подмешиваем крупную детальную нормаль: её период мип не усредняет, и склоны начинают
+	// по-разному ловить солнце.
+	//
+	// Подмешиваем ТОЛЬКО xy — наклон в плоскости поверхности. z несёт «нормаль смотрит наружу», и
+	// трогать его нельзя: обнулив, получим нулевой вектор, а normalize от нуля это NaN.
+	//
+	// Знаменатель порога тот же, что у цвета, чтобы обе подмешки нарастали согласованно и не давали
+	// двух разных границ в кадре.
+	[branch] if (da_macro_var2.y > 0.001f && da_macro_var.x > 0.001f)
+	{
+		const float d_mr = length(I.position.xyz);
+		const float f_mr = saturate((d_mr - da_macro_var.z) / max(da_macro_var.w - da_macro_var.z, 1.0f));
+		[branch] if (f_mr > 0.001f)
+		{
+			const float2 nr = s_dn_r.Sample(smp_linear, I.tcdbump * da_macro_var.y).wz - 0.5f;
+			mix.xy += nr * da_macro_var2.y * f_mr;
+		}
+	}
+
 	 float3	N		= 	mul     	(float3x3(I.M1, I.M2, I.M3), mix.xyz);
 
 	 	 	G 		= 	g_R+g_G+g_B+g_A;
@@ -71,7 +184,7 @@ f_deffer 	main	( p_flat I 		)
 
  # else
 //	D.rgb	= 2*D.rgb*tex2D	(s_detail, I.tcdbump).rgb;
-	D.rgb	= 2*D.rgb*s_detail.Sample( smp_base, I.tcdbump).rgb;
+	D.rgb	= 2*D.rgb*s_detail.SampleBias( smp_base, I.tcdbump, da_detail_bias.x).rgb;
  # endif
 # else
 	float3	N 	= I.N.xyz	;
@@ -161,6 +274,91 @@ f_deffer 	main	( p_flat I 		)
 		G = max(G, P.damp * da_puddle_look.z);
 	}
 
+	// [DA_PORT] ПРИБОР (r__motion_vectors 7): насколько нормаль меняется ПОПЕРЁК ОДНОГО ПИКСЕЛЯ.
+	//
+	// Прямой ответ на вопрос, ради которого он делался. Мерцание под дрожанием выборки возникает
+	// тогда, и только тогда, когда величина заметно меняется на масштабе меньше пикселя: сдвиг
+	// выборки на долю пикселя даёт другую нормаль, другое N*L и другой блик. Экранные производные
+	// измеряют ровно это и прямо здесь, где нормаль уже собрана.
+	//
+	// Прибор живёт ВНУТРИ шейдера земли намеренно. Показ буфера нормалей в постобработке дал ровный
+	// серый: цель к тому моменту уже занята под другое, и вид молча читал ноль. Здесь такого
+	// разночтения нет по построению - величина берётся там же, где рождается.
+	//
+	// Чёрное - нормаль гладкая, мерцать нечему. Красное - меняется, синее - меняется СИЛЬНО.
+	[branch] if (da_detail_bias.y > 6.5f && da_detail_bias.y < 7.5f)
+	{
+		const float3 nn = normalize(N);
+		const float  v  = length(ddx(nn)) + length(ddy(nn));
+		D.rgb = float3(saturate(v * 8.0f), 0.0f, saturate(v * 40.0f - 4.0f));
+		G = 0.0f;
+	}
+
+	// [DA_PORT] РАЗДЕЛЯЮЩИЕ РЕЖИМЫ. Прибор 7 менял СРАЗУ ДВЕ величины - альбедо и глянец, - и когда
+	// при нём мерцание ослабло, вопрос Â«которая из двухÂ» остался без ответа. Эти два режима меняют
+	// строго по одной, поэтому ответ у них однозначный.
+	//
+	// 8 - глянец в ноль, альбедо нетронуто. Гаснет блик, остаётся рассеянный свет.
+	// 9 - альбедо ровное, глянец нетронут. Уходит рисунок цвета, остаётся блик.
+	[branch] if (da_detail_bias.y > 7.5f && da_detail_bias.y < 8.5f)
+		G = 0.0f;
+	[branch] if (da_detail_bias.y > 8.5f)
+		D.rgb = 0.35f;
+
+
+
+	// [DA_PORT] ⚠️ ТОЛЬКО в варианте с детальными слоями: I.tcdbump есть лишь там. Без этого
+	// условия шейдер не собирается в сборке без детали, а движок такой отказ гасит подстановкой
+	// заглушки — то есть поломка была бы молчаливой. Поймано офлайн-проверкой check_shaders.
+#ifdef USE_4_BUMP
+	// [DA_PORT] КРУПНЫЙ СЛОЙ ВАРИАЦИИ (r__macro_var). Ноль — в точности прежнее поведение.
+	//
+	// Разбор — у ручки в движке. Коротко: вдали деталь усредняется мипами в один цвет, и земля
+	// становится ровной заливкой. Берём ту же текстуру ещё раз, но с шагом повторения в десяток раз
+	// крупнее — такой период мип не усредняет, и крупные пятна доживают до горизонта.
+	//
+	// Почему одна выборка, а не все четыре слоя: нужна не достоверная деталь, а правдоподобная
+	// крупная неоднородность. Четыре выборки стоили бы вчетверо, а на глаз добавили бы немного —
+	// разница между слоями на таком масштабе всё равно теряется.
+	//
+	// Модулируем ЯРКОСТЬЮ вокруг единицы, а не подмешиваем цвет: тон земли задан базовой текстурой и
+	// маской, и вмешательство в него дало бы уплывающий оттенок на стыке ближнего и дальнего плана.
+	[branch] if (da_macro_var.x > 0.001f)
+	{
+		const float d_mv = length(I.position.xyz);
+		const float f_mv = saturate((d_mv - da_macro_var.z) / max(da_macro_var.w - da_macro_var.z, 1.0f));
+		[branch] if (f_mv > 0.001f)
+		{
+			const float3 mv = s_dt_r.Sample(smp_base, I.tcdbump * da_macro_var.y).rgb;
+			const float  lum = dot(mv, float3(0.299f, 0.587f, 0.114f));
+			D.rgb *= 1.0f + (lum - 0.5f) * 2.0f * da_macro_var.x * f_mv;
+
+			// [DA_PORT] «Фальшивая трава» (r__macro_tint): вдали тянем ОТТЕНОК земли к оттенку детали.
+			//
+			// Настоящая трава заканчивается на r__detail_radius, и дальше остаётся голая базовая
+			// текстура уровня - обычно бурая. Отсюда и ощущение обрыва. Красим землю в цвет той травы,
+			// что на ней растёт: он уже есть в крупной выборке выше, новых чтений не нужно.
+			//
+			// ⚠️ Переносим ТОЛЬКО оттенок. Цель приводится к ЯРКОСТИ земли, иначе подмена перебила бы
+			// освещение: склон в тени стал бы той же яркости, что освещённый, и рельеф сплющился бы.
+			// Малая добавка в знаменателе - защита от чёрного пикселя, на нём деление дало бы бесконечность.
+			[branch] if (da_macro_var2.x > 0.001f)
+			{
+				// [DA_PORT] Цвет берём из dt - смеси ВСЕХ ЧЕТЫРЁХ слоёв по маске, а не из одного
+				// s_dt_r, как было сперва. Разница принципиальная: s_dt_r - это КРАСНЫЙ слой, и там,
+				// где земля покрыта другим, подмешивался чужой цвет. Проба с силой 1 показала это
+				// прямо: даль стала БУРОЙ вместо зелёной - красный слой в том месте оказался грунтом.
+				//
+				// dt уже посчитана выше и ничего не стоит. Вдали она сминеферивается в средний цвет
+				// правильной смеси - то есть ровно в цвет того покрытия, что здесь растёт.
+				const float lum_d = dot(D.rgb, float3(0.299f, 0.587f, 0.114f));
+				const float lum_t = dot(dt, float3(0.299f, 0.587f, 0.114f));
+				const float3 tinted = dt * (lum_d / max(lum_t, 0.001f));
+				D.rgb = lerp(D.rgb, tinted, saturate(da_macro_var2.x * f_mv));
+			}
+		}
+	}
+#endif
 	// hemi, sun, material
 	float 	ms	= xmaterial	;
 # ifdef USE_R2_STATIC_SUN

@@ -21,12 +21,28 @@
 // [DA_PORT] Defined in the engine (xr_ioc_cmd.cpp). Declared outside the namespace on purpose: an
 // extern written inside xray::render::render_r4 would look for the symbol in that namespace instead.
 extern ENGINE_API int ps_r__motion_vectors;
+extern ENGINE_API int ps_r__taa_pos_fix; // [DA_PORT] снятие джиттера в восстановлении позиции
 extern ENGINE_API int ps_r__fsr2;
 extern ENGINE_API int ps_r__fsr3;
 extern ENGINE_API float ps_r__reactive_foliage;
 extern ENGINE_API float ps_r__reactive_motion;
 // [DA_PORT] "is a temporal upscaler reconstructing this frame" - one list, see xr_ioc_cmd.cpp.
 extern ENGINE_API bool da_upscaler_active();
+extern ENGINE_API float ps_da_detail_mipbias;
+extern ENGINE_API float ps_da_detail_nfade; // [DA_PORT] затухание детальной нормали
+extern ENGINE_API float ps_da_macro_var;       // [DA_PORT] крупный слой вариации дали
+extern ENGINE_API float ps_da_macro_var_scale; // [DA_PORT]
+extern ENGINE_API float ps_da_macro_var_start; // [DA_PORT]
+extern ENGINE_API float ps_da_macro_var_end;   // [DA_PORT]
+extern ENGINE_API float ps_da_macro_tint;      // [DA_PORT] подмена оттенка дали
+extern ENGINE_API float ps_da_macro_relief;    // [DA_PORT] крупный рельеф дали
+extern ENGINE_API float ps_da_terrain_blend;   // [DA_PORT] смешивание слоёв по высоте
+extern ENGINE_API float ps_da_mask_jitter;     // [DA_PORT] дрожание координаты маски
+extern ENGINE_API float ps_da_macro_detail;    // [DA_PORT] крупная деталь дали
+extern ENGINE_API float ps_da_lod_hemi;        // [DA_PORT] щиты дальней растительности
+extern ENGINE_API float ps_da_lod_sat;         // [DA_PORT]
+extern ENGINE_API float ps_da_lod_bright;      // [DA_PORT] // [DA_PORT] сдвиг мипов детальной текстуры
+extern ENGINE_API float ps_da_alpha_hash; // [DA_PORT] хешированный альфа-тест
 extern ENGINE_API float ps_r__detail_gloss_fix;
 extern ENGINE_API float ps_r__spec_aa;
 extern ENGINE_API float ps_r__spec_aa_max;
@@ -47,6 +63,15 @@ extern ENGINE_API int ps_r__parallax_debug;
 // [DA_PORT] Сила затенения полостей — см. combine_1.ps.
 extern ENGINE_API float ps_r__ssao_power;
 extern ENGINE_API int ps_r__ssao_debug;
+extern ENGINE_API int ps_da_light_probe; // [DA_PORT] прибор освещения, разбор суммы на слагаемые
+extern ENGINE_API float ps_da_light_probe_gain; // [DA_PORT] усилитель прибора
+extern ENGINE_API float ps_da_fog_sky;            // [DA_PORT] дымка из неба
+extern ENGINE_API float ps_da_fog_sky_mip;        // [DA_PORT] размытость неба
+extern ENGINE_API float ps_da_fog_sky_flat;       // [DA_PORT] прижатие к горизонту
+extern ENGINE_API float ps_da_fog_height;         // [DA_PORT] высотный туман
+extern ENGINE_API float ps_da_fog_height_falloff; // [DA_PORT] падение с высотой
+extern ENGINE_API float ps_da_fog_height_base;    // [DA_PORT] опорная высота слоя
+extern ENGINE_API float ps_da_fog_max;            // [DA_PORT] потолок плотности
 // [DA_PORT] Разрыв повторов шестиугольной решёткой — см. da_hextile.h.
 extern ENGINE_API int ps_r__hex_tiling;
 extern ENGINE_API float ps_r__hex_scale;
@@ -236,7 +261,11 @@ static class cl_taa_jitter : public R_constant_setup
 
             // z carries the foliage reactive weight - the aref shaders read it from here rather
             // than through a constant of their own, so it costs no extra binding.
-            cmd_list.set_c(C, jx, jy, ::ps_r__reactive_foliage * fps_scale, 0.f);
+            // [DA_PORT] w - номер варианта снятия джиттера при восстановлении позиции
+            // (r__taa_pos_fix). Свободный канал уже существующей константы: она доступна
+            // везде, где вообще есть джиттер, и нового связывателя не требует.
+            cmd_list.set_c(C, jx, jy, ::ps_r__reactive_foliage * fps_scale,
+                float(::ps_r__taa_pos_fix));
         }
     }
 } binder_taa_jitter;
@@ -303,6 +332,77 @@ static class cl_da_parallax2 : public R_constant_setup
     }
 } binder_da_parallax2;
 
+// [DA_PORT] Собственный сдвиг мипов детальной текстуры - разбор у ps_da_detail_mipbias.
+//
+// СВОЯ константа, а не свободный канал у stock-овой parallax: та в наших данных вообще не константа,
+// а макрос времени компиляции (common_defines.h: #define parallax float2(...)). Движок для неё
+// исправно считает 1/r_dtex_range и никуда его не отдаёт - связыватель есть, потребителя нет.
+static class cl_da_detail_bias : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // [DA_PORT] .y несёт НОМЕР ОТЛАДОЧНОГО РЕЖИМА (r__motion_vectors), 7 = разброс нормали.
+        //
+        // Свободный канал уже существующей константы, а не своя новая: новая потребовала бы своего
+        // связывателя и записи в общем списке, а незарегистрированный связыватель молча ничего не
+        // делает - на этих граблях мы в этом заходе стояли дважды.
+        // .w — сила крупной детали дали (r__macro_detail), свободный канал этой константы.
+        cmd_list.set_c(C, ps_da_detail_mipbias, float(::ps_r__motion_vectors),
+            ps_da_detail_nfade, ps_da_macro_detail); // .z - затухание детальной нормали, метры
+    }
+} binder_da_detail_bias;
+
+// [DA_PORT] Крупный слой вариации дальнего плана — разбор у ps_da_macro_var.
+//
+// Шаг повторения отдаём УЖЕ ПЕРЕВЁРНУТЫМ (1/scale): в шейдере это умножение вместо деления, а
+// деление там пришлось бы на каждый пиксель земли.
+static class cl_da_macro_var : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_da_macro_var, 1.f / _max(ps_da_macro_var_scale, 1.f),
+            ps_da_macro_var_start, _max(ps_da_macro_var_end, ps_da_macro_var_start + 1.f));
+    }
+} binder_da_macro_var;
+
+// [DA_PORT] Вторая константа вариации: подмена оттенка. Отдельной, а не в свободный канал первой —
+// там все четыре заняты (сила, шаг, начало, конец), и втискивание пятого значения потребовало бы
+// упаковки двух смыслов в одно число. Мы это уже проходили с джиттером: одна константа с двумя
+// смыслами обошлась в заход отладки.
+static class cl_da_macro_var2 : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // .y — сила крупного рельефа (r__macro_relief), свободный канал этой же константы.
+        // .z — сила смешивания слоёв по высоте (r__terrain_blend).
+        // .w — дрожание координаты маски (r__mask_jitter).
+        cmd_list.set_c(C, ps_da_macro_tint, ps_da_macro_relief, ps_da_terrain_blend,
+            ps_da_mask_jitter);
+    }
+} binder_da_macro_var2;
+
+// [DA_PORT] Подгонка щитов дальней растительности — разбор у ps_da_lod_hemi.
+static class cl_da_lod_tune : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_da_lod_hemi, ps_da_lod_sat, ps_da_lod_bright, 0.f);
+    }
+} binder_da_lod_tune;
+
+// [DA_PORT] Хешированный альфа-тест — разбор у da_hashed_aref в sload.h.
+//
+// .y — поворот последовательности от кадра к кадру. Без него хеш стоял бы на месте, шум оказался бы
+// статичным, и усреднять временному фильтру было бы нечего: он увидел бы ту же картинку, что и в
+// прошлом кадре, и честно её сохранил.
+static class cl_da_alpha_hash : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ps_da_alpha_hash, float(Device.dwFrame & 63) * 0.015625f, 0.f, 0.f);
+    }
+} binder_da_alpha_hash;
+
 // [DA_PORT] Разрыв повторов: масштаб решётки, поворот, контраст весов, включатель.
 static class cl_da_hex : public R_constant_setup
 {
@@ -318,9 +418,56 @@ static class cl_da_ao : public R_constant_setup
 {
     void setup(CBackend& cmd_list, R_constant* C) override
     {
-        cmd_list.set_c(C, ::ps_r__ssao_power, float(::ps_r__ssao_debug), 0.f, 0.f);
+        // .z — прибор освещения (r__light_probe), разбор суммы света на слагаемые.
+        cmd_list.set_c(C, ::ps_r__ssao_power, float(::ps_r__ssao_debug),
+            float(::ps_da_light_probe), ::ps_da_light_probe_gain);
     }
 } binder_da_ao;
+
+// [DA_PORT] Дымка: цвет из неба и высотный туман. См. r__fog_* в xr_ioc_cmd.cpp.
+static class cl_da_fog : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // ⚠️ Величина уходит СЫРОЙ. Делить здесь было ошибкой: в шейдере ветка отсекается
+        // по порогу 0.001, и после деления весь рабочий диапазон 0..4 лёг ПОД собственный
+        // порог — при ручке 1 приезжало ровно 0.001, что уже не больше него. Масштаб
+        // применяется внутри шейдера, а сравнивается исходное число.
+        cmd_list.set_c(C, ::ps_da_fog_sky, ::ps_da_fog_sky_mip, ::ps_da_fog_height,
+            ::ps_da_fog_height_falloff);
+    }
+} binder_da_fog;
+
+// [DA_PORT] Потолок плотности дымки. Отдельной константой: в da_fog все четыре канала заняты.
+static class cl_da_fog2 : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // .y — опорная высота слоя дымки (r__fog_height_base).
+        // .z — прижатие выборки неба к горизонту (r__fog_sky_flat).
+        cmd_list.set_c(C, ::ps_da_fog_max, ::ps_da_fog_height_base,
+            ::ps_da_fog_sky_flat, 0.f);
+    }
+} binder_da_fog2;
+
+// [DA_PORT] Листва: глянец и просвет. Оба были вшиты числами в deffer_base.ps.
+//
+// 🪤 БЕЗ `::` — ps_r__foliage_* объявлены в xrRender_console.h, то есть ВНУТРИ пространства
+// имён рендера, как и ps_r_tonemap_* ниже. У соседей из движка всё наоборот.
+static class cl_da_foliage : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        // ⚠️ .x и .y достаются только deffer_base.ps, а листву на деревьях рисует
+        // deffer_base_aref_bump.ps — там работают .z и .w.
+        // 🪤 Глянец уезжает СО СДВИГОМ НА ЕДИНИЦУ. Причина: правило «нулевая константа = как
+        // было» (им лечили серые деревья при рассогласовании шейдера и DLL) съедало осмысленный
+        // ноль этой ручки — «убрать блеск начисто» становилось недостижимым. Сдвиг разводит два
+        // нуля: 0 в константе = не привязано, 1 = ручка на нуле.
+        cmd_list.set_c(C, ps_r__foliage_gloss + 1.f, ps_r__foliage_bend,
+            ps_r__foliage_vibrance, ps_r__foliage_debleach);
+    }
+} binder_da_foliage;
 
 // [DA_PORT] Оператор тонировки и точка белого. См. tonemap в common_functions.h.
 static class cl_da_tonemap : public R_constant_setup
@@ -330,7 +477,9 @@ static class cl_da_tonemap : public R_constant_setup
         // 🪤 БЕЗ `::`, в отличие от соседей. ps_r_tonemap_* объявлены в xrRender_console.h, то есть
         // ВНУТРИ xray::render::RENDER_NAMESPACE, а ps_r__parallax_* и прочие — в движке, снаружи.
         // Одна и та же ошибка ловится с двух сторон: там `::` обязателен, здесь запрещён.
-        cmd_list.set_c(C, ps_r_tonemap_aces, ps_r_tonemap_white, 0.f, 0.f);
+        // .z — доля тонировки по светимости, .w — порог обесцвечивания белого.
+        cmd_list.set_c(C, ps_r_tonemap_aces, ps_r_tonemap_white,
+            ps_r_tonemap_hue, ps_r_tonemap_desat);
     }
 } binder_da_tonemap;
 
@@ -878,8 +1027,16 @@ void CRender::create()
     Resources->RegisterConstantSetup("da_spec_aa", &binder_spec_aa); // [DA_PORT] specular antialiasing
     Resources->RegisterConstantSetup("da_parallax", &binder_da_parallax); // [DA_PORT] steep parallax
     Resources->RegisterConstantSetup("da_parallax2", &binder_da_parallax2); // [DA_PORT] steep parallax
+    Resources->RegisterConstantSetup("da_detail_bias", &binder_da_detail_bias); // [DA_PORT] сдвиг мипов детали
+    Resources->RegisterConstantSetup("da_macro_var", &binder_da_macro_var); // [DA_PORT] вариация дали
+    Resources->RegisterConstantSetup("da_macro_var2", &binder_da_macro_var2); // [DA_PORT] подмена оттенка
+    Resources->RegisterConstantSetup("da_lod_tune", &binder_da_lod_tune); // [DA_PORT] щиты дали
+    Resources->RegisterConstantSetup("da_alpha_hash", &binder_da_alpha_hash); // [DA_PORT] хеш альфа-теста
     Resources->RegisterConstantSetup("da_hex", &binder_da_hex); // [DA_PORT] hex-tiling
     Resources->RegisterConstantSetup("da_ao", &binder_da_ao); // [DA_PORT] затенение полостей
+    Resources->RegisterConstantSetup("da_fog", &binder_da_fog); // [DA_PORT] дымка
+    Resources->RegisterConstantSetup("da_fog2", &binder_da_fog2); // [DA_PORT] потолок дымки
+    Resources->RegisterConstantSetup("da_foliage", &binder_da_foliage); // [DA_PORT] листва
     Resources->RegisterConstantSetup("da_tonemap_params", &binder_da_tonemap); // [DA_PORT] тонировка
     Resources->RegisterConstantSetup("da_linear", &binder_da_linear); // [DA_PORT] линейный свет
     Resources->RegisterConstantSetup("da_grade_slope", &binder_da_grade_slope); // [DA_PORT] CDL slope

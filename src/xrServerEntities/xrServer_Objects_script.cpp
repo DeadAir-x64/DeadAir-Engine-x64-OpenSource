@@ -13,9 +13,47 @@
 #include "xrServer_script_macroses.h"
 #include "script_ini_file.h"
 
-pcstr get_section_name(const CSE_Abstract* abstract) { return (abstract->name()); }
-pcstr get_name(const CSE_Abstract* abstract) { return (abstract->name_replace()); }
-CScriptIniFile* get_spawn_ini(CSE_Abstract* abstract) { return ((CScriptIniFile*)&abstract->spawn_ini()); }
+// [DA_PORT] Скриптовая граница: спрашиваем реестр ПЕРЕД тем, как обратиться через указатель.
+//
+// luabind отдаёт скрипту сырой указатель на серверный объект, и при освобождении объекта этот
+// указатель никто не гасит. Обращения ниже вызывают через него виртуальные методы — на мёртвом
+// объекте это прыжок по тому, что аллокатор оставил в слоте таблицы виртуальных функций. Проверка
+// вероятностной метки (`da_object_alive`) здесь не годится: она сама читает освобождённую память, а
+// беда случается ровно тогда, когда блок уже отдан другому. Разбор — у is_live_object.
+//
+// Отказ называет метод и печатает стек скрипта: цель не «не упасть», а найти ссылку, пережившую свой
+// объект. Ограничение на восемь строк — потому что зовут это из планировщика, каждый кадр.
+//
+// Перенесено по смыслу из Dead-Air-Refined (MMadmer, MIT).
+bool script_object_usable(const CSE_Abstract* abstract, pcstr method)
+{
+    if (CSE_Abstract::is_live_object(abstract))
+        return true;
+
+    static u32 reported = 0;
+    if (reported < 8)
+    {
+        ++reported;
+        Msg("! cse_abstract:%s() на ОСВОБОЖДЁННОМ серверном объекте [%p] — отказ", method,
+            static_cast<const void*>(abstract));
+        if (GEnv.ScriptEngine)
+            GEnv.ScriptEngine->print_stack();
+    }
+    return false;
+}
+
+pcstr get_section_name(const CSE_Abstract* abstract)
+{
+    return script_object_usable(abstract, "section_name") ? abstract->name() : "";
+}
+pcstr get_name(const CSE_Abstract* abstract)
+{
+    return script_object_usable(abstract, "name") ? abstract->name_replace() : "";
+}
+CScriptIniFile* get_spawn_ini(CSE_Abstract* abstract)
+{
+    return script_object_usable(abstract, "spawn_ini") ? (CScriptIniFile*)&abstract->spawn_ini() : nullptr;
+}
 
 template <typename T>
 struct CSEAbstractWrapperBase : public T, public luabind::wrap_base

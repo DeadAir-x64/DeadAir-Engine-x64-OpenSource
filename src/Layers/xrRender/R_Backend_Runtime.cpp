@@ -483,30 +483,52 @@ void CBackend::set_Textures(STextureList* textures_list) {}
 
 #endif // DEDICATED SERVER
 
+// [DA_PORT] ИТОГОВЫЙ сдвиг мипов. ОДНО место на весь порт: его читают и создание устройства, и
+// консольные команды r2_tf_mipbias / r__upscale_mipbias, которые применяют сдвиг вживую. Пока формула
+// стояла только в SetupStates, команда r2_tf_mipbias отдавала в железо ГОЛОЕ значение пользователя и
+// молча стирала поправку апскейлера до ближайшего пересоздания устройства.
+ECORE_API float da_effective_mipbias()
+{
+    // Compensate the mip selection for r__render_scale. Rendering the scene smaller makes the hardware
+    // pick coarser mip levels, so on top of simply having fewer pixels the textures themselves arrive
+    // pre-blurred — which is what reads as "mushy" after upscaling. Shifting the bias by
+    // log2(render / output) asks for the mips the full-resolution image would have used; this is the
+    // standard companion to any upscaler. At 100% the term is 0 and the user's own bias is untouched.
+    //
+    // [DA_PORT] ⚠️ У поправки ДВА КОНЦА, и второй достаётся дальнему плану.
+    //
+    // Резче запрошенный мип — это меньше усреднения на тот же пиксель, то есть НЕДОсэмплирование.
+    // Вблизи выигрыш в чёткости его перевешивает, а вдали, на скользящем угле (наклонная земля,
+    // дорога, склон), след выборки вытянут, и рисунок карты нормалей уходит за Найквист. Освещение
+    // тогда считается по «случайной» нормали, дрожание апскейлера двигает выборку каждый кадр — и это
+    // видно как мерцание земли вдали. IX-Ray эту поправку не применяет вовсе.
+    //
+    // r__upscale_mipbias — доля поправки в процентах: 100 как было, 0 полностью её снимает.
+    float mip_bias = ps_r__tf_Mipbias;
+    if (Device.dwRenderWidth > 0 && Device.dwRenderWidth < Device.dwWidth)
+    {
+        const float full = log2f(float(Device.dwRenderWidth) / float(Device.dwWidth));
+        mip_bias += full * (float(ps_r__upscale_mipbias) / 100.f);
+    }
+
+    // With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection assumes
+    // one sample per pixel, and temporal accumulation gives several. It does buy back distant detail —
+    // but only where the history actually holds, and on dense vegetation it holds poorly, so the
+    // aliasing the standard bias was suppressing comes straight back as shimmer. Off by default;
+    // r__taa_mipbias is in hundredths of a mip level.
+    if (::ps_r__taa && ::ps_r__taa_mipbias)
+        mip_bias -= float(::ps_r__taa_mipbias) / 100.f;
+
+    return mip_bias;
+}
+
 void CBackend::SetupStates()
 {
     set_CullMode(CULL_CCW);
 #if defined(USE_DX11)
     SSManager.SetMaxAnisotropy(ps_r__tf_Anisotropic);
 
-    // [DA_PORT] Compensate the mip selection for r__render_scale. Rendering the scene smaller makes the
-    // hardware pick coarser mip levels, so on top of simply having fewer pixels the textures themselves
-    // arrive pre-blurred — which is what reads as "mushy" after upscaling. Shifting the bias by
-    // log2(render / output) asks for the mips the full-resolution image would have used; this is the
-    // standard companion to any upscaler. At 100% the term is 0 and the user's own bias is untouched.
-    float mip_bias = ps_r__tf_Mipbias;
-    if (Device.dwRenderWidth > 0 && Device.dwRenderWidth < Device.dwWidth)
-        mip_bias += log2f(float(Device.dwRenderWidth) / float(Device.dwWidth));
-
-    // [DA_PORT] With TAA on, optionally ask for sharper mips than the hardware would pick: mip selection
-    // assumes one sample per pixel, and temporal accumulation gives several. It does buy back distant
-    // detail — but only where the history actually holds, and on dense vegetation it holds poorly, so
-    // the aliasing the standard bias was suppressing comes straight back as shimmer. Off by default;
-    // r__taa_mipbias is in hundredths of a mip level.
-    if (::ps_r__taa && ::ps_r__taa_mipbias)
-        mip_bias -= float(::ps_r__taa_mipbias) / 100.f;
-
-    SSManager.SetMipLODBias(mip_bias);
+    SSManager.SetMipLODBias(da_effective_mipbias());
 #elif defined(USE_OGL)
     // TODO: OGL: Implement SetupStates().
 #else

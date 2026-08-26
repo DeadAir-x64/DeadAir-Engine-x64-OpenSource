@@ -574,12 +574,55 @@ static bool da_seasonal_archive_enabled(pcstr archive_path)
     return (nullptr != strstr(buf, "summer"));
 }
 
+// [DA_PORT] Модуль анимаций — отдельный архив da_animations.xdb0, подключаемый по тому же признаку,
+// что и сезонный, и ровно по той же причине: архивы монтируются ДО консоли, скриптов и user.ltx,
+// поэтому спросить настройку в этот момент негде. Признак лежит обычным файлом рядом с архивом.
+//
+// Отсутствие файла означает «подключать»: у того, кто просто положил архив в database, всё работает
+// без единой настройки. Выключение — осознанное действие, и оно требует перезапуска: смонтировать
+// или отмонтировать архив посреди сеанса нельзя, на нём висят уже загруженные модели и звуки.
+//
+// ⚠️ Один общий выключатель, а не набор поштучных. Отдельные анимации гасятся скриптами вживую
+// (раздел EA_settings в MCM), и заводить вторую ручку на ту же величину нельзя: две ручки на одну
+// переменную перебивают друг друга, и игрок не понимает, какая победила.
+static bool da_animations_archive_enabled(pcstr archive_path)
+{
+    pcstr name = archive_path;
+    for (pcstr p = archive_path; *p; ++p)
+        if (*p == '\\' || *p == '/')
+            name = p + 1;
+
+    if (0 != xr_stricmp(name, "da_animations.xdb0"))
+        return true; // не наш архив — не наше дело
+
+    string_path marker;
+    xr_strcpy(marker, sizeof(marker), archive_path);
+    const size_t prefix = name - archive_path;
+    marker[prefix] = 0;
+    xr_strcat(marker, sizeof(marker), "da_animations.txt");
+
+    FILE* f = fopen(marker, "rb");
+    if (!f)
+        return true; // признака нет — подключаем
+
+    char buf[32] = {};
+    const size_t got = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[got] = 0;
+
+    return (nullptr == strstr(buf, "off"));
+}
+
 void CLocatorAPI::ProcessArchive(pcstr _path)
 {
     ZoneScoped;
 
     // [DA_PORT] Осенью летний архив не подключаем вовсе — см. da_seasonal_archive_enabled.
     if (!da_seasonal_archive_enabled(_path))
+        return;
+
+    // [DA_PORT] Модуль анимаций выключается тем же способом — см. da_animations_archive_enabled.
+    if (!da_animations_archive_enabled(_path))
         return;
 
     // find existing archive

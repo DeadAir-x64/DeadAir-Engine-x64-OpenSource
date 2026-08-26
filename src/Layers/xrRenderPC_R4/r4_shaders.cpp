@@ -1,4 +1,7 @@
 #include "stdafx.h"
+
+// [DA_PORT] Ручка живёт в движке, ВНЕ пространства имён рендера — иначе имя смангрится не туда.
+extern ENGINE_API int ps_r__motion_vectors;
 #include "r2.h"
 #include "Layers/xrRender/ShaderResourceTraits.h"
 #include "xrCore/FileCRC32.h"
@@ -634,7 +637,20 @@ HRESULT CRender::shader_compile(pcstr name, IReader* fs, pcstr pFunctionName,
     // [DA_PORT] Motion vectors as an extra G-buffer output — see f_deffer in common_iostructs.h. Must
     // match the target count bound in phase_scene_begin, hence both read the same latched o.velocity.
     appendShaderOption(o.velocity, "DA_VELOCITY", "1");
-    appendShaderOption(o.velocity_debug_ids, "DA_DEBUG_SHADER_IDS", "1"); // [DA_PORT] see r2.cpp
+    // [DA_PORT] Читаем ручку ЖИВЬЁМ, а не защёлкнутый при старте рендера признак.
+    //
+    // o.velocity_debug_ids вычисляется в CRender::create, то есть ДО того, как исполнится
+    // user.ltx, — поднять режим из файла было нельзя, а в консоли он не переживал перезапуск,
+    // потому что отладочные ручки у нас намеренно не сохраняются. Получался замкнутый круг:
+    // включить режим было негде.
+    //
+    // Опция входит в ИМЯ шейдера (appendShaderOption добавляет её в sh_name), поэтому живое
+    // чтение просто даёт другой ключ кэша: шейдеры перекомпилируются сами при заходе на
+    // уровень, чистить кэш не нужно.
+    //
+    // ⚠️ Сам буфер скоростей по-прежнему создаётся при старте рендера, поэтому карта меток
+    // работает только когда буфер существует — то есть при включённом апскейлере.
+    appendShaderOption(ps_r__motion_vectors == 3, "DA_DEBUG_SHADER_IDS", "1");
 
     // Shader Model 4.1
     appendShaderOption(o.dx11_sm4_1, "SM_4_1", "1");

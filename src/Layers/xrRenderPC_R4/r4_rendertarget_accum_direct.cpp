@@ -1,4 +1,5 @@
 #include "stdafx.h"
+
 #include "xrEngine/IGame_Persistent.h"
 #include "xrEngine/Environment.h"
 
@@ -294,6 +295,7 @@ void CRenderTarget::accum_direct(CBackend& cmd_list, u32 sub_phase)
         // этой правки стояла двумястами строками выше, и ручка не делала ничего даже на максимуме.
         {
             extern int ps_r__shadow_kernel_far;
+            extern int ps_r__shadow_rotate; // [DA_PORT] поворот выборки PCF
             const float k = float(ps_r__shadow_kernel_far);
             const float da_kernel = (SE_SUN_NEAR == sub_phase)   ? 1.f
                                   : (SE_SUN_MIDDLE == sub_phase) ? (1.f + (k - 1.f) * 0.5f)
@@ -301,7 +303,10 @@ void CRenderTarget::accum_direct(CBackend& cmd_list, u32 sub_phase)
             // [DA_PORT] .x = каскадный пол ядра (near=1, far=k); .y = потолок пер-пиксельного
             // масштаба по следу пикселя (задача #65, применение в shadow.h da_pcf_footprint).
             // При k=1 (умолчание) оба = 1 → прежнее поведение.
-            cmd_list.set_c("da_shadow_kernel", da_kernel, k, 0.f, 0.f);
+            // [DA_PORT] .z - смена угла поворота от кадра к кадру, .w - выключатель поворота.
+            // Разбор - в shaders/r3/shadow.h у shadow_hw.
+            cmd_list.set_c("da_shadow_kernel", da_kernel, k,
+                float(Device.dwFrame & 7) * 0.125f, float(ps_r__shadow_rotate));
             // [DA_PORT] Дистанция затухания дальней тени (метры от камеры) — задача «клин теней».
             // Гасим тень по РАССТОЯНИЮ (инвариант к повороту камеры), а не по краю карты, подогнанной
             // под пирамиду (её кромка едет со взглядом). Читает только accum_sun_far.ps; для near/middle
@@ -719,6 +724,7 @@ void CRenderTarget::accum_direct_cascade(CBackend& cmd_list, u32 sub_phase, Fmat
         // этой правки стояла двумястами строками выше, и ручка не делала ничего даже на максимуме.
         {
             extern int ps_r__shadow_kernel_far;
+            extern int ps_r__shadow_rotate; // [DA_PORT] поворот выборки PCF
             const float k = float(ps_r__shadow_kernel_far);
             const float da_kernel = (SE_SUN_NEAR == sub_phase)   ? 1.f
                                   : (SE_SUN_MIDDLE == sub_phase) ? (1.f + (k - 1.f) * 0.5f)
@@ -726,7 +732,10 @@ void CRenderTarget::accum_direct_cascade(CBackend& cmd_list, u32 sub_phase, Fmat
             // [DA_PORT] .x = каскадный пол ядра (near=1, far=k); .y = потолок пер-пиксельного
             // масштаба по следу пикселя (задача #65, применение в shadow.h da_pcf_footprint).
             // При k=1 (умолчание) оба = 1 → прежнее поведение.
-            cmd_list.set_c("da_shadow_kernel", da_kernel, k, 0.f, 0.f);
+            // [DA_PORT] .z - смена угла поворота от кадра к кадру, .w - выключатель поворота.
+            // Разбор - в shaders/r3/shadow.h у shadow_hw.
+            cmd_list.set_c("da_shadow_kernel", da_kernel, k,
+                float(Device.dwFrame & 7) * 0.125f, float(ps_r__shadow_rotate));
             // [DA_PORT] Дистанция затухания дальней тени (метры от камеры) — задача «клин теней».
             // Гасим тень по РАССТОЯНИЮ (инвариант к повороту камеры), а не по краю карты, подогнанной
             // под пирамиду (её кромка едет со взглядом). Читает только accum_sun_far.ps; для near/middle

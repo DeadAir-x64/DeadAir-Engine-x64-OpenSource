@@ -31,6 +31,12 @@ uniform	Texture2D					s_half_depth;
 // отношения не имеющие.
 uniform float4 da_ao;
 
+// [DA_PORT] Дымка: x доля неба, y размытость, z сила высотного тумана, w падение с высотой.
+// Нули = прежнее поведение. Разбор — у r__fog_* в xr_ioc_cmd.cpp.
+uniform float4 da_fog;
+// [DA_PORT] x = потолок плотности дымки (r__fog_max).
+uniform float4 da_fog2;
+
 //#include "ssao_blur.ps"
 
 #ifdef HDAO
@@ -248,8 +254,79 @@ _out main ( _input I, uint iSample : SV_SAMPLEINDEX )
         float3        	pos        		= P.xyz;
         float         	distance		= length		(pos);
         float         	fog				= saturate		(distance*fog_params.w + fog_params.x); //
-                      	color			= lerp     		(color,fog_color,fog);        			//
+
+	// [DA_PORT] ДЫМКА: высотный туман + цвет из неба. Разбор — у r__fog_* в xr_ioc_cmd.cpp.
+	// Нулевые константы дают в точности прежнюю строку lerp(color, fog_color, fog).
+	//
+	// m_v2w, sky_s0/sky_s1 и env_color приходят из hmodel.h, который этот шейдер уже включает,
+	// поэтому ни новых текстур, ни новых матриц заводить не пришлось.
+	float3 fog_rgb = fog_color;
+	[branch] if ( da_fog.x > 0.001h || da_fog.z > 0.001h )
+	{
+		const float3 wp  = mul( m_v2w, float4(pos, 1.0h) );   // точка в мире
+		const float3 cam = mul( m_v2w, float4(0,0,0,1.0h) );  // камера в мире
+
+		// Высотный туман. Плотность падает с высотой по экспоненте, интеграл вдоль луча берётся
+		// аналитически. Вырожденный случай — почти горизонтальный луч, там деление на вертикальную
+		// составляющую неустойчиво, и предел считается отдельной веткой.
+		[branch] if ( da_fog.z > 0.001h )
+		{
+			const float b    = max( da_fog.w, 0.0001h );
+			const float ry   = (wp.y - cam.y) / max( distance, 0.001h );
+			// Высота отсчитывается от ОПОРНОЙ отметки слоя, а не от нуля мира: игрок обычно стоит
+			// почти на нуле, и без этого множитель всегда выходил около единицы.
+			const float base = exp( -clamp( cam.y - da_fog2.y, -500.0h, 500.0h ) * b );
+			const float integ= ( abs(ry) > 0.0001h )
+				? base * ( 1.0h - exp( -distance * ry * b ) ) / ( ry * b )
+				: base * distance;
+			// Плотность на МЕТР пути: ручка 0..4 означает тысячные доли. Масштаб применяется
+			// здесь, а не в связывателе, иначе он ушёл бы под порог ветки выше.
+			// Интеграл — это оптическая толща; непрозрачность из неё берётся как 1-exp(-tau).
+			// Килес использует величину прямо как коэффициент смешивания, но тогда она ничем
+			// не ограничена сверху.
+			const float fogH = 1.0h - exp( -da_fog.z * 0.001h * max( integ, 0.0h ) );
+			// Складываем с линейным как две независимые непрозрачности, а не заменяем: погодные
+			// fog_near/fog_far продолжают работать.
+			fog = saturate( fog + fogH * (1.0h - fog) );
+		}
+
+		// Цвет дымки из неба по направлению взгляда (mip fog). Размытый уровень берётся намеренно:
+		// в тумане нужен общий тон направления, а не рисунок облаков.
+		[branch] if ( da_fog.x > 0.001h )
+		{
+			// Направление прижимается к горизонту: рассеяние идёт вдоль луча ДО ОБЪЕКТА, а он
+			// почти горизонтален. Без этого высокое дерево красилось небом НАД СОБОЙ и на закате
+			// выходило светлее мглы вокруг. Разбор — у r__fog_sky_flat.
+			float3 vd = normalize( wp - cam );
+			vd.y *= saturate( 1.0h - da_fog2.z );
+			vd = normalize( vd );
+			const float3 s0 = sky_s0.SampleLevel( smp_rtlinear, vd, da_fog.y );
+			const float3 s1 = sky_s1.SampleLevel( smp_rtlinear, vd, da_fog.y );
+			const float3 sky = env_color.xyz * lerp( s0, s1, env_color.w );
+			fog_rgb = lerp( fog_rgb, sky, saturate( da_fog.x ) );
+		}
+	}
+
+	// Потолок плотности: немного контраста на горизонте сохраняет силуэты холмов.
+	[branch] if ( da_fog2.x > 0.001h && da_fog2.x < 0.999h )
+		fog = min( fog, da_fog2.x );
+
+                      	color			= lerp     		(color,fog_rgb,fog);        			//
         float        	skyblend		= saturate		(fog*fog);
+
+	// [DA_PORT] ПРИБОР ОСВЕЩЕНИЯ (r__light_probe). Разбор — у ручки в xr_ioc_cmd.cpp.
+	// Стоит ПОСЛЕ тумана намеренно: туман серый, и на дали он подмешался бы в любое слагаемое.
+	[branch] if ( da_ao.z > 0.5h )
+	{
+		if      ( da_ao.z < 1.5h ) color = spec;                 // блик
+		else if ( da_ao.z < 2.5h ) color = C.rgb;                // всё, кроме блика
+		else if ( da_ao.z < 3.5h ) color = hdiffuse * D.rgb;     // полусфера
+		else if ( da_ao.z < 4.5h ) color = L.rgb * D.rgb;        // солнце и лампы
+		else if ( da_ao.z < 5.5h ) color = D.rgb;                // альбедо
+		else if ( da_ao.z < 6.5h ) color = D.www;                // глянец
+		// Усиление (r__light_probe_gain): слабое слагаемое на тёмном экране неотличимо от нуля.
+		color *= max( da_ao.w, 1.0h );
+	}
 
 #ifdef         DBG_TMAPPING
         color                        	= D.xyz;

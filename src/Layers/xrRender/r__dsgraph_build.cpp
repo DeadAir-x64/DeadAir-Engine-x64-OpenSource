@@ -63,6 +63,7 @@ extern int ps_da_anim_lod;
 // Scene graph actual insertion and sorting ////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 float r_ssaDISCARD;
+float r_ssaVEG_DISCARD; // [DA_PORT] отдельный порог для щитов растительности
 
 // [DA_PORT] Сколько объектов сняли по экранной площади -- чтобы порог настраивался по числу, а не
 // по ощущению. Считается только когда взведён разбор очереди (da_geom_dump): в обычном кадре это
@@ -704,7 +705,10 @@ void R_dsgraph_structure::add_leafs_static(dxRender_Visual* pVisual)
         ssa *= pV->lod_factor;
         if (ssa < r_ssaLOD_A)
         {
-            if (ssa < r_ssaDISCARD)
+            // [DA_PORT] Порог СВОЙ, не общий: дальний фон заполняет растительность, а общий порог
+            // тянет за собой всё подряд. Разбор и замер — у ps_r__vegDISCARD. По умолчанию значения
+            // равны, то есть поведение прежнее.
+            if (ssa < r_ssaVEG_DISCARD)
                 return;
             mapLOD.insert_anyway(D, _LodItem({ ssa, pVisual }));
         }

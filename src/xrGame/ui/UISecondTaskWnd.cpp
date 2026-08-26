@@ -264,7 +264,14 @@ void UITaskListWndItem::Update()
 
 void UITaskListWndItem::update_view()
 {
+    // [DA_PORT] VERIFY в релизе исчезает, а строка списка задач обновляется КАЖДЫЙ кадр — то есть
+    // проверки тут не было вовсе там, где играют. Сама по себе она краш тестера не снимала (там
+    // указатель был не пустой, а мусорный — разбор у CGameTask::Objective), но пустой m_task
+    // возможен отдельно: строку успевают обновить между уничтожением задачи и перестроением списка.
     VERIFY(m_task);
+    if (!m_task)
+        return;
+
     CMapLocation* ml = m_task->LinkedMapLocation();
 
     if (ml && ml->SpotEnabled())

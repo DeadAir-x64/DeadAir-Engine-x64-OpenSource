@@ -3,6 +3,7 @@
 #include "da_dlss.h"
 
 extern ENGINE_API void da_upscaler_mark_failed(pcstr who); // [DA_PORT]
+extern ENGINE_API int ps_r__dlss_preset;              // [DA_PORT] пресет модели DLSS
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -27,6 +28,7 @@ struct ngx_shim
     int (*available)(void){};
     int (*optimal_size)(int, unsigned, unsigned, unsigned*, unsigned*){};
     int (*create)(void*, unsigned, unsigned, unsigned, unsigned, int){};
+    void (*set_preset)(int){};
     void (*destroy)(void*){};
     int (*evaluate)(void*, void*, void*, void*, void*, void*, float, float, float, float, int, unsigned,
                     unsigned){};
@@ -82,6 +84,7 @@ bool load_shim()
         !bind(g_shim.init, "da_ngx_init") || !bind(g_shim.shutdown, "da_ngx_shutdown") ||
         !bind(g_shim.available, "da_ngx_available") ||
         !bind(g_shim.optimal_size, "da_ngx_optimal_size") || !bind(g_shim.create, "da_ngx_create") ||
+        !bind(g_shim.set_preset, "da_ngx_set_preset") ||
         !bind(g_shim.destroy, "da_ngx_destroy") || !bind(g_shim.evaluate, "da_ngx_evaluate"))
     {
         FreeLibrary(g_shim.module);
@@ -192,6 +195,11 @@ bool da_dlss::create(const init_params& p)
 {
     destroy();
 
+    // Запоминаем ДО всех проверок и ровно один раз. Если создание провалится, повторять его каждый
+    // кадр незачем: причина отказа от кадра к кадру не меняется, а лог зальёт одинаковыми строками.
+    m_params = p;
+    m_preset = ps_r__dlss_preset;
+
     if (!p.device || !p.display_width || !p.display_height || !p.render_width || !p.render_height)
         return false;
     if (!load_shim())
@@ -220,6 +228,10 @@ bool da_dlss::create(const init_params& p)
     // построению - оба приходят из Device.dwRenderWidth.
 
     ID3D11DeviceContext* ctx = HW.get_context(CHW::IMM_CTX_ID);
+
+    // Пресет отдаётся строго перед созданием: NGX читает его из блока параметров в этот момент.
+    g_shim.set_preset(m_preset);
+
     if (!g_shim.create(ctx, rw, rh, p.display_width, p.display_height, int(p.quality)))
     {
         // [DA_PORT] Говорим это громко и полностью, потому что провал здесь МАСКИРУЕТСЯ ПОД УСПЕХ.
@@ -279,6 +291,19 @@ bool da_dlss::draw(const draw_params& p)
 {
     if (!m_created || !g_shim.ok)
         return false;
+
+    // [DA_PORT] Смена пресета применяется здесь, пересозданием фичи.
+    //
+    // Пересоздавать посреди кадра можно: фича живёт на непосредственном контексте, а вызов стоит ДО
+    // единственной работы с ней в этом кадре. История реконструкции при этом теряется - на один кадр
+    // картинка станет как после загрузки уровня. Это ожидаемо и происходит только в момент смены.
+    if (m_preset != ps_r__dlss_preset)
+    {
+        const init_params saved = m_params; // create() затирает m_params, читаем копию
+        Msg("* [DLSS] render preset %d -> %d, recreating", m_preset, ps_r__dlss_preset);
+        if (!create(saved))
+            return false;
+    }
 
     // Наши векторы лежат в NDC (разность двух позиций в клиповом пространстве после деления на w),
     // DLSS хочет пиксели. Половина размера рендера переводит одно в другое, знак по x — из того же

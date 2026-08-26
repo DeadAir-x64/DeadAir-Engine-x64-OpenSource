@@ -235,6 +235,38 @@ float3 da_debug_reactive(float2 uv)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+
+// [DA_PORT] Режим 3: ТОЧНОЕ декодирование меток шейдеров, а не усиление вектора.
+//
+// Прежний показ гнал метку через тот же множитель 200, что и настоящие вектора, - и всё насыщалось.
+// Три метки из семи давали ОДИН И ТОТ ЖЕ пурпурный: AREF_FLAT, IMPL и UNKNOWN. Заявленный в шапке
+// da_shader_ids.h жёлтый для импосторов не получался никогда: жёлтый требует зелёного, а зелёный
+// берётся только из отрицательного x. Читать такую карту было нельзя, и один разбор на ней уже
+// свернул не туда.
+//
+// Теперь метка сравнивается со списком напрямую. Допуск 0.008 при шаге между метками 0.03 - втрое
+// с запасом, и половинная точность буфера RG16F его выдерживает.
+float3 da_debug_shader_id(float2 uv)
+{
+	float2 v = s_velocity.Sample(smp_rtlinear, uv).xy;
+
+	// Ровно ноль - сюда не писал никто. Серый, а не цвет: это отсутствие данных, а не шейдер.
+	if (v.x == 0.0 && v.y == 0.0)
+		return float3(0.15, 0.15, 0.15);
+
+	const float e = 0.008;
+	if (abs(v.x - 0.05) < e && abs(v.y - 0.00) < e) return float3(1.0, 0.0, 0.0);  // BUMP      красный
+	if (abs(v.x + 0.05) < e && abs(v.y - 0.00) < e) return float3(0.0, 1.0, 0.0);  // FLAT      зелёный
+	if (abs(v.x - 0.00) < e && abs(v.y - 0.05) < e) return float3(0.0, 0.0, 1.0);  // AREF_BUMP синий
+	if (abs(v.x - 0.05) < e && abs(v.y - 0.05) < e) return float3(1.0, 0.0, 1.0);  // AREF_FLAT пурпурный
+	if (abs(v.x + 0.05) < e && abs(v.y - 0.05) < e) return float3(0.0, 1.0, 1.0);  // BASE      голубой
+	if (abs(v.x - 0.05) < e && abs(v.y - 0.02) < e) return float3(1.0, 1.0, 0.0);  // IMPL      ЖЁЛТЫЙ
+	if (abs(v.x - 0.02) < e && abs(v.y - 0.02) < e) return float3(1.0, 0.5, 0.0);  // UNKNOWN   ОРАНЖЕВЫЙ
+
+	// Не метка - значит настоящий вектор: небо, вода, сторож. Белый, чтобы не путать с меткой.
+	return float3(1.0, 1.0, 1.0);
+}
+
 // Pixel
 float4 main( p_postpr I ) : SV_Target
 {
@@ -242,11 +274,15 @@ float4 main( p_postpr I ) : SV_Target
 //	float3	t_1 	= tex2D		(s_base1,I.tc1);
 	// [DA_PORT] Debug views, before anything else touches the frame. 4 is the reactive mask; 2 and 3
 	// both read the velocity buffer, 3 only fills it with shader ids instead of vectors.
-	if (da_upscale.y > 4.5)
+	// [DA_PORT] ВЕРХНЯЯ граница обязательна: без неё этот вид перехватывает СВСЕ старшие режимы,
+	// включая те, что рисуются в других шейдерах, и показывает чужую картинку.
+	if (da_upscale.y > 4.5 && da_upscale.y < 5.5)
 		return float4(da_debug_depth(I.Tex0), 1.0h);
-	if (da_upscale.y > 3.5)
+	if (da_upscale.y > 3.5 && da_upscale.y < 4.5)
 		return float4(da_debug_reactive(I.Tex0), 1.0h);
-	if (da_upscale.y > 1.5)
+	if (da_upscale.y > 2.5 && da_upscale.y < 3.5)
+		return float4(da_debug_shader_id(I.Tex0), 1.0h);
+	if (da_upscale.y > 1.5 && da_upscale.y < 2.5)
 		return float4(da_debug_velocity(I.Tex0), 1.0h);
 
 #ifdef DA_VELOCITY

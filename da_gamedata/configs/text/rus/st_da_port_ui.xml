@@ -418,6 +418,15 @@
 	<string id="ui_mm_season_summer">
 		<text>Лето</text>
 	</string>
+	<string id="ui_mm_anim">
+		<text>Анимации (после перезапуска)</text>
+	</string>
+	<string id="ui_mm_anim_on">
+		<text>Включены</text>
+	</string>
+	<string id="ui_mm_anim_off">
+		<text>Выключены</text>
+	</string>
 	<string id="ui_mm_snd_device_auto">
 		<text>Системное устройство</text>
 	</string>

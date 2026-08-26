@@ -183,6 +183,11 @@ int da_ngx_optimal_size(int quality, unsigned display_w, unsigned display_h, uns
     return 1;
 }
 
+// [DA_PORT] Выбранный пресет модели, 0 - не задавать. Разбор - у da_ngx_set_preset в заголовке.
+static int g_preset = 0;
+
+void da_ngx_set_preset(int preset) { g_preset = preset; }
+
 int da_ngx_create(void* d3d11_context, unsigned render_w, unsigned render_h, unsigned display_w,
                   unsigned display_h, int quality)
 {
@@ -210,6 +215,27 @@ int da_ngx_create(void* d3d11_context, unsigned render_w, unsigned render_h, uns
     // MVLowRes: вектора лежат в разрешении рендера, а не экрана.
     // DepthInverted НЕ ставим: проекция X-Ray обычная, как и для FSR 2.
     create.InFeatureCreateFlags = NVSDK_NGX_DLSS_Feature_Flags_MVLowRes;
+
+    // [DA_PORT] Пресет ставится СРАЗУ ВО ВСЕ шесть режимов, а не только в текущий.
+    //
+    // Так надёжнее и дешевле, чем угадывать имя параметра по режиму. Наша ступень качества и режим
+    // NGX связаны через quality_for(), где две разные ступени дают один MaxQuality; ошибиться в
+    // соответствии легко, а цена ошибки - молчаливое бездействие: NGX не жалуется на подсказку,
+    // адресованную чужому режиму, он её просто не читает. Задав все шесть одинаково, мы получаем
+    // выбранную модель при любом режиме.
+    if (g_preset > 0)
+    {
+        const int v = g_preset;
+        g_caps->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_DLAA, v);
+        g_caps->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Quality, v);
+        g_caps->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Balanced, v);
+        g_caps->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Performance, v);
+        g_caps->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_UltraPerformance, v);
+        g_caps->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_UltraQuality, v);
+        say("* [DLSS] render preset %d ('%c') requested", v, char('A' + v - 1));
+    }
+    else
+        say("* [DLSS] render preset: driver default");
 
     NVSDK_NGX_Result r = NGX_D3D11_CREATE_DLSS_EXT(static_cast<ID3D11DeviceContext*>(d3d11_context),
                                                    &g_feature, g_caps, &create);

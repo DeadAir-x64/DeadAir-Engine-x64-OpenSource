@@ -374,6 +374,10 @@ void CRenderTarget::phase_combine()
         // важно доложить об этом прибором, а не промолчать. Разбор — в
         // r4_rendertarget_phase_water_velocity.cpp.
         phase_water_velocity();
+        // [DA_PORT] И глубина воды — для нашей темпоралки. Стоит рядом с векторами намеренно: у обеих
+        // одно условие по месту в кадре (после прямого прохода, пока список искажения не очищен) и
+        // взаимоисключающие условия по потребителю.
+        phase_water_depth();
 
         if (bDistort)
         {
@@ -673,6 +677,9 @@ void CRenderTarget::phase_combine()
             --::ps_r__shift_watch;
             da_shift_watch();
         }
+
+        // [DA_PORT] Прибор «что дрожит между кадрами» — та же точка кадра и по той же причине.
+        phase_frame_diff();
 
         da_d3d_debug_drain(); // [DA_PORT] validation layer output, see dx11HW.cpp // [DA_PORT] the other upscaler; only one is ever enabled
 

@@ -207,16 +207,40 @@ void CEnvironment::SetWeather(shared_str name, bool forced)
     }
 }
 
+// [DA_PORT] Отказ здесь БОЛЬШЕ НЕ МОЛЧИТ, и второй его случай больше не роняет игру.
+//
+// Оба вызывающих (`level.set_weather_fx` из скриптов и редактор) результат игнорируют. Поэтому
+// отказ выглядел не как отказ, а как сработавший эффект: выброс отрабатывал положенное время с
+// ускорением игрового времени в десять раз — луна неслась по небу, — но при ЧИСТОМ небе, потому что
+// погодный эффект не запускался. Причина отказа при этом нигде не называлась.
+//
+// Найдено у соседнего порта (Dead-Air-Refined, MMadmer, MIT) по отчётам «луна несётся, выброса нет».
+// Ложится на нашу же заметку про мёртвую проводку выбросов.
+//
+// Второй случай у нас был ХУЖЕ, чем у них: за `VERIFY(PrevWeather)` — который в релизе исчезает —
+// сразу идёт разыменование `Current[0]->exec_time`. Сейв, сделанный посреди выброса, просит эффект
+// раньше, чем выбрана первая пара погоды, и это не «невозможно», а обычный порядок загрузки. Теперь
+// это отказ с записью в лог, а не чтение по нулю.
 bool CEnvironment::SetWeatherFX(shared_str name)
 {
     if (bWFX)
+    {
+        Msg("! SetWeatherFX [%s]: отказ, уже играет эффект [%s]", name.size() ? name.c_str() : "",
+            Current[0] ? Current[0]->m_identifier.c_str() : "?");
         return false;
+    }
     if (name.size())
     {
         auto it = WeatherFXs.find(name);
         R_ASSERT3(it != WeatherFXs.end(), "Invalid weather effect name.", name.c_str());
+
+        if (!CurrentWeather || !Current[0] || !Current[1])
+        {
+            Msg("! SetWeatherFX [%s]: отказ, пара погоды ещё не выбрана", name.c_str());
+            return false;
+        }
+
         EnvVec* PrevWeather = CurrentWeather;
-        VERIFY(PrevWeather);
         CurrentWeather = &it->second;
         CurrentWeatherName = it->first;
         CurrentEnv.soc_style = CurrentWeather->soc_style;

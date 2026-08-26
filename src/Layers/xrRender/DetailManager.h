@@ -57,6 +57,14 @@ public:
     { // один кустик
         float scale;
         float scale_calculated;
+        // [DA_PORT] Отдельный множитель ВЫСОТЫ. Разбор — у ручки r__grass_fade_flat.
+        //
+        // Нужен потому, что затухание вдаль можно тратить двумя способами. Равномерное сжатие делает
+        // травинку и ниже, и у́же — она мельчает целиком, уходит за пиксель и отбрасывается, а земля
+        // под ней оголяется. Сжатие ОДНОЙ высоты оставляет пятно на земле прежним: куртинка ложится
+        // плоско, но покрытие сохраняет, а стоит дешевле — высокий стебель дорог именно тем, что
+        // тянет вверх много закрашиваемых пикселей.
+        float height_calculated;
         Fmatrix mRotY;
         u32 vis_ID; // индекс в visibility списке он же тип [не качается, качается1, качается2]
         float c_hemi;
@@ -165,6 +173,14 @@ public:
     DetailVec objects;
     vis_list m_visibles[3]; // 0=still, 1=Wave1, 2=Wave2
 
+    // [DA_PORT] Тот же набор, но ТОЛЬКО для теневого прохода солнца — слоты ближе r__grass_shadow_dist.
+    //
+    // Зачем отдельный список, а не отсечка при отрисовке: к моменту Render() расстояние уже потеряно —
+    // списки плоские, слот в них не виден. А в проходе видимости оно есть под рукой, и заполнение
+    // идёт тем же циклом, без второго обхода и без новых задач (у менеджера травы уже была гонка
+    // задач, трогать потоковую часть нельзя).
+    vis_list m_visibles_shadow[3];
+
 #ifndef _EDITOR
     xrXRC xrc;
 #endif
@@ -214,8 +230,8 @@ public:
     void hw_Load_Geom();
     void hw_Load_Shaders();
     void hw_Unload();
-    void hw_Render(CBackend& cmd_list);
-    void hw_Render_dump(CBackend& cmd_list, const Fvector4& consts, const Fvector4& wave,
+    void hw_Render(CBackend& cmd_list, bool shadow_pass); // [DA_PORT]
+    void hw_Render_dump(CBackend& cmd_list, bool shadow_pass, const Fvector4& consts, const Fvector4& wave,
         const Fvector4& wind, const Fvector4& wave_old, const Fvector4& wind_old, u32 var_id, u32 lod_id);
 
     // get unpacked slot
@@ -235,7 +251,9 @@ public:
     int w2cg_Z(int z) { return cache_cz - dm_size + (dm_cache_line - 1 - z); }
     void Load();
     void Unload();
-    void Render(CBackend& cmd_list);
+    // [DA_PORT] shadow_pass — рисовать сокращённый набор (только ближняя трава). Разбор у
+    // m_visibles_shadow.
+    void Render(CBackend& cmd_list, bool shadow_pass = false);
 
     /// MT stuff
     Task* m_calc_task{};

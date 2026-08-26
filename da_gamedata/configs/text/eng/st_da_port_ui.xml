@@ -422,6 +422,15 @@
 	<string id="ui_mm_season_summer">
 		<text>Summer</text>
 	</string>
+	<string id="ui_mm_anim">
+		<text>Animations (restart required)</text>
+	</string>
+	<string id="ui_mm_anim_on">
+		<text>On</text>
+	</string>
+	<string id="ui_mm_anim_off">
+		<text>Off</text>
+	</string>
 	<string id="ui_mm_snd_device_auto">
 		<text>System default</text>
 	</string>

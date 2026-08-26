@@ -272,11 +272,12 @@ uniform float4 		c_colormap;
 float4 main( p_postpr I ) : SV_Target
 {
 	// [DA_PORT] Îòëàäî÷íûå ïîêàçû - äî âñåãî îñòàëüíîãî, ðîâíî êàê â postprocess.ps.
-	if (da_upscale.y > 4.5)
+	// [DA_PORT] Ð²ÐµÑ€Ñ…Ð½ÑÑ Ð³Ñ€Ð°Ð½Ð¸Ñ†Ð°: Ð¸Ð½Ð°Ñ‡Ðµ Ð²Ð¸Ð´ Ð¿ÐµÑ€ÐµÑ…Ð²Ð°Ñ‚Ñ‹Ð²Ð°ÐµÑ‚ ÑÑ‚Ð°Ñ€ÑˆÐ¸Ðµ Ñ€ÐµÐ¶Ð¸Ð¼Ñ‹
+	if (da_upscale.y > 4.5 && da_upscale.y < 5.5)
 		return float4(da_debug_depth(I.Tex0), 1.0h);
-	if (da_upscale.y > 3.5)
+	if (da_upscale.y > 3.5 && da_upscale.y < 4.5)
 		return float4(da_debug_reactive(I.Tex0), 1.0h);
-	if (da_upscale.y > 1.5)
+	if (da_upscale.y > 1.5 && da_upscale.y < 2.5)
 		return float4(da_debug_velocity(I.Tex0), 1.0h);
 
 #ifdef DA_VELOCITY

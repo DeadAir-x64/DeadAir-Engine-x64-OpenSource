@@ -27,6 +27,11 @@ extern ENGINE_API float ps_r__puddles_rim;
 extern ENGINE_API float ps_r__puddles_rim_width;
 extern ENGINE_API float g_da_rain_wetness; // [DA_PORT] сюда кладём накопленную влажность для игры
 
+// [DA_PORT] 🪤 Объявление ОБЯЗАНО стоять здесь, ДО открытия пространства имён рендера.
+// Внутри него `extern` заводит СВОЮ переменную xray::render::render_r4::ps_da_fog_dist, которой
+// никто не определяет, и сборка падает на этапе связывания. Переменная живёт в движке, снаружи.
+extern ENGINE_API float ps_da_fog_dist; // дальность дымки, см. xr_ioc_cmd.cpp
+
 namespace xray::render::RENDER_NAMESPACE
 {
 // matrices
@@ -191,6 +196,16 @@ class cl_fog_params : public R_constant_setup
             // Near/Far
             float n = g_pGamePersistent->Environment().CurrentEnv.fog_near;
             float f = g_pGamePersistent->Environment().CurrentEnv.fog_far;
+
+            // [DA_PORT] Дальность дымки (r__fog_dist). Единица — в точности значения погоды.
+            // Обе границы умножаются вместе: так сдвигается всё начало-конец, а форма градиента и
+            // разница между погодами сохраняются.
+            if (::ps_da_fog_dist > 0.f && _abs(::ps_da_fog_dist - 1.f) > 0.001f)
+            {
+                n *= ::ps_da_fog_dist;
+                f *= ::ps_da_fog_dist;
+            }
+
             float r = 1 / (f - n);
             result.set(-n * r, r, r, r);
         }
@@ -209,7 +224,28 @@ class cl_fog_color : public R_constant_setup
         if (marker != Device.dwFrame)
         {
             const auto& desc = g_pGamePersistent->Environment().CurrentEnv;
-            result.set(desc.fog_color.x, desc.fog_color.y, desc.fog_color.z, 0);
+
+            // [DA_PORT] Подмешиваем оттенок НЕБА, сохраняя яркость тумана. Разбор — у ручки
+            // r__fog_sky_tint в xrRender_console.cpp. При нуле ветка не исполняется и цвет прежний.
+            extern float ps_da_fog_sky_tint;
+            Fvector3 fog = desc.fog_color;
+            if (ps_da_fog_sky_tint > 0.001f)
+            {
+                const Fvector3& sky = desc.sky_color;
+                const float lum_f = fog.x * 0.299f + fog.y * 0.587f + fog.z * 0.114f;
+                const float lum_s = sky.x * 0.299f + sky.y * 0.587f + sky.z * 0.114f;
+                if (lum_s > 1e-5f)
+                {
+                    // Цвет неба, приведённый к ЯРКОСТИ тумана: берём оттенок, не светлоту.
+                    const float k = lum_f / lum_s;
+                    Fvector3 tinted;
+                    tinted.set(sky.x * k, sky.y * k, sky.z * k);
+                    const float t = ps_da_fog_sky_tint;
+                    fog.set(fog.x + (tinted.x - fog.x) * t, fog.y + (tinted.y - fog.y) * t,
+                        fog.z + (tinted.z - fog.z) * t);
+                }
+            }
+            result.set(fog.x, fog.y, fog.z, 0);
         }
         cmd_list.set_c(C, result);
     }
