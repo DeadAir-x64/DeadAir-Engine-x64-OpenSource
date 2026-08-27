@@ -31,7 +31,7 @@
 ; Своего файла в цепочке #include у system.ltx нет, а сам system.ltx лежит в архиве и переопределять
 ; его целиком ради одной строки неразумно: он большой и заморозил бы всё остальное на текущей версии.
 ; Поэтому подключаемся отсюда — alife.ltx уже перекрыт loose-файлом и включён в system.ltx.
-#include "da_hud_animations.ltx"
+#include_optional "da_hud_animations.ltx"
 
 ; [DA_PORT] Псевдопредмет с анимацией рук для паркура.
 ;
@@ -57,9 +57,9 @@
 #include "items\items\items_anm_tabletki.ltx"
 #include "items\items\items_anm_take.ltx"
 #include "items\items\items_anm_da_body_search.ltx"
-#include "items\items\items_anm_da_backpack.ltx"
+#include_optional "items\items\items_anm_da_backpack.ltx"
 #include "items\items\items_anm_mirrowel.ltx"
 #include "items\items\items_anm_da_wear.ltx"
-#include "items\items\items_anm_da_headgear.ltx"
+#include_optional "items\items\items_anm_da_headgear.ltx"
 #include "items\items\items_anm_mfs.ltx"
 #include "items\items\items_anm_vodka.ltx"

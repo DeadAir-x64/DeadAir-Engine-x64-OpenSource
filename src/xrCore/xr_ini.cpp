@@ -453,6 +453,19 @@ void CInifile::Load(IReader* F, pcstr path, allow_include_func_t allow_include_f
         {
             string_path inc_name;
             R_ASSERT(path && path[0]);
+
+            // [DA_PORT] #include_optional -- подключение, которого может не быть.
+            //
+            // Зачем. Отдельно ставящиеся дополнения (модуль анимаций) везут свои конфиги в архиве,
+            // а подключаются они из базового alife.ltx, который едет с обновлением. Обычный
+            // #include делает эту связь ЖЁСТКОЙ: снял дополнение -- игра не стартует, падая на
+            // "Can't find include file". Обратный порядок тоже не спасает: россыпь перекрывает
+            // архив, поэтому заглушка в обновлении победила бы настоящий файл дополнения.
+            //
+            // Отсутствие такого файла -- штатное состояние, а не ошибка, поэтому пропускаем молча
+            // и пишем строку в лог. Ветка `#include` ловит и `#include_optional`, так как ищет
+            // подстроку -- отличаем по суффиксу.
+            const bool da_optional = strstr(str, "#include_optional") != nullptr;
             if (_GetItem(str, 1, inc_name, '"'))
             {
                 string_path fn, inc_path, folder;
@@ -473,6 +486,11 @@ void CInifile::Load(IReader* F, pcstr path, allow_include_func_t allow_include_f
                             I = FS.r_open(fn);
                         }
 #endif
+                        if (da_optional && I == nullptr)
+                        {
+                            Msg("~ [DA_PORT] необязательное подключение пропущено: %s", name);
+                            return;
+                        }
                         R_ASSERT3(I, "Can't find include file:", name);
                         Load(I, inc_path, allow_include_func);
                         FS.r_close(I);
