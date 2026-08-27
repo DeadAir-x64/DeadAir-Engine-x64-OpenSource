@@ -35,7 +35,10 @@ function enabled()
 	-- Настройка тут не спасает: её регистрирует сам модуль, и без него значение по умолчанию
 	-- «включено». Поэтому проверяем не настройку, а НАЛИЧИЕ модуля — его ядро da_item_anims живёт
 	-- только в архиве и без него в глобальные имена не попадает.
-	if not da_item_anims then return false end
+	-- Признак модуля — секция из ЕГО конфига (da_hud_animations.ltx, подключается
+	-- необязательно). Скрипты для этого не годятся: da_item_anims и enhanced_animations
+	-- лежат в базовой сборке РОССЫПЬЮ, то есть существуют и без модуля.
+	if not system_ini():section_exist("da_hud_animations") then return false end
 	if not axr_main or not axr_main.config then return true end
 	return axr_main.config:r_value("mm_options", "enable_da_body_search_anim", 1, true)
 end
