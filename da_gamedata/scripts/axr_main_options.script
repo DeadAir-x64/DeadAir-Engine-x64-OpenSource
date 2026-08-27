@@ -126,21 +126,18 @@ function opt_menu_on_init(menu)
 	--menu.gameplay_options["excl_dist"]			= {default=75, 		debug_only=true, 	typ="list", list={0,25,50,75,100}}  
 	
 	-- quicksave_cnt
-	-- [DA_PORT] Набор анимаций употребления вещей: наши перенесённые / штатные / никаких.
-	-- Разбор — в da_item_anims.script. Список строится ПЕРЕВЕДЁННЫМИ подписями, потому что
-	-- рамка меню кладёт в строку ровно то, что показала, и читатели сверяются с теми же строками.
-	menu.gameplay_options["da_item_anims"] = {default=da_item_anims.default_label(), debug_only=false, typ="list", list=da_item_anims.labels()}
-
-	-- [DA_PORT] Паркур (подтягивание на уступ). У самого мода настройки лежат в MCM, которого в
-	-- Dead Air нет, поэтому его settings.enable до сих пор ничем не управлялся. Здесь и управляется:
-	-- demonized_ledge_grabbing.load_settings перебивает значение этим.
-	menu.gameplay_options["da_skin_anims"] = {default=da_item_anims.default_label(), debug_only=false, typ="list", list=da_item_anims.labels()}
-	menu.gameplay_options["da_body_search_anim"] = {default=true, debug_only=false, typ="check"}
-	menu.gameplay_options["da_backpack_anim"] = {default=true, debug_only=false, typ="check"}
-	-- [DA_PORT] По умолчанию ВЫКЛЮЧЕНО: движения пока подставные, а точка перехвата в движке
-	-- срабатывает не только на действие игрока. Разбор - в da_wear_anims.script.
-	menu.gameplay_options["da_wear_anims"] = {default=da_item_anims.default_label(), debug_only=false, typ="list", list=da_item_anims.labels()}
-	menu.gameplay_options["da_parkour"] = {default=true, debug_only=false, typ="check"}
+	-- [DA_PORT] Настройки модуля анимаций приезжают ВМЕСТЕ с ним.
+	--
+	-- Раньше шесть переключателей были описаны прямо здесь, а сами анимации лежат в архиве
+	-- da_animations.xdb0. У того, кто модуль не ставил или выключил, раздел «Анимации» всё равно
+	-- висел в меню и ничего не переключал; хуже — три пункта спрашивали умолчания у da_item_anims,
+	-- скрипта из того же архива, которого без модуля просто нет.
+	--
+	-- Теперь описание уехало в сам архив (da_anim_options.script), а здесь остался вызов через
+	-- проверку существования: есть модуль — раздел появится, нет модуля — его не будет вовсе.
+	if da_anim_options then
+		da_anim_options.register(menu)
+	end
 
 	menu.gameplay_options["quicksave_cnt"]		= {default=5, 		debug_only=false, 	typ="list", list={1,3,5,10}}
 	
@@ -207,7 +204,7 @@ function opt_menu_on_accept(menu,optMgr,console)
     -- поэтому зовём напрямую. Список короткий и весь на виду.
     if (db and db.actor) then
         -- [DA_PORT] ВРЕМЕННЫЙ ЗОНД
-        printf("da_anims: применено, перечитываю настройки, режим=%s", tostring(da_item_anims.mode()))
+        printf("da_anims: применено, перечитываю настройки, режим=%s", tostring(da_item_anims and da_item_anims.mode()))
         local reload = {
             { enhanced_animations,       "loadsettings" },
             { take_item_anim,            "loadsettings" },

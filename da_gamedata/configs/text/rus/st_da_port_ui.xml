@@ -634,4 +634,10 @@
 
 
 
+	<string id="ui_mm_fog">
+		<text>Туман видимости</text>
+	</string>
+	<string id="ui_da_tune_fog">
+		<text>Туман видимости</text>
+	</string>
 </string_table>

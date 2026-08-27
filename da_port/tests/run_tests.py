@@ -503,9 +503,39 @@ def check_release_shipping():
             else:
                 skip.add(line.replace('/', os.sep).lower())
 
+    # [DA_PORT] Состав модуля анимаций читается ИЗ САМОГО АРХИВА, а не из списка.
+    #
+    # Модуль уезжает игроку отдельно (da_animations.xdb0 со своим установщиком), поэтому через
+    # DeadAir_Update его файлы не идут. Их больше тысячи, и держать их перечнем в not_shipped.txt
+    # было бы двумя способами ошибиться: список устареет при первой пересборке модуля, а каталогом
+    # его не заменить — модуль делит textures/, meshes/ и sounds/ с самой игрой, и целый каталог в
+    # исключениях спрятал бы заодно наши настоящие правки в тех же папках.
+    #
+    # Читая архив, заслон всегда знает ровно то, что в модуле есть СЕЙЧАС. Нет архива — исключений
+    # нет, и заслон честно ругается на каждый файл: это правильно, значит модуль не собран.
+    mod_files = set()
+    arc_path = os.path.join(GAME, 'database', 'da_animations.xdb0')
+    if os.path.exists(arc_path):
+        try:
+            import importlib.util
+            # ⚠️ Каталог инструментов ОБЯЗАН попасть в путь поиска: unpack_xdb тянет соседний
+            # lzo1x обычным import, и загрузка по файлу его не находит.
+            _tools = os.path.join(REPO, 'da_port', 'tools')
+            if _tools not in sys.path:
+                sys.path.insert(0, _tools)
+            _spec = importlib.util.spec_from_file_location(
+                '_xdb', os.path.join(_tools, 'unpack_xdb.py'))
+            _xdb = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_xdb)
+            for e in _xdb.load_fat(arc_path):
+                if e['size_real']:
+                    mod_files.add(e['name'].replace(chr(92), os.sep).replace('/', os.sep).lower())
+        except Exception as ex:
+            print('  ! модуль анимаций не прочитан (%s) — его файлы попадут в расхождения' % ex)
+
     def skipped(rel):
         low = rel.lower()
-        return low in skip or any(low.startswith(d) for d in skip_dirs)
+        return low in skip or low in mod_files or any(low.startswith(d) for d in skip_dirs)
 
     missing, stale, untested = [], [], []
     ours = 0

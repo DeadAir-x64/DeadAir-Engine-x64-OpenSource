@@ -65,7 +65,12 @@ extern ENGINE_API float ps_r__ssao_power;
 extern ENGINE_API int ps_r__ssao_debug;
 extern ENGINE_API int ps_da_light_probe; // [DA_PORT] прибор освещения, разбор суммы на слагаемые
 extern ENGINE_API float ps_da_light_probe_gain; // [DA_PORT] усилитель прибора
-extern ENGINE_API int ps_da_fog_enable;           // [DA_PORT] общий выключатель дымки
+extern ENGINE_API float ps_da_fog;                // [DA_PORT] общая сила дымки, 0..1
+extern ENGINE_API float ps_da_shafts_sky;         // [DA_PORT] цвет лучей от неба
+extern ENGINE_API float ps_da_sss;                // [DA_PORT] экранные тени: сила
+extern ENGINE_API float ps_da_sss_len;            // [DA_PORT] длина луча, метры
+extern ENGINE_API float ps_da_sss_thick;          // [DA_PORT] толщина преграды
+extern ENGINE_API float ps_da_sss_steps;          // [DA_PORT] число шагов
 extern ENGINE_API float ps_da_fog_sky;            // [DA_PORT] дымка из неба
 extern ENGINE_API float ps_da_fog_sky_mip;        // [DA_PORT] размытость неба
 extern ENGINE_API float ps_da_fog_sky_flat;       // [DA_PORT] прижатие к горизонту
@@ -425,6 +430,33 @@ static class cl_da_ao : public R_constant_setup
     }
 } binder_da_ao;
 
+// [DA_PORT] Цвет солнечных лучей от неба у горизонта. См. r__shafts_sky.
+static class cl_da_shafts : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_da_shafts_sky, 0.f, 0.f, 0.f);
+    }
+} binder_da_shafts;
+
+// [DA_PORT] Экранные тени. См. da_sss.h и r__sss в xr_ioc_cmd.cpp.
+static class cl_da_sss : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, ::ps_da_sss, ::ps_da_sss_len, ::ps_da_sss_thick, ::ps_da_sss_steps);
+    }
+} binder_da_sss;
+
+// [DA_PORT] Прибор экранных теней: тот же r__light_probe, но своей константой — см. da_sss.h.
+static class cl_da_sss2 : public R_constant_setup
+{
+    void setup(CBackend& cmd_list, R_constant* C) override
+    {
+        cmd_list.set_c(C, float(::ps_da_light_probe), 0.f, 0.f, 0.f);
+    }
+} binder_da_sss2;
+
 // [DA_PORT] Дымка: цвет из неба и высотный туман. См. r__fog_* в xr_ioc_cmd.cpp.
 static class cl_da_fog : public R_constant_setup
 {
@@ -434,16 +466,12 @@ static class cl_da_fog : public R_constant_setup
         // по порогу 0.001, и после деления весь рабочий диапазон 0..4 лёг ПОД собственный
         // порог — при ручке 1 приезжало ровно 0.001, что уже не больше него. Масштаб
         // применяется внутри шейдера, а сравнивается исходное число.
-        // [DA_PORT] Выключатель r__fog. Нули шейдер понимает как «ничего не делать» — тот самый
+        // [DA_PORT] Общая сила (r__fog) умножает обе составляющие: и долю неба в цвете, и
+        // плотность высотного слоя. Ноль шейдер понимает как «ничего не делать» — тот самый
         // инвариант, ради которого все ветки дымки написаны через порог: гасить их отдельным
         // дефайном значило бы удвоить число вариантов шейдера в кэше.
-        if (0 == ::ps_da_fog_enable)
-        {
-            cmd_list.set_c(C, 0.f, 0.f, 0.f, 0.f);
-            return;
-        }
-
-        cmd_list.set_c(C, ::ps_da_fog_sky, ::ps_da_fog_sky_mip, ::ps_da_fog_height,
+        const float k = ::ps_da_fog;
+        cmd_list.set_c(C, ::ps_da_fog_sky * k, ::ps_da_fog_sky_mip, ::ps_da_fog_height * k,
             ::ps_da_fog_height_falloff);
     }
 } binder_da_fog;
@@ -1044,6 +1072,9 @@ void CRender::create()
     Resources->RegisterConstantSetup("da_alpha_hash", &binder_da_alpha_hash); // [DA_PORT] хеш альфа-теста
     Resources->RegisterConstantSetup("da_hex", &binder_da_hex); // [DA_PORT] hex-tiling
     Resources->RegisterConstantSetup("da_ao", &binder_da_ao); // [DA_PORT] затенение полостей
+    Resources->RegisterConstantSetup("da_shafts", &binder_da_shafts); // [DA_PORT] цвет лучей
+    Resources->RegisterConstantSetup("da_sss", &binder_da_sss); // [DA_PORT] экранные тени
+    Resources->RegisterConstantSetup("da_sss2", &binder_da_sss2); // [DA_PORT] прибор
     Resources->RegisterConstantSetup("da_fog", &binder_da_fog); // [DA_PORT] дымка
     Resources->RegisterConstantSetup("da_fog2", &binder_da_fog2); // [DA_PORT] потолок дымки
     Resources->RegisterConstantSetup("da_foliage", &binder_da_foliage); // [DA_PORT] листва

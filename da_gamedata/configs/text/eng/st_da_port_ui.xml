@@ -606,4 +606,10 @@
 
 
 
+	<string id="ui_mm_fog">
+		<text>Distance haze</text>
+	</string>
+	<string id="ui_da_tune_fog">
+		<text>Distance haze</text>
+	</string>
 </string_table>

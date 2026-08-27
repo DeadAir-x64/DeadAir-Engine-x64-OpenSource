@@ -651,3 +651,6 @@ Unregister_UI        -- окно разделки Anomaly; путь отключ
 item_knife           -- то же, ветка разделки мутанта
 wallmarks_manager    -- то же, следы крови при разделке
 script_light         -- движковый класс Anomaly; вызов защищён проверкой в ea_light.script
+da_anim_options     -- настройки модуля анимаций; лежит ТОЛЬКО в архиве da_animations.xdb0,
+                    -- и это задумано: нет модуля - нет раздела в меню. Вызов в
+                    -- axr_main_options.script закрыт проверкой на существование.

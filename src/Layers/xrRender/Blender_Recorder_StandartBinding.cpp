@@ -30,7 +30,7 @@ extern ENGINE_API float g_da_rain_wetness; // [DA_PORT] сюда кладём н
 // [DA_PORT] 🪤 Объявление ОБЯЗАНО стоять здесь, ДО открытия пространства имён рендера.
 // Внутри него `extern` заводит СВОЮ переменную xray::render::render_r4::ps_da_fog_dist, которой
 // никто не определяет, и сборка падает на этапе связывания. Переменная живёт в движке, снаружи.
-extern ENGINE_API int ps_da_fog_enable;       // общий выключатель дымки
+extern ENGINE_API float ps_da_fog;            // общая сила дымки, 0..1
 extern ENGINE_API float ps_da_fog_dist; // дальность дымки, см. xr_ioc_cmd.cpp
 extern ENGINE_API float ps_da_fog_follow_vis; // следование за дальностью видимости
 extern ENGINE_API float psVisDistance;        // сам ползунок, Environment.cpp
@@ -205,7 +205,9 @@ class cl_fog_params : public R_constant_setup
             // разница между погодами сохраняются.
             // [DA_PORT] При выключенной дымке (r__fog 0) ни приближение, ни следование за
             // дальностью видимости не применяются: остаются погодные fog_near/fog_far как есть.
-            float da_k = (0 != ::ps_da_fog_enable && ::ps_da_fog_dist > 0.f) ? ::ps_da_fog_dist : 1.f;
+            // Приближение дымки тоже подчиняется общей силе: на нуле остаётся погодная дальность.
+            float da_k = (::ps_da_fog_dist > 0.f)
+                ? (1.f + (::ps_da_fog_dist - 1.f) * ::ps_da_fog) : 1.f;
 
             // [DA_PORT] Следование за ползунком дальности видимости. Разбор — у ручки.
             //
@@ -213,7 +215,7 @@ class cl_fog_params : public R_constant_setup
             // равен единице и подобранное остаётся нетронутым. И именно ОТНОШЕНИЕ, а не разность:
             // разность на нижнем краю ползунка (0.4) уводила множитель в минус.
             const float DA_VIS_REF = 1.5f;
-            if (0 != ::ps_da_fog_enable && ::ps_da_fog_follow_vis > 0.001f && ::psVisDistance > 0.01f)
+            if (::ps_da_fog > 0.001f && ::ps_da_fog_follow_vis > 0.001f && ::psVisDistance > 0.01f)
             {
                 const float ratio = ::psVisDistance / DA_VIS_REF;
                 da_k *= 1.f + (ratio - 1.f) * ::ps_da_fog_follow_vis;

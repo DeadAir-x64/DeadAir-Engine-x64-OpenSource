@@ -169,6 +169,7 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, bool shadow_pass, const 
     static shared_str strXForm("xform");
     static shared_str strSFade("grass_sfade"); // [DA_PORT] затухание тени травы
     static shared_str strSFadeEye("grass_sfade_eye"); // [DA_PORT] мировая позиция КАМЕРЫ
+    static shared_str strGrassTint("grass_tint"); // [DA_PORT] колебание по местности
 
     RImplementation.BasicStats.DetailCount = 0;
 
@@ -238,6 +239,16 @@ void CDetailManager::hw_Render_dump(CBackend& cmd_list, bool shadow_pass, const 
                     Fvector4 eye;
                     eye.set(ep.x, ep.y, ep.z, 0.f);
                     cmd_list.set_c(strSFadeEye, eye);
+
+                    // [DA_PORT] Колебание травы по местности: сила, размер пятна, усиление у
+                    // основания. Разбор — у ps_r__grass_tint.
+                    {
+                        extern float ps_r__grass_tint, ps_r__grass_tint_scale, ps_r__grass_tint_base;
+                        Fvector4 tint;
+                        tint.set(ps_r__grass_tint, 1.f / _max(ps_r__grass_tint_scale, 0.1f),
+                            ps_r__grass_tint_base, 0.f);
+                        cmd_list.set_c(strGrassTint, tint);
+                    }
                 }
 
                 // ref_constant constArray = RCache.get_c(strArray);

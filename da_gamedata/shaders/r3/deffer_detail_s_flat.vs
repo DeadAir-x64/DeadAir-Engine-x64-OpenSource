@@ -7,6 +7,8 @@ uniform float4 		grass_sfade;
 // World position of the CAMERA. Handed over separately on purpose: in the sun shadow pass
 // m_WV belongs to the SUN, so a view-space distance there measures the wrong thing.
 uniform float4 		grass_sfade_eye;
+// [DA_PORT] Terrain-matched variation: x = strength, y = 1/patch size, z = base boost.
+uniform float4 		grass_tint;
 //uniform float4 		array	[200] : register(c12);
 //tbuffer DetailsData
 //{
@@ -82,7 +84,37 @@ v2p_flat 	main (v_detail v, uint instance_id : SV_InstanceID)
 	O.tcdh.w	= c0.x;								// (,,,dir-occlusion)
 # endif
 
-	O.position	= float4	(Pe, 		c0.w		);
+	// [DA_PORT] KOLEBANIE PO MESTNOSTI. Podrobno - u ps_r__grass_tint v dvizhke.
+	//
+	// Shum schitaetsya ot MIROVOI pozicii kustika (m0.w/m1.w/m2.w), a ne ot ekrannoi:
+	// uzor stoit na meste pri dvizhenii kamery, kak nastoyashchaya nerovnost pochvy.
+	// Ekrannyi shum ehal by za golovoi i chitalsya by gryazyu na stekle.
+	//
+	// Menyaem HEMI, a ne cvet: hemi uzhe techet v pikselnyi shader, i pravka zhivet celikom
+	// zdes. Pikselnyi shader travy obshchii s drugoi geometriei - lezt tuda znachilo by
+	// zadet i ee.
+	//
+	// Usilenie u OSNOVANIYA (grass_tint.z): vnizu stebel beret svoistva pochvy, k verhushke
+	// ostaetsya soboi - tak styk s zemlei perestaet chitatsya liniei.
+	float da_hemi = c0.w;
+	[branch] if ( grass_tint.x > 0.001f )
+	{
+		const float2 wxz = float2( m0.w, m2.w ) * grass_tint.y;
+		const float2 c   = floor( wxz );
+		const float2 f   = smoothstep( 0.0f, 1.0f, frac( wxz ) );
+		const float4 h   = frac( sin( float4(
+			dot( c + float2(0,0), float2(127.1f, 311.7f) ),
+			dot( c + float2(1,0), float2(127.1f, 311.7f) ),
+			dot( c + float2(0,1), float2(127.1f, 311.7f) ),
+			dot( c + float2(1,1), float2(127.1f, 311.7f) ) ) ) * 43758.5453f );
+		const float n = lerp( lerp(h.x,h.y,f.x), lerp(h.z,h.w,f.x), f.y ) * 2.0f - 1.0f;
+
+		const float up = saturate( v.pos.y * 2.0f );
+		const float k  = lerp( 1.0f + grass_tint.z, 1.0f, up );
+		da_hemi = saturate( da_hemi * ( 1.0f + n * grass_tint.x * k ) );
+	}
+
+	O.position	= float4	(Pe, 		da_hemi		);
 
 	return O;
 }

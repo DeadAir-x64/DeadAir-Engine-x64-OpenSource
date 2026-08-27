@@ -1037,6 +1037,11 @@ function tryToClimb(fromStanding)
 	if climbActive then return end
 	if not savedClimbPos then return end
 
+	-- [DA_PORT] Раскадровка подтягивания лежит в архиве da_animations.xdb0, а сам паркур — в
+	-- базовых файлах. Без модуля подтягиваться не на чем, и прежний вызов разыменовал бы
+	-- отсутствующую таблицу прямо в момент прыжка.
+	if not demonized_ledge_grabbing_animation_data then return end
+
 	-- Read animation data and set params
 	local animationSpeedModifier = getAnimationSpeedModifier()
 	local animationData = dup_table(demonized_ledge_grabbing_animation_data.data)

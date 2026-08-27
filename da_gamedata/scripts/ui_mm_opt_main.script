@@ -140,6 +140,18 @@ function options_dialog:__init() super()
 
 	local placed = {}
 	for _, g in ipairs(groups) do
+		-- [DA_PORT] Пустой раздел не рисуем вовсе.
+		--
+		-- Настройки некоторых наборов приезжают вместе с ними (модуль анимаций — в архиве
+		-- da_animations.xdb0). Без набора его переключателей не существует, и заголовок повисал
+		-- в меню один, без единой строки под ним: человек видит раздел «Анимации» и не понимает,
+		-- почему он пуст. Считаем содержимое ДО того, как заводить заголовок.
+		local any = false
+		for _, key in ipairs(g[2]) do
+			if by_key[key] then any = true break end
+		end
+		if not any then goto next_group end
+
 		local hdr = self.xml:InitStatic("tab_gameplay:templ_header", nil)
 		self.xml:InitStatic("tab_gameplay:cap_grp_"..g[1], hdr)
 		self.gameplay_scroll_v:AddWindow(hdr, true)
@@ -151,6 +163,7 @@ function options_dialog:__init() super()
 				placed[key] = true
 			end
 		end
+		::next_group::
 	end
 
 	for key, ctl in pairs(by_key) do

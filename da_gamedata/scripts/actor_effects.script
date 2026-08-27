@@ -100,9 +100,14 @@ function use_item(name)
 	-- [DA_PORT] Надевание брони и шлема живёт под своим пунктом меню.
 	local da_wear = (name == "outfit") or (name == "helm")
 	local da_wear_slot = (name == "helm") and 12 or 7
-	local da_mode = da_skin and da_item_anims.skin_mode()
-		or da_wear and da_item_anims.wear_mode()
-		or da_item_anims.mode()
+	-- [DA_PORT] Модуль анимаций необязателен: da_item_anims лежит в архиве da_animations.xdb0
+	-- и без него не существует. Прежний вызов был без проверки и падал бы на выключенном модуле.
+	-- Нет модуля — режим считаем выключенным, и вся ветка ниже сама уходит на старый путь.
+	local da_mode = da_item_anims
+	             and (da_skin and da_item_anims.skin_mode()
+	              or da_wear and da_item_anims.wear_mode()
+	              or da_item_anims.mode())
+	             or "old"
 	-- [DA_PORT] ВРЕМЕННЫЙ ЗОНД
 	printf("da_anims: штатный набор %s: режим=%s перекрыт=%s есть запись=%s",
 		tostring(name), tostring(da_mode),

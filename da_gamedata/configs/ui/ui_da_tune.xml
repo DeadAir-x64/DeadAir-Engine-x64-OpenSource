@@ -127,10 +127,10 @@
 				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
 			</val_2>
 			<cap_3 x="16" y="171" width="150" height="20">
-				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_tonemap_aces</text>
+				<text align="l" font="letterica16" r="170" g="170" b="170">ui_da_tune_fog</text>
 			</cap_3>
 			<track_3 x="172" y="170" width="170" height="20" step="0.01">
-				<options_item entry="r__tonemap_aces" group="da_tune"/>
+				<options_item entry="r__fog" group="da_tune"/>
 			</track_3>
 			<val_3 x="352" y="171" width="66" height="20">
 				<text align="l" font="letterica16" r="220" g="220" b="220"></text>
