@@ -65,6 +65,7 @@ extern ENGINE_API float ps_r__ssao_power;
 extern ENGINE_API int ps_r__ssao_debug;
 extern ENGINE_API int ps_da_light_probe; // [DA_PORT] прибор освещения, разбор суммы на слагаемые
 extern ENGINE_API float ps_da_light_probe_gain; // [DA_PORT] усилитель прибора
+extern ENGINE_API int ps_da_fog_enable;           // [DA_PORT] общий выключатель дымки
 extern ENGINE_API float ps_da_fog_sky;            // [DA_PORT] дымка из неба
 extern ENGINE_API float ps_da_fog_sky_mip;        // [DA_PORT] размытость неба
 extern ENGINE_API float ps_da_fog_sky_flat;       // [DA_PORT] прижатие к горизонту
@@ -433,6 +434,15 @@ static class cl_da_fog : public R_constant_setup
         // по порогу 0.001, и после деления весь рабочий диапазон 0..4 лёг ПОД собственный
         // порог — при ручке 1 приезжало ровно 0.001, что уже не больше него. Масштаб
         // применяется внутри шейдера, а сравнивается исходное число.
+        // [DA_PORT] Выключатель r__fog. Нули шейдер понимает как «ничего не делать» — тот самый
+        // инвариант, ради которого все ветки дымки написаны через порог: гасить их отдельным
+        // дефайном значило бы удвоить число вариантов шейдера в кэше.
+        if (0 == ::ps_da_fog_enable)
+        {
+            cmd_list.set_c(C, 0.f, 0.f, 0.f, 0.f);
+            return;
+        }
+
         cmd_list.set_c(C, ::ps_da_fog_sky, ::ps_da_fog_sky_mip, ::ps_da_fog_height,
             ::ps_da_fog_height_falloff);
     }
