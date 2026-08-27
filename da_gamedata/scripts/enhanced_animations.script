@@ -124,6 +124,14 @@ function loadsettings()
 	-- Пункта два, и они независимы: глоток воды и разделка туши — разные сцены, и выключать их
 	-- одной ручкой неправильно. enable_animations остался общим признаком «мод вообще работает»,
 	-- а путь употребления теперь смотрит на свой собственный флаг.
+	-- [DA_PORT] Модуль анимаций может быть снят или выключен, а этот файл — остаться россыпью:
+	-- он входит и в базовую сборку, и в модуль, и россыпь перекрывает архив. Тогда da_item_anims,
+	-- живущий ТОЛЬКО в модуле, в глобальные имена не попадает, и обращение к нему валит скрипт.
+	-- Нет модуля — нет и сцен: выключаемся целиком, а не падаем.
+	if not da_item_anims then
+		enable_item_anims, mutant_loot_mod, enable_animations = false, false, false
+		return
+	end
 	enable_item_anims = (da_item_anims.mode() == "new")
 	mutant_loot_mod   = (da_item_anims.skin_mode() == "new")
 	enable_animations = enable_item_anims or mutant_loot_mod

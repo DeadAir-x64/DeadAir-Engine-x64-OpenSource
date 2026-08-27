@@ -206,6 +206,10 @@ function restore_knife()
 	return_slots()
 	skin_anim = nil
 	level.enable_input()
+	-- [DA_PORT] Заслонку снимаем ЗДЕСЬ же. Раньше её снимал level.enable_input(), но он
+	-- гасил другую величину; после разделения одна без другой оставляла игрока без действий
+	-- насовсем: сцена кончилась, а запрет остался.
+	game.only_allow_movekeys(false)
 	return true
 end
 
