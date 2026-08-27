@@ -678,6 +678,23 @@ T* CResourceManager::CreateShader(cpcstr name, pcstr filename /*= nullptr*/, u32
         }
         R_ASSERT3(file, "Shader file doesnt exist", cname);
 
+        // [DA_PORT] R_ASSERT3 ДОПУСКАЕТ «ПРОПУСТИТЬ» — и следующая строка разыменует ноль.
+        //
+        // В макросе сидит static bool ignoreAlways: игрок нажимает «пропустить», выполнение идёт
+        // дальше, и file->length() читает по нулевому указателю. Отчёт получается про нарушение
+        // доступа в чужом месте вместо внятного «нет такого шейдера».
+        //
+        // Так и всплыло у соседей: у вычислительного шейдера подмены не существует вовсе —
+        // stub_default.cs нет ни в архиве, ни в свободных файлах (проверено), — поэтому любой
+        // отказ компиляции CS доходил сюда с нулём.
+        //
+        // Останов честный: без файла собрать шейдер всё равно нельзя, а продолжать — значит
+        // менять понятную ошибку на непонятную.
+        //
+        // Найдено сверкой с Dead-Air-Refined (e54f114f, отчёт 20260823T144535).
+        if (!file)
+            FATAL_F("Shader file doesnt exist: %s", cname);
+
         // Duplicate and zero-terminate
         const auto size = file->length();
         char* const data = (pstr)xr_alloca(size + 1);

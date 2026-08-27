@@ -2158,7 +2158,9 @@ void xrRender_initconsole()
     CMD4(CCC_Float, "r__fog_sky_tint", &ps_da_fog_sky_tint, 0.f, 1.f); // [DA_PORT]
     CMD4(CCC_Integer, "r__shadow_kernel_far", &ps_r__shadow_kernel_far, 1, 16); // [DA_PORT]
     CMD4(CCC_Integer, "r__shadow_rotate", &ps_r__shadow_rotate, 0, 1); // [DA_PORT]
-    CMD4(CCC_Integer, "r__dbg_sun_cascades", &ps_r__dbg_sun_cascades, 0, 1); // [DA_PORT] диагностика каскадов
+    // [DA_PORT] Отладочная — НЕ сохраняется в user.ltx: раскраска каскадов солнца не должна
+    // пережить сеанс и уехать игроку.
+    CMD4(CCC_DaDebugInteger, "r__dbg_sun_cascades", &ps_r__dbg_sun_cascades, 0, 1); // [DA_PORT] диагностика каскадов
     CMD4(CCC_Float, "r__sun_shadow_fade", &ps_r__sun_shadow_fade, 20.f, 500.f); // [DA_PORT] дистанция ухода дальней тени
     CMD4(CCC_Integer, "da_cull_prof", &ps_da_cull_prof, 0, 1); // [DA_PORT]
     CMD4(CCC_Integer, "da_anim_lod", &ps_da_anim_lod, 0, 500); // [DA_PORT]

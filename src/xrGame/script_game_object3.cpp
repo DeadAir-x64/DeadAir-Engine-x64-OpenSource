@@ -69,6 +69,22 @@ const CCoverPoint* CScriptGameObject::best_cover(const Fvector& position, const 
         GEnv.ScriptEngine->script_log(LuaMessageType::Error, "CGameObject : cannot access class member best_cover!");
         return (0);
     }
+
+    // [DA_PORT] Оценщики укрытий живут КОРОЧЕ объекта: CAI_Stalker::net_Destroy удаляет m_ce_*, а
+    // xr_delete обнуляет указатель. Планировщик в скрипте успевает дёрнуть best_cover на последнем
+    // запланированном «подумать» уходящего сталкера — и это прыжок в ноль без всякого стека.
+    //
+    // Проверки на живой класс мало: smart_cast проходит, объект ещё существует, мёртв только
+    // оценщик. Тот же класс, что и у наших обёрток отряда (script_object_usable).
+    //
+    // Найдено сверкой с Dead-Air-Refined (e54f114f, отчёт 20260824T152315 «garbage transition»).
+    if (!stalker->m_ce_best)
+    {
+        GEnv.ScriptEngine->script_log(LuaMessageType::Error,
+            "CGameObject : best_cover on a destroyed stalker (cover evaluators are gone)");
+        return (0);
+    }
+
     stalker->m_ce_best->setup(enemy_position, min_enemy_distance, max_enemy_distance, 0.f);
     const CCoverPoint* point = ai().cover_manager().best_cover(position, radius, *stalker->m_ce_best);
     return (point);
@@ -79,9 +95,18 @@ const CCoverPoint* CScriptGameObject::safe_cover(const Fvector& position, float 
     CAI_Stalker* stalker = smart_cast<CAI_Stalker*>(&object());
     if (!stalker)
     {
-        GEnv.ScriptEngine->script_log(LuaMessageType::Error, "CGameObject : cannot access class member best_cover!");
+        GEnv.ScriptEngine->script_log(LuaMessageType::Error, "CGameObject : cannot access class member safe_cover!");
         return (0);
     }
+
+    // [DA_PORT] См. разбор у best_cover выше: оценщик умирает в net_Destroy раньше объекта.
+    if (!stalker->m_ce_safe)
+    {
+        GEnv.ScriptEngine->script_log(LuaMessageType::Error,
+            "CGameObject : safe_cover on a destroyed stalker (cover evaluators are gone)");
+        return (0);
+    }
+
     stalker->m_ce_safe->setup(min_distance);
     const CCoverPoint* point = ai().cover_manager().best_cover(position, radius, *stalker->m_ce_safe);
     return (point);

@@ -31,6 +31,8 @@ extern ENGINE_API float g_da_rain_wetness; // [DA_PORT] сюда кладём н
 // Внутри него `extern` заводит СВОЮ переменную xray::render::render_r4::ps_da_fog_dist, которой
 // никто не определяет, и сборка падает на этапе связывания. Переменная живёт в движке, снаружи.
 extern ENGINE_API float ps_da_fog_dist; // дальность дымки, см. xr_ioc_cmd.cpp
+extern ENGINE_API float ps_da_fog_follow_vis; // следование за дальностью видимости
+extern ENGINE_API float psVisDistance;        // сам ползунок, Environment.cpp
 
 namespace xray::render::RENDER_NAMESPACE
 {
@@ -200,10 +202,24 @@ class cl_fog_params : public R_constant_setup
             // [DA_PORT] Дальность дымки (r__fog_dist). Единица — в точности значения погоды.
             // Обе границы умножаются вместе: так сдвигается всё начало-конец, а форма градиента и
             // разница между погодами сохраняются.
-            if (::ps_da_fog_dist > 0.f && _abs(::ps_da_fog_dist - 1.f) > 0.001f)
+            float da_k = (::ps_da_fog_dist > 0.f) ? ::ps_da_fog_dist : 1.f;
+
+            // [DA_PORT] Следование за ползунком дальности видимости. Разбор — у ручки.
+            //
+            // Отсчёт от 1.5 — положения, при котором туман подбирали в игре: при нём множитель
+            // равен единице и подобранное остаётся нетронутым. И именно ОТНОШЕНИЕ, а не разность:
+            // разность на нижнем краю ползунка (0.4) уводила множитель в минус.
+            const float DA_VIS_REF = 1.5f;
+            if (::ps_da_fog_follow_vis > 0.001f && ::psVisDistance > 0.01f)
             {
-                n *= ::ps_da_fog_dist;
-                f *= ::ps_da_fog_dist;
+                const float ratio = ::psVisDistance / DA_VIS_REF;
+                da_k *= 1.f + (ratio - 1.f) * ::ps_da_fog_follow_vis;
+            }
+
+            if (_abs(da_k - 1.f) > 0.001f)
+            {
+                n *= da_k;
+                f *= da_k;
             }
 
             float r = 1 / (f - n);

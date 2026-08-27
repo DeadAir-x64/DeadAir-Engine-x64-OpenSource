@@ -1183,8 +1183,37 @@ bool CWeaponMagazined::Detach(const char* item_section_name, bool b_spawn_item)
         return CInventoryItemObject::Detach(item_section_name, b_spawn_item);
     }
     else
+    {
+        // [DA_PORT] ⛔ СКВОЗНОЙ ПРОХОД СПАВНИЛ ЛЮБУЮ НАЗВАННУЮ СЕКЦИЮ — отсюда бесконечные глушители.
+        //
+        // Механизм. Снятие аддона может СЛОМАТЬ его крепление по броску на износ. Со сломанным
+        // креплением ветка этого оружия выше не срабатывает (условие по статусу аддона перестаёт
+        // выполняться), и управление уходит в CInventoryItem::Detach — а тот спавнит секцию,
+        // которую ему назвали, и НИЧЕГО не снимает. Пункт меню при этом остаётся на месте, и
+        // каждый следующий щелчок чеканит ещё один глушитель.
+        //
+        // Лечение: сквозной проход обязан отказывать секциям, которые называют СОБСТВЕННЫЕ аддоны
+        // этого оружия. Сломанное крепление держит аддон при себе — это задумано, — и снятие
+        // должно просто не состояться, а не превращаться в станок.
+        //
+        // ⚠️ Чужие секции пропускаем как прежде: базовый Detach используется не только оружием.
+        //
+        // Найдено сверкой с Dead-Air-Refined (e54f114f, отчёт 20260824T140703).
+        const bool da_is_own_addon =
+            (m_sSilencerName.size() && !xr_strcmp(m_sSilencerName.c_str(), item_section_name)) ||
+            (m_sGrenadeLauncherName.size() && !xr_strcmp(m_sGrenadeLauncherName.c_str(), item_section_name)) ||
+            (m_sScopeName.size() && !xr_strcmp(m_sScopeName.c_str(), item_section_name));
+
+        if (da_is_own_addon)
+        {
+            Msg("! [DA_PORT] Detach refused: '%s' is this weapon's own addon and its mount did not "
+                "release it (broken mount holds the addon by design)",
+                item_section_name);
+            return false;
+        }
+
         return inherited::Detach(item_section_name, b_spawn_item);
-    ;
+    }
 }
 /*
 void CWeaponMagazined::LoadAddons()

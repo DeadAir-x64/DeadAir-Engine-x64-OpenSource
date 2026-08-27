@@ -305,6 +305,11 @@ public:
     SActorVehicleAnims* m_vehicle_anims;
 
     CBlend* m_current_legs_blend;
+
+    // [DA_PORT] Память фазы цикла ног — против «телепорта» ног при повороте на бегу.
+    // Разбор в ActorAnimation.cpp, у места восстановления.
+    float m_legs_phase_saved{ 0.f };
+    u32 m_legs_phase_time{ 0 };
     CBlend* m_current_torso_blend;
     CBlend* m_current_jump_blend;
     MotionID m_current_legs;

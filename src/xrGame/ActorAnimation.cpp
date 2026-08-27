@@ -615,6 +615,18 @@ void CActor::g_SetAnimation(u32 mstate_rl)
         m_current_head = M_head;
     }
 
+    // [DA_PORT] ПАМЯТЬ ФАЗЫ ШАГА. Пока актёр по-настоящему идёт, запоминаем, где находится цикл ног.
+    //
+    // Зачем — разбор у восстановления ниже. Здесь важно, что запоминаем КАЖДЫЙ кадр движения, а не
+    // в момент смены цикла: провал флага движения длится один кадр, и к моменту смены прошлое
+    // состояние уже потеряно.
+    if ((mstate_real & mcAnyMove) && m_current_legs_blend && !fis_zero(m_current_legs_blend->timeTotal))
+    {
+        m_legs_phase_saved = fmod(m_current_legs_blend->timeCurrent, m_current_legs_blend->timeTotal) /
+            m_current_legs_blend->timeTotal;
+        m_legs_phase_time = Device.dwTimeGlobal;
+    }
+
     if (m_current_legs != M_legs)
     {
         float pos = 0.f;
@@ -630,7 +642,26 @@ void CActor::g_SetAnimation(u32 mstate_rl)
 
         if ((!(mstate_old & mcAnyMove)) && (mstate_real & mcAnyMove))
         {
-            pos = 0.5f; // 0.5f*Random.randI(2);
+            // [DA_PORT] ⛔ «ТОЛЬКО ЧТО ПОШЁЛ» СРАБАТЫВАЛО ПОСРЕДИ БЕГА — ноги телепортировались.
+            //
+            // Поворот на ходу проводит фактическую скорость ЧЕРЕЗ НОЛЬ, и g_cl_CheckControls
+            // снимает mcAnyMove на те кадры, пока она ниже 0.2 м/с. Одного кадра достаточно:
+            // прошлое состояние теряет флаг, ветка ниже считает это стартом с места и ставит цикл
+            // на ПОЛОВИНУ шага. Прежний цикл при этом ещё затухает со своей позиции, и перекрёстное
+            // смешивание протаскивает ноги через полшага — это и видно как рывок.
+            //
+            // Настоящий старт с места по-прежнему получает стоковые 0.5. А перезапуск, случившийся
+            // сразу после провала, подхватывает запомненную фазу вместо угадывания.
+            //
+            // Срок подхвата берётся из [actor_animation] legs_cycle_resync_time, по умолчанию
+            // 0.25 с: провал длится миллисекунды, а настоящая остановка — заметно дольше.
+            //
+            // Найдено сверкой с Dead-Air-Refined (344decfb).
+            static const float resync = READ_IF_EXISTS(pSettings, r_float, "actor_animation",
+                "legs_cycle_resync_time", 0.25f);
+
+            const u32 dt = Device.dwTimeGlobal - m_legs_phase_time;
+            pos = (m_legs_phase_time && dt <= u32(resync * 1000.f)) ? m_legs_phase_saved : 0.5f;
         }
         if (m_current_legs_blend)
             m_current_legs_blend->timeCurrent = m_current_legs_blend->timeTotal * pos;
