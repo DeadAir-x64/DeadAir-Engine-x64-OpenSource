@@ -25,7 +25,15 @@ void CArtefact::script_register(lua_State* luaState)
             .def(constructor<>())
             .def("FollowByPath", &CArtefact::FollowByPath)
             .def("SwitchVisibility", &CArtefact::SwitchVisibility)
-            .def("GetAfRank", &CArtefact::GetAfRank),
+            .def("GetAfRank", &CArtefact::GetAfRank)
+            // [DA_PORT] Прибавка к переносимому весу от артефакта.
+            //
+            // В движке метод был всегда (Artefact.h, зовётся из Actor_Movement при подсчёте
+            // предела веса), а привязки к скриптам не имел. Наткнулись на это переносом
+            // паркура: demonized_ledge_grabbing считает вес снаряжения и падал с "attempt to
+            // call method 'AdditionalInventoryWeight' (a nil value)" на первом же артефакте
+            // на поясе.
+            .def("AdditionalInventoryWeight", &CArtefact::AdditionalInventoryWeight),
 
         class_<CMercuryBall, CArtefact>("CMercuryBall")
             .def(constructor<>()),
