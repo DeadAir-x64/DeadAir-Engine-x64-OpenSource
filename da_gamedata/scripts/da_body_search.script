@@ -86,7 +86,6 @@ function before_search(obj)
 	if not one_hand then
 		db.actor:hide_weapon()
 	end
-	level.disable_input()
 	game.only_allow_movekeys(true)
 	CreateTimeEvent("da_body_search", "start", 0.05, start_anim)
 	return false
@@ -117,7 +116,6 @@ function after_pickup(obj)
 	if not one_hand then
 		db.actor:hide_weapon()
 	end
-	level.disable_input()
 	game.only_allow_movekeys(true)
 	CreateTimeEvent("da_body_search", "start", 0.05, start_anim)
 end

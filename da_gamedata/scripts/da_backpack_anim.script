@@ -81,7 +81,10 @@ function before_open()
 
 	-- Сцена ДВУРУКАЯ: обе руки заняты сумкой, поэтому оружие убираем.
 	db.actor:hide_weapon()
-	level.disable_input()
+	-- [DA_PORT] Глушилка ввода снята: она резала МЫШЬ, и игрок терял взгляд на всю сцену.
+	-- Заслонка ниже блокирует только действия (всё выше kCAM_1: огонь, использование, смена
+	-- оружия), а движение и взгляд оставляет. level.enable_input() на выходе сохранён как
+	-- страховка: если ввод погасит кто-то другой, сцена его вернёт.
 	game.only_allow_movekeys(true)
 	CreateTimeEvent("da_backpack_anim", "start", 0.05, start_anim)
 	return false
