@@ -273,6 +273,12 @@ def check_snapshot():
 # ---------------------------------------------------------------------------
 # 5. Архив выкладки против того, что стоит в игре
 # ---------------------------------------------------------------------------
+# Наше, но игроку не отдаётся: отладочный стенд подсистем (см. docs/17_HEAP_GUARD.md).
+# Держать его в списке модулей нельзя — заслон будет вечно требовать положить стенд в
+# раздачу, а класть его туда незачем.
+DEV_ONLY = {'da_asan_probe.exe'}
+
+
 def check_archive():
     zip_path = os.path.join(UPDATE, '_dist', 'bin.zip')
     if not os.path.exists(zip_path):
@@ -290,7 +296,8 @@ def check_archive():
     # А вот «в игре есть, в архив не попал» проверяется ТОЛЬКО по настоящим модулям: рядом лежат
     # сотни моих резервных копий (`.dll.old`, `.release_backup`, `.before_*`), им в архиве делать
     # нечего. Новый модуль, забытый при сборке архива, этот фильтр всё равно поймает.
-    modules = {f for f in on_disk if f.lower().endswith(('.dll', '.exe'))}
+    modules = {f for f in on_disk if f.lower().endswith(('.dll', '.exe'))
+               and f.lower() not in DEV_ONLY}
 
     miss = sorted(set(inside) - set(on_disk))
     extra = sorted(modules - set(inside))
@@ -368,6 +375,50 @@ def check_tests():
                tail[-1][:70] if tail else 'без вывода')
 
 
+# ---------------------------------------------------------------------------
+# 8. Пункты меню против команд отгружаемого движка
+# ---------------------------------------------------------------------------
+# ⛔ Добавлено 27.08.2026, после выпуска 20.08, который ушёл СЛОМАННЫМ у всех. Игровые файлы в нём
+# уехали свежие, модули остались от прошлой сборки, и разметка меню просила семь консольных команд,
+# которых в её же движке не было. Первая из них (da_animations) роняла игру при открытии настроек
+# видео: «Option token doesnt exist». Ни сборка, ни запуск, ни сверка деревьев этого не видят —
+# каждая половина по отдельности исправна, несовместима только пара.
+#
+# Проверяем НЕ исходники и НЕ игру, а ровно то, что скачает игрок: XML из каталога обновления
+# против двоичных модулей из bin.zip того же каталога.
+def check_console_entries():
+    ui = os.path.join(UPDATE, 'gamedata', 'configs', 'ui')
+    zip_path = os.path.join(UPDATE, '_dist', 'bin.zip')
+    if not os.path.isdir(ui):
+        return say('пункты меню', False, 'нет %s' % ui)
+    if not os.path.isfile(zip_path):
+        return say('пункты меню', False, 'нет %s' % zip_path)
+
+    entries = {}
+    for fn in sorted(os.listdir(ui)):
+        if not fn.lower().startswith('ui_mm_opt') or not fn.lower().endswith('.xml'):
+            continue
+        data = open(os.path.join(ui, fn), 'rb').read().decode('cp1251', 'replace')
+        for name in re.findall(r'<options_item[^>]*entry\s*=\s*"([^"]+)"', data):
+            entries.setdefault(name, fn)
+    if not entries:
+        return say('пункты меню', False, 'в разметке не нашлось ни одного пункта — проверка слепа')
+
+    blob = b''
+    with zipfile.ZipFile(zip_path) as z:
+        for n in z.namelist():
+            if n.lower().endswith(('.dll', '.exe')):
+                blob += z.read(n)
+
+    # Имя команды ищется как строка в модулях: она попадает туда буквально, при регистрации.
+    missing = sorted(e for e in entries if e.encode('ascii', 'replace') not in blob)
+    if missing:
+        return say('пункты меню', False,
+                   'разметка просит команды, которых нет в bin.zip: %s'
+                   % ', '.join('%s (%s)' % (m, entries[m]) for m in missing))
+    return say('пункты меню', True, 'проверено пунктов: %d' % len(entries))
+
+
 def main():
     print('Заслон перед выкладкой')
     print('  игра:       %s' % GAME)
@@ -381,6 +432,7 @@ def main():
     check_snapshot()
     check_archive()
     check_package()
+    check_console_entries()
     check_tests()
 
     failed = [n for n, ok in results if not ok]

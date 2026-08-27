@@ -468,13 +468,6 @@
             </text_color>
         </combo_r3_msaa_alphatest>
 
-        <cap_r3_msaa_opt x="15" y="3" width="108" height="24">
-            <text r="170" g="170" b="170" font="letterica16" align="r" vert_align="c">ui_mm_r3_DX10_1</text>
-        </cap_r3_msaa_opt>
-        <check_r3_msaa_opt x="136" y="0" width="35" stretch="1" height="29">
-	        <texture>ui_inGame2_checkbox</texture>
-            <options_item entry="r3_msaa_opt" group="mm_opt_video_adv" depend="vid"/>
-        </check_r3_msaa_opt>
 
         <cap_r4_tessellation x="15" y="3" width="108" height="24">
             <text r="170" g="170" b="170" font="letterica16" align="r" vert_align="c">ui_mm_r4_enable_tessellation</text>
