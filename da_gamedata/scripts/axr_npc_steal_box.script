@@ -125,7 +125,16 @@ function evaluator_npc_steal_box:evaluate()
 			--printf("%s vid:%s [%s %s %s] dist:%s",obj:name(), vid, obj_pos.x, obj_pos.y, obj_pos.z, dist)
 			--printf("%s %s %s %s %s %s",(vid < 4294967295),(npc:accessible(vid)),(y_diff),(dist < 500),(dist_to_actor > 200),(not coc_treasure_manager.caches_exclude[name]))
 			
-			if (vid < 4294967295) and (npc:accessible(vid)) and (y_check) and (dist_to_actor > 100) and not (coc_treasure_manager.caches_exclude[name]) then
+			-- [DA_PORT] ПРЕДЕЛ ДАЛЬНОСТИ БЫЛ ПОТЕРЯН ПРИ СЛИЯНИИ.
+			--
+			-- Величина dist считается строкой выше и НИГДЕ не использовалась, а закомментированная
+			-- отладочная печать двумя строками выше всё ещё документирует dist < 500. Без предела
+			-- любой сталкер симуляции шёл через всю локацию к любому тайнику.
+			--
+			-- 500 — это КВАДРАТ расстояния (distance_to_sqr), то есть около 22 метров.
+			--
+			-- Найдено сверкой с Dead-Air-Refined (e54f114f, отчёт 20260824T114622).
+			if (vid < 4294967295) and (npc:accessible(vid)) and (y_check) and (dist < 500) and (dist_to_actor > 100) and not (coc_treasure_manager.caches_exclude[name]) then
 				--printf("%s %s %s %s %s %s",obj:name(), vid, obj_pos.x, obj_pos.y, obj_pos.z, dist)
 				--printf("%s %s %s %s",obj:name(), vid, dist, dist_to_actor)
 			
@@ -209,6 +218,27 @@ function action_npc_steal_box:execute()
 			self.st.state = nil
 			return
 		end
+	-- [DA_PORT] ⛔ ОБЧИСТКА ШЛА ОТ ВЕРШИНЫ ИИ-СЕТКИ, А НЕ ОТ ЯЩИКА.
+	--
+	-- Условие срабатывало, когда сталкер вставал на вершину, ближайшую к тайнику. Для тайника,
+	-- под которым сетки нет (на крыше, в стене, на выступе), эта вершина лежит в метрах — и ящик
+	-- опустошался сквозь перекрытие, не сходя с места.
+	--
+	-- Теперь мало прийти на вершину: нужно оказаться на расстоянии вытянутой руки. Тайник, до
+	-- которого дотянуться нельзя, вносится в исключения на сеанс, иначе сталкер топтался бы на
+	-- вершине вечно.
+	--
+	-- 4 — это КВАДРАТ расстояния, то есть 2 метра.
+	elseif (npc:level_vertex_id() == self.st.vid) and (npc:position():distance_to_sqr(box:position()) > 4) then
+
+		coc_treasure_manager.caches_exclude[box:name()] = true
+		looting[self.st.box_id] = nil
+		self.st.__tmr = nil
+		self.st.box_id = nil
+		self.st.box_vid = nil
+		self.st.state = nil
+		return
+
 	elseif (npc:level_vertex_id() == self.st.vid) then
 	
 		if (box:position().y - npc:position().y > 0.5) then

@@ -600,40 +600,10 @@
 	</string>
 
 	<!-- [DA_PORT] item use animation sets: ported / stock / none -->
-	<string id="ui_mm_da_item_anims">
-		<text>Item animations</text>
-	</string>
-	<string id="ui_mm_da_item_anims_new">
-		<text>New</text>
-	</string>
-	<string id="ui_mm_da_item_anims_old">
-		<text>Old</text>
-	</string>
-	<string id="ui_mm_da_item_anims_off">
-		<text>Off</text>
-	</string>
 
 	<!-- [DA_PORT] "Animations" group on the Gameplay tab -->
-	<string id="ui_mm_grp_animations">
-		<text>Animations</text>
-	</string>
-	<string id="ui_mm_da_parkour">
-		<text>Parkour animations</text>
-	</string>
 
-	<string id="ui_mm_da_skin_anims">
-		<text>Skinning animations</text>
-	</string>
 
-	<string id="ui_mm_da_backpack_anim">
-		<text>Backpack opening animation</text>
-	</string>
 
-	<string id="ui_mm_da_body_search_anim">
-		<text>Body search animation</text>
-	</string>
 
-	<string id="ui_mm_da_wear_anims">
-		<text>Gear equip animations</text>
-	</string>
 </string_table>

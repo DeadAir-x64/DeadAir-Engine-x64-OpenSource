@@ -485,13 +485,27 @@ def check_release_shipping():
         return True
 
     # Файлы, которые сознательно НЕ отгружаются. Каждая строка — путь от gamedata и причина.
-    skip = set()
+    #
+    # Строка, оканчивающаяся на `/`, закрывает КАТАЛОГ целиком. Это не послабление, а защита от
+    # обратного: рабочий каталог с резервными копиями шейдеров (`shaders/_off_visual_21.08/`)
+    # пришлось бы вносить двадцатью строками, и любой новый файл в нём заслон уронил бы заново —
+    # то есть список чинили бы правкой без разбора, ровно тем способом, против которого он написан.
+    # Отдельные ФАЙЛЫ по-прежнему заносятся поимённо: каталог исключается осознанно, файл — нет.
+    skip, skip_dirs = set(), []
     excl = os.path.join(TESTS, 'lint', 'not_shipped.txt')
     if os.path.exists(excl):
         for line in open(excl, encoding='utf-8'):
             line = line.split('--')[0].strip()
-            if line:
+            if not line:
+                continue
+            if line.endswith('/') or line.endswith('\\'):
+                skip_dirs.append(line.rstrip('/\\').replace('/', os.sep).lower() + os.sep)
+            else:
                 skip.add(line.replace('/', os.sep).lower())
+
+    def skipped(rel):
+        low = rel.lower()
+        return low in skip or any(low.startswith(d) for d in skip_dirs)
 
     missing, stale, untested = [], [], []
     ours = 0
@@ -503,7 +517,7 @@ def check_release_shipping():
             for name in filenames:
                 full = os.path.join(dirpath, name)
                 rel = os.path.relpath(full, game_root)
-                if rel.lower() in skip:
+                if skipped(rel):
                     continue
                 orig = os.path.join(orig_root, rel)
                 # не наше: копия оригинала мода лежит рядом просто для чтения
@@ -519,7 +533,7 @@ def check_release_shipping():
     for dirpath, _, filenames in os.walk(ship_root):
         for name in filenames:
             rel = os.path.relpath(os.path.join(dirpath, name), ship_root)
-            if rel.lower() in skip or rel.split(os.sep)[0] not in SHIPPED_DIRS:
+            if skipped(rel) or rel.split(os.sep)[0] not in SHIPPED_DIRS:
                 continue
             in_game = os.path.join(game_root, rel)
             if not os.path.exists(in_game):
