@@ -1,0 +1,47 @@
+# Недовоз в отгрузку на 27.08.2026 — разобран.
+#
+# Было: заслон release_shipping красный, игра ушла вперёд D:/DeadAir_Update.
+# Стало: из 15 правил зелены 12; красными остаются только те три, что упираются в модуль
+#        анимаций, который в этот момент пересобирается отдельно (см. ниже).
+
+## Довезено в DeadAir_Update (35 файлов)
+
+Настраиваемый интерфейс видео — там живут все новые ручки рендера:
+  configs\text\eng\st_da_port_ui.xml, configs\text\rus\st_da_port_ui.xml
+  configs\ui\ui_da_tune.xml, configs\ui\ui_mm_opt.xml, configs\ui\ui_mm_opt_16.xml
+  scripts\ui_da_tune.script, scripts\ui_mm_opt_video.script, scripts\ui_mm_opt_video_adv.script
+
+Прочее:
+  configs\da_hex_tiling.ltx
+  scripts\_g.script                  — перехват намерения употребить вещь
+  scripts\axr_npc_steal_box.script   — возвращённый предел дальности у обчистки тайников
+
+Шейдеры: r1\, r2\, r3\models_selflight_det2.s; r3\combine_1.ps, da_frame_diff.*, da_hextile.h,
+  da_water_depth.*, common_functions.h, deffer_base*.ps, deffer_detail_*.vs, deffer_impl_flat.ps,
+  lod.ps, postprocess.*, postprocess_cm.ps, shadow.h, sload.h
+
+Удалено из отгрузки: shaders\r3\deffer_base.ps.bak_soft_edges_test — резервная копия уезжала
+игрокам, а в игре её нет, то есть отгружалось непроверенное.
+
+## Сознательно НЕ отгружается (внесено в tests/lint/not_shipped.txt с причиной)
+
+  shaders\_off_visual_21.08\  — рабочий слепок шейдеров от 21.08, снятый перед разбором
+                                «почему картинка плоская». Движок каталог с таким именем не
+                                читает, а половина файлов — заведомо старые версии действующих.
+
+## ⛔ Осталось красным: ТОЛЬКО модуль анимаций (пересобирается другим исполнителем)
+
+Не тронуто намеренно. Все эти файлы уезжают игроку НЕ через DeadAir_Update, а отдельной
+сборкой `da_animations.xdb0` со своим установщиком (_anim_stage\repo\anim_install.ps1).
+
+  release_shipping — 1000 файлов: ассеты FDDA / Enhanced Animations / паркура (textures\act,
+    textures\usable_items, textures\headgear_hud, meshes\dynamics, meshes\anomaly_weapons,
+    sounds\interface, sounds\actor и т.д.), конфиги configs\items\items\*, скрипты ea_*,
+    enhanced_animations*, demonized_*, da_*_anims, take_item_anim, ciga_effects, а также
+    configs\alife.ltx: его правка — это ТОЛЬКО #include анимационных секций, и уезжать он
+    обязан вместе с ними, иначе включения не разрешатся.
+
+  gamedata — 4 файла: actor_effects.script, axr_main_options.script, ui_mm_opt_main.script,
+    demonized_ledge_grabbing.script. Все правились сегодня в 12:38-12:41.
+
+  globals — da_anim_options <- axr_main_options.script: глобал живёт в модуле анимаций.
